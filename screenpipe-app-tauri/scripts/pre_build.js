@@ -308,21 +308,17 @@ async function getMostRecentBinaryPath(targetArch, paths) {
 }
 /* ########## macOS ########## */
 if (platform == 'macos') {
-
 	const architectures = ['arm64', 'x86_64'];
-
 	for (const arch of architectures) {
 		if (process.env['SKIP_SCREENPIPE_SETUP']) {
 			break;
 		}
 		console.log(`Setting up screenpipe bin for ${arch}...`);
-
 		if (arch === 'arm64') {
 			const paths = [
 				"../../target/aarch64-apple-darwin/release/screenpipe",
 				"../../target/release/screenpipe"
 			];
-
 			const mostRecentPath = await getMostRecentBinaryPath('arm64', paths);
 			if (mostRecentPath) {
 				await $`cp ${mostRecentPath} screenpipe-aarch64-apple-darwin`;
@@ -330,7 +326,6 @@ if (platform == 'macos') {
 			} else {
 				console.error("No suitable arm64 screenpipe binary found");
 			}
-
 			try {
 				// if the binary exists, hard code the fucking dylib
 				if (await fs.exists('screenpipe-aarch64-apple-darwin') && !isDevMode) {
@@ -346,24 +341,19 @@ if (platform == 'macos') {
 			} catch (error) {
 				console.error('Error updating dylib paths:', error);
 			}
-
-
 		} else if (arch === 'x86_64') {
 			// copy screenpipe binary (more recent one)
 			const paths = [
 				"../../target/x86_64-apple-darwin/release/screenpipe",
 				"../../target/release/screenpipe"
 			];
-
 			const mostRecentPath = await getMostRecentBinaryPath('x86_64', paths);
-
 			if (mostRecentPath) {
 				await $`cp ${mostRecentPath} screenpipe-x86_64-apple-darwin`;
 				console.log(`Copied most recent x86_64 screenpipe binary from ${mostRecentPath}`);
 			} else {
 				console.error("No suitable x86_64 screenpipe binary found");
 			}
-
 			try {
 				// hard code the dylib
 				if (await fs.exists('screenpipe-x86_64-apple-darwin') && !isDevMode) {
@@ -374,9 +364,7 @@ if (platform == 'macos') {
 			} catch (error) {
 				console.error('Error updating dylib paths:', error);
 			}
-
 		}
-
 		console.log(`screenpipe for ${arch} set up successfully.`);
 	}
 

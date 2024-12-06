@@ -51,6 +51,8 @@ import {
 } from "@/components/ui/collapsible";
 import { LogFileButton } from "./log-file-button";
 import { useSettings } from "@/lib/hooks/use-settings";
+import { StripeSubscriptionButton } from "./stripe-subscription-button";
+import { useUser } from "@/lib/hooks/use-user";
 
 export interface Pipe {
   enabled: boolean;
@@ -68,35 +70,49 @@ interface CorePipe {
 
 const corePipes: CorePipe[] = [
   {
+    id: "pipe-for-loom",
+    description: "generate looms from your screenpipe data",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-for-loom",
+  },
+  {
     id: "pipe-obsidian-time-logs",
     description:
       "continuously write logs of your days in an obsidian table using ollama+llama3.2",
-    url: "https://github.com/mediar-ai/screenpipe/tree/main/examples/typescript/pipe-obsidian-time-logs",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-obsidian-time-logs",
   },
   {
     id: "pipe-post-questions-on-reddit",
     description:
       "get more followers, promote your content/product while being useful, without doing any work",
-    url: "https://github.com/mediar-ai/screenpipe/tree/main/examples/typescript/pipe-post-questions-on-reddit",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-post-questions-on-reddit",
   },
   {
     id: "pipe-phi3.5-engineering-team-logs",
     description:
       "continuously write logs of your days in a notion table using ollama+llama3.2",
-    url: "https://github.com/mediar-ai/screenpipe/tree/main/examples/typescript/pipe-phi3.5-engineering-team-logs",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-phi3.5-engineering-team-logs",
   },
   {
     id: "pipe-simple-nextjs",
     description: "show most used keywords",
-    url: "https://github.com/mediar-ai/screenpipe/tree/main/examples/typescript/pipe-simple-nextjs",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-simple-nextjs",
   },
 ];
+
 const PipeDialog: React.FC = () => {
   const [newRepoUrl, setNewRepoUrl] = useState("");
   const [selectedPipe, setSelectedPipe] = useState<Pipe | null>(null);
   const [pipes, setPipes] = useState<Pipe[]>([]);
   const { health } = useHealthCheck();
   const { getDataDir } = useSettings();
+  const { user, checkLoomSubscription } = useUser();
+  const [hasLoomSubscription, setHasLoomSubscription] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      checkLoomSubscription().then(setHasLoomSubscription);
+    }
+  }, []);
 
   useEffect(() => {
     fetchInstalledPipes();
@@ -111,17 +127,17 @@ const PipeDialog: React.FC = () => {
       await cmd.execute();
       await new Promise((resolve) => setTimeout(resolve, 1000));
       toast({
-        title: "All pipes deleted",
-        description: "The pipes folder has been reset.",
+        title: "all pipes deleted",
+        description: "the pipes folder has been reset.",
       });
       // Refresh the pipe list and installed pipes
       await fetchInstalledPipes();
       setSelectedPipe(null);
     } catch (error) {
-      console.error("Failed to reset pipes:", error);
+      console.error("failed to reset pipes:", error);
       toast({
-        title: "Error resetting pipes",
-        description: "Please try again or check the logs for more information.",
+        title: "error resetting pipes",
+        description: "please try again or check the logs for more information.",
         variant: "destructive",
       });
     } finally {
@@ -129,7 +145,7 @@ const PipeDialog: React.FC = () => {
       setPipes([]);
     }
   };
-  // console.log("pipes", pipes);
+
   const fetchInstalledPipes = async () => {
     if (!health || health?.status === "error") {
       return;
@@ -137,13 +153,12 @@ const PipeDialog: React.FC = () => {
     const dataDir = await getDataDir();
     try {
       const response = await fetch("http://localhost:3030/pipes/list");
-
       if (!response.ok) {
         throw new Error("failed to fetch installed pipes");
       }
       const data = (await response.json()).data;
+
       for (const pipe of data) {
-        // read the README.md file from disk and set the fullDescription
         const pathToReadme = await join(dataDir, "pipes", pipe.id, "README.md");
         try {
           const readme = await readFile(pathToReadme);
@@ -155,7 +170,6 @@ const PipeDialog: React.FC = () => {
         }
       }
       setPipes(data);
-      // Update selectedPipe if it exists in the new data
       if (selectedPipe) {
         const updatedSelectedPipe = data.find(
           (pipe: Pipe) => pipe.id === selectedPipe.id
@@ -171,6 +185,7 @@ const PipeDialog: React.FC = () => {
       });
     }
   };
+
   const handleDownloadPipe = async (url: string) => {
     try {
       posthog.capture("download_pipe", {
@@ -180,6 +195,7 @@ const PipeDialog: React.FC = () => {
         title: "downloading pipe",
         description: "please wait...",
       });
+
       const response = await fetch(`http://localhost:3030/pipes/download`, {
         method: "POST",
         headers: {
@@ -191,12 +207,10 @@ const PipeDialog: React.FC = () => {
         throw new Error("failed to download pipe");
       }
       const data = await response.json();
+
       toast({
         title: "pipe downloaded",
-        // description: data.message,
       });
-      // Refresh the pipe list
-      // await addCustomPipe(url);
       await fetchInstalledPipes();
     } catch (error) {
       console.error("Failed to download pipe:", error);
@@ -209,13 +223,24 @@ const PipeDialog: React.FC = () => {
   };
 
   const handleToggleEnabled = async (pipe: Pipe) => {
+    if (pipe.id === "pipe-for-loom" && !pipe.enabled) {
+      const hasLoomSubscription = await checkLoomSubscription();
+      if (!hasLoomSubscription) {
+        toast({
+          title: "subscription required",
+          description: "please subscribe to use the loom pipe",
+        });
+        return;
+      }
+    }
+
     try {
       posthog.capture("toggle_pipe", {
         pipe_id: pipe.id,
         enabled: !pipe.enabled,
       });
+
       if (!pipe.enabled) {
-        // Enable the pipe through API
         await fetch(`http://localhost:3030/pipes/enable`, {
           method: "POST",
           headers: {
@@ -229,7 +254,6 @@ const PipeDialog: React.FC = () => {
           description: "this may take a few moments...",
         });
       } else {
-        // Disable the pipe through API
         await fetch(`http://localhost:3030/pipes/disable`, {
           method: "POST",
           headers: {
@@ -246,13 +270,6 @@ const PipeDialog: React.FC = () => {
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      toast({
-        title: pipe.enabled ? "pipe disabled" : "pipe enabled",
-        description:
-          "screenpipe has been updated with the new configuration. please restart screenpipe now in status badge",
-      });
-
-      // Update selectedPipe if it's the one being toggled
       if (selectedPipe && selectedPipe.id === pipe.id) {
         setSelectedPipe((prevPipe) =>
           prevPipe ? { ...prevPipe, enabled: !prevPipe.enabled } : null
@@ -277,10 +294,10 @@ const PipeDialog: React.FC = () => {
     if (newRepoUrl) {
       try {
         toast({
-          title: "Adding custom pipe",
-          description: "Please wait...",
+          title: "adding custom pipe",
+          description: "please wait...",
         });
-        // use /download endpoint to download the pipe
+
         const response = await fetch(`http://localhost:3030/pipes/download`, {
           method: "POST",
           headers: {
@@ -288,22 +305,23 @@ const PipeDialog: React.FC = () => {
           },
           body: JSON.stringify({ url: newRepoUrl }),
         });
+
         if (!response.ok) {
           throw new Error("failed to download pipe");
         }
-        const data = await response.json();
+
         // refresh the pipe list
         await fetchInstalledPipes();
+
         toast({
-          title: "Custom pipe added",
-          description:
-            "Your pipe has been successfully added. Screenpipe will restart with the new pipe.",
+          title: "custom pipe added",
+          description: "your pipe has been successfully added.",
         });
       } catch (error) {
-        console.error("Failed to add custom pipe:", error);
+        console.error("failed to add custom pipe:", error);
         toast({
-          title: "Error adding custom pipe",
-          description: "Please check the URL and try again.",
+          title: "error adding custom pipe",
+          description: "please check the url and try again.",
           variant: "destructive",
         });
       } finally {
@@ -336,17 +354,30 @@ const PipeDialog: React.FC = () => {
 
   const handleConfigSave = async (config: Record<string, any>) => {
     if (selectedPipe) {
-      fetch(`http://localhost:3030/pipes/update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ pipe_id: selectedPipe.id, config }),
-      });
-      toast({
-        title: "Configuration saved",
-        description: "The pipe configuration has been updated.",
-      });
+      try {
+        const response = await fetch(`http://localhost:3030/pipes/update`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ pipe_id: selectedPipe.id, config }),
+        });
+        if (!response.ok) {
+          throw new Error("failed to update pipe config");
+        }
+        toast({
+          title: "Configuration saved",
+          description: "The pipe configuration has been updated.",
+        });
+      } catch (error) {
+        console.error("Failed to save config:", error);
+        toast({
+          title: "error saving configuration",
+          description:
+            "please try again or check the logs for more information.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -359,6 +390,7 @@ const PipeDialog: React.FC = () => {
         title: "deleting pipe",
         description: "please wait...",
       });
+
       const response = await fetch(`http://localhost:3030/pipes/delete`, {
         method: "POST",
         headers: {
@@ -366,9 +398,11 @@ const PipeDialog: React.FC = () => {
         },
         body: JSON.stringify({ pipe_id: pipe.id }),
       });
+
       if (!response.ok) {
         throw new Error("failed to delete pipe");
       }
+
       await fetchInstalledPipes();
       setSelectedPipe(null);
       toast({
@@ -408,15 +442,22 @@ const PipeDialog: React.FC = () => {
         <h2 className="text-2xl font-bold mb-2">{selectedPipe.id}</h2>
 
         <div className="flex space-x-2 mb-4">
-          <Button
-            onClick={() => handleToggleEnabled(selectedPipe)}
-            variant={selectedPipe.enabled ? "default" : "outline"}
-            disabled={health?.status === "error"}
-          >
-            <Power className="mr-2 h-4 w-4" />
-            {selectedPipe.enabled ? "disable" : "enable"}
-          </Button>
-
+          {selectedPipe.id === "pipe-for-loom" &&
+          !selectedPipe.enabled &&
+          !hasLoomSubscription ? (
+            <StripeSubscriptionButton
+              onSubscriptionComplete={() => handleToggleEnabled(selectedPipe)}
+            />
+          ) : (
+            <Button
+              onClick={() => handleToggleEnabled(selectedPipe)}
+              variant={selectedPipe.enabled ? "default" : "outline"}
+              disabled={health?.status === "error"}
+            >
+              <Power className="mr-2 h-4 w-4" />
+              {selectedPipe.enabled ? "disable" : "enable"}
+            </Button>
+          )}
           {!selectedPipe.source?.startsWith("https://") && (
             <TooltipProvider>
               <Tooltip>
@@ -441,28 +482,15 @@ const PipeDialog: React.FC = () => {
               onClick={() => openUrl(selectedPipe.source)}
               variant="outline"
             >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              view source
+              <ExternalLink className="h-4 w-4" />
             </Button>
           )}
-          <Button
-            onClick={() =>
-              openUrl(
-                "https://twitter.com/intent/tweet?text=here's%20how%20i%20use%20@screen_pipe%20...%20%5Bscreenshot%5D%20an%20awesome%20tool%20for%20..."
-              )
-            }
-            variant="outline"
-          >
-            <Heart className="mr-2 h-4 w-4" />
-            support us
-          </Button>
           <LogFileButton />
           <Button
             onClick={() => handleDeletePipe(selectedPipe)}
             variant="outline"
           >
-            <Trash2 className="mr-2 h-4 w-4" />
-            delete
+            <Trash2 className=" h-4 w-4" />
           </Button>
         </div>
         <Separator className="my-4" />
@@ -629,16 +657,17 @@ const PipeDialog: React.FC = () => {
     );
   };
 
-  // Add this function to handle refreshing from disk
   const handleRefreshFromDisk = async (pipe: Pipe) => {
     try {
       posthog.capture("refresh_pipe_from_disk", {
         pipe_id: pipe.id,
       });
+
       toast({
         title: "refreshing pipe",
         description: "please wait...",
       });
+
       const response = await fetch(`http://localhost:3030/pipes/download`, {
         method: "POST",
         headers: {
@@ -649,6 +678,7 @@ const PipeDialog: React.FC = () => {
       if (!response.ok) {
         throw new Error("failed to refresh pipe");
       }
+
       await fetchInstalledPipes();
       toast({
         title: "pipe refreshed",
@@ -669,10 +699,22 @@ const PipeDialog: React.FC = () => {
   const renderCorePipes = () => (
     <div className="mb-3">
       <h3 className="text-lg font-semibold mb-2">try these pipes</h3>
-      <div className="flex flex-col overflow-hidden">
+      <div className="flex flex-col overflow-hidden space-y-2">
         {corePipes.map((pipe) => (
           <Card key={pipe.id} className="p-4">
-            <h4 className="font-medium text-lg mb-2">{pipe.id}</h4>
+            <div className="flex justify-between items-start mb-2">
+              <h4 className="font-medium text-lg">{pipe.id}</h4>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openUrl(pipe.url);
+                }}
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
             <p className="text-sm text-gray-500 mb-4">{pipe.description}</p>
             <Button
               size="sm"
@@ -789,12 +831,13 @@ const PipeDialog: React.FC = () => {
             screenpipe&apos;s store is a collection of plugins called
             &quot;pipes&quot; that are available to install.
             <br />
-            it will process, annotate, help you search, automate in your
-            screenpipe&apos;s data, or anything else you can imagine that help
-            you get more out of your recordings.
+            it will process, annotate, automate in your screenpipe&apos;s data,
+            or anything else you can imagine that help you get more out of your
+            recordings.
             <br />
-            make sure to restart screenpipe after changing a pipe&apos;s
-            configuration.
+            revenue from paid pipes goes directly to community contributors who
+            maintain them.
+            <br />
             <a
               href="https://docs.screenpi.pe/docs/plugins"
               className="text-blue-500 hover:underline"
@@ -814,7 +857,6 @@ const PipeDialog: React.FC = () => {
 
 export default PipeDialog;
 
-// Add this new component
 const RetryableVideo = ({
   src,
   maxRetries = 3,
