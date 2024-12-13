@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,9 +20,6 @@ import { Progress } from "@/components/ui/progress";
 import { DateTimePicker } from "./date-time-picker";
 import { Badge } from "./ui/badge";
 import {
-  AlertCircle,
-  AlignLeft,
-  Calendar,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -31,17 +30,18 @@ import {
   Loader2,
   Search,
   Send,
-  X,
   Square,
-  Settings,
   Clock,
   Check,
+  Plus,
+  SpeechIcon,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useToast } from "./ui/use-toast";
 import posthog from "posthog-js";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { convertToCoreMessages, generateId, Message, streamText } from "ai";
+import { generateId, Message } from "ai";
 import { OpenAI } from "openai";
 import { ChatMessage } from "./chat-message-v2";
 import { spinner } from "./spinner";
@@ -70,19 +70,29 @@ import {
 import { Separator } from "./ui/separator";
 import { ContextUsageIndicator } from "./context-usage-indicator";
 import { Checkbox } from "@/components/ui/checkbox";
-import { formatISO } from "date-fns";
 import { IconCode } from "@/components/ui/icons";
 import { CodeBlock } from "./ui/codeblock";
 import { SqlAutocompleteInput } from "./sql-autocomplete-input";
-import { encode, removeDuplicateSelections } from "@/lib/utils";
+import { cn, encode, removeDuplicateSelections } from "@/lib/utils";
 import { ExampleSearch, ExampleSearchCards } from "./example-search-cards";
 import { useDebounce } from "@/lib/hooks/use-debounce";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { useHealthCheck } from "@/lib/hooks/use-health-check";
 import { SearchHistory } from "@/lib/types/history";
+import { platform } from "@tauri-apps/plugin-os";
+import {
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  Command,
+} from "./ui/command";
+import { Speaker } from "@/lib/types";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 interface SearchChatProps {
   currentSearchId: string | null;
+  setCurrentSearchId: (searchId: string | null) => void;
   onAddSearch: (searchParams: any, results: any[]) => Promise<string>;
   searches: SearchHistory[];
 }
@@ -202,6 +212,7 @@ const getContextAroundKeyword = (
 
 export function SearchChat({
   currentSearchId,
+  setCurrentSearchId,
   onAddSearch,
   searches,
 }: SearchChatProps) {
@@ -225,7 +236,11 @@ export function SearchChat({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [minLength, setMinLength] = useState(50);
   const [maxLength, setMaxLength] = useState(10000);
-
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [selectedSpeakers, setSelectedSpeakers] = useState<{
+    [key: number]: Speaker;
+  }>({});
+  const [openSpeakers, setOpenSpeakers] = useState(false);
   // Chat state
   const [chatMessages, setChatMessages] = useState<Array<Message>>([]);
 
@@ -274,6 +289,49 @@ export function SearchChat({
 
   // Add new state near the top with other state declarations
   const [hideDeselected, setHideDeselected] = useState(false);
+
+  const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
+
+  const [speakerSearchQuery, setSpeakerSearchQuery] = useState("");
+
+  useEffect(() => {
+    setCurrentPlatform(platform());
+  }, []);
+
+  const handleSpeakerChange = (speaker: Speaker) => {
+    setSelectedSpeakers((prev) => {
+      const newSpeakers = { ...prev, [speaker.id]: speaker };
+
+      if (prev[speaker.id]) {
+        delete newSpeakers[speaker.id];
+      }
+
+      return newSpeakers;
+    });
+  };
+
+  useEffect(() => {
+    if (isQueryParamsDialogOpen && !speakers.length) {
+      loadSpeakers();
+    }
+  }, [isQueryParamsDialogOpen]);
+
+  useEffect(() => {
+    loadSpeakers();
+  }, [speakerSearchQuery]);
+
+  const loadSpeakers = async () => {
+    try {
+      const getSpeakers = await fetch(
+        `http://localhost:3030/speakers/search?name=${speakerSearchQuery}`
+      );
+      const speakers = await getSpeakers.json();
+      setSpeakers(speakers);
+    } catch (error) {
+      console.error("Error loading speakers:", error);
+      setSpeakers([]);
+    }
+  };
 
   // Update content type when checkboxes change
   const handleContentTypeChange = (type: "ocr" | "audio" | "ui") => {
@@ -518,7 +576,7 @@ export function SearchChat({
     // Track AI usage metrics
     posthog.capture("ai_chat_usage", {
       agent: selectedAgent.name,
-      total_chars: floatingInput.length + selectedContentLength
+      total_chars: floatingInput.length + selectedContentLength,
     });
 
     const userMessage = {
@@ -664,6 +722,10 @@ export function SearchChat({
       end_time: endDate.toISOString(),
       min_length: overrides.minLength || minLength,
       max_length: maxLength,
+      speaker_ids:
+        Object.keys(selectedSpeakers).length > 0
+          ? Object.keys(selectedSpeakers).length
+          : undefined,
     });
 
     try {
@@ -680,6 +742,10 @@ export function SearchChat({
         include_frames: includeFrames,
         min_length: overrides.minLength || minLength,
         max_length: maxLength,
+        speaker_ids:
+          Object.keys(selectedSpeakers).length > 0
+            ? Object.keys(selectedSpeakers).join(",")
+            : undefined,
       };
 
       const response = await queryScreenpipe(searchParams);
@@ -695,7 +761,7 @@ export function SearchChat({
       setTotalResults(response.pagination.total);
 
       // Save search to history
-      await onAddSearch(searchParams, response.data);
+      // await onAddSearch(searchParams, response.data);
     } catch (error) {
       console.error("search error:", error);
       toast({
@@ -950,6 +1016,11 @@ export function SearchChat({
                 {new Date(item.content.timestamp).toLocaleString()}{" "}
                 {/* Display local time */}
               </p>
+              {item.type === "Audio" && item.content.speaker?.name && (
+                <p className="text-xs text-gray-400">
+                  {item.content.speaker.name}
+                </p>
+              )}
               {item.type === "OCR" && item.content.app_name && (
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-muted-foreground">app:</span>
@@ -991,43 +1062,59 @@ export function SearchChat({
 
   // Add effect to restore search when currentSearchId changes
   useEffect(() => {
-    if (currentSearchId) {
-      const selectedSearch = searches.find((s) => s.id === currentSearchId);
-      if (selectedSearch) {
-        // Restore search parameters
-        setQuery(selectedSearch.searchParams.q || "");
-        setContentType(selectedSearch.searchParams.content_type);
-        setLimit(selectedSearch.searchParams.limit);
-        setStartDate(new Date(selectedSearch.searchParams.start_time));
-        setEndDate(new Date(selectedSearch.searchParams.end_time));
-        setAppName(selectedSearch.searchParams.app_name || "");
-        setWindowName(selectedSearch.searchParams.window_name || "");
-        setIncludeFrames(selectedSearch.searchParams.include_frames);
-        setMinLength(selectedSearch.searchParams.min_length);
-        setMaxLength(selectedSearch.searchParams.max_length);
+    // if (currentSearchId) {
+    const selectedSearch = searches.find((s) => s.id === currentSearchId);
+    if (selectedSearch) {
+      // Restore search parameters
+      setQuery(selectedSearch.searchParams.q || "");
+      setContentType(selectedSearch.searchParams.content_type);
+      setLimit(selectedSearch.searchParams.limit);
+      setStartDate(new Date(selectedSearch.searchParams.start_time));
+      setEndDate(new Date(selectedSearch.searchParams.end_time));
+      setAppName(selectedSearch.searchParams.app_name || "");
+      setWindowName(selectedSearch.searchParams.window_name || "");
+      setIncludeFrames(selectedSearch.searchParams.include_frames);
+      setMinLength(selectedSearch.searchParams.min_length);
+      setMaxLength(selectedSearch.searchParams.max_length);
 
-        // Restore results
-        setResults(selectedSearch.results);
-        setTotalResults(selectedSearch.results.length);
-        setHasSearched(true);
-        setShowExamples(false);
+      // Restore results
+      setResults(selectedSearch.results);
+      setTotalResults(selectedSearch.results.length);
+      setHasSearched(true);
+      setShowExamples(false);
 
-        // Restore messages if any
-        if (selectedSearch.messages) {
-          setChatMessages(
-            selectedSearch.messages.map((msg) => ({
-              id: msg.id,
-              role: msg.type === "ai" ? "assistant" : "user",
-              content: msg.content,
-            }))
-          );
-        }
+      // Restore messages if any
+      if (selectedSearch.messages) {
+        setChatMessages(
+          selectedSearch.messages.map((msg) => ({
+            id: msg.id,
+            role: msg.type === "ai" ? "assistant" : "user",
+            content: msg.content,
+          }))
+        );
       }
     }
+    // }
   }, [currentSearchId, searches]);
 
+  const handleNewSearch = () => {
+    // setCurrentSearchId(null);
+    location.reload();
+    // Add any other reset logic you need
+  };
   return (
     <div className="w-full max-w-4xl mx-auto p-4 mt-12">
+      <div className="fixed top-4 left-4 z-50 flex items-center gap-2">
+        {/* <SidebarTrigger className="h-8 w-8" /> */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleNewSearch}
+          className="h-8 w-8"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
       {/* Content Type Checkboxes and Code Button */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-4">
@@ -1052,7 +1139,7 @@ export function SearchChat({
               </Tooltip>
             </TooltipProvider>
           </div>
-          {settings.platform === "macos" && (
+          {currentPlatform === "macos" && (
             <div className="flex items-center space-x-1">
               <Checkbox
                 id="ui-type"
@@ -1143,6 +1230,8 @@ export function SearchChat({
           }}
           placeholder="keyword search, you may leave it blank"
           className="w-[350px]"
+          autoCorrect="off"
+          autoComplete="off"
         />
 
         {/* Window name filter - increased width */}
@@ -1438,6 +1527,71 @@ export function SearchChat({
               </Tooltip>
             </TooltipProvider>
           </div>
+          <div className="flex items-center justify-center space-x-2">
+            <Label htmlFor="speakers" className="flex items-center space-x-2">
+              <SpeechIcon className="h-4 w-4" />
+              <span>speakers</span>
+            </Label>
+            <Popover open={openSpeakers} onOpenChange={setOpenSpeakers}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openSpeakers}
+                  className="w-full justify-between"
+                >
+                  {Object.values(selectedSpeakers).length > 0
+                    ? `${Object.values(selectedSpeakers)
+                        .map((s) => s.name)
+                        .join(", ")}`
+                    : "select speakers"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0">
+                <Command>
+                  <CommandInput
+                    placeholder="search speakers..."
+                    value={speakerSearchQuery}
+                    onValueChange={setSpeakerSearchQuery}
+                  />
+                  <CommandList>
+                    <CommandEmpty>no speakers found.</CommandEmpty>
+                    <CommandGroup>
+                      {speakers.map((speaker: Speaker) => (
+                        <CommandItem
+                          key={speaker.id}
+                          value={speaker.name}
+                          onSelect={() => handleSpeakerChange(speaker)}
+                        >
+                          <div className="flex items-center">
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedSpeakers[speaker.id]
+                                  ? "opacity-100"
+                                  : "opacity-0"
+                              )}
+                            />
+                            <span
+                              style={{
+                                userSelect: "none",
+                                WebkitUserSelect: "none",
+                                MozUserSelect: "none",
+                                msUserSelect: "none",
+                              }}
+                            >
+                              {speaker.name}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
           <DialogFooter>
             <Button onClick={() => setIsQueryParamsDialogOpen(false)}>
               done
@@ -1631,10 +1785,12 @@ export function SearchChat({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <ContextUsageIndicator
-                        currentSize={calculateSelectedContentLength()}
-                        maxSize={MAX_CONTENT_LENGTH}
-                      />
+                      <span>
+                        <ContextUsageIndicator
+                          currentSize={calculateSelectedContentLength()}
+                          maxSize={MAX_CONTENT_LENGTH}
+                        />
+                      </span>
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>

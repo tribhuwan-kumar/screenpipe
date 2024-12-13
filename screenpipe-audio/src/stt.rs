@@ -37,6 +37,13 @@ use serde_json::Value;
 use std::io::Cursor;
 
 use crate::pyannote::models::{get_or_download_model, PyannoteModel};
+use lazy_static::lazy_static;
+use std::env;
+
+lazy_static! {
+    static ref DEEPGRAM_API_URL: String = env::var("DEEPGRAM_API_URL")
+        .unwrap_or_else(|_| "https://api.deepgram.com/v1/listen".to_string());
+}
 
 async fn transcribe_with_deepgram(
     api_key: &str,
@@ -54,8 +61,8 @@ async fn transcribe_with_deepgram(
         let spec = WavSpec {
             channels: 1,
             sample_rate: match sample_rate {
-                88200 => 16000,       // Deepgram expects 16kHz for 88.2kHz
-                _ => sample_rate / 3, // Fallback for other sample rates
+                88200 => 16000,   // Deepgram expects 16kHz for 88.2kHz
+                _ => sample_rate, // Fallback for other sample rates
             },
             bits_per_sample: 32,
             sample_format: hound::SampleFormat::Float,
@@ -70,7 +77,7 @@ async fn transcribe_with_deepgram(
     // Get the WAV data from the cursor
     let wav_data = cursor.into_inner();
 
-    let mut query_params = String::from("model=nova-2&smart_format=true");
+    let mut query_params = String::from("model=nova-2&smart_format=true&sample_rate=16000");
 
     if !languages.is_empty() {
         query_params = [
@@ -86,10 +93,7 @@ async fn transcribe_with_deepgram(
     }
 
     let response = client
-        .post(format!(
-            "https://api.deepgram.com/v1/listen?{}",
-            query_params
-        ))
+        .post(format!("{}?{}", *DEEPGRAM_API_URL, query_params))
         .header("Content-Type", "audio/wav")
         .header("Authorization", format!("Token {}", api_key))
         .body(wav_data)
@@ -388,12 +392,8 @@ pub async fn stt(
         == AudioTranscriptionEngine::Deepgram.into()
     {
         // Deepgram implementation
-        let api_key = deepgram_api_key.unwrap();
-        info!(
-            "device: {}, using deepgram api key: {}...",
-            device,
-            &api_key[..8]
-        );
+        let api_key = deepgram_api_key.unwrap_or_default();
+
         match transcribe_with_deepgram(&api_key, audio, device, sample_rate, languages.clone())
             .await
         {

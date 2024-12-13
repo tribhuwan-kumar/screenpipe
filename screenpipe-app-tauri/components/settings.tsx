@@ -23,11 +23,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Textarea } from "./ui/textarea";
 import { Slider } from "@/components/ui/slider"; // Add this import
 import { Badge } from "@/components/ui/badge"; // Add this import
-import { parseKeyboardShortcut } from "@/lib/utils"; // Add this import
+import { cn, parseKeyboardShortcut } from "@/lib/utils"; // Add this import
 
 import {
   Eye,
@@ -39,12 +45,12 @@ import {
   X,
   Play,
   Loader2,
+  Coins,
+  UserCog,
 } from "lucide-react";
 import { RecordingSettings } from "./recording-settings";
 import { Switch } from "./ui/switch";
-import { Command } from "@tauri-apps/plugin-shell";
 import { LogFileButton } from "./log-file-button";
-import { platform } from "@tauri-apps/plugin-os";
 
 import { toast } from "@/components/ui/use-toast";
 import { invoke } from "@tauri-apps/api/core";
@@ -60,17 +66,178 @@ import {
 } from "@/components/ui/select";
 import { useInterval } from "@/lib/hooks/use-interval";
 import { useHealthCheck } from "@/lib/hooks/use-health-check";
-import { AuthButton } from "./auth";
+import { useUser } from "@/lib/hooks/use-user";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
+
+function AccountSection() {
+  const { user, loadUser } = useUser();
+  const { localSettings, setLocalSettings } = useSettings();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshCredits = async () => {
+    if (!localSettings.user?.token) return;
+
+    setIsRefreshing(true);
+    try {
+      await loadUser(localSettings.user.token);
+      toast({
+        title: "credits refreshed",
+        description: "your credit balance has been updated",
+      });
+    } catch (error) {
+      toast({
+        title: "failed to refresh credits",
+        description: "please try again later",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle>account</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-[240px]"
+            onClick={() => invoke("open_auth_window")}
+          >
+            <UserCog className="w-4 h-4 mr-2" />
+            manage account
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Separator className="my-4" />
+
+        <div className="flex flex-col w-full gap-2">
+          <div className="flex w-full gap-2 items-center">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground w-[275px]">
+              <Coins className="w-4 h-4" />
+              <span className="font-mono">{user?.credits?.amount || 0}</span>
+              <span>credits available</span>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() =>
+                openUrl("https://buy.stripe.com/5kA6p79qefweacg5kJ")
+              }
+            >
+              <div className="flex items-center gap-2">
+                <Coins className="w-4 h-4" />
+                get credits
+              </div>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={handleRefreshCredits}
+              disabled={isRefreshing}
+            >
+              <RefreshCw
+                className={cn("w-4 h-4", { "animate-spin": isRefreshing })}
+              />
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Label htmlFor="key">key</Label>
+            <div className="w-full flex items-center gap-2">
+              <div className=" flex gap-2">
+                <Input
+                  id="key"
+                  value={localSettings.user?.token || ""}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setLocalSettings((prev) => ({
+                      ...prev,
+                      user: {
+                        ...prev.user,
+                        token: newValue,
+                      },
+                    }));
+                  }}
+                  placeholder="enter your key"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  autoComplete="off"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    loadUser(localSettings.user?.token || "");
+                    toast({
+                      title: "key updated",
+                      description: "your key has been updated",
+                    });
+                  }}
+                >
+                  update
+                </Button>
+              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[300px]">
+                    <p>
+                      your key is used to sync your credits and settings across
+                      devices. you can find it in your dashboard.{" "}
+                      <span className="text-destructive font-semibold">
+                        do not share this key with anyone.
+                      </span>
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-[275px]"
+            disabled
+          >
+            <div className="flex items-center gap-2">
+              connect stripe
+              <Badge variant="outline" className="ml-1 uppercase text-xs">
+                soon
+              </Badge>
+            </div>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function Settings({ className }: { className?: string }) {
-  const { settings, updateSettings, resetSetting, resetSettings } = useSettings();
+  const {
+    settings,
+    updateSettings,
+    resetSetting,
+    resetSettings,
+    localSettings,
+    setLocalSettings,
+  } = useSettings();
+  const { user } = useUser();
+  const { credits } = user || {};
   const { debouncedFetchHealth } = useHealthCheck();
-  const [localSettings, setLocalSettings] = React.useState(settings);
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<
     "idle" | "running" | "error"
   >("idle");
-  const [currentPlatform, setCurrentPlatform] = useState("unknown");
 
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([]);
   const [nonModifierKey, setNonModifierKey] = useState<string>("");
@@ -146,22 +313,10 @@ export function Settings({ className }: { className?: string }) {
   const newShortcut = [...selectedModifiers, nonModifierKey].join("+");
   const isShortcutChanged = newShortcut !== currentShortcut;
 
-  useEffect(() => {
-    setCurrentPlatform(platform());
-  }, []);
-
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setLocalSettings({ ...localSettings, openaiApiKey: newValue });
     updateSettings({ openaiApiKey: newValue });
-  };
-
-  const handleDeepgramApiKeyChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const newValue = e.target.value;
-    setLocalSettings({ ...localSettings, deepgramApiKey: newValue });
-    updateSettings({ deepgramApiKey: newValue });
   };
 
   const handleModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -223,10 +378,6 @@ export function Settings({ className }: { className?: string }) {
     setLocalSettings({ ...localSettings, embeddedLLM: newValue });
     updateSettings({ embeddedLLM: newValue });
   };
-
-  React.useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
 
   const startOllamaSidecar = async () => {
     setOllamaStatus("running");
@@ -297,6 +448,11 @@ export function Settings({ className }: { className?: string }) {
   const handleAiProviderChange = (newValue: AIProviderType) => {
     let newUrl = "";
     let newModel = localSettings.aiModel;
+
+    if (newValue === "screenpipe-cloud" && !credits?.amount) {
+      openUrl("https://buy.stripe.com/5kA6p79qefweacg5kJ");
+      return;
+    }
     switch (newValue) {
       case "openai":
         newUrl = "https://api.openai.com/v1";
@@ -339,21 +495,25 @@ export function Settings({ className }: { className?: string }) {
       case "https://ai-proxy.i-f9f.workers.dev/v1":
         return (
           <p>
-            screenpipe cloud doesn&apos;t require an API key.
-            <br />
-            we offer free credits.
-            <br />
-            note: using this option may involve sending data to our servers.
-            <br />
-            please review our data privacy policy for more information at:
-            <br />
-            <a
-              href="https://screenpi.pe/privacy"
-              target="_blank"
-              className="text-primary hover:underline"
-            >
-              screenpipe privacy policy
-            </a>
+            {credits?.amount ? (
+              <>
+                screenpipe cloud doesn&apos;t require an API key.
+                <br />
+                you have {credits.amount} credits left.
+              </>
+            ) : (
+              <>
+                you need credits to use screenpipe cloud.
+                <br />
+                <a
+                  href="https://buy.stripe.com/5kA6p79qefweacg5kJ"
+                  target="_blank"
+                  className="text-primary hover:underline"
+                >
+                  get credits here
+                </a>
+              </>
+            )}
           </p>
         );
       case "https://api.openai.com/v1":
@@ -451,13 +611,6 @@ export function Settings({ className }: { className?: string }) {
     }
   };
 
-  const isCustomUrl = ![
-    "https://api.openai.com/v1",
-    "http://localhost:11434/v1",
-    "https://ai-proxy.i-f9f.workers.dev/v1",
-    "embedded",
-  ].includes(localSettings.aiUrl);
-
   // Add this function to check the embedded AI status
   const checkEmbeddedAIStatus = useCallback(async () => {
     if (localSettings.embeddedLLM.enabled) {
@@ -510,69 +663,55 @@ export function Settings({ className }: { className?: string }) {
     });
   };
 
-  useEffect(() => {
-    const handleSettingsUpdate = () => {
-      debouncedFetchHealth();
-    };
-
-    window.addEventListener("settings-updated", handleSettingsUpdate);
-
-    return () => {
-      window.removeEventListener("settings-updated", handleSettingsUpdate);
-    };
-  }, [debouncedFetchHealth]);
-
   const handleResetSettings = async () => {
-    try{
-      await resetSettings()
+    try {
+      await resetSettings();
       toast({
         title: "settings were reset successfully",
       });
-    }catch(e){
-      console.log(e)
+    } catch (e) {
+      console.log(e);
       toast({
         title: "can't reset your settings",
         variant: "destructive",
       });
     }
-  }
+  };
 
   return (
     <Dialog
       onOpenChange={(open) => {
         if (!open) {
-          // Use a more reliable state update mechanism
-          const event = new CustomEvent("settings-updated");
-          window.dispatchEvent(event);
-
-          // Add a small delay before refetching health
-          setTimeout(() => {
-            debouncedFetchHealth();
-          }, 500);
-
           window.location.reload();
         }
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className={className}>
-          <Settings2 className="h-5 w-5" />
-          <span className="sr-only">settings</span>
-        </Button>
+        <div
+          className={cn(
+            "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            className
+          )}
+          onSelect={(e) => e.preventDefault()}
+        >
+          <div className="flex items-center">
+            <Settings2 className="mr-2 h-4 w-4" />
+            <span>settings</span>
+          </div>
+        </div>
       </DialogTrigger>
+
       <DialogContent className="max-w-[80vw] w-full max-h-[80vh] h-full overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            <div className="flex items-center gap-4">
-              settings
-              <AuthButton />
-            </div>
+            <div className="flex items-center gap-4">settings</div>
           </DialogTitle>
           <DialogDescription>
             choose your AI provider, enter necessary credentials, and more.
           </DialogDescription>
         </DialogHeader>
         <div className="mt-8 space-y-6">
+          <AccountSection />
           <RecordingSettings
             localSettings={localSettings}
             setLocalSettings={setLocalSettings}
@@ -599,12 +738,13 @@ export function Settings({ className }: { className?: string }) {
                         <SelectValue placeholder="Select AI provider" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="screenpipe-cloud">
+                          screenpipe cloud{" "}
+                          {!credits?.amount && "(requires credits)"}
+                        </SelectItem>
                         <SelectItem value="openai">openai</SelectItem>
                         <SelectItem value="native-ollama">
                           ollama (local)
-                        </SelectItem>
-                        <SelectItem value="screenpipe-cloud">
-                          screenpipe cloud
                         </SelectItem>
                         <SelectItem value="custom">custom</SelectItem>
                         {embeddedAIStatus === "running" && (
@@ -957,59 +1097,6 @@ export function Settings({ className }: { className?: string }) {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-center">deepgram</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center">
-              <div className="w-full ">
-                <div className="flex items-center gap-4 mb-4">
-                  <Label htmlFor="apiKey" className="min-w-[80px] text-right">
-                    api key
-                  </Label>
-                  <div className="flex-grow relative">
-                    <Input
-                      id="apiKey"
-                      type={showApiKey ? "text" : "password"}
-                      value={settings.deepgramApiKey}
-                      onChange={handleDeepgramApiKeyChange}
-                      className="pr-10"
-                      placeholder="Enter your Deepgram API Key"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                    >
-                      {showApiKey ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground text-center">
-                deepgram&apos;s transcription models are currently the most
-                reliable for this application.
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground text-center">
-                don&apos;t have an API key? get one from{" "}
-                <a
-                  href="https://console.deepgram.com/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  deepgram&apos;s website
-                </a>{" "}
-                or DM us on discord, it&apos;s on us!
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
               <CardTitle className="text-center">shortcuts</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center">
@@ -1080,30 +1167,27 @@ export function Settings({ className }: { className?: string }) {
               </div>
             </CardContent>
           </Card>
-          <Card
-            className="border border-[#fab1b6] overflow-hidden"
-          >
-              <CardHeader>
-                <CardTitle className="text-center">reset settings</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center">
-                <p className="text-sm text-muted-foreground mb-4">
-                  permanently reset settings to their default values.
-                </p>
-              </CardContent>
-              <CardFooter className="bg-[#fdedee] border-t border-[#fab1b6] flex justify-between items-center p-5">
-                <p className="text-sm text-muted-foreground">
-                  this action is not reversible — please continue with caution.
-                </p>
-                <Button
-                    variant={'destructive'}
-                    onClick={()=>handleResetSettings()}
-                    disabled={false}
-                  >
-                   reset settings
-                  </Button>
-              </CardFooter>
-
+          <Card className="border border-[#fab1b6] overflow-hidden">
+            <CardHeader>
+              <CardTitle className="text-center">reset settings</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center">
+              <p className="text-sm text-muted-foreground mb-4">
+                permanently reset settings to their default values.
+              </p>
+            </CardContent>
+            <CardFooter className="bg-[#fdedee] border-t border-[#fab1b6] flex justify-between items-center p-5">
+              <p className="text-sm text-muted-foreground">
+                this action is not reversible — please continue with caution.
+              </p>
+              <Button
+                variant={"destructive"}
+                onClick={() => handleResetSettings()}
+                disabled={false}
+              >
+                reset settings
+              </Button>
+            </CardFooter>
           </Card>
         </div>
       </DialogContent>

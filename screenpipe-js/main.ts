@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import cron, { type ScheduledTask } from "node-cron";
 import express, { Request, Response, NextFunction } from "express";
+import * as fsPromises from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
 
 // Type definitions
 export interface PipeConfig {
@@ -18,7 +21,14 @@ export interface NotificationOptions {
 /**
  * Types of content that can be queried in Screenpipe.
  */
-export type ContentType = "ocr" | "audio" | "all";
+export type ContentType = 
+  | "all"
+  | "ocr"
+  | "audio"
+  | "ui"
+  | "audio+ui"
+  | "ocr+ui"
+  | "audio+ocr";
 
 /**
  * Parameters for querying Screenpipe.
@@ -35,6 +45,7 @@ export interface ScreenpipeQueryParams {
   includeFrames?: boolean;
   minLength?: number;
   maxLength?: number;
+  speakerIds?: number[];
 }
 
 /**
@@ -64,6 +75,7 @@ export interface AudioContent {
   tags: string[];
   deviceName: string;
   deviceType: string;
+  speaker?: Speaker;
 }
 
 /**
@@ -82,12 +94,35 @@ export interface FTSContent {
 }
 
 /**
+ * Structure of UI content.
+ */
+export interface UiContent {
+  id: number;
+  text: string;
+  timestamp: string;
+  appName: string;
+  windowName: string;
+  initialTraversalAt?: string;
+  filePath: string;
+  offsetIndex: number;
+}
+
+/**
+ * Speaker information
+ */
+export interface Speaker {
+  id: number;
+  name?: string;
+  metadata?: string;
+}
+
+/**
  * Union type for different types of content items.
  */
 export type ContentItem =
   | { type: "OCR"; content: OCRContent }
   | { type: "Audio"; content: AudioContent }
-  | { type: "FTS"; content: FTSContent };
+  | { type: "UI"; content: UiContent };
 
 /**
  * Pagination information for search results.
@@ -115,6 +150,168 @@ export interface ParsedConfig<T = unknown> {
     value?: T;
     default?: T;
   }[];
+}
+
+// Types from the original settings
+export type VadSensitivity = "low" | "medium" | "high";
+export type AIProviderType =
+  | "native-ollama"
+  | "openai"
+  | "custom"
+  | "embedded"
+  | "screenpipe-cloud";
+
+export interface EmbeddedLLMConfig {
+  enabled: boolean;
+  model: string;
+  port: number;
+}
+
+export interface Settings {
+  openaiApiKey: string;
+  deepgramApiKey: string;
+  aiModel: string;
+  customPrompt: string;
+  port: number;
+  dataDir: string;
+  disableAudio: boolean;
+  ignoredWindows: string[];
+  includedWindows: string[];
+  aiProviderType: AIProviderType;
+  embeddedLLM: EmbeddedLLMConfig;
+  enableFrameCache: boolean;
+  enableUiMonitoring: boolean;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  openaiApiKey: "",
+  deepgramApiKey: "",
+  aiModel: "gpt-4",
+  customPrompt: `Rules:
+- You can analyze/view/show/access videos to the user by putting .mp4 files in a code block (we'll render it) like this: \`/users/video.mp4\`, use the exact, absolute, file path from file_path property
+- Do not try to embed video in links (e.g. [](.mp4) or https://.mp4) instead put the file_path in a code block using backticks
+- Do not put video in multiline code block it will not render the video (e.g. \`\`\`bash\n.mp4\`\`\` IS WRONG) instead using inline code block with single backtick
+- Always answer my question/intent, do not make up things`,
+  port: 3030,
+  dataDir: "default",
+  disableAudio: false,
+  ignoredWindows: [],
+  includedWindows: [],
+  aiProviderType: "openai",
+  embeddedLLM: {
+    enabled: false,
+    model: "llama3.2:1b-instruct-q4_K_M",
+    port: 11438,
+  },
+  enableFrameCache: true,
+  enableUiMonitoring: false,
+};
+
+export class SettingsManager {
+  private settings: Settings;
+  private storePath: string;
+  private initialized: boolean = false;
+
+  constructor() {
+    this.settings = DEFAULT_SETTINGS;
+    this.storePath = this.getStorePath();
+  }
+
+  private getStorePath(): string {
+    const platform = process.platform;
+    const home = os.homedir();
+
+    switch (platform) {
+      case "darwin":
+        return path.join(
+          home,
+          "Library",
+          "Application Support",
+          "screenpipe",
+          "store.bin"
+        );
+      case "linux":
+        const xdgData =
+          process.env.XDG_DATA_HOME || path.join(home, ".local", "share");
+        return path.join(xdgData, "screenpipe", "store.bin");
+      case "win32":
+        return path.join(
+          process.env.LOCALAPPDATA || path.join(home, "AppData", "Local"),
+          "screenpipe",
+          "store.bin"
+        );
+      default:
+        throw new Error(`unsupported platform: ${platform}`);
+    }
+  }
+
+  private async ensureStoreDirectory(): Promise<void> {
+    const dir = path.dirname(this.storePath);
+    await fsPromises.mkdir(dir, { recursive: true });
+  }
+
+  async init(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      await this.ensureStoreDirectory();
+      const data = await fsPromises.readFile(this.storePath);
+      this.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(data.toString()) };
+      this.initialized = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        // file doesn't exist, use defaults
+        await this.save();
+        this.initialized = true;
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  async save(): Promise<void> {
+    await this.ensureStoreDirectory();
+    await fsPromises.writeFile(
+      this.storePath,
+      JSON.stringify(this.settings, null, 2)
+    );
+  }
+
+  async get<K extends keyof Settings>(key: K): Promise<Settings[K]> {
+    if (!this.initialized) await this.init();
+    return this.settings[key];
+  }
+
+  async set<K extends keyof Settings>(
+    key: K,
+    value: Settings[K]
+  ): Promise<void> {
+    if (!this.initialized) await this.init();
+    this.settings[key] = value;
+    await this.save();
+  }
+
+  async getAll(): Promise<Settings> {
+    if (!this.initialized) await this.init();
+    return { ...this.settings };
+  }
+
+  async update(newSettings: Partial<Settings>): Promise<void> {
+    if (!this.initialized) await this.init();
+    this.settings = { ...this.settings, ...newSettings };
+    await this.save();
+  }
+
+  async reset(): Promise<void> {
+    this.settings = { ...DEFAULT_SETTINGS };
+    await this.save();
+  }
+
+  async resetKey<K extends keyof Settings>(key: K): Promise<void> {
+    if (!this.initialized) await this.init();
+    this.settings[key] = DEFAULT_SETTINGS[key];
+    await this.save();
+  }
 }
 
 /**
@@ -169,7 +366,12 @@ export async function sendDesktopNotification(
 
 export function loadPipeConfig(): PipeConfig {
   try {
-    const configPath = `${process.env.SCREENPIPE_DIR}/pipes/${process.env.PIPE_ID}/pipe.json`;
+    // Try to get path from env vars, fallback to current directory
+    const baseDir = process.env.SCREENPIPE_DIR || process.cwd();
+    const pipeId =
+      process.env.PIPE_ID || require("path").basename(process.cwd());
+    const configPath = `${baseDir}/pipes/${pipeId}/pipe.json`;
+
     const configContent = fs.readFileSync(configPath, "utf8");
     const parsedConfig: ParsedConfig = JSON.parse(configContent);
     const config: PipeConfig = {};
@@ -190,8 +392,13 @@ export async function queryScreenpipe(
   const queryParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined) {
-      const snakeKey = toSnakeCase(key);
-      queryParams.append(snakeKey, value.toString());
+      if (key === 'speakerIds' && Array.isArray(value)) {
+        // Convert speaker IDs array to comma-separated string
+        queryParams.append(toSnakeCase(key), value.join(','));
+      } else {
+        const snakeKey = toSnakeCase(key);
+        queryParams.append(snakeKey, value.toString());
+      }
     }
   });
 
@@ -220,40 +427,6 @@ export async function queryScreenpipe(
   } catch (error) {
     console.error("error querying screenpipe:", error);
     return null;
-  }
-}
-
-export function extractJsonFromLlmResponse(response: string): any {
-  let cleaned = response.replace(/^```(?:json)?\s*|\s*```$/g, "");
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    cleaned = jsonMatch[0];
-  }
-  cleaned = cleaned.replace(/^[^{]*/, "").replace(/[^}]*$/, "");
-  cleaned = cleaned.replace(/\\n/g, "").replace(/\n/g, "");
-  cleaned = cleaned.replace(/"(\\"|[^"])*"/g, (match) => {
-    return match.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  });
-
-  try {
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.warn("failed to parse json:", error);
-    cleaned = cleaned
-      .replace(/,\s*}/g, "}")
-      .replace(/'/g, '"')
-      .replace(/(\w+):/g, '"$1":')
-      .replace(/:\s*'([^']*)'/g, ': "$1"')
-      .replace(/\\"/g, '"')
-      .replace(/"{/g, '{"')
-      .replace(/}"/g, '"}');
-
-    try {
-      return JSON.parse(cleaned);
-    } catch (secondError) {
-      console.warn("failed to parse json after attempted fixes:", secondError);
-      throw new Error("invalid json format in llm response");
-    }
   }
 }
 
@@ -475,7 +648,9 @@ export class InboxManager {
   }
 }
 
-// Remove the startActionServer from pipe object since it's now handled by InboxManager
+// Export a singleton instance
+export const settingsManager = new SettingsManager();
+
 export const pipe = {
   /**
    * Send a desktop notification to the user.
@@ -580,6 +755,25 @@ export const pipe = {
     click: (button: "left" | "right" | "middle"): Promise<boolean> => {
       return sendInputControl({ type: "MouseClick", data: button });
     },
+
+    /**
+     * Access settings management functionality
+     * @example
+     * ```typescript
+     * // Get a specific setting
+     * const apiKey = await pipe.settings.get("openaiApiKey");
+     *
+     * // Update multiple settings
+     * await pipe.settings.update({
+     *   openaiApiKey: "new-key",
+     *   aiModel: "gpt-4"
+     * });
+     *
+     * // Reset all settings
+     * await pipe.settings.reset();
+     * ```
+     */
+    settings: settingsManager,
   },
 };
 

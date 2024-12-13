@@ -100,7 +100,8 @@ impl AnalyticsManager {
         let pipes_url = format!("{}/pipes/list", self.local_api_base_url);
         let response: PipeListResponse = self.client.get(&pipes_url).send().await?.json().await?;
 
-        let enabled_pipes: Vec<String> = response.data
+        let enabled_pipes: Vec<String> = response
+            .data
             .into_iter()
             .filter(|pipe| pipe.enabled)
             .map(|pipe| pipe.id)
@@ -147,7 +148,6 @@ pub fn start_analytics(
             if let Err(e) = analytics_manager.send_event("app_started", None).await {
                 error!("Failed to send initial PostHog event: {}", e);
             }
-            info!("Analytics started");
         }
     });
 
@@ -171,5 +171,6 @@ struct PipeInfo {
 #[derive(Deserialize)]
 struct PipeListResponse {
     data: Vec<PipeInfo>,
+    #[allow(dead_code)]
     success: bool,
 }

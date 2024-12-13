@@ -383,7 +383,11 @@ async fn record_audio(
             }
 
             transcription.transcription = current_transcript.clone();
-            previous_transcript = current_transcript.unwrap();
+            if current_transcript.is_some() {
+                previous_transcript = current_transcript.unwrap();
+            } else {
+                continue;
+            }
             // Process the audio result
             match process_audio_result(
                 &db,
@@ -492,5 +496,24 @@ async fn get_or_create_speaker_from_embedding(
     } else {
         let speaker = db.insert_speaker(embedding).await?;
         Ok(speaker)
+    }
+}
+
+pub async fn merge_speakers(
+    db: &DatabaseManager,
+    speaker_to_keep_id: i64,
+    speaker_to_merge_id: i64,
+) -> Result<Speaker, anyhow::Error> {
+    // make sure both speakers exist
+    let _ = db.get_speaker_by_id(speaker_to_keep_id).await?;
+    let _ = db.get_speaker_by_id(speaker_to_merge_id).await?;
+
+    // call merge method from db
+    match db
+        .merge_speakers(speaker_to_keep_id, speaker_to_merge_id)
+        .await
+    {
+        Ok(speaker) => Ok(speaker),
+        Err(e) => Err(anyhow::anyhow!("Failed to merge speakers: {}", e)),
     }
 }

@@ -6,12 +6,13 @@ import { useEffect, useState } from "react";
 import { useUser } from "@/lib/hooks/use-user";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import posthog from "posthog-js";
+import { LogIn } from "lucide-react";
 
 export function AuthButton() {
   const { isSignedIn, user } = useUser();
 
   useEffect(() => {
-    posthog.identify(user?.user_id, {
+    posthog.identify(user?.id, {
       email: user?.email,
     });
     posthog.setPersonProperties({
@@ -27,17 +28,14 @@ export function AuthButton() {
   return (
     <div>
       {isSignedIn ? (
-        <Button variant="ghost" onClick={handleSignIn}>
-          <Avatar>
-            <AvatarFallback>
-              {user?.email.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
+        <span className="p-2 text-sm text-muted-foreground select-none [-webkit-user-select:none]">
+          {user?.email}
+        </span>
       ) : (
-        <Button variant="outline" onClick={handleSignIn}>
-          sign in
-        </Button>
+        <div className="p-2 m-0" onClick={handleSignIn}>
+          <LogIn className="mr-2 h-4 w-4" />
+          <span>sign in</span>
+        </div>
       )}
     </div>
   );

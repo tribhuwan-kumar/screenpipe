@@ -18,9 +18,17 @@ export function StripeSubscriptionButton({
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
-    const subscribed = localStorage.getItem("loom_pipe_subscribed") === "true";
-    setIsSubscribed(subscribed);
-  }, []);
+    const checkSubscription = async () => {
+      if (user) {
+        const hasSubscription = false;
+        setIsSubscribed(hasSubscription);
+        if (hasSubscription && onSubscriptionComplete) {
+          onSubscriptionComplete();
+        }
+      }
+    };
+    checkSubscription();
+  }, [user]);
 
   const handleSubscribe = async () => {
     posthog.capture("subscribe_button_clicked", {
@@ -37,13 +45,12 @@ export function StripeSubscriptionButton({
 
     try {
       // Direct Stripe Checkout URL with price_id
-      const checkoutUrl = `https://buy.stripe.com/28o00JcCq2JsgAE9AX?prefilled_email=${user?.email}&client_reference_id=${user?.user_id}`;
+      const checkoutUrl = `https://buy.stripe.com/28o00JcCq2JsgAE9AX?prefilled_email=${user?.email}&client_reference_id=${user?.id}`;
 
       // Open Stripe checkout in default browser
       await open(checkoutUrl);
 
       // Store subscription locally
-      localStorage.setItem("loom_pipe_subscribed", "true");
       setIsSubscribed(true);
 
       if (onSubscriptionComplete) {
@@ -59,14 +66,17 @@ export function StripeSubscriptionButton({
     }
   };
 
+  if (isSubscribed) {
+    return null;
+  }
+
   return (
     <Button
       onClick={handleSubscribe}
       variant="outline"
-      className="min-w-[100px]"
-      disabled={isSubscribed}
+      className="h-8 min-w-[100px]"
     >
-      {isSubscribed ? "subscribed" : "subscribe - $10/month"}
+      subscribe - $10/month
     </Button>
   );
 }

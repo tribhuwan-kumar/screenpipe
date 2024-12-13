@@ -8,8 +8,8 @@ import { Tabs, Tab } from 'nextra/components'
 
   plugins come in two flavors:
   - **pipes**: native plugins that run within screenpipe's sandboxed environment. written in typescript/javascript. pipes can be either:
-    - UI-based: with NextJS for user interaction
-    - Headless: running in the background without a visual interface with cron, etc.
+    - UI-based: desktop native apps with NextJS for user interaction (e.g. think of screenpipe as a local Vercel powered by your 24/7 context)
+    - Headless (deprecated): running in the background without a visual interface with cron, etc.
 </MotionDiv>
 
 ### why build pipes? 🚀
@@ -18,12 +18,13 @@ import { Tabs, Tab } from 'nextra/components'
 think of pipes like a local Zapier which costs 10x & 10x less friction - no auth needed, with full context of your screen and audio data.
 
 #### for developers
-- **zero infrastructure**: run locally, no servers or complex setups
+- **zero infrastructure**: run locally, no servers or complex setups, access to your auth tokens (unlike Zapier)
 - **typescript + bun**: blazing fast development
-- **full context**: rich OCR & audio transcription APIs
-- **monetization ready**: early access to pipe store with Stripe integration
+- **full context**: rich OCR, desktop scrapping, keyboard/mouse, and audio transcription APIs
 - **bounty program**: earn $100+ for building pipes or promoting screenpipe
 - **open source**: contribute to augmenting collective human intelligence
+- **monetization ready**: Stripe integration to monetize your pipes
+- **no lock-in**: ship a startup in 1h in screenpipe's store and export it later as a desktop native app using screenpipe as a library (we will even help you with that)
 
 #### killer features
 - **ai flexibility**: OpenAI, local LLMs (ollama), or any provider
@@ -80,13 +81,12 @@ the CLI will guide you through setting up your pipe
 
 | **pipe**                          | **description**                                  | **link**                          |
 | ------------------------------------ | ------------------------------------------------ | --------------------------------- |
-| **linkedin ai assistant**| ai-powered linkedin networking              | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/linkedin_ai_assistant)                         |
-| **for loom**    | enhance loom recordings with ai           | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-for-loom)                         |
-| **phi3.5 engineering logs**| generate team work logs              | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-phi3.5-engineering-team-logs)                         |
-| **reddit questions**    | post questions based on screen activity           | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-post-questions-on-reddit)                         |
-| **llama32 linear comments** | comment on tasks while you work | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-llama32-comment-linear-while-you-work)                         |
-| **meeting summary email**    | send meeting summaries via email                 | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-anthropic-computer-use-meeting-assistant)                         |
-| **obsidian time logs**         | log work activities to obsidian    | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-obsidian-time-logs)                         |
+| **linkedin ai assistant**| automate business development by getting customers or connections on auto-pilot on linkedin              | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/linkedin_ai_assistant)                         |
+| **loom**    | generate looms from your screenpipe data              | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-for-loom)                         |
+| **notion table logs**| automate team reporting by generating team work logs and adding to notion table              | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-notion-table-logs)                         |
+| **reddit questions**    | automate reddit marketing by posting questions based on screen activity           | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-post-questions-on-reddit)                         |
+| **linear comments** | automate product management by AI commenting on linear tasks while you work | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-llama32-comment-linear-while-you-work)                         |
+| **obsidian time logs**         | automate your second brain by logging activities to obsidian    | [link](https://github.com/mediar-ai/screenpipe/tree/main/pipes/pipe-obsidian-time-logs)                         |
 
 </MotionDiv>
 
@@ -132,10 +132,13 @@ key features:
 - `pipe.inbox.send`: AI messages with user confirmation
 - `pipe.sendDesktopNotification`: system notifications
 - `pipe.queryScreenpipe`: query screen/audio data
-- `pipe.scheduler`: cron-like scheduling
-- `pipe.input`: programmatic UI control
+- `pipe.input`: programmatic UI control (use your keyboard/mouse)
+- `pipe.settings`: get/set app settings (e.g. AI model, port, etc.)
+- (experimental) [vercel-like crons](https://vercel.com/docs/cron-jobs/manage-cron-jobs) - just replace `vercel.json` by `pipe.json` (only work for nextjs pipes)
 
-[full API reference](https://github.com/mediar-ai/screenpipe/blob/main/screenpipe-js/main.ts)
+[JS implementation (ask AI)](https://github.com/mediar-ai/screenpipe/blob/main/screenpipe-js/main.ts)
+
+[Rust implementation (ask AI)](https://github.com/mediar-ai/screenpipe/blob/main/screenpipe-core/src/pipes.rs)
 
 ### bounties & monetization
 
@@ -143,5 +146,103 @@ key features:
 - earn $100+ for new pipes or social media promotion
 - early access to pipe store with Stripe integration
 - [louis@screenpi.pe](mailto:louis@screenpi.pe)
+
+</MotionDiv>
+
+### examples
+
+<MotionDiv delay={0.8}>
+
+#### simple hourly summary with ollama
+
+this example gets the last hour of screen/audio data and generates a summary using your local ollama model:
+
+```typescript copy
+import { generateText } from 'ai';
+import { ollama } from 'ollama-ai-provider';
+import { pipe } from '@screenpipe/sdk';
+
+async function generateHourlySummary() {
+  // get settings & last hour data
+  const settings = await pipe.settings.getAll();
+  const lastHour = await pipe.queryScreenpipe({
+    contentType: 'all',
+    startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    limit: 10000
+  });
+
+  // format data for context
+  const context = lastHour?.data.map(item => {
+    if (item.type === 'OCR') {
+      return `[${item.content.appName}] ${item.content.text}`;
+    }
+    return `[audio] ${item.content.transcription}`;
+  }).join('\n');
+
+  if (settings.aiProviderType === 'native-ollama') {
+    const { text } = await generateText({
+      model: ollama(settings.aiModel),
+      system: 'you are a helpful assistant that summarizes activity data into markdown',
+      prompt: `summarize this activity data:\n${context}`,
+    });
+
+    // write to obsidian / markdown file 
+    fs.writeFileSync(`/tmp/hourly-summary-${new Date().toISOString()}.md`, text);
+  }
+}
+
+generateHourlySummary();
+```
+
+#### smart meeting assistant with ollama
+
+this example monitors for meeting apps and provides real-time AI assistance:
+
+```typescript copy
+import { streamText } from 'ai';
+import { ollama } from 'ollama-ai-provider';
+import { pipe } from '@screenpipe/sdk';
+
+
+async function meetingAssistant() {
+  const settings = await pipe.settings.getAll();
+  
+
+
+  if (settings.aiProviderType === 'native-ollama') {
+    // get last 60 min context
+    const context = await pipe.queryScreenpipe({
+      contentType: 'all',
+      startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      limit: 10000
+    });
+
+    const { text } = await generateText({
+      model: ollama(settings.aiModel),
+      system: 'you are a meeting assistant that provides real-time insights',
+      prompt: `analyze this meeting context and suggest helpful insights:\n${JSON.stringify(context)}`
+    });
+
+    // send insights to app AI inbox with actions
+    await pipe.inbox.send({
+      title: 'meeting insights',
+      body: text,
+      actions: [{
+        label: 'save to notes',
+        callback: async () => {
+          // save to your note system
+          console.log('saving insights...');
+        }
+      }]
+    });
+  }
+}
+
+```
+
+these examples show how to:
+- query screen/audio data with `pipe.queryScreenpipe`
+- use local AI with ollama (you can also use OpenAI, Anthropic, or any other provider)
+- send interactive notifications with `pipe.inbox`
 
 </MotionDiv>

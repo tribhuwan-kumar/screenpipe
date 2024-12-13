@@ -56,6 +56,7 @@ async function findWget() {
 		'C:\\Program Files\\Git\\mingw64\\bin\\wget.exe',
 		'C:\\msys64\\usr\\bin\\wget.exe',
 		'C:\\Windows\\System32\\wget.exe',
+		'C:\\wget\\wget.exe',
 		'wget' // This will work if wget is in PATH
 	];
 
@@ -279,7 +280,8 @@ if (platform == 'windows') {
 	}
 
 	// Setup vcpkg packages with environment variables set inline
-	await $`SystemDrive=${process.env.SYSTEMDRIVE} SystemRoot=${process.env.SYSTEMROOT} windir=${process.env.WINDIR} C:\\vcpkg\\vcpkg.exe install ${config.windows.vcpkgPackages}`.quiet()
+	// TODO is this even used? dont we use build.rs for this?
+	// await $`SystemDrive=${process.env.SYSTEMDRIVE} SystemRoot=${process.env.SYSTEMROOT} windir=${process.env.WINDIR} ${process.env.VCPKG_ROOT}\\vcpkg.exe install ${config.windows.vcpkgPackages}`.quiet()
 }
 
 async function getMostRecentBinaryPath(targetArch, paths) {
@@ -426,12 +428,7 @@ if (!process.env.GITHUB_ENV) {
 		console.log(`cd ${relativePath}`)
 	}
 	console.log('bun install')
-	if (platform == 'windows') {
-		console.log(`$env:FFMPEG_DIR = "${exports.ffmpeg}"`)
-		console.log(`$env:OPENBLAS_PATH = "${exports.openBlas}"`)
-		console.log(`$env:LIBCLANG_PATH = "${exports.libClang}"`)
-		console.log(`$env:PATH += "${exports.cmake}"`)
-	}
+
 	if (!process.env.GITHUB_ENV) {
 		console.log('bun tauri build')
 	}
