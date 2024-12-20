@@ -238,7 +238,6 @@ export function SearchChat() {
   const [offset, setOffset] = useState(0);
   const [totalResults, setTotalResults] = useState(0);
   const { settings } = useSettings();
-  console.log("settings", settings);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [minLength, setMinLength] = useState(50);
   const [maxLength, setMaxLength] = useState(10000);
@@ -299,6 +298,7 @@ export function SearchChat() {
   const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
 
   const [speakerSearchQuery, setSpeakerSearchQuery] = useState("");
+
 
   useEffect(() => {
     if (Object.keys(selectedSpeakers).length > 0) {
@@ -655,7 +655,7 @@ export function SearchChat() {
               results.filter((_, index) => selectedResults.has(index))
             )
           )}
-          
+
           User query: ${floatingInput}`,
         },
       ];
@@ -673,6 +673,9 @@ export function SearchChat() {
         },
         {
           signal: abortControllerRef.current.signal,
+          headers: {
+            Authorization: `Bearer ${settings.user?.token}`,
+          },
         }
       );
 
@@ -688,6 +691,7 @@ export function SearchChat() {
       scrollToBottom();
 
       for await (const chunk of stream) {
+        console.log("chunk", chunk);
         const content = chunk.choices[0]?.delta?.content || "";
         fullResponse += content;
         // @ts-ignore
@@ -698,7 +702,13 @@ export function SearchChat() {
         scrollToBottom();
       }
     } catch (error: any) {
-      if (error.toString().includes("aborted")) {
+      if (error.toString().includes("unauthorized")) {
+        toast({
+          title: "Error",
+          description: "Please sign in to use AI features",
+          variant: "destructive",
+        });
+      } else if (error.toString().includes("aborted")) {
         console.log("Streaming was aborted");
       } else {
         console.error("Error generating AI response:", error);
@@ -982,7 +992,11 @@ export function SearchChat() {
                       {item.content.filePath &&
                       item.content.filePath.trim() !== "" ? (
                         <div className="flex justify-center mt-4">
-                          <VideoComponent filePath={item.content.filePath} />
+                          <VideoComponent
+                            filePath={item.content.filePath}
+                            startTime={item.content.startTime}
+                            endTime={item.content.endTime}
+                          />
                         </div>
                       ) : (
                         <p className="text-gray-500 italic mt-2">
@@ -1089,6 +1103,10 @@ export function SearchChat() {
     location.reload();
     // Add any other reset logic you need
   };
+
+  const isAiDisabled =
+    !settings.user?.token && settings.aiProviderType === "screenpipe-cloud";
+
   return (
     <div className="w-full max-w-4xl mx-auto p-4 mt-12">
       <div className="fixed top-4 left-4 z-50 flex items-center gap-2">
@@ -1559,7 +1577,7 @@ export function SearchChat() {
                   <CommandList>
                     <CommandEmpty>no speakers found.</CommandEmpty>
                     <CommandGroup>
-                      {speakers.map((speaker: Speaker) => (
+                      {[...new Set(speakers)].map((speaker: Speaker) => (
                         <CommandItem
                           key={speaker.id}
                           value={speaker.name}
@@ -1773,7 +1791,13 @@ export function SearchChat() {
                   type="submit"
                   className="w-12"
                   disabled={
-                    calculateSelectedContentLength() > MAX_CONTENT_LENGTH
+                    calculateSelectedContentLength() > MAX_CONTENT_LENGTH ||
+                    isAiDisabled
+                  }
+                  title={
+                    isAiDisabled
+                      ? "Please sign in to use AI features"
+                      : undefined
                   }
                 >
                   {isStreaming ? (

@@ -38,6 +38,8 @@ import { PipeStoreMarkdown } from "@/components/pipe-store-markdown";
 import { PublishDialog } from "./publish-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { Progress } from "@/components/ui/progress";
+import supabase from "@/lib/supabase/client";
+import { CreditPurchaseDialog } from "./store/credit-purchase-dialog";
 
 export interface Pipe {
   enabled: boolean;
@@ -59,6 +61,33 @@ interface CorePipe {
 }
 
 const corePipes: CorePipe[] = [
+  {
+    id: "data-table",
+    name: "data table",
+    description:
+      "explore your data in a powerful table view with filtering, sorting, and more",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/data-table",
+    credits: 0,
+    paid: false,
+  },
+  {
+    id: "search",
+    name: "search",
+    description:
+      "search through your screen recordings and audio transcripts with AI",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/search",
+    credits: 0,
+    paid: false,
+  },
+  {
+    id: "timeline",
+    name: "timeline",
+    description:
+      "visualize your day with a beautiful AI-powered timeline of your activities, perfect for time tracking and productivity analysis",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/timeline",
+    credits: 0,
+    paid: false,
+  },
   {
     id: "pipe-linkedin-ai-assistant",
     name: "linkedin ai assistant (preview)",
@@ -112,13 +141,22 @@ const corePipes: CorePipe[] = [
     paid: false,
   },
   {
-    id: "pipe-search",
-    name: "search",
+    id: "meeting",
+    name: "meeting assistant",
     description:
-      "search through your screen recordings and audio transcripts with AI",
-    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/search",
-    credits: 0,
-    paid: false,
+      "organize and summarize your meetings with AI - get transcripts, action items, and key insights, 100% local or using cloud models",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/meeting",
+    credits: 15,
+    paid: true,
+  },
+  {
+    id: "identify-speakers",
+    name: "speaker identification",
+    description:
+      "automatically identify and label different speakers in your recordings using AI voice recognition",
+    url: "https://github.com/mediar-ai/screenpipe/tree/main/pipes/identify-speakers",
+    credits: 10,
+    paid: true,
   },
 ];
 
@@ -188,6 +226,11 @@ const getFriendlyName = (id: string, corePipes: CorePipe[]): string => {
     .join(" ");
 };
 
+const normalizeId = (id: string): string => {
+  // Remove 'pipe-' prefix if it exists and convert to lowercase
+  return id.replace(/^pipe-/, "").toLowerCase();
+};
+
 const PipeStore: React.FC = () => {
   const [newRepoUrl, setNewRepoUrl] = useState("");
   const [selectedPipe, setSelectedPipe] = useState<Pipe | null>(null);
@@ -196,7 +239,8 @@ const PipeStore: React.FC = () => {
   const [showInstalledOnly, setShowInstalledOnly] = useState(false);
   const { health } = useHealthCheck();
   const { getDataDir } = useSettings();
-  const { user } = useUser();
+  const { user, refreshUser } = useUser();
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
 
   useEffect(() => {
     fetchInstalledPipes();
@@ -324,6 +368,13 @@ const PipeStore: React.FC = () => {
       });
 
       await fetchInstalledPipes();
+
+      const freshPipe = pipes.find(
+        (p) => normalizeId(p.id) === normalizeId(url)
+      );
+      if (freshPipe) {
+        setSelectedPipe(freshPipe);
+      }
     } catch (error) {
       console.error("Failed to download pipe:", error);
       toast({
@@ -334,13 +385,39 @@ const PipeStore: React.FC = () => {
     }
   };
 
+  const checkExistingSubscription = async (pipeId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("*")
+        .eq("pipe_id", pipeId)
+        .eq("user_id", user?.id)
+        .single();
+
+      if (error) throw error;
+      return !!data; // returns true if subscription exists
+    } catch (error) {
+      console.error("failed to check subscription:", error);
+      return false;
+    }
+  };
+
   const handleToggleEnabled = async (pipe: Pipe) => {
     try {
-      // Add payment check for paid pipes
       const corePipe = corePipes.find((cp) => cp.id === pipe.id);
+      console.log("attempting to toggle pipe:", {
+        pipeId: pipe.id,
+        isEnabled: pipe.enabled,
+        corePipe,
+        userToken: !!user?.token,
+        userCredits: user?.credits?.amount,
+      });
+
       if (corePipe?.paid && !pipe.enabled) {
-        // Check if user exists AND has valid token
+        console.log("handling paid pipe enable flow");
+
         if (!user?.token) {
+          console.log("user not authenticated, opening auth window");
           toast({
             title: "authentication required",
             description: "please sign in to use paid pipes",
@@ -350,10 +427,46 @@ const PipeStore: React.FC = () => {
           return;
         }
 
-        const userCredits = user.credits?.amount || 0;
-        if (userCredits < corePipe.credits) {
-          openUrl("https://buy.stripe.com/5kA6p79qefweacg5kJ");
-          return;
+        const hasSubscription = await checkExistingSubscription(pipe.id);
+        console.log("subscription check:", {
+          hasSubscription,
+          pipeId: pipe.id,
+        });
+
+        if (!hasSubscription) {
+          const userCredits = user.credits?.amount || 0;
+          console.log("checking credits:", {
+            userCredits,
+            requiredCredits: corePipe.credits,
+            sufficient: userCredits >= corePipe.credits,
+          });
+
+          if (userCredits < corePipe.credits) {
+            console.log("insufficient credits, showing dialog");
+            setShowCreditDialog(true);
+            return;
+          }
+
+          console.log("attempting pipe purchase");
+          const purchaseSuccess = await handlePipePurchase(
+            pipe,
+            corePipe.credits
+          );
+          console.log("purchase result:", { purchaseSuccess });
+
+          if (!purchaseSuccess) {
+            toast({
+              title: "purchase failed",
+              description: "something went wrong, please try again",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          await refreshUser();
+          console.log("user refreshed after purchase:", {
+            newCredits: user?.credits?.amount,
+          });
         }
       }
 
@@ -362,7 +475,6 @@ const PipeStore: React.FC = () => {
         enabled: !pipe.enabled,
       });
 
-      // Then replace the loading toast with this:
       const t = toast({
         title: "loading pipe",
         description: "please wait...",
@@ -375,6 +487,8 @@ const PipeStore: React.FC = () => {
       });
 
       const endpoint = pipe.enabled ? "disable" : "enable";
+      console.log(`calling ${endpoint} endpoint for pipe`);
+
       const response = await fetch(`http://localhost:3030/pipes/${endpoint}`, {
         method: "POST",
         headers: {
@@ -384,37 +498,24 @@ const PipeStore: React.FC = () => {
       });
 
       const data = await response.json();
+      console.log("toggle response:", data);
+
       if (!data.success) {
         throw new Error(data.error);
       }
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
-
       const freshPipes = await fetchInstalledPipes();
-
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Immediately update the local state
-      // setPipes((prevPipes) =>
-      //   prevPipes.map((p) =>
-      //     p.id === pipe.id ? { ...p, enabled: !p.enabled } : p
-      //   )
-      // );
-
-      // find the pipe in the list, and set it as selected with the proper enabled state
       const freshPipe = freshPipes.find((p: Pipe) => p.id === pipe.id);
-      console.log("fresh pipes", freshPipes);
-      console.log("fresh pipe", freshPipe);
       if (freshPipe) {
         setSelectedPipe(freshPipe);
       }
-      console.log("selected pipe", selectedPipe);
 
       toast({
         title: `pipe ${endpoint}d`,
       });
-
-      // Still fetch the latest state from the server to ensure consistency
     } catch (error) {
       console.error(
         `Failed to ${pipe.enabled ? "disable" : "enable"} pipe:`,
@@ -429,15 +530,41 @@ const PipeStore: React.FC = () => {
   };
 
   const handleAddOwnPipe = async () => {
-    posthog.capture("add_own_pipe", {
-      newRepoUrl,
-    });
     if (newRepoUrl) {
       try {
-        toast({
-          title: "adding custom pipe",
-          description: "please wait...",
+        posthog.capture("add_own_pipe", {
+          newRepoUrl,
         });
+
+        // Create initial toast with progress bar
+        const t = toast({
+          title: "adding custom pipe",
+          description: (
+            <div className="space-y-2">
+              <Progress value={0} className="h-1" />
+              <p className="text-xs">starting installation...</p>
+            </div>
+          ),
+          duration: 100000, // long duration
+        });
+
+        let value = 0;
+
+        // Update progress periodically
+        const progressInterval = setInterval(() => {
+          value += 3;
+          t.update({
+            id: t.id,
+            title: "adding custom pipe",
+            description: (
+              <div className="space-y-2">
+                <Progress value={value} className="h-1" />
+                <p className="text-xs">installing dependencies...</p>
+              </div>
+            ),
+            duration: 100000,
+          });
+        }, 500);
 
         const response = await fetch("http://localhost:3030/pipes/download", {
           method: "POST",
@@ -449,16 +576,26 @@ const PipeStore: React.FC = () => {
 
         const data = await response.json();
 
+        clearInterval(progressInterval);
+
         if (!data.success) {
           throw new Error(data.error || "Failed to download pipe");
         }
 
-        await fetchInstalledPipes();
-
-        toast({
-          title: "custom pipe added",
-          description: "your pipe has been successfully added.",
+        t.update({
+          id: t.id,
+          title: "pipe added",
+          description: (
+            <div className="space-y-2">
+              <Progress value={100} className="h-1" />
+              <p className="text-xs">completed successfully</p>
+            </div>
+          ),
+          duration: 2000,
         });
+
+        await fetchInstalledPipes();
+        setNewRepoUrl("");
       } catch (error) {
         console.error("failed to add custom pipe:", error);
         toast({
@@ -466,8 +603,6 @@ const PipeStore: React.FC = () => {
           description: "please check the url and try again.",
           variant: "destructive",
         });
-      } finally {
-        setNewRepoUrl("");
       }
     }
   };
@@ -570,7 +705,9 @@ const PipeStore: React.FC = () => {
   const allPipes = [
     ...pipes,
     ...corePipes
-      .filter((cp) => !pipes.some((p) => p.id === cp.id))
+      .filter(
+        (cp) => !pipes.some((p) => normalizeId(p.id) === normalizeId(cp.id))
+      )
       .map((cp) => ({
         id: cp.id,
         fullDescription: cp.description,
@@ -595,6 +732,17 @@ const PipeStore: React.FC = () => {
 
     return (
       <div className="fixed inset-0 bg-background transform transition-transform duration-200 ease-in-out flex flex-col">
+        <CreditPurchaseDialog
+          open={showCreditDialog}
+          onOpenChange={setShowCreditDialog}
+          requiredCredits={
+            selectedPipe !== null
+              ? corePipes.find((cp) => cp.id === selectedPipe.id)?.credits || 0
+              : 0
+          }
+          currentCredits={user?.credits?.amount || 0}
+          onCreditsUpdated={refreshUser}
+        />
         <div className="flex items-center justify-between p-4 border-b bg-muted/30 flex-shrink-0">
           <div className="flex items-center gap-3">
             <Button
@@ -891,6 +1039,56 @@ const PipeStore: React.FC = () => {
     } else {
       const installedPipe = pipes.find((p) => p.id === pipe.id);
       setSelectedPipe(installedPipe || pipe);
+    }
+  };
+
+  const handlePipePurchase = async (pipe: Pipe, requiredCredits: number) => {
+    try {
+      const { data, error } = await supabase.rpc("purchase_pipe", {
+        v_user_id: user?.id,
+        p_pipe_id: pipe.id,
+        p_credits_spent: requiredCredits,
+      });
+
+      if (error) {
+        console.error("purchase error:", error);
+        toast({
+          title: "purchase failed",
+          description: error.message,
+          variant: "destructive", 
+        });
+        return false;
+      }
+
+      if (!data) {
+        toast({
+          title: "purchase failed",
+          description: "unknown error occurred",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      // Update local user credits state
+      if (user?.credits) {
+        user.credits.amount -= requiredCredits;
+      }
+
+      toast({
+        title: "pipe purchased",
+        description: `${requiredCredits} credits deducted`,
+      });
+
+      return true;
+
+    } catch (error) {
+      console.error("purchase failed:", error);
+      toast({
+        title: "purchase failed", 
+        description: "please try again or contact support",
+        variant: "destructive",
+      });
+      return false;
     }
   };
 
