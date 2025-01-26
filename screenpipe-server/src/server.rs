@@ -5,7 +5,6 @@ use axum::{
     routing::{get, post},
     serve, Router,
 };
-use crossbeam::queue::SegQueue;
 use futures::{
     future::{try_join, try_join_all},
     Stream,
@@ -18,11 +17,7 @@ use crate::{
     video::{finish_ffmpeg_process, start_ffmpeg_process, write_frame_to_ffmpeg, MAX_FPS},
     video_cache::{FrameCache, TimeSeriesFrame},
     video_utils::{
-        merge_videos,
-        validate_media,
-        MergeVideosRequest,
-        MergeVideosResponse,
-        ValidateMediaParams
+        merge_videos, validate_media, MergeVideosRequest, MergeVideosResponse, ValidateMediaParams,
     },
     DatabaseManager,
 };
@@ -31,11 +26,11 @@ use base64::prelude::*;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use screenpipe_audio::{
-    default_input_device, default_output_device, list_audio_devices, AudioDevice, DeviceControl,
-    DeviceType,
+    default_input_device, default_output_device, list_audio_devices,
+    realtime::RealtimeTranscriptionEvent, AudioDevice, DeviceControl, DeviceType,
 };
-use screenpipe_vision::monitor::list_monitors;
 use screenpipe_vision::OcrEngine;
+use screenpipe_vision::{core::RealtimeVisionEvent, monitor::list_monitors};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -50,7 +45,7 @@ use std::{
     time::Duration,
 };
 
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, sync::broadcast};
 use tower_http::{cors::Any, trace::TraceLayer};
 use tower_http::{cors::CorsLayer, trace::DefaultMakeSpan};
 
@@ -62,10 +57,12 @@ use screenpipe_audio::LAST_AUDIO_CAPTURE;
 
 use std::str::FromStr;
 
+use crate::text_embeds::generate_embedding;
+
 pub struct AppState {
     pub db: Arc<DatabaseManager>,
     pub vision_control: Arc<AtomicBool>,
-    pub audio_devices_control: Arc<SegQueue<(AudioDevice, DeviceControl)>>,
+    pub audio_devices_tx: Arc<broadcast::Sender<(AudioDevice, DeviceControl)>>,
     pub devices_status: HashMap<AudioDevice, DeviceControl>,
     pub app_start_time: DateTime<Utc>,
     pub screenpipe_dir: PathBuf,
@@ -74,6 +71,10 @@ pub struct AppState {
     pub audio_disabled: bool,
     pub ui_monitoring_enabled: bool,
     pub frame_cache: Option<Arc<FrameCache>>,
+    pub realtime_transcription_enabled: bool,
+    pub realtime_transcription_sender:
+        Arc<tokio::sync::broadcast::Sender<RealtimeTranscriptionEvent>>,
+    pub realtime_vision_sender: Arc<tokio::sync::broadcast::Sender<RealtimeVisionEvent>>,
 }
 
 // Update the SearchQuery struct
@@ -92,6 +93,8 @@ pub(crate) struct SearchQuery {
     app_name: Option<String>,
     #[serde(default)]
     window_name: Option<String>,
+    #[serde(default)]
+    frame_name: Option<String>,
     #[serde(default)]
     include_frames: bool,
     #[serde(default)]
@@ -178,6 +181,7 @@ pub struct OCRContent {
     pub window_name: String,
     pub tags: Vec<String>,
     pub frame: Option<String>,
+    pub frame_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -205,6 +209,7 @@ pub struct UiContent {
     pub initial_traversal_at: Option<DateTime<Utc>>,
     pub file_path: String,
     pub offset_index: i64,
+    pub frame_name: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -269,7 +274,7 @@ pub(crate) async fn search(
     (StatusCode, JsonResponse<serde_json::Value>),
 > {
     info!(
-        "received search request: query='{}', content_type={:?}, limit={}, offset={}, start_time={:?}, end_time={:?}, app_name={:?}, window_name={:?}, min_length={:?}, max_length={:?}, speaker_ids={:?}",
+        "received search request: query='{}', content_type={:?}, limit={}, offset={}, start_time={:?}, end_time={:?}, app_name={:?}, window_name={:?}, min_length={:?}, max_length={:?}, speaker_ids={:?}, frame_name={:?}",
         query.q.as_deref().unwrap_or(""),
         query.content_type,
         query.pagination.limit,
@@ -280,7 +285,8 @@ pub(crate) async fn search(
         query.window_name,
         query.min_length,
         query.max_length,
-        query.speaker_ids
+        query.speaker_ids,
+        query.frame_name,
     );
 
     let query_str = query.q.as_deref().unwrap_or("");
@@ -300,6 +306,7 @@ pub(crate) async fn search(
             query.min_length,
             query.max_length,
             query.speaker_ids.clone(),
+            query.frame_name.as_deref(),
         ),
         state.db.count_search_results(
             query_str,
@@ -311,6 +318,7 @@ pub(crate) async fn search(
             query.min_length,
             query.max_length,
             query.speaker_ids.clone(),
+            query.frame_name.as_deref(),
         ),
     )
     .await
@@ -335,6 +343,7 @@ pub(crate) async fn search(
                 window_name: ocr.window_name.clone(),
                 tags: ocr.tags.clone(),
                 frame: None,
+                frame_name: Some(ocr.frame_name.clone()),
             }),
             SearchResult::Audio(audio) => ContentItem::Audio(AudioContent {
                 chunk_id: audio.audio_chunk_id,
@@ -358,6 +367,7 @@ pub(crate) async fn search(
                 initial_traversal_at: ui.initial_traversal_at,
                 file_path: ui.file_path.clone(),
                 offset_index: ui.offset_index,
+                frame_name: ui.frame_name.clone(),
             }),
         })
         .collect();
@@ -800,12 +810,15 @@ pub struct Server {
     db: Arc<DatabaseManager>,
     addr: SocketAddr,
     vision_control: Arc<AtomicBool>,
-    audio_devices_control: Arc<SegQueue<(AudioDevice, DeviceControl)>>,
+    audio_devices_tx: Arc<tokio::sync::broadcast::Sender<(AudioDevice, DeviceControl)>>,
     screenpipe_dir: PathBuf,
     pipe_manager: Arc<PipeManager>,
     vision_disabled: bool,
     audio_disabled: bool,
     ui_monitoring_enabled: bool,
+    realtime_transcription_enabled: bool,
+    realtime_transcription_sender: tokio::sync::broadcast::Sender<RealtimeTranscriptionEvent>,
+    realtime_vision_sender: Arc<tokio::sync::broadcast::Sender<RealtimeVisionEvent>>,
 }
 
 impl Server {
@@ -814,23 +827,29 @@ impl Server {
         db: Arc<DatabaseManager>,
         addr: SocketAddr,
         vision_control: Arc<AtomicBool>,
-        audio_devices_control: Arc<SegQueue<(AudioDevice, DeviceControl)>>,
+        audio_devices_tx: Arc<tokio::sync::broadcast::Sender<(AudioDevice, DeviceControl)>>,
         screenpipe_dir: PathBuf,
         pipe_manager: Arc<PipeManager>,
         vision_disabled: bool,
         audio_disabled: bool,
         ui_monitoring_enabled: bool,
+        realtime_transcription_enabled: bool,
+        realtime_transcription_sender: tokio::sync::broadcast::Sender<RealtimeTranscriptionEvent>,
+        realtime_vision_sender: Arc<tokio::sync::broadcast::Sender<RealtimeVisionEvent>>,
     ) -> Self {
         Server {
             db,
             addr,
             vision_control,
-            audio_devices_control,
+            audio_devices_tx,
             screenpipe_dir,
             pipe_manager,
             vision_disabled,
             audio_disabled,
             ui_monitoring_enabled,
+            realtime_transcription_enabled,
+            realtime_transcription_sender,
+            realtime_vision_sender,
         }
     }
 
@@ -846,7 +865,7 @@ impl Server {
         let app_state = Arc::new(AppState {
             db: self.db.clone(),
             vision_control: self.vision_control,
-            audio_devices_control: self.audio_devices_control,
+            audio_devices_tx: self.audio_devices_tx,
             devices_status: device_status,
             app_start_time: Utc::now(),
             screenpipe_dir: self.screenpipe_dir.clone(),
@@ -863,6 +882,9 @@ impl Server {
             } else {
                 None
             },
+            realtime_transcription_enabled: self.realtime_transcription_enabled,
+            realtime_transcription_sender: Arc::new(self.realtime_transcription_sender),
+            realtime_vision_sender: self.realtime_vision_sender,
         });
 
         let app = create_router()
@@ -920,15 +942,12 @@ async fn validate_media_handler(
     State(_state): State<Arc<AppState>>,
     Query(params): Query<ValidateMediaParams>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-
     match validate_media(&params.file_path).await {
         Ok(_) => Ok(Json(json!({"status": "valid media file"}))),
-        Err(e) => {
-            Err((
-                StatusCode::EXPECTATION_FAILED,
-                Json(json!({"status": e.to_string()})),
-            ))
-        }
+        Err(e) => Err((
+            StatusCode::EXPECTATION_FAILED,
+            Json(json!({"status": e.to_string()})),
+        )),
     }
 }
 
@@ -1010,7 +1029,7 @@ async fn add_frame_to_db(
     let db = &state.db;
 
     let frame_id = db
-        .insert_frame(&device_name, Some(frame.timestamp.unwrap_or_else(Utc::now)))
+        .insert_frame(device_name, Some(frame.timestamp.unwrap_or_else(Utc::now)))
         .await?;
 
     if let Some(ocr_results) = &frame.ocr_results {
@@ -1018,9 +1037,9 @@ async fn add_frame_to_db(
             db.insert_ocr_text(
                 frame_id,
                 &ocr.text,
-                &ocr.text_json.as_deref().unwrap_or(""),
-                &frame.app_name.as_deref().unwrap_or(""),
-                &frame.window_name.as_deref().unwrap_or(""),
+                ocr.text_json.as_deref().unwrap_or(""),
+                frame.app_name.as_deref().unwrap_or(""),
+                frame.window_name.as_deref().unwrap_or(""),
                 Arc::new(OcrEngine::default()), // Ideally could pass any str as ocr_engine since can be run outside of screenpipe
                 false,
             )
@@ -1571,6 +1590,230 @@ async fn get_similar_speakers_handler(
     Ok(JsonResponse(similar_speakers))
 }
 
+async fn sse_transcription_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<
+    Sse<impl Stream<Item = Result<Event, Infallible>>>,
+    (StatusCode, JsonResponse<serde_json::Value>),
+> {
+    if !state.realtime_transcription_enabled {
+        return Err((
+            StatusCode::FORBIDDEN,
+            JsonResponse(json!({"error": "Real-time transcription is not enabled"})),
+        ));
+    }
+
+    // Get a new subscription - this won't affect the sender
+    let rx = state.realtime_transcription_sender.subscribe();
+
+    let stream = async_stream::stream! {
+        let mut rx = rx; // Create a new mutable reference to the receiver
+        while let Ok(event) = rx.recv().await {
+            yield Ok(Event::default().data(serde_json::to_string(&event).unwrap_or_default()));
+        }
+        // Even if this stream ends, the sender remains active
+    };
+
+    Ok(Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(1))
+            .text("keep-alive-text"),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct AudioDeviceControlRequest {
+    device_name: String,
+    #[serde(default)]
+    device_type: Option<DeviceType>,
+}
+
+#[derive(Serialize)]
+pub struct AudioDeviceControlResponse {
+    success: bool,
+    message: String,
+}
+
+// Add these new handler functions before create_router()
+async fn start_audio_device(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AudioDeviceControlRequest>,
+) -> Result<JsonResponse<AudioDeviceControlResponse>, (StatusCode, JsonResponse<Value>)> {
+    let device = AudioDevice {
+        name: payload.device_name.clone(),
+        device_type: payload.device_type.unwrap_or(DeviceType::Input),
+    };
+
+    // Validate device exists
+    let available_devices = list_audio_devices().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            JsonResponse(json!({
+                "error": format!("failed to list audio devices: {}", e),
+                "success": false
+            })),
+        )
+    })?;
+
+    if !available_devices.contains(&device) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            JsonResponse(json!({
+                "error": format!("device not found: {}", device.name),
+                "success": false
+            })),
+        ));
+    }
+
+    let control = DeviceControl {
+        is_running: true,
+        is_paused: false,
+    };
+
+    let _ = state.audio_devices_tx.send((device.clone(), control));
+
+    Ok(JsonResponse(AudioDeviceControlResponse {
+        success: true,
+        message: format!("started audio device: {}", device.name),
+    }))
+}
+
+async fn stop_audio_device(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AudioDeviceControlRequest>,
+) -> Result<JsonResponse<AudioDeviceControlResponse>, (StatusCode, JsonResponse<Value>)> {
+    let device = AudioDevice {
+        name: payload.device_name.clone(),
+        device_type: payload.device_type.unwrap_or(DeviceType::Input),
+    };
+
+    // Validate device exists
+    let available_devices = list_audio_devices().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            JsonResponse(json!({
+                "error": format!("failed to list audio devices: {}", e),
+                "success": false
+            })),
+        )
+    })?;
+
+    if !available_devices.contains(&device) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            JsonResponse(json!({
+                "error": format!("device not found: {}", device.name),
+                "success": false
+            })),
+        ));
+    }
+
+    let _ = state.audio_devices_tx.send((
+        device.clone(),
+        DeviceControl {
+            is_running: false,
+            is_paused: false,
+        },
+    ));
+
+    Ok(JsonResponse(AudioDeviceControlResponse {
+        success: true,
+        message: format!("stopped audio device: {}", device.name),
+    }))
+}
+
+#[derive(Deserialize)]
+struct VisionSSEQuery {
+    images: Option<bool>,
+}
+
+async fn sse_vision_handler(
+    Query(query): Query<VisionSSEQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Result<
+    Sse<impl Stream<Item = Result<Event, Infallible>>>,
+    (StatusCode, JsonResponse<serde_json::Value>),
+> {
+    if state.vision_disabled {
+        return Err((
+            StatusCode::FORBIDDEN,
+            JsonResponse(json!({"error": "Vision streaming is disabled"})),
+        ));
+    }
+    // Get a new subscription - this won't affect the sender
+    let rx = state.realtime_vision_sender.subscribe();
+
+    let include_images = query.images.unwrap_or(false);
+
+    let stream = async_stream::stream! {
+        let mut rx = rx; // Create a new mutable reference to the receiver
+        while let Ok(event) = rx.recv().await {
+            match event {
+                RealtimeVisionEvent::Ocr(mut frame) => {
+                    if !include_images {
+                        frame.image = None; // Remove the image data if not enabled
+                    }
+                    yield Ok(Event::default().data(serde_json::to_string(&frame).unwrap_or_default()));
+                }
+                _ => {
+                    yield Ok(Event::default().data(serde_json::to_string(&event).unwrap_or_default()));
+                }
+            }
+        }
+        // Even if this stream ends, the sender remains active
+    };
+
+    Ok(Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(1))
+            .text("keep-alive-text"),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct SemanticSearchQuery {
+    text: String,
+    limit: Option<u32>,
+    threshold: Option<f32>,
+}
+
+async fn semantic_search_handler(
+    Query(query): Query<SemanticSearchQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Result<JsonResponse<Vec<crate::db_types::OCRResult>>, (StatusCode, JsonResponse<Value>)> {
+    let limit = query.limit.unwrap_or(10);
+    let threshold = query.threshold.unwrap_or(0.3);
+
+    debug!("semantic search for '{}' with limit {} and threshold {}", query.text, limit, threshold);
+
+    // Generate embedding for search text
+    let embedding = match generate_embedding(&query.text, 0).await {
+        Ok(emb) => emb,
+        Err(e) => {
+            error!("failed to generate embedding: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                JsonResponse(json!({"error": format!("failed to generate embedding: {}", e)})),
+            ));
+        }
+    };
+
+    // Search database for similar embeddings
+    match state.db.search_similar_embeddings(embedding, limit, threshold).await {
+        Ok(results) => {
+            debug!("found {} similar results", results.len());
+            Ok(JsonResponse(results))
+        }
+        Err(e) => {
+            error!("failed to search embeddings: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                JsonResponse(json!({"error": format!("failed to search embeddings: {}", e)})),
+            ))
+        }
+    }
+}
+
 pub fn create_router() -> Router<Arc<AppState>> {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -1612,6 +1855,11 @@ pub fn create_router() -> Router<Arc<AppState>> {
         .route("/speakers/similar", get(get_similar_speakers_handler))
         .route("/experimental/frames/merge", post(merge_frames_handler))
         .route("/experimental/validate/media", get(validate_media_handler))
+        .route("/sse/transcriptions", get(sse_transcription_handler))
+        .route("/audio/start", post(start_audio_device))
+        .route("/audio/stop", post(stop_audio_device))
+        .route("/sse/vision", get(sse_vision_handler))
+        .route("/semantic-search", get(semantic_search_handler))
         .layer(cors);
 
     #[cfg(feature = "experimental")]
@@ -1745,7 +1993,6 @@ struct MergeSpeakersRequest {
     speaker_to_keep_id: i64,
     speaker_to_merge_id: i64,
 }
-
 /*
 
 Curl commands for reference:
@@ -1787,7 +2034,7 @@ curl "http://localhost:3030/search?limit=5&offset=0&content_type=all&include_fra
 curl "http://localhost:3030/search?limit=1&offset=0&content_type=all&include_frames=true&start_time=$(date -u -v-30M +%Y-%m-%dT%H:%M:%SZ)&end_time=$(date -u -v-25M +%Y-%m-%dT%H:%M:%SZ)" | jq -r '.data[0].content.frame' | base64 --decode > /tmp/frame.png && open /tmp/frame.png
 
 # Search for content from the last 30 minutes
-curl "http://localhost:3030/search?q=test&limit=5&offset=0&content_type=all&start_time=$(date -u -v-5M +%Y-%m-%dT%H:%M:%SZ)" | jq
+curl "http://localhost:3030/search?q=test&limit=5&offset=0&content_type=all&start_time=$(date -u -v-30M +%Y-%m-%dT%H:%M:%SZ)&end_time=$(date -u -v-25M +%Y-%m-%dT%H:%M:%SZ)" | jq
 
 # Search for content up to 1 hour ago
 curl "http://localhost:3030/search?q=test&limit=5&offset=0&content_type=all&end_time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)" | jq
@@ -1826,6 +2073,13 @@ curl 'http://localhost:3030/search?offset=0&limit=10&start_time=2024-08-12T04%3A
 
 
 
+
+
+
+
+
+
+
 # First, search for Rust-related content
 curl "http://localhost:3030/search?q=debug&limit=5&offset=0&content_type=ocr"
 
@@ -1833,6 +2087,8 @@ curl "http://localhost:3030/search?q=debug&limit=5&offset=0&content_type=ocr"
 curl -X POST "http://localhost:3030/tags/vision/626" \
      -H "Content-Type: application/json" \
      -d '{"tags": ["debug"]}'
+
+
 
 
 # List all pipes
@@ -1862,6 +2118,7 @@ curl -X POST "http://localhost:3030/pipes/enable" \
      -d '{"pipe_id": "pipe-stream-ocr-text"}' | jq
 
 
+
      curl -X POST "http://localhost:3030/pipes/enable" \
      -H "Content-Type: application/json" \
      -d '{"pipe_id": "pipe-security-check"}' | jq
@@ -1881,6 +2138,8 @@ curl -X POST "http://localhost:3030/pipes/update" \
          "another_key": "another_value"
        }
      }' | jq
+
+
 
 
 
@@ -1952,3 +2211,4 @@ MERGED_VIDEO_PATH=$(echo "$MERGE_RESPONSE" | jq -r '.video_path')
 echo "Merged Video Path: $MERGED_VIDEO_PATH"
 
 */
+

@@ -3,6 +3,8 @@
 mod pipes {
     use dirs::home_dir;
     use regex::Regex;
+    use sentry;
+    use serde_json::Value;
     use std::collections::HashMap;
     use std::future::Future;
     use std::path::PathBuf;
@@ -11,13 +13,11 @@ mod pipes {
     use tokio::process::Command;
     use tokio::sync::watch;
 
-    use serde_json::Value;
-
     use anyhow::Result;
     use std::fs;
     use std::path::Path;
     use tokio::io::{AsyncBufReadExt, BufReader};
-    use tracing::{debug, error, info};
+    use tracing::{debug, error, info, warn};
     use url::Url;
     use which::which;
 
@@ -30,13 +30,20 @@ mod pipes {
     use once_cell::sync::Lazy;
 
     // Add near other imports
+    use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
     use rand::distributions::Alphanumeric;
     use rand::{thread_rng, Rng};
-    use std::str::FromStr;
-    use reqwest_middleware::reqwest::Client;
     use reqwest_middleware::reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+    use reqwest_middleware::reqwest::Client;
     use reqwest_middleware::ClientBuilder;
-    use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
+    use std::collections::HashSet;
+    use std::str::FromStr;
+
+    #[derive(Clone, Debug, Copy)]
+    pub enum PipeState {
+        Port(u16),
+        Pid(i32),
+    }
 
     pub struct CronHandle {
         shutdown: watch::Sender<bool>,
@@ -73,8 +80,15 @@ mod pipes {
             .to_string()
     }
 
-    pub async fn run_pipe(pipe: &str, screenpipe_dir: PathBuf) -> Result<tokio::process::Child> {
-        let bun_path = find_bun_path().ok_or_else(|| anyhow::anyhow!("bun not found"))?;
+    pub async fn run_pipe(
+        pipe: &str,
+        screenpipe_dir: PathBuf,
+    ) -> Result<(tokio::process::Child, PipeState)> {
+        let bun_path = find_bun_path().ok_or_else(|| {
+            let err = anyhow::anyhow!("bun not found");
+            sentry::capture_error(&err.source().unwrap());
+            err
+        })?;
         let pipe_dir = screenpipe_dir.join("pipes").join(pipe);
         let pipe_json_path = pipe_dir.join("pipe.json");
         let package_json_path = pipe_dir.join("package.json");
@@ -131,15 +145,36 @@ mod pipes {
                 "setting up next.js specific configuration for pipe: {}",
                 pipe
             );
+
+            let mut assigned_port = None;
+
             // Handle Next.js specific setup including crons
             if pipe_json_path.exists() {
                 debug!("reading pipe.json for next.js configuration");
                 let pipe_json = tokio::fs::read_to_string(&pipe_json_path).await?;
                 let pipe_config: Value = serde_json::from_str(&pipe_json)?;
 
-                // Update pipe.json with the port
-                let port = pick_unused_port().expect("No ports free");
-                debug!("picked unused port {} for next.js pipe", port);
+                // Try to use user-configured port first
+                if let Some(user_port) = pipe_config.get("port").and_then(|p| p.as_u64()) {
+                    debug!("found user-configured port: {}", user_port);
+                    // Verify port is available
+                    if is_port_available(user_port as u16) {
+                        assigned_port = Some(user_port as u16);
+                        debug!("user-configured port {} is available", user_port);
+                    } else {
+                        debug!(
+                            "user-configured port {} is in use, will assign random port",
+                            user_port
+                        );
+                    }
+                }
+
+                // Fallback to random port if needed
+                let port =
+                    assigned_port.unwrap_or_else(|| pick_unused_port().expect("No ports free"));
+                info!("using port {} for next.js pipe", port);
+
+                // Update pipe.json with the actual port being used
                 let mut updated_config = pipe_config.clone();
                 updated_config["port"] = json!(port);
                 let updated_pipe_json = serde_json::to_string_pretty(&updated_config)?;
@@ -198,19 +233,38 @@ mod pipes {
                     CRON_HANDLES.lock().await.insert(pipe.to_string(), handles);
                 }
 
+                // Install dependencies using bun
+                info!("installing dependencies for next.js pipe [{}]", pipe);
                 // Install dependencies only if "bun i" failed at "download_pipe"
                 if pipe_config.get("installed_package").and_then(Value::as_bool) == Some(false) {
-                    info!("Packages are not installed, installing dependencies for next.js pipe [{}]", pipe);
-                    match retry_install(&bun_path, &pipe_dir, 1).await {
-                        Ok(_) => info!("Successfully installed dependencies for next.js pipe [{}]", pipe),
-                        Err(_) => anyhow::bail!("Failed to install dependencies for next.js pipe [{}]", pipe)
+                    info!("packages are not installed, installing dependencies for next.js pipe [{}]", pipe);
+                    let install_output = Command::new(&bun_path)
+                        .arg("install")
+                        .current_dir(&pipe_dir)
+                        .env("NPM_CONFIG_REGISTRY", "https://registry.npmjs.org")
+                        .env("BUN_CONFIG_REGISTRY", "https://registry.npmjs.org")
+                        .output()
+                        .await?;
+
+                    if !install_output.status.success() {
+                        let err_msg = String::from_utf8_lossy(&install_output.stderr);
+                        error!("failed to install dependencies: {}", err_msg);
+                        let err = anyhow::anyhow!(
+                            "failed to install dependencies for next.js pipe: {}",
+                            err_msg
+                        );
+                        sentry::capture_error(&err.source().unwrap());
+                        anyhow::bail!(err);
                     }
                 } else {
-                    info!("Dependencies already installed for next.js pipe [{}], skipping installation", pipe);
+                    info!("dependencies already installed for next.js pipe [{}], skipping dependencies installation", pipe);
                 }
             } else {
                 let port = pick_unused_port().expect("No ports free");
-                debug!("no pipe.json found, using port {} for next.js pipe", port);
+                debug!(
+                    "no pipe.json found, using random port {} for next.js pipe",
+                    port
+                );
                 env_vars.push(("PORT".to_string(), port.to_string()));
             }
 
@@ -218,21 +272,35 @@ mod pipes {
             debug!("starting next.js project with bun dev command");
             let pipe_json = tokio::fs::read_to_string(&pipe_json_path).await?;
             let pipe_config: Value = serde_json::from_str(&pipe_json)?;
-            let is_build = pipe_config.get("build").and_then(Value::as_bool);
+            let is_build = pipe_config.get("build").and_then(Value::as_bool).unwrap_or(false); 
+            println!("IS BUI {:?}", is_build);
+            // if pipe_config.get("build").and_then(Value::as_bool).unwrap_or(false) == false {
+            if !is_build  {
+                info!("pipe is not build, building next.js pipe [{}]", pipe);
+                // Build next js pipe, when build is false
+                match build_nextjs_pipe(&bun_path, &pipe_dir).await {
+                    Ok(_) => info!("Next.js pipe build successfully, [{:?}]", &pipe_dir),
+                    Err(e) => error!("Next.js pipe build failed: [{:?}]", e)
+                }
+            } else {
+                info!("pipe [{}] is already build , skipping building", pipe);
+            }
+    
+
+            let port = env_vars
+                .iter()
+                .find(|(k, _)| k == "PORT")
+                .map(|(_, v)| v)
+                .unwrap()
+                .parse::<u16>()
+                .expect("Invalid port number");
 
             let mut child = Command::new(&bun_path)
                 .arg("run")
                 .arg("--bun")
-                .arg(if is_build == Some(true) { "start" } else { "dev" })
+                .arg(if is_build { "start" } else { "dev" })
                 .arg("--port")
-                .arg(
-                    env_vars
-                        .iter()
-                        .find(|(k, _)| k == "PORT")
-                        .map(|(_, v)| v)
-                        .unwrap()
-                        .clone(),
-                )
+                .arg(port.to_string())
                 .current_dir(&pipe_dir)
                 .envs(env_vars)
                 .stdout(std::process::Stdio::piped())
@@ -242,7 +310,7 @@ mod pipes {
             debug!("streaming logs for next.js pipe");
             stream_logs(pipe, &mut child).await?;
 
-            return Ok(child);
+            return Ok((child, PipeState::Port(port)));
         }
 
         // If it's not a Next.js project, run as regular pipe
@@ -266,7 +334,8 @@ mod pipes {
         // Stream logs
         stream_logs(pipe, &mut child).await?;
 
-        Ok(child)
+        let child_id = child.id().unwrap();
+        Ok((child, PipeState::Pid(child_id as i32))) // Return 0 or handle port differently for non-Next.js projects
     }
 
     async fn stream_logs(pipe: &str, child: &mut tokio::process::Child) -> Result<()> {
@@ -287,32 +356,91 @@ mod pipes {
         let pipe_clone = pipe.to_string();
 
         let _stderr_handle = tokio::spawn(async move {
+            // Create static HashMaps for efficient lookups
+            static INFO_PATTERNS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+                let mut set = HashSet::new();
+                // Development related
+                set.insert("Download");
+                set.insert("Task dev");
+                set.insert("$ next dev");
+                set.insert("ready started server");
+                set.insert("Local:");
+                set.insert("Webpack is configured");
+                set.insert("See instructions");
+                set.insert("https://nextjs.org");
+                set.insert("⚠ See instructions");
+                set.insert("$ next start");
+                set.insert("[bun install]");
+                set.insert("Saved lockfile");
+                set.insert("Resolved, downloaded");
+                set.insert("Installing");
+                set.insert("Successfully installed");
+                set.insert("packages installed");
+                set.insert("Fetching");
+                set.insert("Resolving");
+                // Frontend console patterns
+                set.insert("[LOG]");
+                set.insert("console.log");
+                set.insert("] ");
+                set.insert("›");
+                set.insert("<");
+                set.insert("Warning:");
+                set.insert("render@");
+                set.insert("webpack");
+                set.insert("HMR");
+                set.insert("[HMR]");
+                set
+            });
+
+            static ERROR_PATTERNS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+                let mut set = HashSet::new();
+                set.insert("TypeError:");
+                set.insert("ReferenceError:");
+                set.insert("SyntaxError:");
+                set.insert("Error:");
+                set.insert("Uncaught");
+                set.insert("Failed to compile");
+                set.insert("ENOENT");
+                set.insert("FATAL");
+                set
+            });
+
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                // List of patterns that should be treated as info logs
-                let info_patterns = [
-                    "Download",
-                    "Task dev ",
-                    "$ next dev",
-                    "$ next start",
-                    "$ next lint",
-                    "$ next build",
-                    "ready started server",
-                    "Local:",
-                    "Webpack is configured",
-                    "See instructions",
-                    "https://nextjs.org",
-                    "⚠ See instructions",
-                ];
 
-                if info_patterns.iter().any(|pattern| line.contains(pattern))
-                    || line.trim().is_empty()
+            while let Ok(Some(line)) = lines.next_line().await {
+                let line_lower = line.to_lowercase(); // Convert once for case-insensitive matching
+
+                // Quick checks first
+                if line.trim().is_empty() || line.contains("console.") {
+                    info!("[{}] {}", pipe_clone, line);
+                    continue;
+                }
+
+                // Check for error patterns first (higher priority)
+                if ERROR_PATTERNS
+                    .iter()
+                    .any(|&pattern| line_lower.contains(&pattern.to_lowercase()))
+                {
+                    error!("[{}] {}", pipe_clone, line);
+                    sentry::capture_message(
+                        &format!("[{}] {}", pipe_clone, line),
+                        sentry::Level::Error,
+                    );
+                    continue;
+                }
+
+                // Then check for info patterns
+                if INFO_PATTERNS
+                    .iter()
+                    .any(|&pattern| line_lower.contains(&pattern.to_lowercase()))
                 {
                     info!("[{}] {}", pipe_clone, line);
-                } else {
-                    error!("[{}] {}", pipe_clone, line);
+                    continue;
                 }
+
+                // Default to warning for unknown patterns
+                warn!("[{}] {}", pipe_clone, line);
             }
         });
 
@@ -382,6 +510,8 @@ mod pipes {
             let mut install_child = Command::new(bun_path)
                 .arg("i")
                 .current_dir(dest_dir)
+                .env("NPM_CONFIG_REGISTRY", "https://registry.npmjs.org")
+                .env("BUN_CONFIG_REGISTRY", "https://registry.npmjs.org")
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()?;
@@ -556,11 +686,6 @@ mod pipes {
                 let updated_pipe_json = serde_json::to_string_pretty(&pipe_config)?;
                 let mut file = File::create(&pipe_json_path).await?;
                 file.write_all(updated_pipe_json.as_bytes()).await?;
-                // Build next js pipe along with downloading
-                match build_nextjs_pipe(&bun_path, &dest_dir).await {
-                    Ok(_) => info!("Next.js pipe build successfully, [{:?}]", &dest_dir),
-                    Err(e) => error!("Next.js pipe build failed: [{:?}]", e)
-                }
             }
         }
 
@@ -644,7 +769,10 @@ mod pipes {
                 .with(Cache(HttpCache {
                     mode: CacheMode::Default,
                     manager: CACacheManager {
-                        path: home_dir().unwrap().join(".screenpipe").join(".http-cacache"),
+                        path: home_dir()
+                            .unwrap()
+                            .join(".screenpipe")
+                            .join(".http-cacache"),
                     },
                     options: HttpCacheOptions::default(),
                 }))
@@ -660,7 +788,10 @@ mod pipes {
                 .send()
                 .await?;
 
-            debug!("GitHub API cache hit: {:?}", response.headers().get("x-cache"));
+            debug!(
+                "GitHub API cache hit: {:?}",
+                response.headers().get("x-cache")
+            );
 
             let contents: Value = response.text().await?.parse()?;
             let tree = contents["tree"]
@@ -677,7 +808,8 @@ mod pipes {
             );
 
             // Extract the base path for subfolder downloads
-            let base_path = url.path_segments()
+            let base_path = url
+                .path_segments()
                 .and_then(|segments| {
                     let segments: Vec<_> = segments.collect();
                     if segments.len() >= 5 && segments[2] == "tree" {
@@ -816,25 +948,7 @@ mod pipes {
     fn find_bun_path_internal() -> Option<PathBuf> {
         debug!("starting search for bun executable");
 
-        // Check if bun is in PATH
-        if let Ok(path) = which(BUN_EXECUTABLE_NAME) {
-            debug!("found bun in PATH: {:?}", path);
-            return Some(path);
-        }
-        debug!("bun not found in PATH");
-
-        // Check in current working directory
-        if let Ok(cwd) = std::env::current_dir() {
-            debug!("current working directory: {:?}", cwd);
-            let bun_in_cwd = cwd.join(BUN_EXECUTABLE_NAME);
-            if bun_in_cwd.is_file() && bun_in_cwd.exists() {
-                debug!("found bun in current working directory: {:?}", bun_in_cwd);
-                return Some(bun_in_cwd);
-            }
-            debug!("bun not found in current working directory");
-        }
-
-        // Check in executable directory
+        // Check in executable directory (eg tauri etc.)
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(exe_folder) = exe_path.parent() {
                 debug!("executable folder: {:?}", exe_folder);
@@ -870,6 +984,24 @@ mod pipes {
                     debug!("bun not found in lib folder");
                 }
             }
+        }
+
+        // Check if bun is in PATH
+        if let Ok(path) = which(BUN_EXECUTABLE_NAME) {
+            debug!("found bun in PATH: {:?}", path);
+            return Some(path);
+        }
+        debug!("bun not found in PATH");
+
+        // Check in current working directory
+        if let Ok(cwd) = std::env::current_dir() {
+            debug!("current working directory: {:?}", cwd);
+            let bun_in_cwd = cwd.join(BUN_EXECUTABLE_NAME);
+            if bun_in_cwd.is_file() && bun_in_cwd.exists() {
+                debug!("found bun in current working directory: {:?}", bun_in_cwd);
+                return Some(bun_in_cwd);
+            }
+            debug!("bun not found in current working directory");
         }
 
         error!("bun not found");
@@ -942,7 +1074,9 @@ mod pipes {
         let schedule = match cron::Schedule::from_str(schedule) {
             Ok(s) => s,
             Err(e) => {
-                error!("invalid cron schedule: {}", e);
+                let err_msg = format!("invalid cron schedule: {}", e);
+                error!("{}", err_msg);
+                sentry::capture_error(&anyhow::anyhow!(err_msg).source().unwrap());
                 return;
             }
         };
@@ -967,10 +1101,10 @@ mod pipes {
                 }
             };
 
-            let now = chrono::Utc::now();
+            let now = chrono::Local::now();
             let next = if let Some(last) = last_run {
                 // Get next occurrence after the last execution
-                let last_chrono = chrono::DateTime::<chrono::Utc>::from(last);
+                let last_chrono = chrono::DateTime::<chrono::Local>::from(last);
                 schedule.after(&last_chrono).next()
             } else {
                 schedule.after(&now).next()
@@ -984,11 +1118,17 @@ mod pipes {
                 }
             };
 
+            if next <= now {
+                info!(
+                    "next execution time is before or equal to the current time, recalculating..."
+                );
+                continue;
+            }
             let duration = match (next - now).to_std() {
                 Ok(duration) => duration,
                 Err(e) => {
                     error!("invalid duration: {}", e);
-                    tokio::time::Duration::from_secs(60) // fallback to 1 minute
+                    continue; // falling back to minute is messing with cron schedule
                 }
             };
 
@@ -1010,20 +1150,25 @@ mod pipes {
                         .await
                     {
                         Ok(res) => {
-                            if res.status().is_success() {
-                                // Save successful execution time
-                                if let Err(e) = save_cron_execution(&pipe_dir, path).await {
-                                    error!("failed to save cron execution time: {}", e);
-                                }
-                                debug!("cron job executed successfully");
-                            } else {
-                                error!("cron job failed with status: {}", res.status());
+                            if !res.status().is_success() {
+                                let err_msg = format!("cron job failed with status: {}", res.status());
+                                error!("{}", err_msg);
                                 if let Ok(text) = res.text().await {
                                     error!("error response: {}", text);
+                                    sentry::capture_message(
+                                        &format!("{}: {}", err_msg, text),
+                                        sentry::Level::Error
+                                    );
+                                } else {
+                                    sentry::capture_message(&err_msg, sentry::Level::Error);
                                 }
                             }
                         }
-                        Err(e) => error!("failed to execute cron job: {}", e),
+                        Err(e) => {
+                            let err_msg = format!("failed to execute cron job: {}", e);
+                            error!("{}", err_msg);
+                            sentry::capture_error(&e);
+                        }
                     }
                 }
                 Ok(()) = shutdown.changed() => {
@@ -1045,6 +1190,49 @@ mod pipes {
             info!("stopped all cron jobs for pipe: {}", pipe);
         }
         Ok(())
+    }
+
+    async fn try_build_nextjs(pipe_dir: &Path, bun_path: &Path) -> Result<bool> {
+        info!("attempting to build next.js project in: {:?}", pipe_dir);
+
+        // Check if build already exists and is valid
+        let build_dir = pipe_dir.join(".next");
+        if build_dir.exists() {
+            let build_manifest = build_dir.join("build-manifest.json");
+            if build_manifest.exists() {
+                debug!("found existing next.js build, skipping rebuild");
+                return Ok(true);
+            }
+            // Invalid/incomplete build directory - remove it
+            debug!("removing invalid next.js build directory");
+            tokio::fs::remove_dir_all(&build_dir).await?;
+        }
+
+        info!("running next.js build");
+        let build_output = Command::new(bun_path)
+            .arg("run")
+            .arg("--bun")
+            .arg("build")
+            .current_dir(pipe_dir)
+            .output()
+            .await?;
+
+        if build_output.status.success() {
+            info!("next.js build completed successfully");
+            Ok(true)
+        } else {
+            error!(
+                "next.js build failed: {}",
+                String::from_utf8_lossy(&build_output.stderr)
+            );
+            Ok(false)
+        }
+    }
+
+    // Add this helper function to check if a port is available
+    fn is_port_available(port: u16) -> bool {
+        use std::net::TcpListener;
+        TcpListener::bind(("127.0.0.1", port)).is_ok()
     }
 }
 

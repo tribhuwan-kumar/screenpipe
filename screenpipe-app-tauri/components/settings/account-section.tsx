@@ -21,18 +21,17 @@ import {
   Coins,
   UserCog,
   ExternalLinkIcon,
+  EyeIcon,
+  EyeOffIcon,
+  CopyIcon,
 } from "lucide-react";
 
 import { toast } from "@/components/ui/use-toast";
-import { invoke } from "@tauri-apps/api/core";
 
 import { useUser } from "@/lib/hooks/use-user";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { Card } from "../ui/card";
-import {
-  onOpenUrl,
-  getCurrent as getCurrentDeepLinkUrls,
-} from "@tauri-apps/plugin-deep-link";
+import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 function PlanCard({
   title,
@@ -88,20 +87,40 @@ export function AccountSection() {
   const { settings, updateSettings } = useSettings();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [isConnectingStripe, setIsConnectingStripe] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
-    // Listen for deep link URL opens
     const setupDeepLink = async () => {
-      const unsubscribeDeepLink = await onOpenUrl((urls) => {
+      const unsubscribeDeepLink = await onOpenUrl(async (urls) => {
         console.log("received deep link urls:", urls);
         for (const url of urls) {
           if (url.includes("api_key=")) {
             const apiKey = new URL(url).searchParams.get("api_key");
             if (apiKey) {
               updateSettings({ user: { token: apiKey } });
+              loadUser(apiKey);
               toast({
                 title: "logged in!",
                 description: "your api key has been set",
+              });
+            }
+          }
+          if (url.includes("return") || url.includes("refresh")) {
+            console.log("stripe connect url:", url);
+            if (url.includes("/return")) {
+              if (user) {
+                const updatedUser = { ...user, stripe_connected: true };
+                updateSettings({ user: updatedUser });
+              }
+              toast({
+                title: "stripe connected!",
+                description: "your account is now set up for payments",
+              });
+            } else if (url.includes("/refresh")) {
+              toast({
+                title: "stripe setup incomplete",
+                description: "please complete the stripe onboarding process",
               });
             }
           }
@@ -118,7 +137,7 @@ export function AccountSection() {
     return () => {
       if (deepLinkUnsubscribe) deepLinkUnsubscribe();
     };
-  }, []);
+  }, [settings.user?.token, loadUser, updateSettings]);
 
   const handleRefreshCredits = async () => {
     if (!settings.user?.token) return;
@@ -174,6 +193,43 @@ export function AccountSection() {
       url: "https://cal.com/louis030195/screenpipe-for-businesses",
     },
   ];
+
+  const handleConnectStripe = async () => {
+    setIsConnectingStripe(true);
+    try {
+      const host = "https://screenpi.pe/api/dev-stripe";
+      const response = await fetch(host, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user?.id,
+        }),
+      });
+
+      const { url } = await response.json();
+      await openUrl(url);
+    } catch (error) {
+      toast({
+        title: "failed to connect stripe",
+        description: "please try again later",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnectingStripe(false);
+    }
+  };
+
+  const handleCopyApiKey = () => {
+    if (settings.user?.token) {
+      navigator.clipboard.writeText(settings.user.token);
+      toast({
+        title: "copied to clipboard",
+        description: "api key copied successfully",
+      });
+    }
+  };
 
   return (
     <div className="w-full space-y-6 py-4">
@@ -236,8 +292,7 @@ export function AccountSection() {
                   </TooltipTrigger>
                   <TooltipContent side="right" className="max-w-[280px]">
                     <p className="text-xs leading-relaxed">
-                      your key syncs credits and settings across devices. you
-                      can find it in your dashboard.{" "}
+                      (dev preview) you can use your key to use screenpipe cloud with code.{" "}
                       <span className="text-destructive font-medium">
                         keep it private.
                       </span>
@@ -247,27 +302,45 @@ export function AccountSection() {
               </TooltipProvider>
             </div>
 
-            <div className="flex gap-2">
-              <Input
-                value={settings.user?.token || ""}
-                onChange={(e) => {
-                  updateSettings({
-                    user: { token: e.target.value },
-                  });
-                }}
-                placeholder="enter your api key"
-                className="font-mono text-sm bg-secondary/30"
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  loadUser(settings.user?.token || "");
-                  toast({ title: "key updated" });
-                }}
-              >
-                verify
-              </Button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    value={settings.user?.token || ""}
+                    type={showApiKey ? "text" : "password"}
+                    onChange={(e) => {
+                      updateSettings({
+                        user: { token: e.target.value },
+                      });
+                    }}
+                    placeholder="enter your api key"
+                    className="font-mono text-sm bg-secondary/30 pr-20"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                    >
+                      {showApiKey ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={handleCopyApiKey}
+                      disabled={!settings.user?.token}
+                    >
+                      <CopyIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -314,12 +387,6 @@ export function AccountSection() {
               build and sell custom pipes
             </p>
           </div>
-          <Badge
-            variant={"secondary"}
-            className="uppercase text-[10px] font-medium"
-          >
-            COMING SOON
-          </Badge>
         </div>
 
         <div className="space-y-6">
@@ -338,32 +405,70 @@ export function AccountSection() {
                   <div className="space-y-1">
                     <div className="text-sm font-medium">stripe connect</div>
                     <p className="text-xs text-muted-foreground">
-                      set up payments to receive earnings from your pipes
+                      receive earnings from your pipes (
+                      <a
+                        href={`mailto:louis@screenpi.pe?subject=${encodeURIComponent(
+                          "i want to create and monetize a pipe"
+                        )}&body=${encodeURIComponent(
+                          "hi louis,\n\nI'm interested in creating a pipe for screenpipe.\n\n- what I want to build:\n- I'm a programmer: [yes/no]\n- my github: "
+                        )}`}
+                        className="underline hover:text-primary"
+                        target="_blank"
+                      >
+                        email louis@screenpi.pe
+                      </a>{" "}
+                      for private beta access)
                     </p>
                   </div>
                 </div>
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() =>
-                    openUrl(
-                      "https://connect.stripe.com/oauth/authorize?client_id=YOUR_CLIENT_ID"
-                    )
-                  }
+                  onClick={handleConnectStripe}
                   className="h-9"
-                  disabled
+                  // disabled={true} // for now
+                  disabled={isConnectingStripe || user?.stripe_connected}
                 >
-                  connect
+                  {isConnectingStripe ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : user?.stripe_connected ? (
+                    "connected ✓"
+                  ) : (
+                    "connect"
+                  )}
                 </Button>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                publish your pipe with cli
-              </Label>
-              <div className="font-mono text-xs bg-gray-50 rounded-lg p-4 border border-border/50">
-                $ screenpipe publish my-awesome-pipe
+            <div className="space-y-4">
+              <div className="p-4 border border-border/50 rounded-lg bg-secondary/5">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm text-muted-foreground">
+                    estimated earnings
+                  </span>
+                  <span className="text-lg font-mono">$1,385.00</span>
+                </div>
+                <div className="h-[60px] w-full flex items-end gap-1">
+                  {[40, 35, 55, 45, 60, 75, 65].map((height, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 bg-gray-900/20"
+                      style={{ height: `${height}%` }}
+                    />
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-center text-muted-foreground">
+                  pending payout - coming soon
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  publish your pipe with cli
+                </Label>
+                <div className="font-mono text-xs bg-gray-50 rounded-lg p-4 border border-border/50">
+                  $ screenpipe publish my-awesome-pipe
+                </div>
               </div>
             </div>
           </div>

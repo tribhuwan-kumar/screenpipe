@@ -1,6 +1,8 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 use screenpipe_audio::{vad_engine::VadSensitivity, AudioTranscriptionEngine as CoreAudioTranscriptionEngine};
-use screenpipe_vision::utils::OcrEngine as CoreOcrEngine;
+use screenpipe_vision::{custom_ocr::CustomOcrConfig, utils::OcrEngine as CoreOcrEngine};
 use clap::ValueEnum;
 use screenpipe_audio::vad_engine::VadEngineEnum;
 use screenpipe_core::Language;
@@ -41,6 +43,7 @@ pub enum CliOcrEngine {
     WindowsNative,
     #[cfg(target_os = "macos")]
     AppleNative,
+    Custom,
 }
 
 impl From<CliOcrEngine> for CoreOcrEngine {
@@ -53,6 +56,20 @@ impl From<CliOcrEngine> for CoreOcrEngine {
             CliOcrEngine::WindowsNative => CoreOcrEngine::WindowsNative,
             #[cfg(target_os = "macos")]
             CliOcrEngine::AppleNative => CoreOcrEngine::AppleNative,
+            CliOcrEngine::Custom => {
+                // Try to read config from environment variable
+                if let Ok(config_str) = std::env::var("SCREENPIPE_CUSTOM_OCR_CONFIG") {
+                    match serde_json::from_str(&config_str) {
+                        Ok(config) => CoreOcrEngine::Custom(config),
+                        Err(e) => {
+                            log::warn!("failed to parse custom ocr config from env: {}", e);
+                            CoreOcrEngine::Custom(CustomOcrConfig::default())
+                        }
+                    }
+                } else {
+                    CoreOcrEngine::Custom(CustomOcrConfig::default())
+                }
+            }
         }
     }
 }
@@ -124,6 +141,10 @@ pub struct Cli {
     #[arg(short = 'i', long)]
     pub audio_device: Vec<String>,
 
+    // Audio devices to use for realtime audio transcription
+    #[arg(short = 'r', long)]
+    pub realtime_audio_device: Vec<String>,
+
     /// List available audio devices
     #[arg(long)]
     pub list_audio_devices: bool,
@@ -143,6 +164,10 @@ pub struct Cli {
     /// WhisperLargeV3Turbo is a local, lightweight transcription model (-a whisper-large-v3-turbo), recommended for higher quality audio than tiny.
     #[arg(short = 'a', long, value_enum, default_value_t = CliAudioTranscriptionEngine::WhisperLargeV3Turbo)]
     pub audio_transcription_engine: CliAudioTranscriptionEngine,
+
+    /// Enable realtime audio transcription
+    #[arg(long, default_value_t = false)]
+    pub enable_realtime_audio_transcription: bool,
 
     /// OCR engine to use.
     /// AppleNative is the default local OCR engine for macOS.
@@ -265,6 +290,35 @@ pub enum Command {
         #[command(subcommand)]
         subcommand: PipeCommand,
     },
+    /// Add video files to existing screenpipe data (OCR only) - DOES NOT SUPPORT AUDIO
+    Add {
+        /// Path to folder containing video files
+        path: String,
+        /// Data directory. Default to $HOME/.screenpipe
+        #[arg(long)]
+        data_dir: Option<String>,
+        /// Output format
+        #[arg(short = 'o', long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+        /// Regex pattern to filter files (e.g. "monitor.*\.mp4$")
+        #[arg(long)]
+        pattern: Option<String>,
+        /// OCR engine to use
+        #[arg(short = 'o', long, value_enum)]
+        ocr_engine: Option<CliOcrEngine>,
+        /// Path to JSON file containing metadata overrides
+        #[arg(long)]
+        metadata_override: Option<PathBuf>,
+        /// Copy videos to screenpipe data directory
+        #[arg(long, default_value_t = true)]
+        copy_videos: bool,
+        /// Enable debug logging for screenpipe modules
+        #[arg(long)]
+        debug: bool,
+        /// Enable embedding generation for OCR text
+        #[arg(long, default_value_t = false)]
+        use_embedding: bool,
+    },
     /// Setup screenpipe environment
     Setup {
         /// Enable beta features
@@ -287,9 +341,21 @@ pub enum PipeCommand {
         #[arg(short = 'p', long, default_value_t = 3030)]
         port: u16,
     },
-    /// Download a new pipe
+    /// Download a new pipe (deprecated: use 'install' instead)
+    #[deprecated(since = "0.2.26", note = "please use `install` instead")]
     Download {
         /// URL of the pipe to download
+        url: String,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+        /// Server port
+        #[arg(short = 'p', long, default_value_t = 3030)]
+        port: u16,
+    },
+    /// Install a new pipe
+    Install {
+        /// URL of the pipe to install
         url: String,
         /// Output format
         #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
