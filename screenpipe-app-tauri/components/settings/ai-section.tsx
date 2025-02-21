@@ -42,7 +42,7 @@ import {
 import posthog from "posthog-js";
 
 interface AIProviderCardProps {
-  type: "screenpipe-cloud" | "openai" | "native-ollama" | "custom" | "embedded";
+  type: "screenpipe-cloud" | "openai" | "native-ollama" | "custom" | "gemini" | "embedded";
   title: string;
   description: string;
   imageSrc: string;
@@ -150,6 +150,9 @@ const AISection = () => {
       case "screenpipe-cloud":
         newUrl = "https://ai-proxy.i-f9f.workers.dev/v1";
         break;
+      case "gemini":
+        newUrl = "https://generativelanguage.googleapis.com/v1beta/openai/";
+        break;
       case "custom":
         newUrl = settings.aiUrl;
         break;
@@ -211,6 +214,15 @@ const AISection = () => {
             { id: "gpt-3.5-turbo", name: "gpt-3.5-turbo", provider: "openai" },
           ]);
           break;
+
+        case "gemini":
+          setModels([
+            { id: "gemini-1.5-flash", name: "gemini-1.5", provider: "gemini" },
+            { id: "gemini-1.5-pro", name: "gemini-1.5-pro", provider: "gemini" },
+            { id: "gemini-1.5-flash-8b", name: "gemini-1.5-flash-8b", provider: "openai" },
+            { id: "gemini-2.0-flash", name: "gemini-2.0-flash", provider: "openai" },
+          ]);
+        break;
 
         case "custom":
           try {
@@ -289,6 +301,15 @@ const AISection = () => {
                 ? "requires credits"
                 : undefined
             }
+          />
+
+          <AIProviderCard
+            type="gemini"
+            title="gemini"
+            description="use google gemini"
+            imageSrc="/images/gemini.png"
+            selected={settings.aiProviderType === "gemini"}
+            onClick={() => handleAiProviderChange("gemini")}
           />
 
           <AIProviderCard

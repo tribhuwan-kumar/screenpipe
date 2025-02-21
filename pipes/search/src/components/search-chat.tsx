@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useAiProvider } from "@/lib/hooks/use-ai-provider";
+import { generateAIResponse } from '@/lib/actions/chat-actions';
 import {
   Select,
   SelectContent,
@@ -684,65 +685,17 @@ export function SearchChat() {
     setIsAiLoading(true);
 
     try {
-      console.log("settings", settings);
-      const openai = new OpenAI({
-        apiKey:
-          settings.aiProviderType === "screenpipe-cloud"
-            ? settings.user.token
-            : settings.openaiApiKey,
-        baseURL: settings.aiUrl,
-        dangerouslyAllowBrowser: true,
+      abortControllerRef.current = new AbortController();
+      const selectedData = selectedAgent.dataSelector(results.filter((_: any, index: number) => selectedResults.has(index)));
+      const { response: fullResponse } = await generateAIResponse({
+        settings,
+        chatMessages,
+        floatingInput,
+        selectedAgent,
+        selectedData,
+        // signal: abortControllerRef.current.signal,
       });
 
-      const model = settings.aiModel;
-      const customPrompt = settings.customPrompt || "";
-
-      const messages = [
-        {
-          role: "user" as const, // claude does not support system messages?
-          content: `You are a helpful assistant specialized as a "${
-            selectedAgent.name
-          }". ${selectedAgent.systemPrompt}
-            Rules:
-            - Current time (JavaScript Date.prototype.toString): ${new Date().toString()}
-            - User timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
-            - User timezone offset: ${new Date().getTimezoneOffset()}
-            - ${customPrompt ? `Custom prompt: ${customPrompt}` : ""}
-            `,
-        },
-        ...chatMessages.map((msg) => ({
-          role: msg.role as "user" | "assistant" | "system",
-          content: msg.content,
-        })),
-        {
-          role: "user" as const,
-          content: `Context data: ${JSON.stringify(
-            selectedAgent.dataSelector(
-              results.filter((_, index) => selectedResults.has(index))
-            )
-          )}
-
-          User query: ${floatingInput}`,
-        },
-      ];
-
-      console.log("messages", messages);
-
-      abortControllerRef.current = new AbortController();
-      setIsStreaming(true);
-
-      const stream = await openai.chat.completions.create(
-        {
-          model: model,
-          messages: messages,
-          stream: true,
-        },
-        {
-          signal: abortControllerRef.current.signal,
-        }
-      );
-
-      let fullResponse = "";
       // @ts-ignore
       setChatMessages((prevMessages) => [
         ...prevMessages.slice(0, -1),
@@ -753,17 +706,6 @@ export function SearchChat() {
       lastScrollPosition.current = window.scrollY;
       scrollToBottom();
 
-      for await (const chunk of stream) {
-        console.log("chunk", chunk);
-        const content = chunk.choices[0]?.delta?.content || "";
-        fullResponse += content;
-        // @ts-ignore
-        setChatMessages((prevMessages) => [
-          ...prevMessages.slice(0, -1),
-          { id: generateId(), role: "assistant", content: fullResponse },
-        ]);
-        scrollToBottom();
-      }
     } catch (error: any) {
       if (error.toString().includes("unauthorized")) {
         toast({
