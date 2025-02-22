@@ -3,6 +3,7 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import levenshtein from "js-levenshtein";
 import { OpenAI } from "openai";
+import type { Settings } from "@screenpipe/js";
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -47,7 +48,7 @@ export const removeDuplicateSelections = (
     return newSelectedResults;
 }
 
-export async function generateTitle(query: string, settings: any): Promise<string> {
+export async function generateTitle(query: string, settings: Settings): Promise<string> {
     const openai = new OpenAI({
         apiKey: settings.aiProviderType === "screenpipe-cloud" ? settings.user.token : settings.openaiApiKey,
         baseURL: settings.aiUrl,
@@ -59,7 +60,8 @@ export async function generateTitle(query: string, settings: any): Promise<strin
         messages: [
             {
                 role: "user",
-                content: `Generate a concise title for the following query: "${query}". The title should be no more than 50 characters. Only provide the title without any additional text.`,
+                content: `Generate a concise title for the following query: "${query}". 
+                        The title should be no more than 50 characters. Only provide the title without any additional text.`,
             },
         ],
     });
