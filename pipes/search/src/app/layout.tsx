@@ -33,7 +33,7 @@ export default function RootLayout({
       >
         <SidebarProvider className="absolute" defaultOpen={true}>
           <HistorySidebar className={"relative"} />
-          <SidebarTrigger className="ml-[15px] mt-[-30px]"/>
+          <SidebarTrigger className="ml-[15px] mt-[-30px] sticky top-5"/>
         </SidebarProvider>
         {children}
 

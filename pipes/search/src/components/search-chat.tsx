@@ -1326,10 +1326,6 @@ User query: ${floatingInput}`,
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4 mt-12 z-10">
-      <div className="z-50 flex items-center gap-2">
-        {/* <SidebarTrigger className="h-8 w-8" /> */}
-      </div>
-
       <div className="flex items-center justify-center mb-16">
         {/* Add the new SearchFilterGenerator component */}
         <SearchFilterGenerator
