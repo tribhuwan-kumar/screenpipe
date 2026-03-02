@@ -137,7 +137,7 @@ export const TIER_CONFIG: Record<UserTier, TierLimits> = {
     ],
   },
   subscribed: {
-    dailyQueries: 1000, // raised from 200 — Pi agent pipes use multiple API calls per run
+    dailyQueries: 200,
     rpm: 60,
     allowedModels: ['*'], // all models
   },
