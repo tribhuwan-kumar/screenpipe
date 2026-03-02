@@ -633,16 +633,21 @@ impl SettingsStore {
     fn resolve_audio_engine(&self) -> String {
         let engine = self.audio_transcription_engine.clone();
         let has_user_id = self.user.id.as_ref().map_or(false, |id| !id.is_empty());
+        let is_subscribed = self.user.cloud_subscribed == Some(true);
         let has_deepgram_key = !self.deepgram_api_key.is_empty()
             && self.deepgram_api_key != "default";
         match engine.as_str() {
             "screenpipe-cloud" if !has_user_id => {
-                tracing::warn!("screenpipe-cloud selected but user not logged in, falling back to whisper-large-v3-turbo");
-                "whisper-large-v3-turbo".to_string()
+                tracing::warn!("screenpipe-cloud selected but user not logged in, falling back to whisper-large-v3-turbo-quantized");
+                "whisper-large-v3-turbo-quantized".to_string()
+            }
+            "screenpipe-cloud" if !is_subscribed => {
+                tracing::warn!("screenpipe-cloud selected but user is not a pro subscriber, falling back to whisper-large-v3-turbo-quantized");
+                "whisper-large-v3-turbo-quantized".to_string()
             }
             "deepgram" if !has_deepgram_key => {
-                tracing::warn!("deepgram selected but no API key configured, falling back to whisper-large-v3-turbo");
-                "whisper-large-v3-turbo".to_string()
+                tracing::warn!("deepgram selected but no API key configured, falling back to whisper-large-v3-turbo-quantized");
+                "whisper-large-v3-turbo-quantized".to_string()
             }
             _ => engine,
         }
