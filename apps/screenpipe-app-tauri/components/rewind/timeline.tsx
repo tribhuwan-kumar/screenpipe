@@ -439,6 +439,13 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 				debounceTimer = setTimeout(() => {
 					debounceTimer = null;
 
+					// Don't reset if a search/calendar navigation is in progress —
+					// onWindowFocus resets currentDate to today, which cancels the
+					// cross-date navigation and discards the pending fetch.
+					if (isNavigatingRef.current || pendingNavigationRef.current) {
+						return;
+					}
+
 					// Pause any active playback
 					pausePlayback();
 
@@ -1376,26 +1383,19 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		setCurrentIndex(0);
 		setCurrentDate(targetDate);
 
-		// Timeout: if frames haven't arrived after 10s, retry with full-day fetch
-		// instead of giving up entirely
+		// Past-day queries can take 60s+ on large DBs (legacy data with
+		// correlated subqueries). The [currentDate, websocket] effect already
+		// fires a full-day fetch, so we just need to wait long enough.
+		// Give up after 90s — if the query hasn't finished by then, it won't.
 		setTimeout(() => {
 			if (pendingNavigationRef.current && isSameDay(pendingNavigationRef.current, targetDate)) {
-				console.warn("[navigateDirectToDate] Timeout: retrying with full-day fetch");
-				clearSentRequestForDate(targetDate);
-				fetchTimeRange(startOfDay(targetDate), endOfDay(targetDate));
-
-				// Final timeout: give up after another 10s
-				setTimeout(() => {
-					if (pendingNavigationRef.current && isSameDay(pendingNavigationRef.current, targetDate)) {
-						console.warn("[navigateDirectToDate] Final timeout: clearing navigation state");
-						pendingNavigationRef.current = null;
-						setSeekingTimestamp(null);
-						setIsNavigating(false);
-						isNavigatingRef.current = false;
-					}
-				}, 10000);
+				console.warn("[navigateDirectToDate] Timeout after 90s: clearing navigation state");
+				pendingNavigationRef.current = null;
+				setSeekingTimestamp(null);
+				setIsNavigating(false);
+				isNavigatingRef.current = false;
 			}
-		}, 10000);
+		}, 90000);
 	};
 
 	const handleDateChange = async (newDate: Date) => {

@@ -126,6 +126,11 @@ pub struct DatabaseManager {
     /// With FTS handled by inline triggers (not the removed background indexer),
     /// each write holds the semaphore for only a few milliseconds.
     write_semaphore: Arc<Semaphore>,
+    /// Limits concurrent heavy read queries (e.g. find_video_chunks) to 2.
+    /// These queries can take 60+ seconds on large DBs with legacy data,
+    /// starving the pool for writes and fast reads. By capping at 2 concurrent
+    /// heavy reads, we guarantee 28+ connections remain available for normal ops.
+    heavy_read_semaphore: Arc<Semaphore>,
 }
 
 impl DatabaseManager {
@@ -183,6 +188,7 @@ impl DatabaseManager {
         let db_manager = DatabaseManager {
             pool,
             write_semaphore: Arc::new(Semaphore::new(1)),
+            heavy_read_semaphore: Arc::new(Semaphore::new(2)),
         };
 
         // Checkpoint any stale WAL before running migrations or starting captures.
@@ -3114,6 +3120,12 @@ impl DatabaseManager {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<TimeSeriesChunk, SqlxError> {
+        // Acquire a heavy-read permit (max 2 concurrent). This prevents slow
+        // queries (60s+ on legacy data) from consuming all pool connections.
+        let _permit = self.heavy_read_semaphore.acquire().await.map_err(|_| {
+            SqlxError::Protocol("heavy_read_semaphore closed".to_string())
+        })?;
+
         // Get frames with OCR data, grouped by minute to handle multiple monitors.
         // OCR text is truncated to 200 chars for the timeline stream — full text
         // is fetched on-demand via /frames/{id}/ocr when needed. This reduces

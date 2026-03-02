@@ -571,56 +571,72 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 	},
 
 	fetchTimeRange: async (startTime: Date, endTime: Date) => {
-		const { websocket, sentRequests } = get();
-		// Use ISO range as key so narrow-window and full-day fetches get distinct keys
-		const requestKey = `${startTime.toISOString()}_${endTime.toISOString()}`;
+		const sendOrRetry = (attempt: number) => {
+			const { websocket, sentRequests } = get();
+			// Use ISO range as key so narrow-window and full-day fetches get distinct keys
+			const requestKey = `${startTime.toISOString()}_${endTime.toISOString()}`;
 
-		if (sentRequests.has(requestKey)) {
-			return;
-		}
-
-		if (websocket && websocket.readyState === WebSocket.OPEN) {
-			websocket.send(
-				JSON.stringify({
-					start_time: startTime.toISOString(),
-					end_time: endTime.toISOString(),
-					order: "descending",
-				}),
-			);
-
-			set((state) => ({
-				sentRequests: new Set(state.sentRequests).add(requestKey),
-			}));
-
-			// Start timeout - if no frames arrive, retry
-			if (requestTimeoutTimer) {
-				clearTimeout(requestTimeoutTimer);
+			if (sentRequests.has(requestKey)) {
+				return;
 			}
-			requestTimeoutTimer = setTimeout(() => {
-				requestTimeoutTimer = null;
-				const { frames: currentFrames, pendingDateSwap: stillSwapping } = get();
 
-				// Retry if no frames arrived (or still waiting for date swap to complete)
-				if ((currentFrames.length === 0 || stillSwapping) && requestRetryCount < MAX_REQUEST_RETRIES) {
-					requestRetryCount++;
+			if (websocket && websocket.readyState === WebSocket.OPEN) {
+				websocket.send(
+					JSON.stringify({
+						start_time: startTime.toISOString(),
+						end_time: endTime.toISOString(),
+						order: "descending",
+					}),
+				);
 
-					// Clear this date from sentRequests to allow retry
-					set((state) => {
-						const newSentRequests = new Set(state.sentRequests);
-						newSentRequests.delete(requestKey);
-						return { sentRequests: newSentRequests };
-					});
+				set((state) => ({
+					sentRequests: new Set(state.sentRequests).add(requestKey),
+				}));
 
-					// Retry the request
-					get().fetchTimeRange(startTime, endTime);
-				} else if ((currentFrames.length === 0 || stillSwapping) && requestRetryCount >= MAX_REQUEST_RETRIES) {
-					set({
-						isLoading: false,
-						message: "No data available for this time range"
-					});
+				// Start timeout - if no frames arrive, retry
+				if (requestTimeoutTimer) {
+					clearTimeout(requestTimeoutTimer);
 				}
-			}, REQUEST_TIMEOUT_MS);
-		}
+				requestTimeoutTimer = setTimeout(() => {
+					requestTimeoutTimer = null;
+					const { frames: currentFrames, pendingDateSwap: stillSwapping } = get();
+
+					// Retry if no frames arrived (or still waiting for date swap to complete)
+					if ((currentFrames.length === 0 || stillSwapping) && requestRetryCount < MAX_REQUEST_RETRIES) {
+						requestRetryCount++;
+
+						// Clear this date from sentRequests to allow retry
+						set((state) => {
+							const newSentRequests = new Set(state.sentRequests);
+							newSentRequests.delete(requestKey);
+							return { sentRequests: newSentRequests };
+						});
+
+						// Retry the request
+						get().fetchTimeRange(startTime, endTime);
+					} else if ((currentFrames.length === 0 || stillSwapping) && requestRetryCount >= MAX_REQUEST_RETRIES) {
+						set({
+							isLoading: false,
+							message: "No data available for this time range"
+						});
+					}
+				}, REQUEST_TIMEOUT_MS);
+			} else if (attempt < 5) {
+				// WebSocket not open — retry after a short delay instead of silently dropping.
+				// This happens during cross-date navigation when the WS may be reconnecting.
+				const delay = 500 * (attempt + 1); // 500ms, 1s, 1.5s, 2s, 2.5s
+				console.warn(`[fetchTimeRange] WebSocket not open, retrying in ${delay}ms (attempt ${attempt + 1}/5)`);
+				setTimeout(() => sendOrRetry(attempt + 1), delay);
+			} else {
+				console.error("[fetchTimeRange] WebSocket not open after 5 retries, giving up");
+				set({
+					isLoading: false,
+					message: "Connection lost — please try again",
+				});
+			}
+		};
+
+		sendOrRetry(0);
 	},
 
 	fetchNextDayData: async (date: Date) => {

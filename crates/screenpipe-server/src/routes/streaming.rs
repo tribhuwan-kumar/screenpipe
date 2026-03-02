@@ -291,52 +291,87 @@ async fn handle_stream_frames_socket(
                                 sorted.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
                             }
 
+                            // Record sent IDs first (fast, no async), then send
+                            // frames WITHOUT holding the lock. Previously the lock
+                            // was held across channel sends, blocking the receive
+                            // loop from processing new WS messages (e.g. past-day
+                            // navigation requests) for seconds.
                             {
                                 let mut sent = sent_ids_clone.lock().await;
-                                for frame in sorted {
+                                for frame in &sorted {
                                     for df in &frame.frame_data {
                                         sent.insert(df.frame_id);
                                     }
-                                    let _ = frame_tx.send(frame).await;
                                 }
-                            } // drop lock before spawning backfill
+                            } // lock dropped
 
-                            // Backfill from DB for the full day — the hot cache only
-                            // has frames since last restart (~2h warm window). Frames
-                            // already sent from cache are skipped via sent_frame_ids.
-                            let frame_tx_db = frame_tx.clone();
-                            let db_backfill = db_clone.clone();
-                            let sent_ids_backfill = sent_ids_clone.clone();
-                            tokio::spawn(async move {
-                                match db_backfill.find_video_chunks(start_time, end_time).await {
-                                    Ok(mut chunks) => {
-                                        if is_descending {
-                                            chunks.frames.sort_by_key(|a| {
-                                                std::cmp::Reverse((a.timestamp, a.offset_index))
-                                            });
-                                        } else {
-                                            chunks
-                                                .frames
-                                                .sort_by_key(|a| (a.timestamp, a.offset_index));
-                                        }
-                                        let mut sent = sent_ids_backfill.lock().await;
-                                        for chunk in chunks.frames {
-                                            if sent.contains(&chunk.frame_id) {
-                                                continue;
-                                            }
-                                            sent.insert(chunk.frame_id);
-                                            let frame = create_time_series_frame(chunk);
-                                            if !frame.frame_data.is_empty()
-                                                && frame_tx_db.send(frame).await.is_err()
-                                            {
-                                                break;
-                                            }
-                                        }
-                                        info!("Today DB backfill complete");
-                                    }
-                                    Err(e) => warn!("Today DB backfill failed: {}", e),
+                            for frame in sorted {
+                                let _ = frame_tx.send(frame).await;
+                            }
+
+                            // Only backfill from DB if the hot cache doesn't
+                            // cover the requested range. The cache knows its
+                            // earliest coverage timestamp from warm_from_db +
+                            // push_frame. If the cache covers start_time, we
+                            // skip the 60s+ find_video_chunks query entirely.
+                            let cache_start = cache_clone.earliest_coverage().await;
+                            let backfill_needed = match cache_start {
+                                Some(cs) if cs <= start_time => false,
+                                Some(cs) => {
+                                    // Cache only covers cs..now, backfill start_time..cs
+                                    info!(
+                                        "partial cache coverage: cache from {}, backfilling {}..{}",
+                                        cs, start_time, cs
+                                    );
+                                    true
                                 }
-                            });
+                                None => true, // no cache coverage at all
+                            };
+
+                            if backfill_needed {
+                                let backfill_end = cache_start.unwrap_or(end_time);
+                                let frame_tx_db = frame_tx.clone();
+                                let db_backfill = db_clone.clone();
+                                let sent_ids_backfill = sent_ids_clone.clone();
+                                tokio::spawn(async move {
+                                    match db_backfill
+                                        .find_video_chunks(start_time, backfill_end)
+                                        .await
+                                    {
+                                        Ok(mut chunks) => {
+                                            if is_descending {
+                                                chunks.frames.sort_by_key(|a| {
+                                                    std::cmp::Reverse((
+                                                        a.timestamp,
+                                                        a.offset_index,
+                                                    ))
+                                                });
+                                            } else {
+                                                chunks.frames.sort_by_key(|a| {
+                                                    (a.timestamp, a.offset_index)
+                                                });
+                                            }
+                                            let mut sent = sent_ids_backfill.lock().await;
+                                            for chunk in chunks.frames {
+                                                if sent.contains(&chunk.frame_id) {
+                                                    continue;
+                                                }
+                                                sent.insert(chunk.frame_id);
+                                                let frame = create_time_series_frame(chunk);
+                                                if !frame.frame_data.is_empty()
+                                                    && frame_tx_db.send(frame).await.is_err()
+                                                {
+                                                    break;
+                                                }
+                                            }
+                                            info!("Today DB backfill complete");
+                                        }
+                                        Err(e) => warn!("Today DB backfill failed: {}", e),
+                                    }
+                                });
+                            } else {
+                                info!("skipping DB backfill — hot cache covers full range");
+                            }
                         } else {
                             // Past day — one-shot DB query (acceptable, rare)
                             let frame_tx = frame_tx.clone();
@@ -345,7 +380,7 @@ async fn handle_stream_frames_socket(
 
                             tokio::spawn(async move {
                                 let fetch_result = tokio::time::timeout(
-                                    std::time::Duration::from_secs(10),
+                                    std::time::Duration::from_secs(120),
                                     fetch_and_process_frames_with_tracking(
                                         db,
                                         start_time,
@@ -360,7 +395,7 @@ async fn handle_stream_frames_socket(
                                 match fetch_result {
                                     Ok(Ok(_)) => info!("Past-day fetch complete"),
                                     Ok(Err(e)) => error!("Past-day fetch failed: {}", e),
-                                    Err(_) => warn!("Past-day fetch timed out after 10s"),
+                                    Err(_) => warn!("Past-day fetch timed out after 120s"),
                                 }
                             });
                         }

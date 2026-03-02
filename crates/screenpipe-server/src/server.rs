@@ -323,7 +323,7 @@ impl SCServer {
             let cache = hot_frame_cache.clone();
             let db = self.db.clone();
             tokio::spawn(async move {
-                cache.warm_from_db(&db, 2).await;
+                cache.warm_from_db(&db, 24).await;
             });
         }
 

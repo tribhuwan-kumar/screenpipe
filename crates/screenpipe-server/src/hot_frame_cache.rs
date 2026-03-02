@@ -59,6 +59,10 @@ pub struct HotFrameCache {
     audio_notify: broadcast::Sender<HotAudio>,
     /// Ordinal day number — cache is cleared on day rollover.
     cache_day: RwLock<u32>,
+    /// Earliest timestamp the cache covers. Set by warm_from_db (cold start)
+    /// and extended by push_frame (live capture). The streaming handler uses
+    /// this to skip the DB backfill when the cache already covers the range.
+    cache_warm_start: RwLock<Option<DateTime<Utc>>>,
 }
 
 impl Default for HotFrameCache {
@@ -78,6 +82,7 @@ impl HotFrameCache {
             frame_notify: frame_tx,
             audio_notify: audio_tx,
             cache_day: RwLock::new(Utc::now().ordinal()),
+            cache_warm_start: RwLock::new(None),
         }
     }
 
@@ -92,6 +97,7 @@ impl HotFrameCache {
             );
             self.frames.write().await.clear();
             self.audio.write().await.clear();
+            *self.cache_warm_start.write().await = None;
             *day = today;
         }
     }
@@ -100,6 +106,15 @@ impl HotFrameCache {
     pub async fn push_frame(&self, frame: HotFrame) {
         self.maybe_rollover().await;
         let key = (frame.timestamp, frame.frame_id);
+        // Extend cache coverage if this frame is earlier than current warm_start
+        {
+            let mut ws = self.cache_warm_start.write().await;
+            match *ws {
+                None => *ws = Some(frame.timestamp),
+                Some(existing) if frame.timestamp < existing => *ws = Some(frame.timestamp),
+                _ => {}
+            }
+        }
         self.frames.write().await.insert(key, frame.clone());
         // Broadcast to WS handlers — ignore errors (no subscribers = fine)
         let _ = self.frame_notify.send(frame);
@@ -147,6 +162,13 @@ impl HotFrameCache {
                 hot_frame_to_timeseries(hot_frame, audio_entries)
             })
             .collect()
+    }
+
+    /// Earliest timestamp the cache covers (inclusive).
+    /// Returns `None` if cache is empty / not yet warmed.
+    /// The streaming handler uses this to skip or narrow the DB backfill.
+    pub async fn earliest_coverage(&self) -> Option<DateTime<Utc>> {
+        *self.cache_warm_start.read().await
     }
 
     /// Check if the cache has data for a given date (today).
@@ -216,7 +238,15 @@ impl HotFrameCache {
                     }
                 }
 
-                info!("hot_frame_cache: warmed with {} frame entries", frame_count);
+                // Set cache coverage — use the query start time (not earliest
+                // frame) so we know the DB was scanned from `start` even if
+                // there were no frames in the early portion of the range.
+                *self.cache_warm_start.write().await = Some(start);
+
+                info!(
+                    "hot_frame_cache: warmed with {} frame entries, coverage from {}",
+                    frame_count, start
+                );
             }
             Err(e) => {
                 warn!("hot_frame_cache: failed to warm from DB: {}", e);
