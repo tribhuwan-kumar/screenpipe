@@ -517,15 +517,21 @@ fn ensure_pi_config(
                 _ => "".to_string(),
             };
 
+            let wire_api = if config.provider == "openai-chatgpt" {
+                "openai-codex-responses"
+            } else {
+                "openai-completions"
+            };
+
             let user_provider = json!({
                 "baseUrl": base_url,
-                "api": "openai-completions",
+                "api": wire_api,
                 "apiKey": api_key,
                 "models": [
                     {
                         "id": config.model,
                         "name": config.model,
-                        "input": ["text"],
+                        "input": ["text", "image"],
                         "contextWindow": 128000,
                         "maxTokens": 16384,
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}

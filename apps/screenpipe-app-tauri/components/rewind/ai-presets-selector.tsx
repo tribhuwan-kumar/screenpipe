@@ -57,7 +57,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
 import { AIPreset, commands } from "@/lib/utils/tauri";
 
 // Helper to detect UUID-like strings and format preset names nicely
@@ -308,6 +307,34 @@ export function AIProviderConfig({
       formData.apiKey
     ) {
       fetchOpenAIModels(formData.url, formData.apiKey);
+    } else if (selectedProvider === "openai-chatgpt") {
+      // Try fetching from API, fall back to known models
+      (async () => {
+        setIsLoadingModels(true);
+        try {
+          const tokenResult = await commands.chatgptOauthGetToken();
+          if (tokenResult.status === "ok") {
+            const resp = await fetch("https://api.openai.com/v1/models", {
+              headers: { Authorization: `Bearer ${tokenResult.data}` },
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.data?.length > 0) {
+                setOpenAIModels(data.data);
+                setIsLoadingModels(false);
+                return;
+              }
+            }
+          }
+        } catch { /* ignore */ }
+        // Fallback: Codex models available via ChatGPT subscription
+        setOpenAIModels([
+          { id: "gpt-5.1-codex-mini" }, { id: "gpt-5.1" },
+          { id: "gpt-5.1-codex-max" }, { id: "gpt-5.2-codex" },
+          { id: "gpt-5.2" },
+        ]);
+        setIsLoadingModels(false);
+      })();
     }
   }, [selectedProvider, formData.apiKey, formData.url]);
 
@@ -653,6 +680,7 @@ export function AIProviderConfig({
               <Input
                 id="model"
                 type="text"
+                list="chatgpt-models"
                 placeholder="gpt-4o"
                 value={formData.model || ""}
                 onChange={(e) =>
@@ -660,6 +688,13 @@ export function AIProviderConfig({
                 }
                 className="h-7 text-xs"
               />
+              {openaiModels.length > 0 && (
+                <datalist id="chatgpt-models">
+                  {openaiModels.map((model) => (
+                    <option key={model.id} value={model.id} />
+                  ))}
+                </datalist>
+              )}
             </div>
           </div>
         )}
@@ -712,35 +747,10 @@ export function AIProviderConfig({
         >
           <span>{showAdvanced ? "▾" : "▸"}</span>
           <span>advanced</span>
-          <span className="text-muted-foreground/60">
-            ({((formData.maxContextChars || 512000) / 1000).toFixed(0)}k context)
-          </span>
         </button>
 
         {showAdvanced && (
           <div className="space-y-1.5">
-            <div className="space-y-0.5">
-              <Label htmlFor="maxContextChars" className="flex items-center text-[10px]">
-                max context
-              </Label>
-              <div className="flex items-center gap-2">
-                <Slider
-                  id="maxContextChars"
-                  min={10000}
-                  max={1000000}
-                  step={10000}
-                  value={[formData.maxContextChars || 512000]}
-                  onValueChange={([value]) =>
-                    setFormData({ ...formData, maxContextChars: value })
-                  }
-                  className="flex-grow"
-                />
-                <span className="min-w-[32px] text-right text-[10px]">
-                  {((formData.maxContextChars || 512000) / 1000).toFixed(0)}k
-                </span>
-              </div>
-            </div>
-
             <div className="space-y-0.5">
               <Label htmlFor="prompt" className="text-[10px]">prompt</Label>
               <Textarea
@@ -1152,7 +1162,7 @@ export const AIPresetsSelector = ({
                   role="combobox"
                   aria-expanded={open}
                   className={cn(
-                    "w-full justify-between",
+                    "w-full justify-between hover:bg-accent hover:text-accent-foreground",
                     compact && "h-8 text-xs",
                     selectedPresetRequiresLogin && "border-amber-500/50"
                   )}
@@ -1185,14 +1195,6 @@ export const AIPresetsSelector = ({
                               (preset) => preset.id === selectedPreset,
                             )?.model
                           }
-                        </span>
-                        <span className="whitespace-nowrap">
-                          {(
-                            (aiPresets.find(
-                              (preset) => preset.id === selectedPreset,
-                            )?.maxContextChars || 0) / 1000
-                          ).toFixed(0)}
-                          k
                         </span>
                       </div>
                     </div>
@@ -1281,9 +1283,6 @@ export const AIPresetsSelector = ({
                                 {preset.model}
                               </span>
                             </div>
-                            <span className="whitespace-nowrap">
-                              {(preset.maxContextChars / 1000).toFixed(0)}k
-                            </span>
                             <div className="flex items-center gap-1">
                               <Button
                                 variant="ghost"
@@ -1372,9 +1371,6 @@ export const AIPresetsSelector = ({
                               {preset.model}
                             </span>
                           </div>
-                          <span className="whitespace-nowrap">
-                            {(preset.maxContextChars / 1000).toFixed(0)}k
-                          </span>
                           <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"

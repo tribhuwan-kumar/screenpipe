@@ -231,7 +231,7 @@ impl PiExecutor {
                     "models": [{
                         "id": mdl,
                         "name": mdl,
-                        "input": ["text"],
+                        "input": ["text", "image"],
                         "contextWindow": 128000,
                         "maxTokens": 16384,
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}

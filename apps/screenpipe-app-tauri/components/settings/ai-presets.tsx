@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { Button } from "../ui/button";
 import {
   DEFAULT_PROMPT,
@@ -17,7 +18,6 @@ import {
   ChevronsUpDown,
   Eye,
   EyeOff,
-  HelpCircle,
   Loader2,
   Plus,
   RefreshCw,
@@ -39,7 +39,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import { Slider } from "../ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import {
   Command,
@@ -70,7 +69,6 @@ import {
   validatePresetName,
   validateUrl,
   validateApiKey,
-  validateContextLength,
   debounce,
   FieldValidationResult
 } from "@/lib/utils/validation";
@@ -234,14 +232,6 @@ const AISection = ({
         }
       }
       
-      // Validate context length
-      if (presetData.maxContextChars && presetData.model) {
-        const contextValidation = validateContextLength(presetData.maxContextChars, presetData.model);
-        if (!contextValidation.isValid && contextValidation.error) {
-          errors.maxContextChars = contextValidation.error;
-        }
-      }
-      
       setValidationErrors(errors);
     }, 300),
     [settings.aiPresets, preset?.id]
@@ -378,10 +368,6 @@ const AISection = ({
     updateSettingsPreset({ apiKey: value });
   }, [updateSettingsPreset]);
 
-  const handleMaxContextCharsChange = useCallback((value: number[]) => {
-    updateSettingsPreset({ maxContextChars: value[0] });
-  }, [updateSettingsPreset]);
-
   const handleCustomPromptChange = useCallback((value: string, isValid: boolean) => {
     updateSettingsPreset({ prompt: value });
   }, [updateSettingsPreset]);
@@ -406,7 +392,7 @@ const AISection = ({
         break;
       case "openai-chatgpt":
         newUrl = "https://api.openai.com/v1";
-        newModel = "gpt-5.3-codex";
+        newModel = "gpt-5.1-codex-mini";
         break;
       case "pi":
         newUrl = ""; // Pi uses RPC mode, not HTTP
@@ -425,7 +411,7 @@ const AISection = ({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   const runDiagnostics = useCallback(async () => {
-    if (settingsPreset?.provider === "pi" || settingsPreset?.provider === "openai-chatgpt") return;
+    if (settingsPreset?.provider === "pi") return;
 
     // Abort any previous run
     diagnosticsAbortRef.current?.abort();
@@ -456,14 +442,28 @@ const AISection = ({
     let modelsUrl: string;
     if (settingsPreset?.provider === "native-ollama") {
       modelsUrl = "http://localhost:11434/api/tags";
-    } else if (settingsPreset?.provider === "openai") {
+    } else if (settingsPreset?.provider === "openai" || settingsPreset?.provider === "openai-chatgpt") {
       modelsUrl = "https://api.openai.com/v1/models";
     } else {
       modelsUrl = `${settingsPreset?.url}/models`;
     }
 
     const headers: Record<string, string> = {};
-    if (settingsPreset?.apiKey) {
+    if (settingsPreset?.provider === "openai-chatgpt") {
+      // Get OAuth token for ChatGPT provider
+      try {
+        const tokenResult = await commands.chatgptOauthGetToken();
+        if (tokenResult.status === "ok") {
+          headers["Authorization"] = `Bearer ${tokenResult.data}`;
+        } else {
+          skipRemaining("auth", "Could not get ChatGPT token. Try signing out and back in.");
+          return;
+        }
+      } catch (err) {
+        skipRemaining("auth", `Could not get ChatGPT token: ${err}. You may need to rebuild the app.`);
+        return;
+      }
+    } else if (settingsPreset?.apiKey) {
       headers["Authorization"] = `Bearer ${settingsPreset.apiKey}`;
     }
 
@@ -496,89 +496,117 @@ const AISection = ({
     // Step 1 pass
     setTestResults((prev) => ({
       ...prev,
-      endpoint: { status: "pass", message: `GET ${modelsResponse.status}` },
+      endpoint: { status: "pass", message: isChatGpt ? "Reachable (OAuth)" : `GET ${modelsResponse.status}` },
       auth: { status: "running", message: "Checking..." },
     }));
 
     // Step 2: Auth check
-    if (modelsResponse.status === 401 || modelsResponse.status === 403) {
+    // ChatGPT OAuth tokens lack model.read scope so /v1/models returns 403 — skip to chat test
+    if (settingsPreset?.provider === "openai-chatgpt" && (modelsResponse.status === 403 || modelsResponse.status === 401)) {
+      setTestResults((prev) => ({
+        ...prev,
+        auth: { status: "pass", message: "OAuth token present" },
+        models: { status: "pass", message: "Using known models (API scope limited)" },
+        chat: { status: "running", message: "Sending test message..." },
+      }));
+    } else if (modelsResponse.status === 401 || modelsResponse.status === 403) {
       const hint =
         settingsPreset?.provider === "openai"
           ? "Check your API key at platform.openai.com"
           : "Check your API key is valid and has credits";
       skipRemaining("auth", `${modelsResponse.status} Unauthorized. ${hint}`);
       return;
-    }
-
-    if (!modelsResponse.ok) {
+    } else if (!modelsResponse.ok) {
       skipRemaining("auth", `Unexpected status ${modelsResponse.status}`);
       return;
+    } else {
+      setTestResults((prev) => ({
+        ...prev,
+        auth: { status: "pass", message: "API key accepted" },
+        models: { status: "running", message: "Loading..." },
+      }));
     }
 
-    setTestResults((prev) => ({
-      ...prev,
-      auth: { status: "pass", message: "API key accepted" },
-      models: { status: "running", message: "Loading..." },
-    }));
-
-    // Step 3: Parse models
-    let modelCount = 0;
-    try {
-      const data = await modelsResponse.json();
-      if (settingsPreset?.provider === "native-ollama") {
-        const ollamaModels = (data.models || []).map((m: any) => ({
-          id: m.name,
-          name: m.name,
-          provider: "ollama",
-        }));
-        modelCount = ollamaModels.length;
-        setModels(ollamaModels);
-      } else {
-        const apiModels = (data.data || []).map((m: any) => ({
-          id: m.id,
-          name: m.id,
-          provider: settingsPreset?.provider || "custom",
-        }));
-        modelCount = apiModels.length;
-        setModels(apiModels);
+    // Step 3: Parse models (skip for openai-chatgpt when /v1/models returned 403)
+    if (modelsResponse.ok) {
+      let modelCount = 0;
+      try {
+        const data = await modelsResponse.json();
+        if (settingsPreset?.provider === "native-ollama") {
+          const ollamaModels = (data.models || []).map((m: any) => ({
+            id: m.name,
+            name: m.name,
+            provider: "ollama",
+          }));
+          modelCount = ollamaModels.length;
+          setModels(ollamaModels);
+        } else {
+          const apiModels = (data.data || []).map((m: any) => ({
+            id: m.id,
+            name: m.id,
+            provider: settingsPreset?.provider || "custom",
+          }));
+          modelCount = apiModels.length;
+          setModels(apiModels);
+        }
+      } catch {
+        if (abort.signal.aborted) return;
+        skipRemaining("models", "Failed to parse models response");
+        return;
       }
-    } catch {
+
       if (abort.signal.aborted) return;
-      skipRemaining("models", "Failed to parse models response");
-      return;
+
+      setTestResults((prev) => ({
+        ...prev,
+        models: { status: "pass", message: `${modelCount} model${modelCount !== 1 ? "s" : ""} loaded` },
+        chat: { status: "running", message: "Sending test message..." },
+      }));
     }
 
-    if (abort.signal.aborted) return;
-
-    setTestResults((prev) => ({
-      ...prev,
-      models: { status: "pass", message: `${modelCount} model${modelCount !== 1 ? "s" : ""} loaded` },
-      chat: { status: "running", message: "Sending test message..." },
-    }));
-
-    // Step 4: Test chat completion
+    // Step 4: Test chat completion (or Codex Responses API for ChatGPT OAuth)
+    const isChatGpt = settingsPreset?.provider === "openai-chatgpt";
     let chatUrl: string;
     if (settingsPreset?.provider === "native-ollama") {
       chatUrl = "http://localhost:11434/v1/chat/completions";
     } else if (settingsPreset?.provider === "openai") {
       chatUrl = "https://api.openai.com/v1/chat/completions";
+    } else if (isChatGpt) {
+      chatUrl = "https://chatgpt.com/backend-api/codex/responses";
     } else {
       chatUrl = `${settingsPreset?.url}/chat/completions`;
     }
 
+    const chatBody = isChatGpt
+      ? { model: settingsPreset?.model || "", instructions: "reply briefly", input: [{ role: "user", content: "say hi" }], store: false, stream: true }
+      : { model: settingsPreset?.model || "", messages: [{ role: "user", content: "say hi" }], max_tokens: 50 };
+
+    // For ChatGPT Codex endpoint, extract account ID from JWT and add required headers
+    const chatHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...headers,
+    };
+    if (isChatGpt && headers["Authorization"]) {
+      try {
+        const token = headers["Authorization"].replace("Bearer ", "");
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        const accountId = payload?.["https://api.openai.com/auth"]?.chatgpt_account_id;
+        if (accountId) {
+          chatHeaders["chatgpt-account-id"] = accountId;
+        }
+      } catch { /* ignore JWT parse errors */ }
+      chatHeaders["OpenAI-Beta"] = "responses=experimental";
+    }
+
+    // Use tauriFetch for chatgpt.com to bypass CORS
+    const fetchFn = isChatGpt ? tauriFetch : fetch;
+
     const chatStart = performance.now();
     try {
-      const chatResponse = await fetch(chatUrl, {
+      const chatResponse = await fetchFn(chatUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
-        },
-        body: JSON.stringify({
-          model: settingsPreset?.model || "",
-          messages: [{ role: "user", content: "say hi" }],
-          max_tokens: 50,
-        }),
+        headers: chatHeaders,
+        body: JSON.stringify(chatBody),
         signal: abort.signal,
       });
 
@@ -598,9 +626,14 @@ const AISection = ({
         return;
       }
 
-      const chatData = await chatResponse.json();
-      const reply =
-        chatData.choices?.[0]?.message?.content?.slice(0, 100) || "No response";
+      let reply: string;
+      if (isChatGpt) {
+        // Streaming SSE — just confirm we got a 200 response
+        reply = "Stream started OK";
+      } else {
+        const chatData = await chatResponse.json();
+        reply = chatData.choices?.[0]?.message?.content?.slice(0, 100) || "No response";
+      }
 
       if (abort.signal.aborted) return;
 
@@ -742,11 +775,10 @@ const AISection = ({
             console.error("[chatgpt] model fetch error:", err);
           }
           if (!loaded) {
-            // Known models available via ChatGPT Plus/Pro OAuth
-            // (user can also type any model name in the field)
+            // Codex models available via ChatGPT Plus/Pro subscription
             setModels([
-              "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2",
-              "gpt-5.1", "gpt-5-codex-mini", "o4-mini",
+              "gpt-5.1-codex-mini", "gpt-5.1", "gpt-5.1-codex-max",
+              "gpt-5.2-codex", "gpt-5.2",
             ].map((id) => ({ id, name: id, provider: "openai-chatgpt" })));
           }
           break;
@@ -797,20 +829,20 @@ const AISection = ({
 
   // Auto-trigger diagnostics when provider + url + apiKey are set (debounced)
   useEffect(() => {
-    if (settingsPreset?.provider === "pi" || settingsPreset?.provider === "openai-chatgpt") return;
+    if (settingsPreset?.provider === "pi") return;
     if (!settingsPreset?.provider) return;
 
     const needsApiKey =
       settingsPreset.provider === "openai" || settingsPreset.provider === "custom";
     if (needsApiKey && !settingsPreset.apiKey) return;
 
-    if (settingsPreset.provider === "native-ollama" || settingsPreset.url) {
+    if (settingsPreset.provider === "openai-chatgpt" || settingsPreset.provider === "native-ollama" || settingsPreset.url) {
       const timer = setTimeout(() => {
         runDiagnostics();
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [settingsPreset?.provider, settingsPreset?.url, settingsPreset?.apiKey, runDiagnostics]);
+  }, [settingsPreset?.provider, settingsPreset?.url, settingsPreset?.apiKey, runDiagnostics, chatgptLoggedIn]);
 
   // Cleanup abort controller on unmount
   useEffect(() => {
@@ -1114,56 +1146,7 @@ const AISection = ({
         helperText="This prompt will be used to guide the AI's responses"
       />
 
-      <div className="w-full">
-        <div className="flex flex-col gap-4 mb-4 w-full">
-          <Label htmlFor="aiMaxContextChars" className="flex items-center">
-            Max Context Characters{" "}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="ml-2 h-4 w-4 cursor-default" />
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  <p>
-                    Maximum number of characters (think 4 characters per token)
-                    to send to the AI model. <br />
-                    Usually, OpenAI models support up to 200k tokens, which is
-                    roughly 1M characters. <br />
-                    We&apos;ll use this for UI purposes to show you how much you
-                    can send.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {validationErrors.maxContextChars && (
-              <AlertCircle className="h-4 w-4 text-destructive ml-1" />
-            )}
-          </Label>
-          <div className="flex-grow flex items-center">
-            <Slider
-              id="aiMaxContextChars"
-              min={1000}
-              max={2000000}
-              step={10000}
-              value={
-                settingsPreset?.maxContextChars
-                  ? [settingsPreset?.maxContextChars]
-                  : [512000]
-              }
-              onValueChange={handleMaxContextCharsChange}
-              className="flex-grow"
-            />
-            <span className="ml-2 min-w-[80px] text-right">
-              {(settingsPreset?.maxContextChars ?? 512000).toLocaleString()}
-            </span>
-          </div>
-          {validationErrors.maxContextChars && (
-            <p className="text-sm text-destructive">{validationErrors.maxContextChars}</p>
-          )}
-        </div>
-      </div>
-
-      {settingsPreset?.provider !== "pi" && settingsPreset?.provider !== "openai-chatgpt" && (
+      {settingsPreset?.provider !== "pi" && (
         <div className="w-full border rounded-lg">
           <button
             type="button"
@@ -1431,7 +1414,6 @@ export const AIPresets = () => {
         aiModel: selectedPreset.model,
         aiProviderType: selectedPreset.provider,
         customPrompt: selectedPreset.prompt,
-        aiMaxContextChars: selectedPreset.maxContextChars,
         aiUrl: selectedPreset.url,
       };
 
@@ -1575,12 +1557,6 @@ export const AIPresets = () => {
                         <span className="font-medium">Model:</span>
                         <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
                           {preset.model || 'Not set'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Context:</span>
-                        <span>
-                          {preset.maxContextChars?.toLocaleString() || '512,000'} chars
                         </span>
                       </div>
                     </div>

@@ -166,7 +166,7 @@ interface Message {
   role: "user" | "assistant";
   content: string; // full text for copy/history
   displayContent?: string; // short label shown in chat (e.g. template name)
-  image?: string; // base64 data URL of attached image
+  images?: string[]; // base64 data URLs of attached images
   timestamp: number;
   contentBlocks?: ContentBlock[];
 }
@@ -608,25 +608,29 @@ function MessageContent({ message }: { message: Message }) {
     );
   }
 
+  // Render attached image thumbnails for user messages
+  const imageThumbs = isUser && message.images && message.images.length > 0 ? (
+    <div className="flex gap-1.5 flex-wrap">
+      {message.images.map((img, i) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={i} src={img} alt={`Attached ${i + 1}`} className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover" />
+      ))}
+    </div>
+  ) : null;
+
   // Fallback: plain text message (user messages, non-Pi assistant messages)
   // For user messages with a display label, show the short label with expand toggle
   if (isUser && message.displayContent) {
     return (
       <div className="space-y-2">
-        {message.image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={message.image} alt="Attached" className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover" />
-        )}
+        {imageThumbs}
         <CollapsibleUserMessage label={message.displayContent} fullContent={message.content} />
       </div>
     );
   }
   return (
     <div className="space-y-2">
-      {isUser && message.image && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={message.image} alt="Attached" className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover" />
-      )}
+      {imageThumbs}
       <MarkdownBlock text={message.content} isUser={isUser} />
     </div>
   );
@@ -712,7 +716,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [prefillContext, setPrefillContext] = useState<string | null>(null);
   const [prefillSource, setPrefillSource] = useState<string>("search");
   const [prefillFrameId, setPrefillFrameId] = useState<number | null>(null);
-  const [pastedImage, setPastedImage] = useState<string | null>(null); // Base64 data URL
+  const [pastedImages, setPastedImages] = useState<string[]>([]); // Base64 data URLs
   const [isDragging, setIsDragging] = useState(false);
   const isEmbedded = !!className; // embedded in settings vs overlay panel
 
@@ -781,7 +785,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       const resized = await resizeImage(base64);
-      setPastedImage(resized);
+      setPastedImages(prev => [...prev, resized]);
     };
     reader.readAsDataURL(file);
   }, [resizeImage]);
@@ -848,7 +852,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           content,
           timestamp: m.timestamp,
           ...(blocks?.length ? { contentBlocks: blocks } : {}),
-          ...(m.image ? { image: m.image } : {}),
+          ...(m.images?.length ? { images: m.images } : {}),
         };
       }),
       createdAt: existingIndex >= 0 ? history.conversations[existingIndex].createdAt : Date.now(),
@@ -942,7 +946,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       content: m.content,
       timestamp: m.timestamp,
       ...(m.contentBlocks?.length ? { contentBlocks: m.contentBlocks } : {}),
-      ...((m as any).image ? { image: (m as any).image } : {}),
+      ...((m as any).images?.length ? { images: (m as any).images } : (m as any).image ? { images: [(m as any).image] } : {}),
     })));
     setConversationId(conv.id);
     setShowHistory(false);
@@ -992,7 +996,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
     setShowHistory(false);
-    setPastedImage(null);
+    setPastedImages([]);
     piSessionSyncedRef.current = true;
   };
 
@@ -1042,7 +1046,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return groups;
   }, [filteredConversations]);
 
-  // Read an image file by path and set it as pastedImage (base64 data URL)
+  // Read an image file by path and append it to pastedImages (base64 data URL)
   const loadImageFromPath = useCallback(async (filePath: string) => {
     const ext = filePath.split(".").pop()?.toLowerCase() || "";
     const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
@@ -1064,7 +1068,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       const b64 = btoa(binary);
       const dataUrl = `data:${mime};base64,${b64}`;
       const resized = await resizeImage(dataUrl);
-      setPastedImage(resized);
+      setPastedImages(prev => [...prev, resized]);
     } catch (err) {
       console.error("failed to read dropped image:", err);
     }
@@ -1433,7 +1437,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     // Enter without shift submits the form
     if (e.key === "Enter" && !e.shiftKey && !showMentionDropdown) {
       e.preventDefault();
-      if (input.trim() && !isLoading) {
+      if ((input.trim() || pastedImages.length > 0) && !isLoading) {
         sendMessage(input.trim());
       }
       return;
@@ -2088,6 +2092,13 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               prev.map((m) => m.id === msgId ? { ...m, content: "Rate limited — try again in a moment or switch to a different model." } : m)
             );
           }
+        } else if (line.includes("content must be a string") || line.includes("does not support images") || line.includes("image_url is not supported")) {
+          const msgId = piMessageIdRef.current;
+          if (msgId) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, content: "This model doesn't support images — try a vision-capable model (e.g. llama-4-scout on Groq, gpt-4o on OpenAI)." } : m)
+            );
+          }
         } else if (line.includes("not found") || line.includes("ECONNREFUSED") || line.includes("connection refused")) {
           let hint = line;
           if (line.includes("not found")) {
@@ -2376,7 +2387,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       role: "user",
       content: userMessage,
       ...(displayLabel ? { displayContent: displayLabel } : {}),
-      ...(pastedImage ? { image: pastedImage } : {}),
+      ...(pastedImages.length > 0 ? { images: [...pastedImages] } : {}),
       timestamp: Date.now(),
     };
 
@@ -2451,9 +2462,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         setPrefillContext(null);
       }
 
-      if (pastedImage) {
-        // pastedImage is a data URL like "data:image/png;base64,..."
-        const match = pastedImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
+      for (const img of pastedImages) {
+        const match = img.match(/^data:(image\/[^;]+);base64,(.+)$/);
         if (match) {
           piImages.push({
             type: "image",
@@ -2461,8 +2471,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             data: match[2],
           });
         }
-        setPastedImage(null);
       }
+      if (pastedImages.length > 0) setPastedImages([]);
 
       setMessages((prev) => [
         ...prev,
@@ -2661,7 +2671,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pastedImages.length === 0) || isLoading) return;
     sendMessage(input.trim());
   };
 
@@ -3279,29 +3289,31 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                   "flex w-full border border-border bg-input px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-foreground disabled:cursor-not-allowed disabled:opacity-50 caret-foreground resize-none overflow-y-auto",
                   "flex-1 bg-background/50 border-border/50 focus:border-foreground/30 focus:ring-foreground/10 transition-colors",
                   disabledReason && "border-muted-foreground/30",
-                  pastedImage && "pr-14" // Make room for image preview
+                  pastedImages.length > 0 && "pb-12" // Make room for image previews below
                 )}
                 style={{ maxHeight: "150px" }}
               />
 
-              {/* Pasted image preview inside input */}
-              {pastedImage && (
-                <div className="absolute right-2 top-2 flex items-center gap-1">
-                  <div className="relative group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={pastedImage}
-                      alt="Pasted"
-                      className="h-7 w-7 object-cover rounded border border-border/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPastedImage(null)}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
+              {/* Attached image previews below textarea */}
+              {pastedImages.length > 0 && (
+                <div className="absolute bottom-1 left-2 right-2 flex items-center gap-1.5 overflow-x-auto py-1">
+                  {pastedImages.map((img, i) => (
+                    <div key={i} className="relative group shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img}
+                        alt={`Attached ${i + 1}`}
+                        className="h-8 w-8 object-cover rounded border border-border/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPastedImages(prev => prev.filter((_, idx) => idx !== i))}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -3369,7 +3381,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             <Button
               type={isStreaming ? "button" : "submit"}
               size="icon"
-              disabled={(!input.trim() && !isStreaming) || !canChat}
+              disabled={(!input.trim() && !isStreaming && pastedImages.length === 0) || !canChat}
               onClick={isStreaming ? handleStop : undefined}
               className={cn(
                 "shrink-0 transition-all duration-200",
