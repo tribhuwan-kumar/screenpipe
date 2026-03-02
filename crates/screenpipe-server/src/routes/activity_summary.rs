@@ -107,8 +107,8 @@ pub async fn get_activity_summary(
          FROM elements e \
          JOIN frames f ON f.id = e.frame_id \
          WHERE f.timestamp BETWEEN '{}' AND '{}'{} \
-         AND e.text IS NOT NULL AND e.source = 'accessibility' \
-         AND e.role IN ('AXStaticText', 'line', 'paragraph') \
+         AND e.text IS NOT NULL AND e.source IN ('accessibility', 'ocr') \
+         AND e.role IN ('AXStaticText', 'line', 'paragraph', 'block') \
          ORDER BY f.timestamp DESC LIMIT 10",
         start, end, app_filter_elements
     );
