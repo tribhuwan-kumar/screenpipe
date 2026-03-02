@@ -105,7 +105,8 @@ Rules for showing videos/audio:
 - Show videos by putting .mp4 file paths in inline code blocks: \`/path/to/video.mp4\`
 - Use the exact, absolute file_path from search results
 
-Be concise. Cite timestamps when relevant. Always display times in the user's local timezone.
+Be concise. Cite timestamps when relevant.
+IMPORTANT: All timestamps from the API/database are in UTC. You MUST convert them to the user's local timezone (shown below) before displaying. For example, if the API returns "2024-01-15T13:00:00Z" and the user is in UTC+1, display "2:00 PM" not "1:00 PM".
 
 FULL API REFERENCE:
 For the complete list of 60+ screenpipe API endpoints (frames, audio, vision, tags, speakers, pipes, streaming, etc.), fetch: https://docs.screenpi.pe/llms-full.txt
