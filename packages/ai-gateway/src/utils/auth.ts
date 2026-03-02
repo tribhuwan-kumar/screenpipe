@@ -235,7 +235,7 @@ async function validateSubscriptionWithId(env: Env, token: string): Promise<{ is
       console.error('Error checking Clerk user subscription:', error);
     }
     // Not subscribed - don't auto-grant, return false so it falls through
-    return { isValid: false, userId: token };
+    return { isValid: false };
   }
 
   return { isValid: false };
