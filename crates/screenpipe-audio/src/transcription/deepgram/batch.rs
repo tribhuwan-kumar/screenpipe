@@ -76,7 +76,7 @@ fn create_wav_file(audio_data: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
 }
 
 fn create_query_params(languages: Vec<Language>, vocabulary: &[VocabularyEntry]) -> String {
-    let mut query_params = String::from("model=nova-2&smart_format=true&sample_rate=16000");
+    let mut query_params = String::from("model=nova-3&smart_format=true&sample_rate=16000");
 
     if !languages.is_empty() {
         query_params = [

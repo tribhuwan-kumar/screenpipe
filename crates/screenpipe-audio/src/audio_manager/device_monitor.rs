@@ -75,7 +75,8 @@ pub async fn start_device_monitor(
         // Track devices that repeatedly fail to start so we don't spam errors
         // every 2 seconds. After a failure, back off for increasing durations.
         let mut failed_devices: HashMap<String, (u32, Instant)> = HashMap::new();
-        const MAX_FAIL_BACKOFF_SECS: u64 = 300; // cap at 5 minutes
+        let mut no_output_retry_count: u32 = 0;
+        let mut no_input_retry_count: u32 = 0;
 
         // Central handler restart cooldown: max 3 restarts in a 5-minute window
         let mut central_restart_times: Vec<Instant> = Vec::new();
@@ -88,6 +89,9 @@ pub async fn start_device_monitor(
         loop {
             if audio_manager.status().await == AudioManagerStatus::Running {
                 let currently_available_devices = device_manager.devices().await;
+                if currently_available_devices.is_empty() {
+                    warn!("[DEVICE_RECOVERY] device list returned empty (transient SCK failure?), skipping availability checks this cycle");
+                }
                 let enabled_devices = audio_manager.enabled_devices().await;
 
                 // Handle "Follow System Default" mode
@@ -130,39 +134,55 @@ pub async fn start_device_monitor(
                         }
                     }
 
-                    // Check if system default output changed
-                    if let Some(new_default_output) = default_tracker.check_output_changed().await {
-                        info!("system default output changed to: {}", new_default_output);
+                    // Check if system default output changed.
+                    // Atomic swap: start new device FIRST, then stop old ones.
+                    // This ensures continuous audio capture — if the new device
+                    // fails to start, the old devices keep running as fallback.
+                    if let Some(new_default_output) =
+                        default_tracker.check_output_changed().await
+                    {
+                        info!(
+                            "[DEVICE_RECOVERY] system default output changed to: {}",
+                            new_default_output
+                        );
 
-                        // Stop all current output devices
-                        for device_name in audio_manager.enabled_devices().await.iter() {
-                            if let Ok(device) = parse_audio_device(device_name) {
-                                if device.device_type == DeviceType::Output {
-                                    let _ = audio_manager.stop_device(device_name).await;
+                        let new_started =
+                            if let Ok(new_device) = parse_audio_device(&new_default_output) {
+                                failed_devices.remove(&new_default_output);
+                                match audio_manager.start_device(&new_device).await {
+                                    Ok(()) => {
+                                        info!(
+                                            "[DEVICE_RECOVERY] started new system default output: {}",
+                                            new_default_output
+                                        );
+                                        true
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            "[DEVICE_RECOVERY] failed to start new default output {}: {} — keeping old devices running",
+                                            new_default_output, e
+                                        );
+                                        false
+                                    }
                                 }
-                            }
-                        }
+                            } else {
+                                false
+                            };
 
-                        // Start the new default output device (reset cooldown on change)
-                        if let Ok(new_device) = parse_audio_device(&new_default_output) {
-                            failed_devices.remove(&new_default_output);
-                            match audio_manager.start_device(&new_device).await {
-                                Ok(()) => {
-                                    info!(
-                                        "switched to new system default output: {}",
-                                        new_default_output
-                                    );
+                        // Only stop old output devices if the new one started successfully
+                        if new_started {
+                            for device_name in audio_manager.enabled_devices().await.iter() {
+                                if *device_name == new_default_output {
+                                    continue; // don't stop the one we just started
                                 }
-                                Err(e) => {
-                                    let count = failed_devices
-                                        .entry(new_default_output.clone())
-                                        .or_insert((0, Instant::now()));
-                                    count.0 += 1;
-                                    count.1 = Instant::now();
-                                    error!(
-                                        "failed to start new default output {}: {} (will back off)",
-                                        new_default_output, e
-                                    );
+                                if let Ok(device) = parse_audio_device(device_name) {
+                                    if device.device_type == DeviceType::Output {
+                                        info!(
+                                            "[DEVICE_RECOVERY] stopping old output device: {}",
+                                            device_name
+                                        );
+                                        let _ = audio_manager.stop_device(device_name).await;
+                                    }
                                 }
                             }
                         }
@@ -171,6 +191,7 @@ pub async fn start_device_monitor(
                     // Ensure an input device is actually running.
                     // Handles the case where the input device was lost after a
                     // server restart or device reconnection (e.g. AirPods).
+                    // No backoff — missing input audio is critical.
                     {
                         let current_enabled = audio_manager.enabled_devices().await;
                         let has_input = current_enabled.iter().any(|name| {
@@ -180,52 +201,48 @@ pub async fn start_device_monitor(
                         });
 
                         if !has_input {
-                            if let Ok(default_input) = default_input_device() {
-                                let device_name = default_input.to_string();
-
-                                let should_skip = if let Some((fails, last_fail)) =
-                                    failed_devices.get(&device_name)
-                                {
-                                    let backoff = Duration::from_secs(
-                                        (2u64.pow((*fails).min(8))).min(MAX_FAIL_BACKOFF_SECS),
-                                    );
-                                    last_fail.elapsed() < backoff
-                                } else {
-                                    false
-                                };
-
-                                if !should_skip {
-                                    info!(
-                                        "no input device running, starting default: {}",
-                                        device_name
+                            no_input_retry_count += 1;
+                            match default_input_device() {
+                                Ok(default_input) => {
+                                    let device_name = default_input.to_string();
+                                    warn!(
+                                        "[DEVICE_RECOVERY] no input device running (attempt {}), starting default: {}",
+                                        no_input_retry_count, device_name
                                     );
                                     match audio_manager.start_device(&default_input).await {
                                         Ok(()) => {
                                             failed_devices.remove(&device_name);
                                             default_tracker.last_input = Some(device_name.clone());
-                                            info!("started missing input device: {}", device_name);
+                                            no_input_retry_count = 0;
+                                            info!(
+                                                "[DEVICE_RECOVERY] input device restored, device={}", device_name
+                                            );
                                         }
                                         Err(e) => {
-                                            let count = failed_devices
-                                                .entry(device_name.clone())
-                                                .or_insert((0, Instant::now()));
-                                            count.0 += 1;
-                                            count.1 = Instant::now();
-                                            let backoff_secs = (2u64.pow(count.0.min(8)))
-                                                .min(MAX_FAIL_BACKOFF_SECS);
                                             warn!(
-                                                "could not start input device {} ({} failures, next retry in {}s): {}",
-                                                device_name, count.0, backoff_secs, e
+                                                "[DEVICE_RECOVERY] failed to start input device {} (attempt {}): {}",
+                                                device_name, no_input_retry_count, e
                                             );
                                         }
                                     }
                                 }
+                                Err(e) => {
+                                    warn!(
+                                        "[DEVICE_RECOVERY] no input device running and default_input_device() failed (attempt {}): {}",
+                                        no_input_retry_count, e
+                                    );
+                                }
                             }
+                        } else {
+                            no_input_retry_count = 0;
                         }
                     }
 
                     // Ensure an output device is actually running.
-                    // Handles the case where ScreenCaptureKit wasn't ready at startup.
+                    // Handles the case where ScreenCaptureKit wasn't ready at startup
+                    // or output device was lost during a device change.
+                    // CRITICAL: No backoff here — missing output audio is unacceptable
+                    // during calls. We retry every 2s (each loop iteration).
                     {
                         let current_enabled = audio_manager.enabled_devices().await;
                         let has_output = current_enabled.iter().any(|name| {
@@ -235,48 +252,41 @@ pub async fn start_device_monitor(
                         });
 
                         if !has_output {
-                            if let Ok(default_output) = default_output_device().await {
-                                let device_name = default_output.to_string();
-
-                                // Skip if this device is in cooldown from previous failures
-                                let should_skip = if let Some((fails, last_fail)) =
-                                    failed_devices.get(&device_name)
-                                {
-                                    let backoff = Duration::from_secs(
-                                        (2u64.pow((*fails).min(8))).min(MAX_FAIL_BACKOFF_SECS),
-                                    );
-                                    last_fail.elapsed() < backoff
-                                } else {
-                                    false
-                                };
-
-                                if !should_skip {
-                                    info!(
-                                        "no output device running, starting default: {}",
-                                        device_name
+                            no_output_retry_count += 1;
+                            match default_output_device().await {
+                                Ok(default_output) => {
+                                    let device_name = default_output.to_string();
+                                    // No backoff — always retry immediately when zero output devices
+                                    warn!(
+                                        "[DEVICE_RECOVERY] no output device running (attempt {}), starting default: {}",
+                                        no_output_retry_count, device_name
                                     );
                                     match audio_manager.start_device(&default_output).await {
                                         Ok(()) => {
                                             failed_devices.remove(&device_name);
                                             default_tracker.last_output = Some(device_name.clone());
-                                            info!("started missing output device: {}", device_name);
+                                            no_output_retry_count = 0;
+                                            info!(
+                                                "[DEVICE_RECOVERY] output device restored, device={}", device_name
+                                            );
                                         }
                                         Err(e) => {
-                                            let count = failed_devices
-                                                .entry(device_name.clone())
-                                                .or_insert((0, Instant::now()));
-                                            count.0 += 1;
-                                            count.1 = Instant::now();
-                                            let backoff_secs = (2u64.pow(count.0.min(8)))
-                                                .min(MAX_FAIL_BACKOFF_SECS);
                                             warn!(
-                                                "could not start output device {} ({} failures, next retry in {}s): {}",
-                                                device_name, count.0, backoff_secs, e
+                                                "[DEVICE_RECOVERY] failed to start output device {} (attempt {}): {}",
+                                                device_name, no_output_retry_count, e
                                             );
                                         }
                                     }
                                 }
+                                Err(e) => {
+                                    warn!(
+                                        "[DEVICE_RECOVERY] no output device running and default_output_device() failed (attempt {}): {}",
+                                        no_output_retry_count, e
+                                    );
+                                }
                             }
+                        } else {
+                            no_output_retry_count = 0;
                         }
                     }
                 }
@@ -353,7 +363,11 @@ pub async fn start_device_monitor(
                         }
                     };
 
+                    // Guard: if the device list is empty (transient SCK failure),
+                    // don't treat running devices as disconnected — that would
+                    // cascade into stopping ALL audio.
                     if device_manager.is_running(&device)
+                        && !currently_available_devices.is_empty()
                         && !currently_available_devices.contains(&device)
                     {
                         info!("Device {device_name} disconnected");

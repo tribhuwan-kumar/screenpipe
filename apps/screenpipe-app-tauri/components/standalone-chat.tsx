@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSettings, ChatMessage, ChatConversation } from "@/lib/hooks/use-settings";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock } from "lucide-react";
+import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip } from "lucide-react";
 import { SchedulePromptDialog } from "@/components/chat/schedule-prompt-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,11 +24,12 @@ import remarkGfm from "remark-gfm";
 // OpenAI SDK no longer used directly — all providers route through Pi agent
 import posthog from "posthog-js";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { save as saveDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { writeTextFile, readFile } from "@tauri-apps/plugin-fs";
 import { commands } from "@/lib/utils/tauri";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { usePlatform } from "@/lib/hooks/use-platform";
 import { useSqlAutocomplete } from "@/lib/hooks/use-sql-autocomplete";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -165,6 +166,7 @@ interface Message {
   role: "user" | "assistant";
   content: string; // full text for copy/history
   displayContent?: string; // short label shown in chat (e.g. template name)
+  image?: string; // base64 data URL of attached image
   timestamp: number;
   contentBlocks?: ContentBlock[];
 }
@@ -609,9 +611,25 @@ function MessageContent({ message }: { message: Message }) {
   // Fallback: plain text message (user messages, non-Pi assistant messages)
   // For user messages with a display label, show the short label with expand toggle
   if (isUser && message.displayContent) {
-    return <CollapsibleUserMessage label={message.displayContent} fullContent={message.content} />;
+    return (
+      <div className="space-y-2">
+        {message.image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={message.image} alt="Attached" className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover" />
+        )}
+        <CollapsibleUserMessage label={message.displayContent} fullContent={message.content} />
+      </div>
+    );
   }
-  return <MarkdownBlock text={message.content} isUser={isUser} />;
+  return (
+    <div className="space-y-2">
+      {isUser && message.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={message.image} alt="Attached" className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover" />
+      )}
+      <MarkdownBlock text={message.content} isUser={isUser} />
+    </div>
+  );
 }
 
 function CollapsibleUserMessage({ label, fullContent }: { label: string; fullContent: string }) {
@@ -684,7 +702,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [isLoadingSpeakers, setIsLoadingSpeakers] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
@@ -696,7 +714,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [prefillFrameId, setPrefillFrameId] = useState<number | null>(null);
   const [pastedImage, setPastedImage] = useState<string | null>(null); // Base64 data URL
   const [isDragging, setIsDragging] = useState(false);
-  const dragCounterRef = useRef(0);
+  const isEmbedded = !!className; // embedded in settings vs overlay panel
 
   // Pi agent state
   const [piInfo, setPiInfo] = useState<{ running: boolean; projectDir: string | null; pid: number | null } | null>(null);
@@ -733,15 +751,40 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [historySearch, setHistorySearch] = useState("");
 
   // Process an image file to base64
+  // Resize image to max 1024px and compress as JPEG to keep base64 payload small
+  const resizeImage = useCallback((dataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          const scale = MAX / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = () => resolve(dataUrl); // fallback to original
+      img.src = dataUrl;
+    });
+  }, []);
+
   const processImageFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64 = event.target?.result as string;
-      setPastedImage(base64);
+      const resized = await resizeImage(base64);
+      setPastedImage(resized);
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [resizeImage]);
 
   // Always start with a fresh conversation — history is accessible via the History button
   // (No auto-load of last active conversation)
@@ -805,6 +848,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           content,
           timestamp: m.timestamp,
           ...(blocks?.length ? { contentBlocks: blocks } : {}),
+          ...(m.image ? { image: m.image } : {}),
         };
       }),
       createdAt: existingIndex >= 0 ? history.conversations[existingIndex].createdAt : Date.now(),
@@ -898,6 +942,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       content: m.content,
       timestamp: m.timestamp,
       ...(m.contentBlocks?.length ? { contentBlocks: m.contentBlocks } : {}),
+      ...((m as any).image ? { image: (m as any).image } : {}),
     })));
     setConversationId(conv.id);
     setShowHistory(false);
@@ -945,6 +990,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     setMessages([]);
     setConversationId(null);
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
     setShowHistory(false);
     setPastedImage(null);
     piSessionSyncedRef.current = true;
@@ -996,52 +1042,76 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return groups;
   }, [filteredConversations]);
 
-  // Handle drag events for image drop
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current++;
+  // Read an image file by path and set it as pastedImage (base64 data URL)
+  const loadImageFromPath = useCallback(async (filePath: string) => {
+    const ext = filePath.split(".").pop()?.toLowerCase() || "";
+    const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    if (!imageExts.includes(ext)) return;
 
-    // Check if dragging files that include images
-    const hasFiles = e.dataTransfer.types.includes("Files");
-    if (hasFiles) {
-      setIsDragging(true);
-    }
-  }, []);
+    try {
+      const bytes = await readFile(filePath);
+      const mimeMap: Record<string, string> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+        gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml",
+      };
+      const mime = mimeMap[ext] || "image/png";
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current--;
-
-    if (dragCounterRef.current === 0) {
-      setIsDragging(false);
-    }
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      // Find first image file
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.type.startsWith("image/")) {
-          processImageFile(file);
-          break;
-        }
+      // Convert Uint8Array to base64
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
+      const b64 = btoa(binary);
+      const dataUrl = `data:${mime};base64,${b64}`;
+      const resized = await resizeImage(dataUrl);
+      setPastedImage(resized);
+    } catch (err) {
+      console.error("failed to read dropped image:", err);
     }
-  }, [processImageFile]);
+  }, [resizeImage]);
+
+  // Handle file picker
+  const handleFilePicker = useCallback(async () => {
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [{
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+        }],
+      });
+      if (selected) {
+        await loadImageFromPath(selected);
+      }
+    } catch (err) {
+      console.error("file picker error:", err);
+    }
+  }, [loadImageFromPath]);
+
+  // Drag-drop only works in the embedded (non-overlay) chat. The overlay is an
+  // NSPanel with NonActivatingPanel style which doesn't receive drag events.
+  useEffect(() => {
+    if (!isEmbedded) return;
+
+    const webview = getCurrentWebview();
+    const unlisten = webview.onDragDropEvent((event) => {
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        setIsDragging(true);
+      } else if (event.payload.type === "drop") {
+        setIsDragging(false);
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          loadImageFromPath(paths[0]);
+        }
+      } else if (event.payload.type === "leave") {
+        setIsDragging(false);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [isEmbedded, loadImageFromPath]);
 
   // Handle paste events to capture images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -1149,6 +1219,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             if (sendMessageRef.current) {
               await sendMessageRef.current(fullMessage);
               setInput("");
+              if (inputRef.current) inputRef.current.style.height = "auto";
             }
             autoSendBypassRef.current = false;
           }
@@ -1314,9 +1385,14 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return [...suggestions, ...speakerSuggestions];
   }, [mentionFilter, speakerSuggestions, baseMentionSuggestions]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInput(value);
+
+    // Auto-resize textarea
+    const textarea = e.target;
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(textarea.scrollHeight, 150) + "px";
 
     const cursorPos = e.target.selectionStart || 0;
     const textBeforeCursor = value.slice(0, cursorPos);
@@ -1348,7 +1424,21 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     inputRef.current?.focus();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Prevent '/' from triggering app shortcuts while typing
+    if (e.key === '/') {
+      e.stopPropagation();
+    }
+
+    // Enter without shift submits the form
+    if (e.key === "Enter" && !e.shiftKey && !showMentionDropdown) {
+      e.preventDefault();
+      if (input.trim() && !isLoading) {
+        sendMessage(input.trim());
+      }
+      return;
+    }
+
     if (!showMentionDropdown) return;
 
     if (e.key === "ArrowDown") {
@@ -2286,6 +2376,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       role: "user",
       content: userMessage,
       ...(displayLabel ? { displayContent: displayLabel } : {}),
+      ...(pastedImage ? { image: pastedImage } : {}),
       timestamp: Date.now(),
     };
 
@@ -2306,6 +2397,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
     setMessages((prev) => [...prev, newUserMessage]);
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
     setIsLoading(true);
     setIsStreaming(true);
 
@@ -3149,53 +3241,29 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           onSubmit={handleSubmit}
           className="p-3 relative"
           onPaste={handlePaste}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
         >
-          {/* Drop zone overlay */}
-          <AnimatePresence>
-            {isDragging && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm rounded-lg border-2 border-dashed border-primary m-1"
-              >
+          {/* Drop zone overlay — only shown in embedded (non-overlay) chat */}
+          {isEmbedded && (
+            <AnimatePresence>
+              {isDragging && (
                 <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
-                  transition={{ duration: 0.15, delay: 0.05 }}
-                  className="flex flex-col items-center gap-3 p-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm rounded-lg border-2 border-dashed border-primary m-1"
                 >
-                  <motion.div
-                    animate={{
-                      y: [0, -8, 0],
-                    }}
-                    transition={{
-                      duration: 1.5,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                    }}
-                    className="p-4 rounded-2xl bg-primary/10 border border-primary/20"
-                  >
-                    <ImageIcon className="w-8 h-8 text-primary" />
-                  </motion.div>
-                  <div className="text-center">
-                    <p className="font-semibold text-foreground">Drop your image here</p>
-                    <p className="text-xs text-muted-foreground mt-1">PNG, JPG, GIF, or WebP</p>
+                  <div className="flex flex-col items-center gap-2">
+                    <ImageIcon className="w-6 h-6 text-primary" />
+                    <p className="text-sm font-medium text-foreground">drop image here</p>
                   </div>
                 </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="flex gap-2">
+              )}
+            </AnimatePresence>
+          )}
+          <div className="flex gap-2 items-end">
             <div className="relative flex-1">
-              <Input
+              <textarea
                 ref={inputRef}
                 value={input}
                 onChange={handleInputChange}
@@ -3206,16 +3274,19 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                     : "Ask about your screen... (type @ for filters, paste images)"
                 }
                 disabled={isLoading || !canChat}
+                rows={1}
                 className={cn(
+                  "flex w-full border border-border bg-input px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-foreground disabled:cursor-not-allowed disabled:opacity-50 caret-foreground resize-none overflow-y-auto",
                   "flex-1 bg-background/50 border-border/50 focus:border-foreground/30 focus:ring-foreground/10 transition-colors",
                   disabledReason && "border-muted-foreground/30",
                   pastedImage && "pr-14" // Make room for image preview
                 )}
+                style={{ maxHeight: "150px" }}
               />
 
               {/* Pasted image preview inside input */}
               {pastedImage && (
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <div className="absolute right-2 top-2 flex items-center gap-1">
                   <div className="relative group">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -3284,6 +3355,17 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 )}
               </AnimatePresence>
             </div>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={handleFilePicker}
+              disabled={isLoading || !canChat}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              title="Attach image"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Button
               type={isStreaming ? "button" : "submit"}
               size="icon"

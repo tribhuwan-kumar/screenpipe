@@ -125,7 +125,7 @@ pub async fn start_deepgram_stream(
     let deepgram_transcription = deepgram.transcription();
 
     let options = deepgram::common::options::OptionsBuilder::new()
-        .model(deepgram::common::options::Model::Nova2)
+        .model(deepgram::common::options::Model::Nova3)
         .smart_format(true)
         .diarize(true)
         .build();
