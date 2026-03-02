@@ -25,12 +25,12 @@ use crate::audio_manager::AudioManager;
 /// Controls when Whisper transcription runs.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TranscriptionMode {
-    /// Transcribe immediately as audio is captured (current behavior).
-    #[default]
+    /// Transcribe immediately as audio is captured.
     Realtime,
-    /// Accumulate audio into longer batches (30s-5min) using silence-gap detection.
-    /// Gives Whisper more context for better transcription quality.
-    /// Has no effect on Deepgram (cloud) — always realtime.
+    /// Defer transcription during audio sessions (meetings, YouTube, etc.)
+    /// and batch-transcribe when the session ends or every 2 min.
+    /// Lower CPU during calls, better Whisper context, crash-safe.
+    #[default]
     #[serde(alias = "Smart")]
     Batch,
 }

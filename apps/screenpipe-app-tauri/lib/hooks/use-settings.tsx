@@ -270,7 +270,7 @@ let DEFAULT_SETTINGS: Settings = {
 			overlayMode: "fullscreen",
 			showOverlayInScreenRecording: false,
 			videoQuality: "balanced",
-			transcriptionMode: "realtime",
+			transcriptionMode: "batch",
 			cloudArchiveEnabled: false,
 			cloudArchiveRetentionDays: 7,
 		};
