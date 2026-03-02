@@ -88,7 +88,7 @@ pub async fn poll_power_state() -> PowerState {
 }
 
 /// Poll interval for the power monitor.
-pub const POLL_INTERVAL: Duration = Duration::from_secs(30);
+pub const POLL_INTERVAL: Duration = Duration::from_secs(10);
 
 // ─── macOS ──────────────────────────────────────────────────────────────────
 

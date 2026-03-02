@@ -84,7 +84,7 @@ pub fn start_power_manager() -> Arc<PowerManagerHandle> {
     let initial_profile = PowerProfile::performance(); // assume AC until first poll
     let (profile_tx, profile_rx) = watch::channel(initial_profile);
     let state = Arc::new(RwLock::new(PowerState::default()));
-    let user_pref = Arc::new(RwLock::new(PowerMode::Auto));
+    let user_pref = Arc::new(RwLock::new(PowerMode::default()));
 
     let handle = Arc::new(PowerManagerHandle {
         profile_tx,
