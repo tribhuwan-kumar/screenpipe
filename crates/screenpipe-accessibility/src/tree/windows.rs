@@ -32,6 +32,12 @@ const EXCLUDED_APPS: &[&str] = &[
     "keepassxc",
     "credential manager",
     "logonui",
+    // System UI processes that produce noise (lock screen, search, notifications, etc.)
+    "lockapp",
+    "searchhost",
+    "shellexperiencehost",
+    "pickerhost",
+    "snippingtool",
 ];
 
 /// Window title patterns that indicate sensitive content.
@@ -191,6 +197,25 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
         let window_lower = window_name.to_lowercase();
         if SENSITIVE_TITLES.iter().any(|s| window_lower.contains(s)) {
             return Ok(None);
+        }
+
+        // Apply user-configured ignored windows (check app name and window title)
+        if self.config.ignored_windows.iter().any(|pattern| {
+            let p = pattern.to_lowercase();
+            app_lower.contains(&p) || window_lower.contains(&p)
+        }) {
+            return Ok(None);
+        }
+
+        // Apply user-configured included windows (whitelist mode)
+        if !self.config.included_windows.is_empty() {
+            let matches = self.config.included_windows.iter().any(|pattern| {
+                let p = pattern.to_lowercase();
+                app_lower.contains(&p) || window_lower.contains(&p)
+            });
+            if !matches {
+                return Ok(None);
+            }
         }
 
         // Check timeout budget

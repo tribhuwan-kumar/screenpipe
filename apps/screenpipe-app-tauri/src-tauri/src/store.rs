@@ -430,6 +430,12 @@ impl Default for SettingsStore {
             "Nvidia".to_string(),
             "Control Panel".to_string(),
             "System Properties".to_string(),
+            "LockApp.exe".to_string(),
+            "SearchHost.exe".to_string(),
+            "ShellExperienceHost.exe".to_string(),
+            "PickerHost.exe".to_string(),
+            "Taskmgr.exe".to_string(),
+            "SnippingTool.exe".to_string(),
         ]);
 
         #[cfg(target_os = "linux")]
