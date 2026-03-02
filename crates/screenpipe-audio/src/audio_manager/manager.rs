@@ -513,8 +513,12 @@ impl AudioManager {
                                 &vocabulary,
                             )
                             .await;
+                            for _ in 0..count {
+                                metrics.record_segment_batch_processed();
+                            }
                             info!("batch mode: transcribed {} chunks after session end", count);
                         } else if now_in_session {
+                            metrics.record_segment_deferred();
                             debug!("batch mode: in audio session, deferring transcription");
                         } else {
                             // Not in an audio session — transcribe immediately like realtime
@@ -584,27 +588,6 @@ impl AudioManager {
                     {
                         error!("Error processing audio: {:?}", e);
                     }
-                }
-
-                if let Err(e) = process_audio_input(
-                    audio.clone(),
-                    vad_engine.clone(),
-                    segmentation_model_path.clone(),
-                    embedding_manager.clone(),
-                    embedding_extractor.clone(),
-                    &output_path.clone().unwrap(),
-                    audio_transcription_engine.clone(),
-                    deepgram_api_key.clone(),
-                    openai_compatible_config.clone(),
-                    languages.clone(),
-                    &transcription_sender.clone(),
-                    &mut session,
-                    metrics.clone(),
-                    persisted_file_path.clone(),
-                )
-                .await
-                {
-                    error!("Error processing audio: {:?}", e);
                 }
             }
         }))
