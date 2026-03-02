@@ -428,7 +428,7 @@ pub async fn get_frame_metadata(
     }
 }
 
-/// Bounding box for an accessibility node (0-1 normalized to window)
+/// Bounding box for an accessibility node (0-1 normalized to monitor)
 #[derive(OaSchema, Serialize, Clone)]
 pub struct AccessibilityNodeBounds {
     pub left: f32,
@@ -624,21 +624,102 @@ pub struct FrameOcrResponse {
 }
 
 /// Get OCR text positions with bounding boxes for a specific frame.
-/// Returns only Apple Vision OCR positions (screen-relative, normalized 0-1).
-/// Accessibility tree bounds are NOT mixed in because they use window-relative
-/// coordinates which don't align with the full-screen capture image.
+/// Falls back to accessibility tree node bounds when no OCR data exists.
+/// Both OCR and accessibility bounds are normalized to 0-1 relative to the
+/// monitor (full-screen capture), so they align correctly with the screenshot.
 #[oasgen]
 pub async fn get_frame_ocr_data(
     State(state): State<Arc<AppState>>,
     Path(frame_id): Path<i64>,
 ) -> Result<JsonResponse<FrameOcrResponse>, (StatusCode, JsonResponse<Value>)> {
-    let text_positions = match state.db.get_frame_text_positions(frame_id).await {
+    // Get OCR data (bounding boxes from Apple Vision)
+    let mut text_positions = match state.db.get_frame_text_positions(frame_id).await {
         Ok(tp) => tp,
         Err(e) => {
             error!("Failed to get OCR data for frame {}: {}", frame_id, e);
             Vec::new()
         }
     };
+
+    // Merge accessibility tree link nodes — they have complete URLs with proper
+    // bounds, unlike OCR which often splits URLs across multiple text blocks.
+    if let Ok((_, Some(tree_json))) = state.db.get_frame_accessibility_data(frame_id).await {
+        if let Ok(nodes) = serde_json::from_str::<Vec<serde_json::Value>>(&tree_json) {
+            for n in &nodes {
+                let role = n.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                let role_lower = role.to_lowercase();
+                if !role_lower.contains("link") && !role_lower.contains("hyperlink") {
+                    continue;
+                }
+                let text = match n.get("text").and_then(|v| v.as_str()) {
+                    Some(t) if !t.trim().is_empty() => t,
+                    _ => continue,
+                };
+                if !text.trim().starts_with("http://")
+                    && !text.trim().starts_with("https://")
+                    && !text.trim().starts_with("www.")
+                {
+                    continue;
+                }
+                let b = match n.get("bounds") {
+                    Some(b) => b,
+                    None => continue,
+                };
+                let left = b.get("left").and_then(|v| v.as_f64()).unwrap_or(-1.0) as f32;
+                let top = b.get("top").and_then(|v| v.as_f64()).unwrap_or(-1.0) as f32;
+                let width = b.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                let height = b.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                if width <= 0.0 || height <= 0.0 {
+                    continue;
+                }
+                text_positions.push(TextPosition {
+                    text: text.to_string(),
+                    confidence: 1.0,
+                    bounds: screenpipe_db::TextBounds {
+                        left,
+                        top,
+                        width,
+                        height,
+                    },
+                });
+            }
+        }
+    }
+
+    // Pure a11y fallback for frames with no OCR — grab all text nodes with bounds
+    if text_positions.is_empty() {
+        if let Ok((_, Some(tree_json))) = state.db.get_frame_accessibility_data(frame_id).await {
+            if let Ok(nodes) = serde_json::from_str::<Vec<serde_json::Value>>(&tree_json) {
+                text_positions = nodes
+                    .iter()
+                    .filter_map(|n| {
+                        let text = n.get("text")?.as_str()?;
+                        if text.trim().is_empty() {
+                            return None;
+                        }
+                        let b = n.get("bounds")?;
+                        let left = b.get("left")?.as_f64()? as f32;
+                        let top = b.get("top")?.as_f64()? as f32;
+                        let width = b.get("width")?.as_f64()? as f32;
+                        let height = b.get("height")?.as_f64()? as f32;
+                        if width <= 0.0 || height <= 0.0 {
+                            return None;
+                        }
+                        Some(TextPosition {
+                            text: text.to_string(),
+                            confidence: 1.0,
+                            bounds: screenpipe_db::TextBounds {
+                                left,
+                                top,
+                                width,
+                                height,
+                            },
+                        })
+                    })
+                    .collect();
+            }
+        }
+    }
 
     Ok(JsonResponse(FrameOcrResponse {
         frame_id,

@@ -6,6 +6,11 @@
 //!
 //! Lets ChatGPT Plus/Pro subscribers authenticate via their existing subscription
 //! and use models like GPT-4o without a separate API key.
+//!
+//! Flow (matches Codex CLI):
+//!  1. PKCE authorize → auth code
+//!  2. Exchange auth code → access_token + refresh_token
+//!  3. Use access_token directly as Bearer token for OpenAI API
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -17,19 +22,20 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info};
 
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-const AUTH_URL: &str = "https://auth.openai.com/oauth/authorize";
+const ISSUER: &str = "https://auth.openai.com";
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
-const CALLBACK_PORT: u16 = 14551;
+const CALLBACK_PORT: u16 = 1455;
 
 // ── Token storage ──────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone)]
 struct OAuthTokens {
+    /// The OAuth access_token used as Bearer token for OpenAI API calls
     access_token: String,
-    refresh_token: Option<String>,
+    /// OAuth refresh token for obtaining new credentials
+    refresh_token: String,
     /// Unix-epoch seconds when the access token expires
     expires_at: Option<u64>,
-    token_type: String,
 }
 
 #[derive(Serialize, Deserialize, specta::Type)]
@@ -61,10 +67,7 @@ fn write_tokens(tokens: &OAuthTokens) -> Result<(), String> {
 fn is_token_expired(tokens: &OAuthTokens) -> bool {
     match tokens.expires_at {
         Some(expires_at) => {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
+            let now = unix_now();
             now >= expires_at.saturating_sub(60)
         }
         None => false,
@@ -81,14 +84,12 @@ fn unix_now() -> u64 {
 // ── PKCE helpers ───────────────────────────────────────────────────────
 
 fn generate_pkce() -> (String, String) {
-    // code_verifier: 64 hex chars from two v4 UUIDs (meets 43-128 char requirement)
     let verifier = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
 
-    // code_challenge = base64url_no_pad(sha256(code_verifier))
     let mut hasher = Sha256::new();
     hasher.update(verifier.as_bytes());
     let challenge = URL_SAFE_NO_PAD.encode(hasher.finalize());
@@ -99,14 +100,20 @@ fn generate_pkce() -> (String, String) {
 // ── Token refresh ──────────────────────────────────────────────────────
 
 async fn do_refresh_token(refresh_token: &str) -> Result<OAuthTokens, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {}", e))?;
+
     let resp = client
         .post(TOKEN_URL)
-        .form(&[
-            ("grant_type", "refresh_token"),
-            ("client_id", CLIENT_ID),
-            ("refresh_token", refresh_token),
-        ])
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "grant_type": "refresh_token",
+            "client_id": CLIENT_ID,
+            "refresh_token": refresh_token,
+            "scope": "openid profile email",
+        }))
         .send()
         .await
         .map_err(|e| format!("token refresh request failed: {}", e))?;
@@ -122,22 +129,26 @@ async fn do_refresh_token(refresh_token: &str) -> Result<OAuthTokens, String> {
         .await
         .map_err(|e| format!("failed to parse refresh response: {}", e))?;
 
+    let new_access_token = v["access_token"]
+        .as_str()
+        .ok_or("no access_token in refresh response")?
+        .to_string();
+
+    let new_refresh_token = v["refresh_token"]
+        .as_str()
+        .unwrap_or(refresh_token)
+        .to_string();
+
     let expires_in = v["expires_in"].as_u64().unwrap_or(3600);
 
     let tokens = OAuthTokens {
-        access_token: v["access_token"]
-            .as_str()
-            .ok_or("no access_token in refresh response")?
-            .to_string(),
-        refresh_token: v["refresh_token"]
-            .as_str()
-            .map(|s| s.to_string())
-            .or_else(|| Some(refresh_token.to_string())),
+        access_token: new_access_token,
+        refresh_token: new_refresh_token,
         expires_at: Some(unix_now() + expires_in),
-        token_type: v["token_type"].as_str().unwrap_or("Bearer").to_string(),
     };
 
     write_tokens(&tokens)?;
+    info!("ChatGPT token refreshed successfully");
     Ok(tokens)
 }
 
@@ -146,11 +157,8 @@ pub async fn get_valid_token() -> Result<String, String> {
     let tokens = read_tokens().ok_or("not logged in to ChatGPT")?;
 
     if is_token_expired(&tokens) {
-        if let Some(ref rt) = tokens.refresh_token {
-            let refreshed = do_refresh_token(rt).await?;
-            return Ok(refreshed.access_token);
-        }
-        return Err("token expired and no refresh token available".to_string());
+        let refreshed = do_refresh_token(&tokens.refresh_token).await?;
+        return Ok(refreshed.access_token);
     }
 
     Ok(tokens.access_token)
@@ -185,7 +193,6 @@ async fn wait_for_callback(listener: tokio::net::TcpListener) -> Result<String, 
         })
         .ok_or_else(|| "no authorization code in callback".to_string())?;
 
-    // Send a success page back to the browser
     let html = concat!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n",
         "<html><body style=\"font-family:system-ui;text-align:center;padding:60px\">",
@@ -222,16 +229,22 @@ pub async fn chatgpt_oauth_login(app_handle: AppHandle) -> Result<bool, String> 
 
     let redirect_uri = format!("http://localhost:{}/auth/callback", port);
 
-    // Build the authorization URL
-    let mut auth_url = reqwest::Url::parse(AUTH_URL).unwrap();
+    let state = uuid::Uuid::new_v4().simple().to_string();
+
+    // Build the authorization URL (matches Codex CLI params)
+    let mut auth_url = reqwest::Url::parse(&format!("{ISSUER}/oauth/authorize")).unwrap();
     auth_url
         .query_pairs_mut()
-        .append_pair("client_id", CLIENT_ID)
-        .append_pair("code_challenge", &code_challenge)
-        .append_pair("redirect_uri", &redirect_uri)
         .append_pair("response_type", "code")
+        .append_pair("client_id", CLIENT_ID)
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("scope", "openid profile email offline_access")
+        .append_pair("code_challenge", &code_challenge)
         .append_pair("code_challenge_method", "S256")
-        .append_pair("scope", "openid profile email offline_access");
+        .append_pair("id_token_add_organizations", "true")
+        .append_pair("codex_cli_simplified_flow", "true")
+        .append_pair("state", &state)
+        .append_pair("originator", "codex_cli_rs");
 
     // Open system browser
     app_handle
@@ -250,17 +263,22 @@ pub async fn chatgpt_oauth_login(app_handle: AppHandle) -> Result<bool, String> 
     .map_err(|_| "OAuth login timed out (120s)".to_string())?
     .map_err(|e| format!("OAuth callback error: {}", e))?;
 
-    // Exchange authorization code for tokens
-    let client = reqwest::Client::new();
+    // Exchange authorization code for access_token + refresh_token
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {}", e))?;
+
     let resp = client
         .post(TOKEN_URL)
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("client_id", CLIENT_ID),
-            ("code", auth_code.as_str()),
-            ("redirect_uri", redirect_uri.as_str()),
-            ("code_verifier", code_verifier.as_str()),
-        ])
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(format!(
+            "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&code_verifier={}",
+            urlencoding::encode(&auth_code),
+            urlencoding::encode(&redirect_uri),
+            urlencoding::encode(CLIENT_ID),
+            urlencoding::encode(&code_verifier),
+        ))
         .send()
         .await
         .map_err(|e| format!("token exchange request failed: {}", e))?;
@@ -268,6 +286,7 @@ pub async fn chatgpt_oauth_login(app_handle: AppHandle) -> Result<bool, String> 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
+        error!("token exchange failed ({}): {}", status, body);
         return Err(format!("token exchange failed ({}): {}", status, body));
     }
 
@@ -276,20 +295,26 @@ pub async fn chatgpt_oauth_login(app_handle: AppHandle) -> Result<bool, String> 
         .await
         .map_err(|e| format!("failed to parse token response: {}", e))?;
 
+    let access_token = v["access_token"]
+        .as_str()
+        .ok_or("no access_token in token response")?
+        .to_string();
+
+    let refresh_token = v["refresh_token"]
+        .as_str()
+        .ok_or("no refresh_token in token response")?
+        .to_string();
+
     let expires_in = v["expires_in"].as_u64().unwrap_or(3600);
 
     let tokens = OAuthTokens {
-        access_token: v["access_token"]
-            .as_str()
-            .ok_or("no access_token in response")?
-            .to_string(),
-        refresh_token: v["refresh_token"].as_str().map(|s| s.to_string()),
+        access_token,
+        refresh_token,
         expires_at: Some(unix_now() + expires_in),
-        token_type: v["token_type"].as_str().unwrap_or("Bearer").to_string(),
     };
 
     write_tokens(&tokens)?;
-    info!("ChatGPT OAuth login successful");
+    info!("ChatGPT OAuth login successful — token saved");
 
     Ok(true)
 }
@@ -300,16 +325,12 @@ pub async fn chatgpt_oauth_status() -> Result<ChatGptOAuthStatus, String> {
     match read_tokens() {
         Some(tokens) => {
             if is_token_expired(&tokens) {
-                if let Some(ref rt) = tokens.refresh_token {
-                    match do_refresh_token(rt).await {
-                        Ok(_) => Ok(ChatGptOAuthStatus { logged_in: true }),
-                        Err(e) => {
-                            error!("ChatGPT token refresh failed: {}", e);
-                            Ok(ChatGptOAuthStatus { logged_in: false })
-                        }
+                match do_refresh_token(&tokens.refresh_token).await {
+                    Ok(_) => Ok(ChatGptOAuthStatus { logged_in: true }),
+                    Err(e) => {
+                        error!("ChatGPT token refresh failed: {}", e);
+                        Ok(ChatGptOAuthStatus { logged_in: false })
                     }
-                } else {
-                    Ok(ChatGptOAuthStatus { logged_in: false })
                 }
             } else {
                 Ok(ChatGptOAuthStatus { logged_in: true })
@@ -317,6 +338,55 @@ pub async fn chatgpt_oauth_status() -> Result<ChatGptOAuthStatus, String> {
         }
         None => Ok(ChatGptOAuthStatus { logged_in: false }),
     }
+}
+
+/// Return the current valid access token (auto-refreshing if needed).
+/// Used by the frontend to call OpenAI APIs directly (e.g. /v1/models).
+#[tauri::command]
+#[specta::specta]
+pub async fn chatgpt_oauth_get_token() -> Result<String, String> {
+    get_valid_token().await
+}
+
+/// Fetch available models from OpenAI using the stored OAuth token.
+#[tauri::command]
+#[specta::specta]
+pub async fn chatgpt_oauth_models() -> Result<Vec<String>, String> {
+    let token = get_valid_token().await?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {}", e))?;
+
+    let resp = client
+        .get("https://api.openai.com/v1/models")
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("failed to fetch models: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("models fetch failed ({}): {}", status, body));
+    }
+
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("failed to parse models response: {}", e))?;
+
+    let models: Vec<String> = v["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(models)
 }
 
 #[tauri::command]

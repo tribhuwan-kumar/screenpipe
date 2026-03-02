@@ -406,7 +406,7 @@ const AISection = ({
         break;
       case "openai-chatgpt":
         newUrl = "https://api.openai.com/v1";
-        newModel = "gpt-4o";
+        newModel = "gpt-5.3-codex";
         break;
       case "pi":
         newUrl = ""; // Pi uses RPC mode, not HTTP
@@ -708,6 +708,50 @@ const AISection = ({
           }
           break;
 
+        case "openai-chatgpt": {
+          // Try /v1/models with OAuth token; fall back to known models if it fails.
+          let loaded = false;
+          try {
+            const tokenResult = await commands.chatgptOauthGetToken();
+            if (tokenResult.status === "ok") {
+              const chatgptResp = await fetch("https://api.openai.com/v1/models", {
+                headers: { Authorization: `Bearer ${tokenResult.data}` },
+              });
+              console.log("[chatgpt] /v1/models status:", chatgptResp.status);
+              if (chatgptResp.ok) {
+                const chatgptData = await chatgptResp.json();
+                const chatgptModels = (chatgptData.data || [])
+                  .map((m: { id: string }) => ({
+                    id: m.id,
+                    name: m.id,
+                    provider: "openai-chatgpt",
+                  }));
+                console.log("[chatgpt] fetched", chatgptModels.length, "models from API");
+                if (chatgptModels.length > 0) {
+                  setModels(chatgptModels);
+                  loaded = true;
+                }
+              } else {
+                const body = await chatgptResp.text();
+                console.warn("[chatgpt] /v1/models failed:", chatgptResp.status, body);
+              }
+            } else {
+              console.warn("[chatgpt] get_token failed:", tokenResult.status === "error" ? tokenResult.error : "unknown");
+            }
+          } catch (err) {
+            console.error("[chatgpt] model fetch error:", err);
+          }
+          if (!loaded) {
+            // Known models available via ChatGPT Plus/Pro OAuth
+            // (user can also type any model name in the field)
+            setModels([
+              "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2",
+              "gpt-5.1", "gpt-5-codex-mini", "o4-mini",
+            ].map((id) => ({ id, name: id, provider: "openai-chatgpt" })));
+          }
+          break;
+        }
+
         case "pi": {
           const piModels: AIModel[] = [
             { id: "claude-haiku-4-5", name: "Haiku 4.5 (fast)", provider: "screenpipe" },
@@ -731,7 +775,7 @@ const AISection = ({
       setIsLoadingModels(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsPreset?.provider, settingsPreset?.url, settingsPreset?.apiKey, settings.user?.id]);
+  }, [settingsPreset?.provider, settingsPreset?.url, settingsPreset?.apiKey, settings.user?.id, chatgptLoggedIn]);
 
   const apiKey = useMemo(() => {
     if (settingsPreset && "apiKey" in settingsPreset) {
@@ -798,24 +842,6 @@ const AISection = ({
         </div>
         <div className="grid grid-cols-2 gap-4 mb-4 mt-4">
           <AIProviderCard
-            type="openai"
-            title="OpenAI"
-            description="Use your own OpenAI API key for GPT-4 and other models"
-            imageSrc="/images/openai.png"
-            selected={settingsPreset?.provider === "openai"}
-            onClick={() => handleAiProviderChange("openai")}
-          />
-
-          <AIProviderCard
-            type="native-ollama"
-            title="Ollama"
-            description="Run AI models locally using your existing Ollama installation"
-            imageSrc="/images/ollama.png"
-            selected={settingsPreset?.provider === "native-ollama"}
-            onClick={() => handleAiProviderChange("native-ollama")}
-          />
-
-          <AIProviderCard
             type="openai-chatgpt"
             title="ChatGPT"
             description="Sign in with your ChatGPT Plus/Pro subscription"
@@ -831,6 +857,15 @@ const AISection = ({
             imageSrc="/images/custom.png"
             selected={settingsPreset?.provider === "custom"}
             onClick={() => handleAiProviderChange("custom")}
+          />
+
+          <AIProviderCard
+            type="native-ollama"
+            title="Ollama"
+            description="Run AI models locally using your existing Ollama installation"
+            imageSrc="/images/ollama.png"
+            selected={settingsPreset?.provider === "native-ollama"}
+            onClick={() => handleAiProviderChange("native-ollama")}
           />
 
           {piAvailable && (
@@ -948,7 +983,7 @@ const AISection = ({
                 {chatgptLoading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : chatgptLoggedIn ? (
-                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
                 ) : null}
                 {chatgptLoggedIn ? "Sign out" : "Sign in with ChatGPT"}
               </Button>
@@ -1128,7 +1163,7 @@ const AISection = ({
         </div>
       </div>
 
-      {settingsPreset?.provider !== "pi" && (
+      {settingsPreset?.provider !== "pi" && settingsPreset?.provider !== "openai-chatgpt" && (
         <div className="w-full border rounded-lg">
           <button
             type="button"
@@ -1267,6 +1302,7 @@ const AISection = ({
 
 const providerImageSrc: Record<string, string> = {
   openai: "/images/openai.png",
+  "openai-chatgpt": "/images/openai.png",
   "native-ollama": "/images/ollama.png",
   custom: "/images/custom.png",
   pi: "/images/screenpipe.png",

@@ -1269,7 +1269,9 @@ async fn main() {
                 // ChatGPT OAuth commands
                 chatgpt_oauth::chatgpt_oauth_login,
                 chatgpt_oauth::chatgpt_oauth_status,
+                chatgpt_oauth::chatgpt_oauth_get_token,
                 chatgpt_oauth::chatgpt_oauth_logout,
+                chatgpt_oauth::chatgpt_oauth_models,
                 // Reminders commands
                 reminders::reminders_status,
                 reminders::reminders_authorize,
@@ -1500,6 +1502,7 @@ async fn main() {
             chatgpt_oauth::chatgpt_oauth_login,
             chatgpt_oauth::chatgpt_oauth_status,
             chatgpt_oauth::chatgpt_oauth_logout,
+            chatgpt_oauth::chatgpt_oauth_models,
             // Reminders commands
             reminders::reminders_status,
             reminders::reminders_authorize,

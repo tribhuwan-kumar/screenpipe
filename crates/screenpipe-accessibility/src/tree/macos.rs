@@ -392,11 +392,17 @@ struct WalkState {
     truncated: bool,
     truncation_reason: super::TruncationReason,
     max_depth_reached: usize,
-    /// Window origin and size in screen points (for normalizing element bounds).
+    /// Window origin and size in screen points (fallback for normalizing element bounds).
     window_x: f64,
     window_y: f64,
     window_w: f64,
     window_h: f64,
+    /// Monitor origin and size in screen points (for normalizing to monitor-relative coords).
+    /// When > 0, used instead of window dimensions so that bounds match the full-screen capture.
+    monitor_x: f64,
+    monitor_y: f64,
+    monitor_w: f64,
+    monitor_h: f64,
 }
 
 impl WalkState {
@@ -417,6 +423,10 @@ impl WalkState {
             window_y: 0.0,
             window_w: 0.0,
             window_h: 0.0,
+            monitor_x: config.monitor_x,
+            monitor_y: config.monitor_y,
+            monitor_w: config.monitor_width,
+            monitor_h: config.monitor_height,
         }
     }
 
@@ -634,7 +644,10 @@ fn get_element_frame(elem: &ax::UiElement) -> Option<(f64, f64, f64, f64)> {
     Some((pos.0, pos.1, size.0, size.1))
 }
 
-/// Normalize an element's screen-absolute frame to 0-1 coords relative to the window.
+/// Normalize an element's screen-absolute frame to 0-1 coordinates.
+///
+/// Prefers **monitor-relative** normalization (matching the full-screen capture image).
+/// Falls back to **window-relative** if monitor dimensions aren't available.
 fn normalize_bounds(
     elem_x: f64,
     elem_y: f64,
@@ -642,15 +655,21 @@ fn normalize_bounds(
     elem_h: f64,
     state: &WalkState,
 ) -> Option<super::NodeBounds> {
-    if state.window_w <= 0.0 || state.window_h <= 0.0 {
+    // Pick reference frame: monitor (matches screenshot) > window (legacy fallback)
+    let (ref_x, ref_y, ref_w, ref_h) = if state.monitor_w > 0.0 && state.monitor_h > 0.0 {
+        (state.monitor_x, state.monitor_y, state.monitor_w, state.monitor_h)
+    } else if state.window_w > 0.0 && state.window_h > 0.0 {
+        (state.window_x, state.window_y, state.window_w, state.window_h)
+    } else {
         return None;
-    }
-    let left = ((elem_x - state.window_x) / state.window_w) as f32;
-    let top = ((elem_y - state.window_y) / state.window_h) as f32;
-    let width = (elem_w / state.window_w) as f32;
-    let height = (elem_h / state.window_h) as f32;
+    };
 
-    // Sanity check — skip if out of window bounds
+    let left = ((elem_x - ref_x) / ref_w) as f32;
+    let top = ((elem_y - ref_y) / ref_h) as f32;
+    let width = (elem_w / ref_w) as f32;
+    let height = (elem_h / ref_h) as f32;
+
+    // Sanity check — skip if out of bounds
     if left < -0.1 || top < -0.1 || width <= 0.0 || height <= 0.0 || left > 1.1 || top > 1.1 {
         return None;
     }

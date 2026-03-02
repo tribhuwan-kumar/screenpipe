@@ -211,9 +211,15 @@ impl VisionManager {
         let activity_feed = ActivityFeed::new();
 
         // Tree walker config — pass through user's ignored/included window filters
+        // and monitor dimensions so accessibility bounds are normalized to the
+        // monitor coordinate space (matching the full-screen capture image).
         let tree_walker_config = TreeWalkerConfig {
             ignored_windows: self.config.ignored_windows.clone(),
             included_windows: self.config.included_windows.clone(),
+            monitor_x: monitor.x() as f64,
+            monitor_y: monitor.y() as f64,
+            monitor_width: monitor.width() as f64,
+            monitor_height: monitor.height() as f64,
             ..TreeWalkerConfig::default()
         };
 

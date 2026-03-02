@@ -21,7 +21,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
-/// Bounding box of an accessibility node, normalized to 0-1 relative to the window.
+/// Bounding box of an accessibility node, normalized to 0-1.
+///
+/// When monitor dimensions are provided in [`TreeWalkerConfig`], bounds are
+/// relative to the monitor (matching full-screen capture images). Otherwise
+/// they fall back to window-relative coordinates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeBounds {
     pub left: f32,
@@ -36,7 +40,7 @@ pub struct AccessibilityTreeNode {
     pub role: String,
     pub text: String,
     pub depth: u8,
-    /// Bounding box in 0-1 normalized coordinates relative to the window.
+    /// Bounding box in 0-1 normalized coordinates (monitor-relative when available).
     /// None if the element doesn't expose AXPosition/AXSize.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<NodeBounds>,
@@ -148,6 +152,15 @@ pub struct TreeWalkerConfig {
     pub ignored_windows: Vec<String>,
     /// User-configured windows to include (whitelist — if non-empty, only these are captured).
     pub included_windows: Vec<String>,
+    /// Monitor origin X in screen points (virtual desktop coordinate space).
+    /// Used to normalize element bounds to monitor-relative 0-1 coords.
+    pub monitor_x: f64,
+    /// Monitor origin Y in screen points.
+    pub monitor_y: f64,
+    /// Monitor width in screen points.
+    pub monitor_width: f64,
+    /// Monitor height in screen points.
+    pub monitor_height: f64,
 }
 
 impl Default for TreeWalkerConfig {
@@ -161,6 +174,10 @@ impl Default for TreeWalkerConfig {
             element_timeout_secs: 0.2,
             ignored_windows: Vec::new(),
             included_windows: Vec::new(),
+            monitor_x: 0.0,
+            monitor_y: 0.0,
+            monitor_width: 0.0,
+            monitor_height: 0.0,
         }
     }
 }

@@ -263,6 +263,8 @@ pub enum AIProviderType {
     #[default]
     #[serde(rename = "openai")]
     OpenAI,
+    #[serde(rename = "openai-chatgpt")]
+    OpenAIChatGPT,
     #[serde(rename = "native-ollama")]
     NativeOllama,
     #[serde(rename = "custom")]
