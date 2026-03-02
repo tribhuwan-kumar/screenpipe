@@ -433,6 +433,11 @@ impl AudioManager {
         info!("transcription session created (will be reused across segments)");
 
         Ok(tokio::spawn(async move {
+            // Track whether we've deferred segments so we can trigger reconciliation
+            // when the session ends — even if the transition happens between chunks
+            // (i.e. the 45s output-speech window expires between deliveries).
+            let mut had_deferred_segments = false;
+
             while let Ok(audio) = whisper_receiver.recv() {
                 debug!("received audio from device: {:?}", audio.device.name);
 
@@ -495,8 +500,15 @@ impl AudioManager {
                         meeting.check_grace_period().await;
                         let now_in_session = meeting.is_in_audio_session();
 
-                        if was_in_session && !now_in_session {
-                            // Audio session just ended — trigger immediate reconciliation
+                        // Detect session-end: either the transition happened during
+                        // check_grace_period (was=true, now=false), OR it happened
+                        // between chunks (was=false, now=false, but we had deferred).
+                        let session_just_ended = (was_in_session && !now_in_session)
+                            || (!now_in_session && had_deferred_segments);
+
+                        if session_just_ended {
+                            // Audio session ended — trigger immediate reconciliation
+                            had_deferred_segments = false;
                             info!(
                                 "batch mode: audio session ended, transcribing accumulated audio"
                             );
@@ -518,6 +530,7 @@ impl AudioManager {
                             }
                             info!("batch mode: transcribed {} chunks after session end", count);
                         } else if now_in_session {
+                            had_deferred_segments = true;
                             metrics.record_segment_deferred();
                             debug!("batch mode: in audio session, deferring transcription");
                         } else {

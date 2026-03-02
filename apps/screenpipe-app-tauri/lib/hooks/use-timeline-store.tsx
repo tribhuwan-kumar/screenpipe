@@ -428,6 +428,35 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 					return;
 				}
 
+				// Handle audio updates from batch/reconciliation — merge
+				// transcription into existing frames near the audio timestamp.
+				if (data.type === "audio_update" && data.audio) {
+					set((state) => {
+						const audioTs = new Date(data.timestamp).getTime();
+						const pad = 60_000; // ±60s window matching server
+						let updated = false;
+						const updatedFrames = state.frames.map((frame) => {
+							const frameTs = new Date(frame.timestamp).getTime();
+							if (Math.abs(frameTs - audioTs) > pad) return frame;
+							// Check if this audio is already attached
+							const isDuplicate = frame.devices?.some((d: any) =>
+								d.audio?.some((a: any) => a.audio_chunk_id === data.audio.audio_chunk_id)
+							);
+							if (isDuplicate) return frame;
+							updated = true;
+							return {
+								...frame,
+								devices: frame.devices?.map((d: any) => ({
+									...d,
+									audio: [...(d.audio || []), data.audio],
+								})),
+							};
+						});
+						return updated ? { frames: updatedFrames } : {};
+					});
+					return;
+				}
+
 				// Handle batched frames - OPTIMIZED: buffer and flush periodically
 				if (Array.isArray(data)) {
 					// Add to buffer instead of immediate state update

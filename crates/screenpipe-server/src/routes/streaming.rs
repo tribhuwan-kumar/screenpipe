@@ -416,6 +416,8 @@ async fn handle_stream_frames_socket(
 
         // Subscribe to live frame updates from the hot cache
         let mut frame_rx_cache = cache.subscribe_frames();
+        // Subscribe to live audio updates (reconciliation / batch mode push)
+        let mut audio_rx_cache = cache.subscribe_audio();
         let mut frame_rx_channel = Some(frame_rx);
 
         loop {
@@ -521,6 +523,48 @@ async fn handle_stream_frames_socket(
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             debug!("hot cache broadcast closed");
+                            break;
+                        }
+                    }
+                }
+
+                // Live audio from hot cache (reconciliation / batch mode)
+                // Sends audio updates so the timeline can attach transcriptions
+                // to frames that were originally sent without audio.
+                result = audio_rx_cache.recv() => {
+                    match result {
+                        Ok(hot_audio) => {
+                            let is_live = live_subscribe.lock().await.unwrap_or(false);
+                            if !is_live {
+                                continue;
+                            }
+                            // Send a lightweight audio-update message so the
+                            // frontend can merge transcription into existing frames.
+                            let update = serde_json::json!({
+                                "type": "audio_update",
+                                "timestamp": hot_audio.timestamp,
+                                "audio": {
+                                    "device_name": hot_audio.device_name,
+                                    "is_input": hot_audio.is_input,
+                                    "transcription": hot_audio.transcription,
+                                    "audio_file_path": hot_audio.audio_file_path,
+                                    "duration_secs": hot_audio.duration_secs,
+                                    "start_offset": hot_audio.start_time.unwrap_or(0.0),
+                                    "audio_chunk_id": hot_audio.audio_chunk_id,
+                                    "speaker_id": hot_audio.speaker_id,
+                                    "speaker_name": hot_audio.speaker_name,
+                                }
+                            });
+                            if let Err(e) = sender.send(Message::Text(update.to_string())).await {
+                                warn!("failed to send audio update: {}", e);
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            debug!("audio cache broadcast lagged by {} messages", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!("audio cache broadcast closed");
                             break;
                         }
                     }
