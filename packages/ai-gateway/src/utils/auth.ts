@@ -107,13 +107,15 @@ export async function validateAuth(request: Request, env: Env): Promise<AuthResu
     };
   }
 
-  // Check if it's a valid Clerk token (logged in but no subscription)
+  // Check if it's a valid Clerk JWT token
   const clerkResult = await verifyClerkToken(env, token);
   if (clerkResult.valid) {
     const resolvedUserId = clerkResult.userId || token;
+    // Check subscription using the resolved Clerk user ID
+    const { isValid: hasSubscription } = await validateSubscriptionWithId(env, resolvedUserId);
     return {
       isValid: true,
-      tier: 'logged_in',
+      tier: hasSubscription ? 'subscribed' : 'logged_in',
       deviceId: resolvedUserId,
       userId: resolvedUserId,
     };
