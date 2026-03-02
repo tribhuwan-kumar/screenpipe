@@ -221,12 +221,23 @@ impl PiExecutor {
                         provider_url.unwrap_or("https://api.openai.com/v1"),
                         "OPENAI_API_KEY",
                     ),
+                    "openai-chatgpt" => (
+                        "openai-chatgpt",
+                        "https://api.openai.com/v1",
+                        "OPENAI_CHATGPT_TOKEN",
+                    ),
                     other => (other, provider_url.unwrap_or(""), "CUSTOM_API_KEY"),
+                };
+
+                let wire_api = if prov == "openai-chatgpt" {
+                    "openai-codex-responses"
+                } else {
+                    "openai-completions"
                 };
 
                 let user_provider = json!({
                     "baseUrl": base_url,
-                    "api": "openai-completions",
+                    "api": wire_api,
                     "apiKey": api_key,
                     "models": [{
                         "id": mdl,
@@ -355,6 +366,9 @@ impl PiExecutor {
                     "openai" | "openai-byok" => {
                         cmd.env("OPENAI_API_KEY", key);
                     }
+                    "openai-chatgpt" => {
+                        cmd.env("OPENAI_CHATGPT_TOKEN", key);
+                    }
                     "custom" => {
                         cmd.env("CUSTOM_API_KEY", key);
                     }
@@ -443,6 +457,9 @@ impl PiExecutor {
                 match resolved_provider {
                     "openai" | "openai-byok" => {
                         cmd.env("OPENAI_API_KEY", key);
+                    }
+                    "openai-chatgpt" => {
+                        cmd.env("OPENAI_CHATGPT_TOKEN", key);
                     }
                     "custom" => {
                         cmd.env("CUSTOM_API_KEY", key);
