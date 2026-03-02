@@ -6,6 +6,12 @@
 
 ### 1. window overlay & fullscreen spaces (macOS)
 
+- [ ] **window mode CSS restore** — In window mode (not fullscreen), verify that CSS styling is correct and as expected (e.g., no unexpected transparent panels).
+- [ ] **keyboard input in main window from tray** — Open the main window from the tray icon and immediately try typing. Verify that keyboard input works without requiring a click.
+- [ ] **WKWebView keyboard focus recovery** — Interact with embedded web views (e.g., billing, help sections), then navigate back to other UI elements. Verify keyboard focus is correctly recovered by the WKWebView.
+
+
+
 these break CONSTANTLY. any change to `window_api.rs`, `main.rs` shortcuts, activation policy, or NSPanel code must test ALL of these.
 
 commits that broke this area: `0752ea59`, `d89c5f14`, `4a64fd1a`, `fa591d6e`, `8706ae73`, `6d44af13`, `b6ff1bf7`, `09a18070`
@@ -81,8 +87,15 @@ commits: `28e5c247`
 - [ ] **disable audio setting** — toggling "disable audio" stops all audio recording. re-enabling restarts it.
 - [ ] **Metal GPU for whisper** — transcription uses GPU acceleration on macOS (`f882caef`). verify with Activity Monitor GPU tab.
 - [ ] **Batch transcription mode** — Verify that batch transcription mode works correctly with both cloud and Deepgram engines.
+- [ ] **Lower RMS threshold for batch mode output devices** — In batch transcription mode, verify that output devices correctly use a lower RMS threshold.
+- [ ] **OpenAI-compatible STT connection test** — Configure OpenAI-compatible STT, then use the connection test feature. Verify it accurately reports connection status.
+- [ ] **OpenAI-compatible STT editable model input** — When using OpenAI-compatible STT, verify that the model input fields are editable.
+- [ ] **OpenAI-compatible STT with custom vocabulary** — Configure OpenAI-compatible STT with a custom vocabulary. Verify that transcription accuracy improves when this vocabulary is present in the audio.
+- [ ] **OpenAI-compatible transcription engine support** — Enable and configure the OpenAI-compatible transcription engine. Verify that audio is correctly captured and transcribed using this engine.
 
 ### 5. frame comparison & OCR pipeline
+
+commits: `6dd5d98e`, `831ad258`
 
 commits: `6dd5d98e`, `831ad258`
 
@@ -96,9 +109,26 @@ commits: `6dd5d98e`, `831ad258`
 - [ ] **corrupt pixel buffer** — sck-rs handles corrupt ScreenCaptureKit buffers gracefully (no SIGABRT). fixed in `831ad258`.
 - [ ] **window capture only on changed frames** — window enumeration (CGWindowList) should NOT run on skipped frames. verify by checking CPU on idle multi-monitor setup.
 
-### 6. permissions (macOS)
+### 6. Battery Saver Mode
 
-commits: `d9d43d31`, `620c89a5`
+commits: `d5a9d052`, `0b32cc9a`, `ca29a67b`
+
+- [ ] **Battery Saver mode functionality** — Enable Battery Saver mode. Verify that capture adjustments (e.g., reduced FPS, paused capture) occur as expected when the device's power state changes (e.g., unplugging/plugging power, low battery).
+- [ ] **Faster power state UI updates** — Change the device's power state (e.g., unplug/plug power). Verify that the UI updates quickly and accurately reflects the current power state and capture mode.
+- [ ] **Correct default power mode** — On a fresh install or after a reset, verify that the default power mode is set to "performance" until Battery Saver mode is explicitly enabled or configured.
+
+### 7. permissions (macOS)
+
+commits: `d9d43d31`, `620c89a5`, `14acf6f0`
+
+- [ ] **fresh install — all prompts appear** — screen recording, microphone, accessibility prompts all show on first launch.
+- [ ] **denied permission → opens System Settings** — if user previously denied mic permission, clicking "grant" opens System Settings > Privacy directly (`620c89a5`).
+- [ ] **permission revoked while running** — go to System Settings, revoke screen recording. app shows red permission banner within 10 seconds.
+- [ ] **permission banner is visible** — solid red `bg-destructive` banner at top of main window when any permission missing. not subtle (`9c0ba5d1`).
+- [ ] **permission recovery page** — navigating to /permission-recovery shows clear instructions.
+- [ ] **startup permission gate** — on first launch, permissions are requested before recording starts (`d9d43d31`).
+- [ ] **faster permission polling** — permission status checked every 5-10 seconds, not 30 (`d9d43d31`).
+- [ ] **No recurring permission modal after close** — Grant macOS permissions, quit the app, and relaunch it multiple times. Verify that the macOS permission modal does NOT reappear every time the app is closed.
 
 - [ ] **fresh install — all prompts appear** — screen recording, microphone, accessibility prompts all show on first launch.
 - [ ] **denied permission → opens System Settings** — if user previously denied mic permission, clicking "grant" opens System Settings > Privacy directly (`620c89a5`).
@@ -124,7 +154,7 @@ commits: `d4abc619`, `4f4a8282`, `31f37407`, `2223af9a`, `b34a4abd`, `303958f9`
 
 ### 8. app lifecycle & updates
 
-commits: `94531265`, `d794176a`, `9070639c`, `0378cab1`, `4a3313d3`
+commits: `94531265`, `d794176a`, `9070639c`, `0378cab1`, `4a3313d3`, `7ffdd4f1`, `1b36f62d`
 
 - [ ] **clean quit via tray** — right-click tray → Quit. all processes terminate. no orphaned ffmpeg/bun processes.
 - [ ] **clean quit via dock** — right-click dock → Quit. same as above.
@@ -141,10 +171,23 @@ commits: `94531265`, `d794176a`, `9070639c`, `0378cab1`, `4a3313d3`
 - [ ] **rollback** — user can rollback to previous version via tray menu (`c7fbc3ea`).
 - [ ] **Zombie CPU drain prevention** — Verify that `lsof` calls have a 5-second timeout, preventing zombie CPU drain, especially on quit. Check logs for `lsof` timeouts if applicable.
 - [ ] **Tokio shutdown stability** — Verify that the `tokio` shutdown process is stable and doesn't panic in the tree walker, especially during application exit or process restarts.
+- [ ] **No ggml Metal destructor crash on quit** — Perform multiple quick quits (Cmd+Q, tray quit) and restarts. Verify that the app exits cleanly without a `ggml Metal destructor crash`.
+- [ ] **Properly wait for UI recorder tasks before exit** — During a clean quit, verify that all UI recorder tasks complete properly and no orphaned processes or partial recordings remain.
 
 ### 9. database & storage
 
-commits: `eea0c865`, `cc09de61`
+commits: `eea0c865`, `cc09de61`, `e61501da`, `d25191d7`, `60096fb9`
+
+- [ ] **slow DB insert warning** — check logs. "Slow DB batch insert" warnings should be <1s in normal operation. >3s indicates contention.
+- [ ] **concurrent DB access** — UI queries + recording inserts happening simultaneously. no "database is locked" errors.
+- [ ] **store race condition** — rapidly toggle settings while recording is active. no crash (`eea0c865`).
+- [ ] **event listener race condition** — Tauri event listener setup during rapid window creation. no crash (`cc09de61`).
+- [ ] **UTF-8 boundary panic** — search with special characters, non-ASCII text in OCR results. no panic on string slicing (`eea0c865`).
+- [ ] **low disk space** — with <1GB free, app should warn user. no crash from failed writes.
+- [ ] **large database (>10GB)** — search still returns results within 2 seconds. app doesn't freeze on startup.
+- [ ] **Audio chunk timestamps** — `start_time` and `end_time` are correctly set for reconciled and retranscribed audio chunks in the database.
+- [ ] **DB pool starvation prevention** — Simulate high database load (e.g., rapid screen activity, many pipes running) and monitor logs. Verify no "database is locked" errors or signs of DB pool starvation.
+- [ ] **Multi-byte window titles in suggestions** — Interact with suggestions for windows that have multi-byte (e.g., Unicode, emoji) characters in their titles. Verify no char boundary panics.
 
 - [ ] **slow DB insert warning** — check logs. "Slow DB batch insert" warnings should be <1s in normal operation. >3s indicates contention.
 - [ ] **concurrent DB access** — UI queries + recording inserts happening simultaneously. no "database is locked" errors.
@@ -156,6 +199,22 @@ commits: `eea0c865`, `cc09de61`
 - [ ] **Audio chunk timestamps** — `start_time` and `end_time` are correctly set for reconciled and retranscribed audio chunks in the database.
 
 ### 10. AI presets & settings
+
+commits: `8a5f51dd`, `0b0d8090`, `7e58564e`, `2522a7e2`, `f3e55dbc`, `79f2913f`
+
+- [ ] **Ollama not running** — creating an Ollama preset shows free-text input fields (not stuck loading). user can type model name manually (`8a5f51dd`).
+- [ ] **custom provider preset** — user can add a custom API endpoint. model name is free-text input with optional autocomplete.
+- [ ] **settings survive restart** — change any setting, quit, relaunch. setting is preserved.
+- [ ] **overlay mode switch** — change from fullscreen to window mode. setting saves. next shortcut press uses new mode.
+- [ ] **FPS setting** — change capture FPS. recording interval changes accordingly.
+- [ ] **language/OCR engine setting** — change OCR language. new language used on next capture cycle.
+- [ ] **video quality setting** — low/balanced/high/max. affects FFmpeg encoding params (`21bddd0f`).
+- [ ] **Settings UI sentence case** — All settings UI elements (billing, pipes, team) should use consistent sentence case.
+- [ ] **Billing page links to website** — Verify that the in-app billing page is replaced with a link that correctly opens the website billing page.
+- [ ] **Non-pro subscriber Whisper fallback** — As a non-pro subscriber, verify that audio transcription defaults to `whisper-large-v3-turbo-quantized` and functions correctly.
+- [ ] **Pi restart on preset switch** — Switch between different AI presets. Verify that the Pi agent restarts if required by the new preset.
+- [ ] **Web search disabled for non-cloud providers** — When using a non-cloud AI provider, verify that web search functionality is correctly disabled.
+- [ ] **Credit balance in billing UI and errors** — Verify that the billing UI accurately displays the credit balance and clearly differentiates between `credits_exhausted` and other LLM-related errors.
 
 commits: `8a5f51dd`, `0b0d8090`
 
@@ -170,6 +229,16 @@ commits: `8a5f51dd`, `0b0d8090`
 
 ### 11. onboarding
 
+commits: `87abb00d`, `9464fdc9`, `0f9e43aa`, `7ea15f32`, `bf1f1004`
+
+- [ ] **fresh install flow** — onboarding appears, permissions requested, user completes setup.
+- [ ] **auto-advance after engine starts** — status screen advances automatically after 15-20 seconds once engine is running (`87abb00d`, `9464fdc9`).
+- [ ] **skip onboarding** — user can skip and get to main app. settings use defaults.
+- [ ] **shortcut gate** — onboarding teaches the shortcut. user must press it to proceed (`0f9e43aa`).
+- [ ] **onboarding window size** — window is correctly sized, no overflow (`7ea15f32`).
+- [ ] **onboarding doesn't re-show** — after completing onboarding, restart app. main window shows, not onboarding.
+- [ ] **First-run 2-hour reminder notification** — On a fresh install, verify that a custom notification panel appears after approximately 2 hours as a first-run reminder.
+
 commits: `87abb00d`, `9464fdc9`, `0f9e43aa`, `7ea15f32`
 
 - [ ] **fresh install flow** — onboarding appears, permissions requested, user completes setup.
@@ -180,6 +249,24 @@ commits: `87abb00d`, `9464fdc9`, `0f9e43aa`, `7ea15f32`
 - [ ] **onboarding doesn't re-show** — after completing onboarding, restart app. main window shows, not onboarding.
 
 ### 12. timeline & search
+
+commits: `f1255eac`, `25cbdc6b`, `2529367d`, `d9821624`, `e61501da`, `039d5fea`, `50ff4f4c`, `91cc4371`
+
+- [ ] **arrow key navigation** — left/right arrow keys navigate timeline frames (`f1255eac`).
+- [ ] **search results sorted by time** — search results appear in chronological order (`25cbdc6b`).
+- [ ] **no frame clearing during navigation** — navigating timeline doesn't cause frames to disappear and reload (`2529367d`).
+- [ ] **URL detection in frames** — URLs visible in screenshots are extracted and shown as clickable pills (`50ef52d1`, `aa992146`).
+- [ ] **app context popover** — clicking app icon in timeline shows context (time, windows, urls, audio) (`be3ecffb`).
+- [ ] **daily summary in timeline** — Apple Intelligence summary shows in timeline, compact when no summary (`d9821624`).
+- [ ] **window-focused refresh** — opening app via shortcut/tray refreshes timeline data immediately (`0b057046`).
+- [ ] **frame deep link navigation** — `screenpipe://frame/N` or `screenpipe://frames/N` opens main window and jumps to frame N. works from cold start; invalid IDs show clear error.
+- [ ] **Keyword search accessibility** — Keyword search should find content within accessibility-only frames and utilize `frames_fts` for comprehensive accessibility text searching.
+- [ ] **Keyword search logic** — Verify that keyword search SQL correctly uses `OR` instead of `UNION` within `IN()`.
+- [ ] **Search prompt accuracy** — Verify that search prompts are improved to prevent false negatives from over-filtering.
+- [ ] **Past-day timeline navigation** — Navigate the timeline to past days (e.g., using date picker or arrow keys). Verify that data loads correctly and the timeline behaves as expected.
+- [ ] **`content_type=all` search and pagination** — Perform search queries with `content_type=all`. Verify that the result count is accurate and pagination works correctly without missing or duplicating results.
+- [ ] **Search pagination with offset** — Perform paginated searches, particularly beyond the first page. Verify that results are not empty or incorrect due to double-applied offsets.
+- [ ] **`search_ocr()` returns results for event-driven capture** — Verify that `search_ocr()` correctly returns OCR results for event-driven captures and does not return empty when visible text is present on screen.
 
 commits: `f1255eac`, `25cbdc6b`, `2529367d`, `d9821624`
 
@@ -204,7 +291,26 @@ commits: `2f6b2af5`, `ea7f1f61`, `5cb100ea`
 - [ ] **auto-init doesn't loop** — sync initialization happens once, doesn't repeat endlessly (`ea7f1f61`).
 - [ ] **Cloud archive docs** — Verify that the cloud archive documentation page exists and is accessible via a link from settings.
 
-### 14. Windows-specific
+### 14. Region OCR (Shift+Drag)
+
+commits: `b3628788`, `738178da`
+
+- [ ] **Shift+Drag region OCR functionality** — Perform a `Shift+Drag` region OCR selection on the screen. Verify that the RegionOcrOverlay appears correctly and local OCR processes the selected region.
+- [ ] **Local OCR without login for Shift+Drag** — Verify that the `Shift+Drag` region OCR uses local OCR and functions correctly without requiring the user to be logged in or have a cloud subscription.
+
+### 15. Windows-specific
+
+commits: `eea0c865`, `fe9060db`, `c99c3967`, `aeaa446b`, `5a219688`, `caae1ebc`, `67caf1d1`, `ff4af7b5`
+
+- [ ] **COM thread conflict** — audio and vision threads don't conflict on COM initialization (`eea0c865`).
+- [ ] **high-DPI display (150%, 200%)** — OCR captures at correct resolution.
+- [ ] **multiple monitors** — all detected and recorded.
+- [ ] **Windows Defender** — app not blocked by default security.
+- [ ] **Windows default mode** — On Windows, the app should default to window mode on first launch.
+- [ ] **Windows taskbar icon** — The app should display a taskbar icon on Windows.
+- [ ] **Windows audio transcription accuracy** — On Windows, verify improved audio transcription accuracy due to native Silero VAD frame size and lower speech threshold.
+- [ ] **Windows multi-line pipe prompts** — Multi-line pipe prompts should be preserved on Windows.
+- [ ] **Alt+S shortcut activates overlay with keyboard focus** — On Windows, press `Alt+S`. Verify that the overlay window appears and immediately receives keyboard focus, allowing immediate typing.
 
 commits: `eea0c865`, `fe9060db`, `c99c3967`, `aeaa446b`, `5a219688`, `caae1ebc`, `67caf1d1`
 
@@ -328,7 +434,13 @@ curl "http://localhost:3030/search?app_name=<exe_name>&limit=3&content_type=all"
 - If mintty (Git Bash) returns chrome-only, add `"mintty"`
 - Any app where the accessibility tree consistently returns only window chrome but screenshots contain readable text
 
-### 15. CI / release
+### 15. Help and Support
+
+commits: `deac5ea9`
+
+- [ ] **Intercom integration in help section** — Navigate to the desktop app's help section. Verify that Crisp is replaced by Intercom and that the Intercom chat widget and knowledge base search function as expected.
+
+### 16. CI / release
 
 commits: `8f334c0a`, `fda40d2c`
 
@@ -350,6 +462,32 @@ commits: `8c8c445c`
 - [ ] **download error logging** — if download fails, console shows actual error message (not `{}`).
 
 ### 17. AI Agents / Pipes
+
+commits: `fa887407`, `815f52e6`, `60840155`, `e66c5ff8`, `c905ffbf`, `01147096`, `5908d7f4`, `46422869`, `4f43da70`, `71a1a537`, `6abaaa36`, `f3e55dbc`, `8e426dec`, `1289f51e`, `4bc9ff1a`, `c336f73d`, `2f7416ae`
+
+- [ ] **Pi process stability** — After app launch, `ps aux | grep pi` should show a single, stable `pi` process that doesn't restart or get killed.
+- [ ] **Pi readiness handshake** — First chat interaction with Pi should be fast (<2s for readiness).
+- [ ] **Pi auto-recovery** — If the `pi` process is manually killed, it should restart automatically within a few seconds and be ready for chat.
+- [ ] **Pipe output accuracy** — When executing a pipe, the user's prompt should be accurately reflected in the output.
+- [ ] **Silent LLM errors** — LLM errors during pipe execution should be displayed to the user, not silently suppressed.
+- [ ] **Fast first chat with Pi** — The first interaction with Pi after app launch should be responsive, with no noticeable delay (aim for <2s).
+- [ ] **Activity Summary tool** — MCP can access activity summaries via the `activity-summary` tool, and the `activity-summary` endpoint works correctly.
+- [ ] **Search Elements tool** — MCP can search elements using the `search-elements` tool.
+- [ ] **Frame Context tool** — MCP can access frame context via the `frame-context` tool.
+- [ ] **Progressive disclosure for AI data** — AI data querying should progressively disclose information.
+- [ ] **Screenpipe Analytics skill** — The `screenpipe-analytics` skill can be used by the Pi agent to perform raw SQL usage analytics.
+- [ ] **Screenpipe Retranscribe skill** — The `screenpipe-retranscribe` skill can be used by the Pi agent for retranscription.
+- [ ] **AI preset save stability** — Saving AI presets should not cause crashes, especially when dealing with pipe session conflicts.
+- [ ] **Pipe token handling** — Ensure that Pi configuration for pipes uses the actual token value, not the environment variable name.
+- [ ] **Pipe user_token passthrough** — Verify that the `user_token` is correctly passed to Pi pre-configuration so pipes use the screenpipe provider.
+- [ ] **Default AI model ID** — Verify that the default AI model ID does not contain outdated date suffixes.
+- [ ] **Move provider/model flags** — `--provider` and `--model` flags should be correctly moved before `-p prompt` in `pi spawn` commands.
+- [ ] **Pi restart on preset switch** — Switch between different AI presets. Verify that the Pi agent restarts if required by the new preset.
+- [ ] **Faster Pipes page loading** — Verify that the "Pipes" page loads significantly faster, especially when there are a large number of pipes configured.
+- [ ] **Instant pipe enable toggle UI update** — Toggle a pipe's enable status. Verify that the UI updates instantly due to optimistic updates, even if the backend operation takes a moment.
+- [ ] **Pipe execution shows parsed text** — Execute a pipe that outputs JSON. Verify that the output displayed to the user is correctly parsed text, not raw JSON.
+- [ ] **Surface LLM errors in chat UI** — Interact with the chat UI using an AI provider under conditions that would cause LLM errors (e.g., exhausted credits, rate limits). Verify these errors are clearly surfaced to the user.
+- [ ] **Pipe preset bug fixes and credit drain prevention** — Thoroughly test creating, editing, and switching pipe presets to ensure no bugs, especially those that might lead to unexpected cloud credit usage or misconfiguration.
 
 commits: `fa887407`, `815f52e6`, `60840155`, `e66c5ff8`, `c905ffbf`, `01147096`, `5908d7f4`, `46422869`, `4f43da70`, `71a1a537`, `6abaaa36`
 
@@ -373,11 +511,22 @@ commits: `fa887407`, `815f52e6`, `60840155`, `e66c5ff8`, `c905ffbf`, `01147096`,
 
 ### 18. Admin / Team features
 
+commits: `58460e02`, `853e0975`
+
+- [ ] **Admin team-shared filters** — Admins should be able to remove individual team-shared filters.
+- [ ] **Per-request AI cost tracking and admin spend endpoint** — Verify that per-request AI costs are tracked correctly and that the admin spend endpoint provides accurate usage data.
+
 commits: `58460e02`
 
 - [ ] **Admin team-shared filters** — Admins should be able to remove individual team-shared filters.
 
 ### 19. Logging
+
+commits: `fc830b43`, `f54d3e0d`
+
+- [ ] **Reduced log noise** — Verify a significant reduction in log noise (~54%).
+- [ ] **PII scrubbing** — Ensure that PII (Personally Identifiable Information) is scrubbed from logs.
+- [ ] **Phone regex PII scrubbing** — After generating some PII-containing data (e.g., typing phone numbers), review logs to ensure that the phone regex correctly scrubs PII and does not over-match bare digit sequences.
 
 commits: `fc830b43`
 
