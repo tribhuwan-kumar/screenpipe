@@ -197,7 +197,7 @@ impl AudioManager {
                         }
                     }
                     drop(engine_guard);
-                    tokio::time::sleep(Duration::from_secs(300)).await;
+                    tokio::time::sleep(Duration::from_secs(120)).await;
                 }
             });
         }
