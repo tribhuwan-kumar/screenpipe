@@ -122,6 +122,52 @@ export const DEFAULT_PROMPT = `Rules:
 - Always answer my question/intent, do not make up things
 `;
 
+function ChatGptSignInButton() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    commands.chatgptOauthStatus().then((res) => {
+      if (res.status === "ok") setLoggedIn(res.data.logged_in);
+    });
+  }, []);
+
+  return (
+    <Button
+      type="button"
+      variant={loggedIn ? "outline" : "default"}
+      disabled={loading}
+      className="h-7 text-xs w-full"
+      onClick={async () => {
+        if (loggedIn) {
+          setLoading(true);
+          await commands.chatgptOauthLogout();
+          setLoggedIn(false);
+          setLoading(false);
+        } else {
+          setLoading(true);
+          try {
+            const res = await commands.chatgptOauthLogin();
+            if (res.status === "ok" && res.data) setLoggedIn(true);
+          } catch (e) {
+            console.error("chatgpt oauth failed:", e);
+          }
+          setLoading(false);
+        }
+      }}
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      ) : loggedIn ? (
+        <Check className="h-3 w-3 mr-1 text-green-500" />
+      ) : (
+        <LogIn className="h-3 w-3 mr-1" />
+      )}
+      {loggedIn ? "signed in — sign out" : "sign in with chatgpt"}
+    </Button>
+  );
+}
+
 export function AIProviderConfig({
   onSubmit,
   defaultPreset,
@@ -327,7 +373,7 @@ export function AIProviderConfig({
 
         <div className={cn(
           "grid gap-1",
-          piAvailable ? "grid-cols-4" : "grid-cols-3"
+          piAvailable ? "grid-cols-5" : "grid-cols-4"
         )}>
           <Button
             type="button"
@@ -376,6 +422,24 @@ export function AIProviderConfig({
           >
             <Icons.settings className="h-3 w-3" />
             <span>custom</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant={selectedProvider === "openai-chatgpt" ? "default" : "outline"}
+            className="flex h-7 items-center justify-center gap-1 text-[10px] px-2"
+            onClick={() => {
+              setSelectedProvider("openai-chatgpt");
+              setFormData({
+                ...formData,
+                provider: "openai-chatgpt",
+                url: "https://api.openai.com/v1",
+                model: "gpt-4o",
+              });
+            }}
+          >
+            <Icons.openai className="h-3 w-3" />
+            <span>chatgpt</span>
           </Button>
 
           {piAvailable && (
@@ -574,6 +638,28 @@ export function AIProviderConfig({
                   </datalist>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {selectedProvider === "openai-chatgpt" && (
+          <div className="space-y-1">
+            <div className="space-y-0.5">
+              <Label className="text-xs">chatgpt account</Label>
+              <ChatGptSignInButton />
+            </div>
+            <div className="space-y-0.5">
+              <Label htmlFor="model" className="text-xs">model</Label>
+              <Input
+                id="model"
+                type="text"
+                placeholder="gpt-4o"
+                value={formData.model || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, model: e.target.value })
+                }
+                className="h-7 text-xs"
+              />
             </div>
           </div>
         )}

@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, ExternalLink, Check, Loader2, Copy, Terminal } from "lucide-react";
+import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut } from "lucide-react";
+import { commands } from "@/lib/utils/tauri";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { message } from "@tauri-apps/plugin-dialog";
@@ -419,6 +420,104 @@ function ClaudeCodeCard() {
   );
 }
 
+function ChatGptConnectionCard() {
+  const [status, setStatus] = useState<"idle" | "loading" | "logged_in">("idle");
+
+  useEffect(() => {
+    commands.chatgptOauthStatus().then((res) => {
+      if (res.status === "ok" && res.data.logged_in) {
+        setStatus("logged_in");
+      }
+    });
+  }, []);
+
+  const handleLogin = async () => {
+    setStatus("loading");
+    try {
+      const res = await commands.chatgptOauthLogin();
+      if (res.status === "ok" && res.data) {
+        setStatus("logged_in");
+      } else {
+        setStatus("idle");
+      }
+    } catch {
+      setStatus("idle");
+    }
+  };
+
+  const handleLogout = async () => {
+    setStatus("loading");
+    await commands.chatgptOauthLogout();
+    setStatus("idle");
+  };
+
+  return (
+    <Card className="border-border bg-card overflow-hidden">
+      <CardContent className="p-0">
+        <div className="flex items-start p-4 gap-4">
+          <div className="flex-shrink-0">
+            <img
+              src="/images/openai.png"
+              alt="ChatGPT"
+              className="w-10 h-10 rounded-2xl"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-foreground">
+                ChatGPT
+              </h3>
+              <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                by OpenAI
+              </span>
+              {status === "logged_in" && (
+                <span className="px-2 py-0.5 text-xs font-medium bg-foreground text-background rounded-full">
+                  connected
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Use your ChatGPT Plus/Pro subscription as an AI provider. No API key needed.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {status === "logged_in" ? (
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 h-7 text-xs"
+                >
+                  <LogOut className="h-3 w-3" />
+                  Disconnect
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleLogin}
+                  disabled={status === "loading"}
+                  size="sm"
+                  className="gap-1.5 h-7 text-xs"
+                >
+                  {status === "loading" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="h-4 w-4" />
+                      Sign in with ChatGPT
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ConnectionsSection() {
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">("idle");
   const [versionInfo, setVersionInfo] = useState<McpVersionInfo>({ available: null, installed: null });
@@ -612,6 +711,9 @@ export function ConnectionsSection() {
 
         {/* Claude Code */}
         <ClaudeCodeCard />
+
+        {/* ChatGPT OAuth */}
+        <ChatGptConnectionCard />
 
         {/* Apple Intelligence */}
         <AppleIntelligenceCard />

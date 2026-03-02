@@ -68,6 +68,7 @@ mod voice_training;
 mod window_api;
 #[cfg(target_os = "windows")]
 mod windows_overlay;
+mod chatgpt_oauth;
 
 pub use server::*;
 
@@ -1265,6 +1266,10 @@ async fn main() {
                 pi::pi_abort,
                 pi::pi_new_session,
                 pi::pi_update_config,
+                // ChatGPT OAuth commands
+                chatgpt_oauth::chatgpt_oauth_login,
+                chatgpt_oauth::chatgpt_oauth_status,
+                chatgpt_oauth::chatgpt_oauth_logout,
                 // Reminders commands
                 reminders::reminders_status,
                 reminders::reminders_authorize,
@@ -1309,7 +1314,8 @@ async fn main() {
             .typ::<store::IcsCalendarEntry>()
             .typ::<suggestions::CachedSuggestions>()
             .typ::<suggestions::Suggestion>()
-            .typ::<hardware::HardwareCapability>();
+            .typ::<hardware::HardwareCapability>()
+            .typ::<chatgpt_oauth::ChatGptOAuthStatus>();
 
         if let Err(e) = builder.export(
             Typescript::default().bigint(specta_typescript::BigIntExportBehavior::BigInt),
@@ -1490,6 +1496,10 @@ async fn main() {
             pi::pi_abort,
             pi::pi_new_session,
             pi::pi_update_config,
+            // ChatGPT OAuth commands
+            chatgpt_oauth::chatgpt_oauth_login,
+            chatgpt_oauth::chatgpt_oauth_status,
+            chatgpt_oauth::chatgpt_oauth_logout,
             // Reminders commands
             reminders::reminders_status,
             reminders::reminders_authorize,

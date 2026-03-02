@@ -843,6 +843,30 @@ async validateDataDir(path: string) : Promise<Result<null, string>> {
 },
 async getHardwareCapability() : Promise<HardwareCapability> {
     return await TAURI_INVOKE("get_hardware_capability");
+},
+async chatgptOauthLogin() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_oauth_login") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptOauthStatus() : Promise<Result<ChatGptOAuthStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_oauth_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async chatgptOauthLogout() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("chatgpt_oauth_logout") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -857,7 +881,8 @@ async getHardwareCapability() : Promise<HardwareCapability> {
 /** user-defined types **/
 
 export type AIPreset = { id: string; prompt: string; provider: AIProviderType; url?: string; model?: string; defaultPreset: boolean; apiKey: string | null; maxContextChars: number }
-export type AIProviderType = "openai" | "native-ollama" | "custom" | "screenpipe-cloud" | "pi"
+export type AIProviderType = "openai" | "openai-chatgpt" | "native-ollama" | "custom" | "screenpipe-cloud" | "pi"
+export type ChatGptOAuthStatus = { logged_in: boolean }
 export type AudioDeviceInfo = { name: string; isDefault: boolean }
 export type BrowserLogEntry = { level: string; message: string }
 export type CachedSuggestions = { suggestions: Suggestion[]; generatedAt: string; mode: string; aiGenerated: boolean; tags: string[] }
