@@ -27,19 +27,16 @@ const PROFILE_INFO = {
     label: "Performance",
     description: "Full capture quality and frequency",
     icon: Zap,
-    color: "text-orange-500",
   },
   balanced: {
     label: "Balanced",
     description: "Reduced capture frequency, lower quality encoding",
     icon: Gauge,
-    color: "text-blue-500",
   },
   saver: {
     label: "Battery Saver",
     description: "Minimal capture, aggressive power saving",
     icon: Leaf,
-    color: "text-green-500",
   },
 } as const;
 
@@ -138,7 +135,7 @@ export function BatterySaverSection() {
           {state.on_ac ? (
             <BatteryCharging className="h-3.5 w-3.5" />
           ) : state.battery_pct !== null && state.battery_pct <= 20 ? (
-            <BatteryLow className="h-3.5 w-3.5 text-red-500" />
+            <BatteryLow className="h-3.5 w-3.5" />
           ) : (
             <Battery className="h-3.5 w-3.5" />
           )}
@@ -151,7 +148,7 @@ export function BatterySaverSection() {
 
       {/* Active profile indicator */}
       <div className="flex items-center gap-2 px-3 py-2 border border-border bg-card rounded text-xs">
-        <ProfileIcon className={cn("h-3.5 w-3.5", profileInfo.color)} />
+        <ProfileIcon className="h-3.5 w-3.5" />
         <span className="font-medium text-foreground">{profileInfo.label}</span>
         <span className="text-muted-foreground">— {profileInfo.description}</span>
       </div>
@@ -183,7 +180,7 @@ export function BatterySaverSection() {
 
       {/* Thermal warning */}
       {(state.thermal_state === "serious" || state.thermal_state === "critical") && (
-        <div className="flex items-center gap-2 px-3 py-2 border border-orange-500/30 bg-orange-500/5 rounded text-xs text-orange-600 dark:text-orange-400">
+        <div className="flex items-center gap-2 px-3 py-2 border border-border bg-card rounded text-xs text-muted-foreground">
           <span>
             System is thermally throttled — battery saver active regardless of preference
           </span>
