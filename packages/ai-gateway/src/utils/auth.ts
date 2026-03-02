@@ -173,23 +173,24 @@ async function validateSubscriptionWithId(env: Env, token: string): Promise<{ is
   // Check by UUID (Supabase user ID)
   if (UUID_REGEX.test(token)) {
     try {
-      const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/has_active_cloud_subscription`, {
-        method: 'POST',
-        headers: {
-          apikey: env.SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ input_user_id: token }),
-      });
+      // Check cloud_subscriptions directly for both active and trialing
+      const response = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/cloud_subscriptions?select=id&user_id=eq.${token}&status=in.(active,trialing)&limit=1`,
+        {
+          headers: {
+            apikey: env.SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
 
       if (!response.ok) {
         console.error('Supabase error:', await response.text());
         return { isValid: false };
       }
 
-      const hasSubscription: boolean = await response.json();
-      return { isValid: hasSubscription, userId: token };
+      const subs = await response.json() as Array<{ id: string }>;
+      return { isValid: subs.length > 0, userId: token };
     } catch (error) {
       console.error('Error checking subscription:', error);
       return { isValid: false };
@@ -214,18 +215,19 @@ async function validateSubscriptionWithId(env: Env, token: string): Promise<{ is
         const users = await userResponse.json() as Array<{ id: string }>;
         if (users.length > 0) {
           const supabaseUserId = users[0].id;
-          const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/has_active_cloud_subscription`, {
-            method: 'POST',
-            headers: {
-              apikey: env.SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ input_user_id: supabaseUserId }),
-          });
+          // Check cloud_subscriptions directly for both active and trialing
+          const response = await fetch(
+            `${env.SUPABASE_URL}/rest/v1/cloud_subscriptions?select=id&user_id=eq.${supabaseUserId}&status=in.(active,trialing)&limit=1`,
+            {
+              headers: {
+                apikey: env.SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
+              },
+            }
+          );
           if (response.ok) {
-            const hasSubscription: boolean = await response.json();
-            if (hasSubscription) {
+            const subs = await response.json() as Array<{ id: string }>;
+            if (subs.length > 0) {
               return { isValid: true, userId: token };
             }
           }
