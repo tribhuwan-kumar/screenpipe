@@ -893,7 +893,7 @@ impl ShowRewindWindow {
             #[cfg(target_os = "windows")]
             {
                 window.show().ok();
-                if let Err(e) = crate::windows_overlay::bring_to_front(window) {
+                if let Err(e) = crate::windows_overlay::bring_to_front_and_activate(window) {
                     error!("Failed to bring window to front: {}", e);
                 }
                 let _ = app.emit("window-focused", true);

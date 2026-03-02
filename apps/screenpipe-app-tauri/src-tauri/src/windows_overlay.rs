@@ -9,9 +9,9 @@ use tauri::WebviewWindow;
 use tracing::{error, info};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_CAPTION,
-    WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_THICKFRAME,
+    GetWindowLongW, SetForegroundWindow, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE,
+    HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_THICKFRAME,
 };
 
 /// Extended window styles for overlay behavior
@@ -201,6 +201,35 @@ pub fn bring_to_front(window: &WebviewWindow) -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+/// Brings the overlay window to the front AND activates it so it receives keyboard focus.
+/// Use this when responding to a user action (e.g. global shortcut) where we want
+/// the window to be interactive, not just visible.
+pub fn bring_to_front_and_activate(window: &WebviewWindow) -> Result<(), String> {
+    let hwnd = get_hwnd(window).ok_or("Failed to get HWND")?;
+
+    unsafe {
+        // Bring to front WITH activation (no SWP_NOACTIVATE)
+        let result = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0, 0, 0, 0,
+            SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE,
+        );
+
+        if let Err(e) = result {
+            return Err(format!("Failed to bring to front: {}", e));
+        }
+
+        // SetForegroundWindow gives the window keyboard focus.
+        // This works reliably here because the call originates from a
+        // global hotkey handler, which Windows treats as user-initiated.
+        let _ = SetForegroundWindow(hwnd);
+    }
+
+    info!("Overlay brought to front and activated");
     Ok(())
 }
 
