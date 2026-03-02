@@ -436,6 +436,7 @@ export const MultiSelect = React.forwardRef<
                 ].map((option) => (
                     <CommandItem
                       key={option.value}
+                      value={option.value}
                       onSelect={() => toggleOption(option.value)}
                       className="cursor-pointer w-full"
                     >
