@@ -8,6 +8,7 @@ import { useSettings } from "@/lib/hooks/use-settings";
 import {
   UserCog,
   ExternalLinkIcon,
+  CreditCard,
   Sparkles,
   Zap,
   Shield,
@@ -213,6 +214,14 @@ export function AccountSection() {
               <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">active</span>
             </div>
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openUrl("https://screenpi.pe/billing")}
+              >
+                <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                Billing <ExternalLinkIcon className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

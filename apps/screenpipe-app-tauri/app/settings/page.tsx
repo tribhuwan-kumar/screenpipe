@@ -28,7 +28,6 @@ import {
   Volume2,
   PanelLeftClose,
   PanelLeftOpen,
-  CreditCard,
 } from "lucide-react";
 import { useOverlayData } from "@/app/shortcut-reminder/use-overlay-data";
 import { cn } from "@/lib/utils";
@@ -44,7 +43,6 @@ import { PipesSection } from "@/components/settings/pipes-section";
 import { SyncSettings } from "@/components/settings/sync-settings";
 import { ArchiveSettings } from "@/components/settings/archive-settings";
 import { TeamSection } from "@/components/settings/team-section";
-import { BillingSection } from "@/components/settings/billing-section";
 import { StandaloneChat } from "@/components/standalone-chat";
 import Timeline from "@/components/rewind/timeline";
 import { useQueryState } from "nuqs";
@@ -65,7 +63,6 @@ type MainSection = "home" | "timeline" | "pipes" | "help";
 
 type SettingsModalSection =
   | "account"
-  | "billing"
   | "recording"
   | "ai"
   | "general"
@@ -80,13 +77,13 @@ type SettingsModalSection =
 // All valid URL sections (main + modal)
 const ALL_SECTIONS = [
   "home", "timeline", "pipes", "help",
-  "account", "billing", "recording", "ai", "general", "shortcuts",
+  "account", "recording", "ai", "general", "shortcuts",
   "connections", "disk-usage", "cloud-archive", "cloud-sync", "team", "referral",
   "feedback", // backwards compat → maps to "help"
 ];
 
 const MODAL_SECTIONS = new Set<string>([
-  "account", "billing", "recording", "ai", "general", "shortcuts",
+  "account", "recording", "ai", "general", "shortcuts",
   "connections", "disk-usage", "cloud-archive", "cloud-sync", "team", "referral",
 ]);
 
@@ -234,8 +231,6 @@ function SettingsPageContent() {
         return <AIPresets />;
       case "account":
         return <AccountSection />;
-      case "billing":
-        return <BillingSection />;
       case "recording":
         return <RecordingSettings />;
       case "shortcuts":
@@ -275,7 +270,6 @@ function SettingsPageContent() {
       ? [{ id: "cloud-sync" as SettingsModalSection, label: "Cloud sync", icon: <Cloud className="h-4 w-4" />, group: "settings" }]
       : []),
     { id: "account", label: "Account", icon: <User className="h-4 w-4" />, group: "account" },
-    { id: "billing", label: "Billing", icon: <CreditCard className="h-4 w-4" />, group: "account" },
     { id: "team", label: "Team", icon: <Users className="h-4 w-4" />, group: "account" },
     { id: "referral", label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" },
   ];
