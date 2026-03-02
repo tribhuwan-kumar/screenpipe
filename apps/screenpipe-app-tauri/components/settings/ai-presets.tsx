@@ -11,6 +11,7 @@ import {
   useSettings,
 } from "@/lib/hooks/use-settings";
 import { Label } from "../ui/label";
+import { Input } from "../ui/input";
 import { ValidatedInput } from "../ui/validated-input";
 import { ValidatedTextarea } from "../ui/validated-textarea";
 import {
@@ -1145,6 +1146,27 @@ const AISection = ({
         className="min-h-[100px] resize-none"
         helperText="This prompt will be used to guide the AI's responses"
       />
+
+      {settingsPreset?.provider !== "pi" && (
+        <div className="w-full">
+          <Label htmlFor="maxTokens" className="text-sm font-medium">
+            Max Output Tokens
+          </Label>
+          <p className="text-xs text-muted-foreground mb-2">
+            Maximum tokens the model can generate per response. Lower values work better with providers like Groq.
+          </p>
+          <Input
+            id="maxTokens"
+            type="number"
+            min={256}
+            max={128000}
+            step={256}
+            value={(settingsPreset as any)?.maxTokens ?? 4096}
+            onChange={(e) => updateSettingsPreset({ maxTokens: parseInt(e.target.value) || 4096 } as any)}
+            className="w-full"
+          />
+        </div>
+      )}
 
       {settingsPreset?.provider !== "pi" && (
         <div className="w-full border rounded-lg">

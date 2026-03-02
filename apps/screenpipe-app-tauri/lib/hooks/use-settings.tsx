@@ -32,6 +32,7 @@ export enum Shortcut {
 export type AIPreset = {
 	id: string;
 	maxContextChars: number;
+	maxTokens?: number;
 	url: string;
 	model: string;
 	defaultPreset: boolean;

@@ -752,6 +752,21 @@ export function AIProviderConfig({
         {showAdvanced && (
           <div className="space-y-1.5">
             <div className="space-y-0.5">
+              <Label htmlFor="maxTokens" className="text-[10px]">max output tokens</Label>
+              <Input
+                id="maxTokens"
+                type="number"
+                min={256}
+                max={128000}
+                step={256}
+                value={(formData as any).maxTokens ?? 4096}
+                onChange={(e) =>
+                  setFormData({ ...formData, maxTokens: parseInt(e.target.value) || 4096 } as any)
+                }
+                className="h-6 text-[10px]"
+              />
+            </div>
+            <div className="space-y-0.5">
               <Label htmlFor="prompt" className="text-[10px]">prompt</Label>
               <Textarea
                 id="prompt"
@@ -824,6 +839,7 @@ export const AIPresetDialog = ({
       model: providerData.model,  // Fixed: was providerData.modelName
       id: providerData.id,
       maxContextChars: providerData.maxContextChars,
+      maxTokens: (providerData as any).maxTokens ?? 4096,
       prompt: providerData.prompt,
     };
 
@@ -845,6 +861,7 @@ export const AIPresetDialog = ({
         url: preset.url,
         model: preset.model,
         maxContextChars: preset.maxContextChars,
+        maxTokens: (preset as any).maxTokens ?? 4096,
         prompt: preset.prompt,
         defaultPreset: preset.defaultPreset,
         apiKey: preset.apiKey || null,

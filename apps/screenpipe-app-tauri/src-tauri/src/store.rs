@@ -291,6 +291,12 @@ pub struct AIPreset {
     pub api_key: Option<String>,
     #[serde(rename = "maxContextChars")]
     pub max_context_chars: i32,
+    #[serde(rename = "maxTokens", default = "default_max_tokens")]
+    pub max_tokens: i32,
+}
+
+fn default_max_tokens() -> i32 {
+    4096
 }
 
 impl Default for AIPreset {
@@ -304,6 +310,7 @@ impl Default for AIPreset {
             default_preset: false,
             api_key: None,
             max_context_chars: 512000,
+            max_tokens: 4096,
         }
     }
 }
@@ -447,6 +454,7 @@ impl Default for SettingsStore {
             default_preset: true,
             api_key: None,
             max_context_chars: 128000,
+            max_tokens: 4096,
         };
 
         Self {

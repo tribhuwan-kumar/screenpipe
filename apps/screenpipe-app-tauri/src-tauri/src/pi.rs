@@ -445,6 +445,13 @@ pub struct PiProviderConfig {
     pub model: String,
     /// Optional API key for the provider
     pub api_key: Option<String>,
+    /// Max output tokens (default 4096)
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: i32,
+}
+
+fn default_max_tokens() -> i32 {
+    4096
 }
 
 /// Merge providers into pi's existing config (preserves other providers/auth).
@@ -532,7 +539,7 @@ fn ensure_pi_config(
                         "id": config.model,
                         "name": config.model,
                         "input": ["text", "image"],
-                        "maxTokens": 4096,
+                        "maxTokens": config.max_tokens,
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
                     }
                 ]

@@ -1517,9 +1517,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       url: activePreset.url || "",
       model: activePreset.model || "",
       apiKey: ("apiKey" in activePreset ? (activePreset.apiKey as string) : null) || null,
+      maxTokens: (activePreset as any).maxTokens ?? 4096,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePreset?.provider, activePreset?.url, activePreset?.model, activePreset?.apiKey]);
+  }, [activePreset?.provider, activePreset?.url, activePreset?.model, activePreset?.apiKey, (activePreset as any)?.maxTokens]);
 
   // Check Pi status on mount — Pi is auto-started at app boot by Rust
   useEffect(() => {
