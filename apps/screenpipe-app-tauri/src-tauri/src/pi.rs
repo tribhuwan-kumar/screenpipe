@@ -533,7 +533,7 @@ fn ensure_pi_config(
                         "name": config.model,
                         "input": ["text", "image"],
                         "contextWindow": 128000,
-                        "maxTokens": 16384,
+                        "maxTokens": 8192,
                         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
                     }
                 ]
