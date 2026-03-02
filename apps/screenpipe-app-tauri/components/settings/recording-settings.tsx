@@ -2089,6 +2089,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                     value={settings.ignoredWindows}
                     onValueChange={handleIgnoredWindowsChange}
                     placeholder="Select apps to ignore..."
+                    allowCustomValues
                   />
                   {filterView === "all" && (settings.teamFilters?.ignoredWindows?.length ?? 0) > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
@@ -2142,6 +2143,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                     value={settings.includedWindows}
                     onValueChange={handleIncludedWindowsChange}
                     placeholder="Only capture these apps (optional)..."
+                    allowCustomValues
                   />
                   {filterView === "all" && (settings.teamFilters?.includedWindows?.length ?? 0) > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">

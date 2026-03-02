@@ -59,27 +59,24 @@ export function useSqlAutocomplete(type: "app" | "window" | "url") {
             LIMIT 100
           `;
         } else if (type === "window") {
-          // For windows, also fetch app_name for context
+          // Distinct app names — ignoredWindows matches against app_name and window_name
           query = `
-            SELECT f.window_name as name, MAX(f.app_name) as app_name, COUNT(*) as count
-            FROM ocr_text ocr
-            JOIN frames f ON ocr.frame_id = f.id
-            WHERE f.timestamp > datetime('now', '-7 days')
-            AND f.window_name IS NOT NULL
-            AND f.window_name != ''
-            GROUP BY f.window_name
+            SELECT app_name as name, app_name, COUNT(*) as count
+            FROM frames
+            WHERE timestamp > datetime('now', '-7 days')
+            AND app_name IS NOT NULL AND app_name != ''
+            GROUP BY app_name
             ORDER BY count DESC
-            LIMIT 100
+            LIMIT 200
           `;
         } else {
           query = `
-            SELECT f.app_name as name, COUNT(*) as count
-            FROM ocr_text ocr
-            JOIN frames f ON ocr.frame_id = f.id
-            WHERE f.timestamp > datetime('now', '-7 days')
-            AND f.app_name IS NOT NULL
-            AND f.app_name != ''
-            GROUP BY f.app_name
+            SELECT app_name as name, COUNT(*) as count
+            FROM frames
+            WHERE timestamp > datetime('now', '-7 days')
+            AND app_name IS NOT NULL
+            AND app_name != ''
+            GROUP BY app_name
             ORDER BY count DESC
             LIMIT 100
           `;
