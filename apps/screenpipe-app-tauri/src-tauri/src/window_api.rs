@@ -1871,9 +1871,12 @@ impl ShowRewindWindow {
             }
             #[cfg(target_os = "windows")]
             {
+                // Hide instead of close/destroy so the webview survives for reopen.
+                // Destroying the window causes re-creation with visible(false) and
+                // the overlay show path never makes it visible again.
                 for label in &["main", "main-window"] {
                     if let Some(window) = app.get_webview_window(label) {
-                        window.close().ok();
+                        window.hide().ok();
                     }
                 }
             }
