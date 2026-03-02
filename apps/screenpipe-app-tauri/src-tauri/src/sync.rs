@@ -216,7 +216,10 @@ pub async fn trigger_sync(state: State<'_, SyncState>) -> Result<(), String> {
                 *last_error_clone.write().await = None;
             }
             Ok(response) => {
-                let error_text = response.text().await.unwrap_or_else(|_| "unknown error".to_string());
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "unknown error".to_string());
                 *last_error_clone.write().await = Some(error_text);
             }
             Err(e) => {
@@ -240,7 +243,10 @@ pub async fn get_sync_config() -> Result<SyncConfig, String> {
 /// Update sync configuration.
 #[tauri::command]
 #[specta::specta]
-pub async fn update_sync_config(state: State<'_, SyncState>, config: SyncConfig) -> Result<(), String> {
+pub async fn update_sync_config(
+    state: State<'_, SyncState>,
+    config: SyncConfig,
+) -> Result<(), String> {
     *state.enabled.write().await = config.enabled;
     // TODO: Persist config and update sync service
     Ok(())
@@ -309,7 +315,7 @@ pub async fn init_sync(
     let fresh_settings = SettingsStore::get(&app)
         .map_err(|e| format!("failed to read settings: {}", e))?
         .ok_or_else(|| "settings not found".to_string())?;
-    
+
     let token = fresh_settings
         .user
         .token
@@ -324,10 +330,16 @@ pub async fn init_sync(
     let device_os = std::env::consts::OS.to_string();
 
     // Create sync client config for local manager (used for device queries)
-    let config = SyncClientConfig::new(token.clone(), state.machine_id.clone(), device_name, device_os);
+    let config = SyncClientConfig::new(
+        token.clone(),
+        state.machine_id.clone(),
+        device_name,
+        device_os,
+    );
 
     // Create local sync manager
-    let manager = SyncManager::new(config).map_err(|e| format!("failed to create sync manager: {}", e))?;
+    let manager =
+        SyncManager::new(config).map_err(|e| format!("failed to create sync manager: {}", e))?;
 
     // Initialize with password (this will either create new keys or derive from existing)
     let is_new_user = manager
@@ -377,8 +389,14 @@ pub async fn init_sync(
         }
         Ok(response) => {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "unknown error".to_string());
-            warn!("failed to initialize server sync ({}): {}", status, error_text);
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown error".to_string());
+            warn!(
+                "failed to initialize server sync ({}): {}",
+                status, error_text
+            );
         }
         Err(e) => {
             warn!("failed to connect to server for sync init: {}", e);
@@ -408,11 +426,7 @@ pub async fn lock_sync(app: AppHandle, state: State<'_, SyncState>) -> Result<()
 
     // Lock server sync service
     let client = reqwest::Client::new();
-    match client
-        .post("http://localhost:3030/sync/lock")
-        .send()
-        .await
-    {
+    match client.post("http://localhost:3030/sync/lock").send().await {
         Ok(response) if response.status().is_success() => {
             info!("server sync service locked");
         }
@@ -547,17 +561,24 @@ pub async fn auto_start_archive(app: &AppHandle) {
             // Fallback: check main settings for cloudArchiveEnabled
             match SettingsStore::get(app) {
                 Ok(Some(s)) => {
-                    let enabled = s.extra
+                    let enabled = s
+                        .extra
                         .get("cloudArchiveEnabled")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
-                    if !enabled { return; }
-                    let days = s.extra
+                    if !enabled {
+                        return;
+                    }
+                    let days = s
+                        .extra
                         .get("cloudArchiveRetentionDays")
                         .and_then(|v| v.as_u64())
                         .unwrap_or(7) as u32;
                     // Migrate: persist to dedicated key for future startups
-                    let migrated = CloudArchiveSettingsStore { enabled: true, retention_days: days };
+                    let migrated = CloudArchiveSettingsStore {
+                        enabled: true,
+                        retention_days: days,
+                    };
                     let _ = migrated.save(app);
                     migrated
                 }
@@ -596,7 +617,10 @@ pub async fn auto_start_archive(app: &AppHandle) {
         .await
     {
         Ok(response) if response.status().is_success() => {
-            info!("cloud archive auto-started (retention={}d)", archive_settings.retention_days);
+            info!(
+                "cloud archive auto-started (retention={}d)",
+                archive_settings.retention_days
+            );
         }
         Ok(response) if response.status().as_u16() == 409 => {
             info!("cloud archive: already initialized, re-enabling");
@@ -614,7 +638,10 @@ pub async fn auto_start_archive(app: &AppHandle) {
         Ok(response) => {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            warn!("cloud archive auto-start: init failed ({}): {}", status, body);
+            warn!(
+                "cloud archive auto-start: init failed ({}): {}",
+                status, body
+            );
         }
         Err(e) => {
             warn!("cloud archive auto-start: server not reachable: {}", e);

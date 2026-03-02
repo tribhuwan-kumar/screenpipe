@@ -129,64 +129,75 @@ pub fn recreate_tray(app: &AppHandle) {
     // across the FFI boundary (nounwind → abort). catch_unwind prevents this.
     let _ = app.run_on_main_thread(move || {
         if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let app = app_for_thread;
-        let update_item = match UPDATE_MENU_ITEM.lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => {
-                error!("failed to lock UPDATE_MENU_ITEM for tray recreation");
-                return;
-            }
-        };
-
-        // Remove the old tray icon (must be on main thread for NSStatusBar)
-        debug!("recreate_tray: removing old tray icon");
-        let _old = app.remove_tray_by_id("screenpipe_main");
-        // Drop the old tray icon explicitly on main thread
-        drop(_old);
-        debug!("recreate_tray: old tray removed, building new one");
-
-        // Create a new tray icon — macOS assigns it the rightmost position
-        let icon = match app.path().resolve("assets/screenpipe-logo-tray-white.png", tauri::path::BaseDirectory::Resource) {
-            Ok(path) => tauri::image::Image::from_path(path).ok(),
-            Err(_) => tauri::image::Image::from_path("assets/screenpipe-logo-tray-white.png").ok(),
-        };
-
-        let mut builder = TrayIconBuilder::<Wry>::with_id("screenpipe_main")
-            .icon_as_template(true)
-            .show_menu_on_left_click(true);
-
-        if let Some(ref icon) = icon {
-            if icon.width() > 0 && icon.height() > 0 {
-                builder = builder.icon(icon.clone());
-            } else {
-                error!("tray icon has zero dimensions ({}x{}), skipping", icon.width(), icon.height());
-            }
-        } else {
-            error!("failed to load tray icon for recreation");
-        }
-
-        debug!("recreate_tray: calling builder.build()");
-        match builder.build(&app) {
-            Ok(new_tray) => {
-                debug!("recreate_tray: build succeeded, setting menu");
-                // Setup menu
-                if let Ok(menu) = create_dynamic_menu(&app, &MenuState::default(), update_item.as_ref()) {
-                    // Keep a clone alive to prevent use-after-free (see PREVIOUS_TRAY_MENU doc).
-                    if let Ok(mut guard) = PREVIOUS_TRAY_MENU.lock() {
-                        *guard = Some(menu.clone());
-                    }
-                    let _ = new_tray.set_menu(Some(menu));
+            let app = app_for_thread;
+            let update_item = match UPDATE_MENU_ITEM.lock() {
+                Ok(guard) => guard.clone(),
+                Err(_) => {
+                    error!("failed to lock UPDATE_MENU_ITEM for tray recreation");
+                    return;
                 }
-                // NOTE: do NOT re-register click handlers here.
-                // The handler from setup_tray() is keyed by tray ID and persists
-                // across tray icon recreation. Re-registering causes double-firing.
+            };
 
-                info!("tray icon recreated at rightmost position");
+            // Remove the old tray icon (must be on main thread for NSStatusBar)
+            debug!("recreate_tray: removing old tray icon");
+            let _old = app.remove_tray_by_id("screenpipe_main");
+            // Drop the old tray icon explicitly on main thread
+            drop(_old);
+            debug!("recreate_tray: old tray removed, building new one");
+
+            // Create a new tray icon — macOS assigns it the rightmost position
+            let icon = match app.path().resolve(
+                "assets/screenpipe-logo-tray-white.png",
+                tauri::path::BaseDirectory::Resource,
+            ) {
+                Ok(path) => tauri::image::Image::from_path(path).ok(),
+                Err(_) => {
+                    tauri::image::Image::from_path("assets/screenpipe-logo-tray-white.png").ok()
+                }
+            };
+
+            let mut builder = TrayIconBuilder::<Wry>::with_id("screenpipe_main")
+                .icon_as_template(true)
+                .show_menu_on_left_click(true);
+
+            if let Some(ref icon) = icon {
+                if icon.width() > 0 && icon.height() > 0 {
+                    builder = builder.icon(icon.clone());
+                } else {
+                    error!(
+                        "tray icon has zero dimensions ({}x{}), skipping",
+                        icon.width(),
+                        icon.height()
+                    );
+                }
+            } else {
+                error!("failed to load tray icon for recreation");
             }
-            Err(e) => {
-                error!("failed to recreate tray icon: {}", e);
+
+            debug!("recreate_tray: calling builder.build()");
+            match builder.build(&app) {
+                Ok(new_tray) => {
+                    debug!("recreate_tray: build succeeded, setting menu");
+                    // Setup menu
+                    if let Ok(menu) =
+                        create_dynamic_menu(&app, &MenuState::default(), update_item.as_ref())
+                    {
+                        // Keep a clone alive to prevent use-after-free (see PREVIOUS_TRAY_MENU doc).
+                        if let Ok(mut guard) = PREVIOUS_TRAY_MENU.lock() {
+                            *guard = Some(menu.clone());
+                        }
+                        let _ = new_tray.set_menu(Some(menu));
+                    }
+                    // NOTE: do NOT re-register click handlers here.
+                    // The handler from setup_tray() is keyed by tray ID and persists
+                    // across tray icon recreation. Re-registering causes double-firing.
+
+                    info!("tray icon recreated at rightmost position");
+                }
+                Err(e) => {
+                    error!("failed to recreate tray icon: {}", e);
+                }
             }
-        }
         })) {
             // The panic hook already sent the panic message + backtrace to Sentry
             // (as a Fatal-level capture_message). Log here for local diagnostics.
@@ -197,7 +208,10 @@ pub fn recreate_tray(app: &AppHandle) {
             } else {
                 format!("{:?}", e)
             };
-            error!("panic caught in recreate_tray (ObjC exception?): {}", panic_msg);
+            error!(
+                "panic caught in recreate_tray (ObjC exception?): {}",
+                panic_msg
+            );
         }
     });
 }
@@ -236,9 +250,12 @@ fn create_dynamic_menu(
     if !onboarding_completed {
         menu_builder = menu_builder
             .item(
-                &MenuItemBuilder::with_id("version", format!("version {}", app.package_info().version))
-                    .enabled(false)
-                    .build(app)?,
+                &MenuItemBuilder::with_id(
+                    "version",
+                    format!("version {}", app.package_info().version),
+                )
+                .enabled(false)
+                .build(app)?,
             )
             .item(&PredefinedMenuItem::separator(app)?)
             .item(&MenuItemBuilder::with_id("quit", "Quit screenpipe").build(app)?);
@@ -268,10 +285,7 @@ fn create_dynamic_menu(
 
     // Open screenpipe (settings window) at the top
     menu_builder = menu_builder
-        .item(
-            &MenuItemBuilder::with_id("settings", "Open screenpipe")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("settings", "Open screenpipe").build(app)?)
         .item(&PredefinedMenuItem::separator(app)?);
 
     // Show timeline, search, and chat items with shortcuts
@@ -335,12 +349,11 @@ fn create_dynamic_menu(
     // Show "fix permissions" item when recording is in error state and permissions are denied
     if get_recording_status() == RecordingStatus::Error {
         let perms = crate::permissions::do_permissions_check(false);
-        let has_permission_issue = !perms.screen_recording.permitted()
-            || !perms.microphone.permitted();
+        let has_permission_issue =
+            !perms.screen_recording.permitted() || !perms.microphone.permitted();
         if has_permission_issue {
             menu_builder = menu_builder.item(
-                &MenuItemBuilder::with_id("fix_permissions", "⚠ Fix permissions")
-                    .build(app)?,
+                &MenuItemBuilder::with_id("fix_permissions", "⚠ Fix permissions").build(app)?,
             );
         }
     }
@@ -362,7 +375,8 @@ fn create_dynamic_menu(
     if let Some(update_item) = update_item {
         menu_builder = menu_builder.item(update_item);
     }
-    menu_builder = menu_builder.item(&MenuItemBuilder::with_id("releases", "Changelog").build(app)?);
+    menu_builder =
+        menu_builder.item(&MenuItemBuilder::with_id("releases", "Changelog").build(app)?);
 
     // Only show recording controls if not in dev mode
     let dev_mode = store
@@ -377,8 +391,7 @@ fn create_dynamic_menu(
     }
 
     // Help and quit
-    menu_builder = menu_builder
-        .item(&PredefinedMenuItem::separator(app)?);
+    menu_builder = menu_builder.item(&PredefinedMenuItem::separator(app)?);
     #[cfg(target_os = "macos")]
     {
         menu_builder = menu_builder
@@ -458,7 +471,9 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
         "releases" => {
             let app = app_handle.clone();
             let _ = app_handle.run_on_main_thread(move || {
-                let _ = app.opener().open_url("https://screenpi.pe/changelog", None::<&str>);
+                let _ = app
+                    .opener()
+                    .open_url("https://screenpi.pe/changelog", None::<&str>);
             });
         }
         "update_now" => {
@@ -485,9 +500,14 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
 
                         dialog.show(move |clicked_download| {
                             if clicked_download {
-                                let _ = app.opener().open_url("https://screenpi.pe/download", None::<&str>);
+                                let _ = app
+                                    .opener()
+                                    .open_url("https://screenpi.pe/download", None::<&str>);
                             } else {
-                                let _ = app.opener().open_url("https://github.com/screenpipe/screenpipe/releases", None::<&str>);
+                                let _ = app.opener().open_url(
+                                    "https://github.com/screenpipe/screenpipe/releases",
+                                    None::<&str>,
+                                );
                             }
                         });
                     });
@@ -513,7 +533,9 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
         "book_call" => {
             let app = app_handle.clone();
             let _ = app_handle.run_on_main_thread(move || {
-                let _ = app.opener().open_url("https://cal.com/team/screenpipe/chat", None::<&str>);
+                let _ = app
+                    .opener()
+                    .open_url("https://cal.com/team/screenpipe/chat", None::<&str>);
             });
         }
         "onboarding" => {
@@ -557,8 +579,12 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
                 // nothing useful left to do.
                 #[cfg(unix)]
                 {
-                    extern "C" { fn _exit(status: i32) -> !; }
-                    unsafe { _exit(0); }
+                    extern "C" {
+                        fn _exit(status: i32) -> !;
+                    }
+                    unsafe {
+                        _exit(0);
+                    }
                 }
                 #[cfg(not(unix))]
                 app_handle_clone.exit(0);
@@ -587,7 +613,9 @@ async fn update_menu_if_needed(
             !perms.screen_recording.permitted() || !perms.microphone.permitted()
         }
         #[cfg(not(target_os = "macos"))]
-        { false }
+        {
+            false
+        }
     } else {
         false
     };
@@ -628,7 +656,9 @@ async fn update_menu_if_needed(
             if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if let Some(tray) = app_for_thread.tray_by_id("screenpipe_main") {
                     debug!("tray_menu_update: setting menu");
-                    if let Ok(menu) = create_dynamic_menu(&app_for_thread, &new_state, Some(&update_item)) {
+                    if let Ok(menu) =
+                        create_dynamic_menu(&app_for_thread, &new_state, Some(&update_item))
+                    {
                         // Keep a clone alive to prevent use-after-free (see PREVIOUS_TRAY_MENU doc).
                         if let Ok(mut guard) = PREVIOUS_TRAY_MENU.lock() {
                             *guard = Some(menu.clone());
@@ -652,7 +682,10 @@ async fn update_menu_if_needed(
                 } else {
                     format!("{:?}", e)
                 };
-                error!("panic caught in tray menu update (ObjC exception?): {}", panic_msg);
+                error!(
+                    "panic caught in tray menu update (ObjC exception?): {}",
+                    panic_msg
+                );
             }
         });
     }
@@ -664,13 +697,22 @@ fn get_current_shortcuts(app: &AppHandle) -> Result<HashMap<String, String>> {
     let store = get_store(app, None)?;
     let mut shortcuts = HashMap::new();
 
-    if let Some(s) = store.get("showScreenpipeShortcut").and_then(|v| v.as_str().map(String::from)) {
+    if let Some(s) = store
+        .get("showScreenpipeShortcut")
+        .and_then(|v| v.as_str().map(String::from))
+    {
         shortcuts.insert("show".to_string(), s);
     }
-    if let Some(s) = store.get("searchShortcut").and_then(|v| v.as_str().map(String::from)) {
+    if let Some(s) = store
+        .get("searchShortcut")
+        .and_then(|v| v.as_str().map(String::from))
+    {
         shortcuts.insert("search".to_string(), s);
     }
-    if let Some(s) = store.get("showChatShortcut").and_then(|v| v.as_str().map(String::from)) {
+    if let Some(s) = store
+        .get("showChatShortcut")
+        .and_then(|v| v.as_str().map(String::from))
+    {
         shortcuts.insert("chat".to_string(), s);
     }
 
@@ -720,19 +762,35 @@ fn format_shortcut(shortcut: &str) -> String {
     if cfg!(target_os = "macos") {
         // macOS: Use symbols in correct order (⌘⌃⌥⇧Key)
         let mut result = String::new();
-        if has_cmd { result.push_str("⌘"); }
-        if has_ctrl { result.push_str("⌃"); }
-        if has_alt { result.push_str("⌥"); }
-        if has_shift { result.push_str("⇧"); }
+        if has_cmd {
+            result.push_str("⌘");
+        }
+        if has_ctrl {
+            result.push_str("⌃");
+        }
+        if has_alt {
+            result.push_str("⌥");
+        }
+        if has_shift {
+            result.push_str("⇧");
+        }
         result.push_str(&key);
         result
     } else {
         // Windows/Linux: Use text with + separator
         let mut parts_out = Vec::new();
-        if has_ctrl { parts_out.push("Ctrl"); }
-        if has_cmd { parts_out.push("Win"); }
-        if has_alt { parts_out.push("Alt"); }
-        if has_shift { parts_out.push("Shift"); }
+        if has_ctrl {
+            parts_out.push("Ctrl");
+        }
+        if has_cmd {
+            parts_out.push("Win");
+        }
+        if has_alt {
+            parts_out.push("Alt");
+        }
+        if has_shift {
+            parts_out.push("Shift");
+        }
         parts_out.push(&key);
         parts_out.join("+")
     }

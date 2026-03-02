@@ -26,9 +26,14 @@ pub async fn train_voice(
         return Err("name is required".into());
     }
 
-    let store = crate::store::SettingsStore::get(&app).ok().flatten().unwrap_or_default();
+    let store = crate::store::SettingsStore::get(&app)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     if store.disable_audio {
-        return Err("voice training requires audio recording, but audio is disabled in settings".into());
+        return Err(
+            "voice training requires audio recording, but audio is disabled in settings".into(),
+        );
     }
     let port = store.port;
 
@@ -45,7 +50,10 @@ pub async fn train_voice(
         let result = poll_and_assign(&name, &start_time, &end_time, port).await;
         TRAINING_IN_PROGRESS.store(false, Ordering::SeqCst);
         match result {
-            Ok(n) => info!("voice training complete for '{}': assigned {} chunks", name, n),
+            Ok(n) => info!(
+                "voice training complete for '{}': assigned {} chunks",
+                name, n
+            ),
             Err(e) => error!("voice training failed for '{}': {}", name, e),
         }
     });
@@ -56,7 +64,12 @@ pub async fn train_voice(
 /// Poll the search API until input-device audio appears in the time window,
 /// then reassign those chunks to the given speaker name.
 /// Returns the number of chunks assigned.
-async fn poll_and_assign(name: &str, start_time: &str, end_time: &str, port: u16) -> Result<u32, String> {
+async fn poll_and_assign(
+    name: &str,
+    start_time: &str,
+    end_time: &str,
+    port: u16,
+) -> Result<u32, String> {
     let client = reqwest::Client::new();
     let api = format!("http://localhost:{}", port);
 

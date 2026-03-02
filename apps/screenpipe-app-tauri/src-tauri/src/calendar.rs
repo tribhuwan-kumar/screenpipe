@@ -203,10 +203,7 @@ pub async fn calendar_get_events(
         tokio::task::spawn_blocking(move || {
             let cal = ScreenpipeCalendar::new()?;
             let events = cal.get_events(hb, ha)?;
-            Ok(events
-                .into_iter()
-                .map(calendar_event_to_item_win)
-                .collect())
+            Ok(events.into_iter().map(calendar_event_to_item_win).collect())
         })
         .await
         .map_err(|e| format!("task failed: {}", e))?
@@ -243,10 +240,7 @@ pub async fn calendar_get_current_meeting() -> Result<Vec<CalendarEventItem>, St
         tokio::task::spawn_blocking(|| {
             let cal = ScreenpipeCalendar::new()?;
             let events = cal.get_current_events()?;
-            Ok(events
-                .into_iter()
-                .map(calendar_event_to_item_win)
-                .collect())
+            Ok(events.into_iter().map(calendar_event_to_item_win).collect())
         })
         .await
         .map_err(|e| format!("task failed: {}", e))?

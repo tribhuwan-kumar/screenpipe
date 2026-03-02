@@ -88,11 +88,26 @@ impl AnalyticsManager {
                 if let Ok(body) = resp.json::<serde_json::Value>().await {
                     if body.get("found").and_then(|v| v.as_bool()).unwrap_or(false) {
                         let attr = Attribution {
-                            utm_source: body.get("utm_source").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            utm_medium: body.get("utm_medium").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            utm_campaign: body.get("utm_campaign").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            utm_content: body.get("utm_content").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            utm_term: body.get("utm_term").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                            utm_source: body
+                                .get("utm_source")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            utm_medium: body
+                                .get("utm_medium")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            utm_campaign: body
+                                .get("utm_campaign")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            utm_content: body
+                                .get("utm_content")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            utm_term: body
+                                .get("utm_term")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
                         };
                         if !attr.is_empty() {
                             info!("attribution found: {:?}", attr);
@@ -150,8 +165,9 @@ impl AnalyticsManager {
         });
 
         // Add disk usage information (use cache, don't force refresh for analytics)
-        let disk_usage_result = crate::disk_usage::disk_usage(&self.screenpipe_dir_path, false).await;
-        
+        let disk_usage_result =
+            crate::disk_usage::disk_usage(&self.screenpipe_dir_path, false).await;
+
         if let Ok(Some(disk_usage)) = disk_usage_result {
             if let Some(payload_props) = payload["properties"].as_object_mut() {
                 let disk_data = json!({
@@ -170,17 +186,36 @@ impl AnalyticsManager {
         // Inject UTM attribution as $set_once (only sets on first event per person)
         if let Some(attr) = self.attribution.lock().await.as_ref() {
             if let Some(payload_props) = payload["properties"].as_object_mut() {
-                if let Some(set_once) = payload_props.get_mut("$set_once").and_then(|v| v.as_object_mut()) {
-                    if let Some(s) = &attr.utm_source { set_once.insert("utm_source".into(), json!(s)); }
-                    if let Some(s) = &attr.utm_medium { set_once.insert("utm_medium".into(), json!(s)); }
-                    if let Some(s) = &attr.utm_campaign { set_once.insert("utm_campaign".into(), json!(s)); }
-                    if let Some(s) = &attr.utm_content { set_once.insert("utm_content".into(), json!(s)); }
-                    if let Some(s) = &attr.utm_term { set_once.insert("utm_term".into(), json!(s)); }
+                if let Some(set_once) = payload_props
+                    .get_mut("$set_once")
+                    .and_then(|v| v.as_object_mut())
+                {
+                    if let Some(s) = &attr.utm_source {
+                        set_once.insert("utm_source".into(), json!(s));
+                    }
+                    if let Some(s) = &attr.utm_medium {
+                        set_once.insert("utm_medium".into(), json!(s));
+                    }
+                    if let Some(s) = &attr.utm_campaign {
+                        set_once.insert("utm_campaign".into(), json!(s));
+                    }
+                    if let Some(s) = &attr.utm_content {
+                        set_once.insert("utm_content".into(), json!(s));
+                    }
+                    if let Some(s) = &attr.utm_term {
+                        set_once.insert("utm_term".into(), json!(s));
+                    }
                 }
                 // Also add as event properties for easier querying
-                if let Some(s) = &attr.utm_source { payload_props.insert("utm_source".into(), json!(s)); }
-                if let Some(s) = &attr.utm_medium { payload_props.insert("utm_medium".into(), json!(s)); }
-                if let Some(s) = &attr.utm_campaign { payload_props.insert("utm_campaign".into(), json!(s)); }
+                if let Some(s) = &attr.utm_source {
+                    payload_props.insert("utm_source".into(), json!(s));
+                }
+                if let Some(s) = &attr.utm_medium {
+                    payload_props.insert("utm_medium".into(), json!(s));
+                }
+                if let Some(s) = &attr.utm_campaign {
+                    payload_props.insert("utm_campaign".into(), json!(s));
+                }
             }
         }
 
@@ -189,7 +224,6 @@ impl AnalyticsManager {
                 payload_props.extend(props.as_object().unwrap_or(&serde_json::Map::new()).clone());
             }
         }
-
 
         let response = self.client.post(posthog_url).json(&payload).send().await?;
 
@@ -233,10 +267,7 @@ impl AnalyticsManager {
                 }
 
                 // Send periodic event with health data + feature config
-                if let Err(e) = self
-                    .send_event("app_still_running", Some(props))
-                    .await
-                {
+                if let Err(e) = self.send_event("app_still_running", Some(props)).await {
                     error!("failed to send periodic posthog event: {}", e);
                 }
             }
@@ -262,7 +293,13 @@ impl AnalyticsManager {
         let get_bool = |key: &str| settings.get(key).and_then(|v| v.as_bool());
         let get_f64 = |key: &str| settings.get(key).and_then(|v| v.as_f64());
         let get_str = |key: &str| settings.get(key).and_then(|v| v.as_str());
-        let get_arr_len = |key: &str| settings.get(key).and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+        let get_arr_len = |key: &str| {
+            settings
+                .get(key)
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0)
+        };
 
         json!({
             // Screen capture
@@ -367,7 +404,6 @@ impl AnalyticsManager {
             "ax_max_depth_reached": health["accessibility"]["max_depth_reached"].as_u64(),
         }))
     }
-
 }
 
 pub fn start_analytics(
@@ -380,7 +416,7 @@ pub fn start_analytics(
     analytics_enabled: bool,
 ) -> Result<Arc<AnalyticsManager>, Box<dyn std::error::Error>> {
     let is_debug = std::env::var("TAURI_ENV_DEBUG").unwrap_or("false".to_string()) == "true";
-    
+
     // Skip analytics in debug mode or when debug assertions are enabled
     let should_enable_analytics = analytics_enabled && !is_debug && !cfg!(debug_assertions);
 
@@ -404,7 +440,10 @@ pub fn start_analytics(
 
             // Include feature config in app_started event
             let feature_config = analytics_manager.read_feature_config();
-            if let Err(e) = analytics_manager.send_event("app_started", Some(feature_config)).await {
+            if let Err(e) = analytics_manager
+                .send_event("app_started", Some(feature_config))
+                .await
+            {
                 error!("Failed to send initial PostHog event: {}", e);
             }
         }
@@ -420,5 +459,3 @@ pub fn start_analytics(
 
     Ok(analytics_manager)
 }
-
-

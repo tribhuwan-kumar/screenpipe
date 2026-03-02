@@ -186,38 +186,91 @@ struct WindowActivity {
 // ─── Mode detection ─────────────────────────────────────────────────────────
 
 const CODING_APPS: &[&str] = &[
-    "wezterm", "iterm2", "terminal", "alacritty", "kitty", "warp", "hyper", "vscode",
-    "visual studio code", "code", "zed", "xcode", "intellij idea", "webstorm", "pycharm",
-    "cursor", "neovim", "vim",
+    "wezterm",
+    "iterm2",
+    "terminal",
+    "alacritty",
+    "kitty",
+    "warp",
+    "hyper",
+    "vscode",
+    "visual studio code",
+    "code",
+    "zed",
+    "xcode",
+    "intellij idea",
+    "webstorm",
+    "pycharm",
+    "cursor",
+    "neovim",
+    "vim",
 ];
 
 const BROWSER_APPS: &[&str] = &[
-    "arc", "google chrome", "chrome", "safari", "firefox", "brave browser", "microsoft edge",
+    "arc",
+    "google chrome",
+    "chrome",
+    "safari",
+    "firefox",
+    "brave browser",
+    "microsoft edge",
     "opera",
 ];
 
 const MEETING_APPS: &[&str] = &[
-    "zoom.us", "zoom", "microsoft teams", "teams", "google meet", "slack huddle", "facetime",
-    "webex", "discord",
+    "zoom.us",
+    "zoom",
+    "microsoft teams",
+    "teams",
+    "google meet",
+    "slack huddle",
+    "facetime",
+    "webex",
+    "discord",
 ];
 
 const WRITING_APPS: &[&str] = &[
-    "obsidian", "notion", "notes", "bear", "ulysses", "typora", "ia writer", "google docs",
-    "microsoft word", "pages",
+    "obsidian",
+    "notion",
+    "notes",
+    "bear",
+    "ulysses",
+    "typora",
+    "ia writer",
+    "google docs",
+    "microsoft word",
+    "pages",
 ];
 
 const COMMUNICATION_APPS: &[&str] = &[
-    "slack", "messages", "telegram", "whatsapp", "signal", "mail", "gmail", "outlook",
+    "slack",
+    "messages",
+    "telegram",
+    "whatsapp",
+    "signal",
+    "mail",
+    "gmail",
+    "outlook",
     "thunderbird",
 ];
 
 const VIDEO_EDITING_APPS: &[&str] = &[
-    "adobe premiere", "adobe premiere pro 2025", "final cut pro", "davinci resolve", "imovie",
+    "adobe premiere",
+    "adobe premiere pro 2025",
+    "final cut pro",
+    "davinci resolve",
+    "imovie",
     "capcut",
 ];
 
 const COMMUNICATION_SITES: &[&str] = &[
-    "whatsapp", "discord", "slack", "gmail", "mail", "messenger", "telegram",
+    "whatsapp",
+    "discord",
+    "slack",
+    "gmail",
+    "mail",
+    "messenger",
+    "telegram",
     "linkedin messaging",
 ];
 
@@ -262,10 +315,7 @@ fn detect_mode(apps: &[AppActivity], windows: &[WindowActivity]) -> &'static str
 
     // Check browser windows for communication/meeting sites
     for w in windows {
-        if !BROWSER_APPS
-            .iter()
-            .any(|b| *b == w.app_name.to_lowercase())
-        {
+        if !BROWSER_APPS.iter().any(|b| *b == w.app_name.to_lowercase()) {
             continue;
         }
         let lower = w.window_name.to_lowercase();
@@ -306,23 +356,44 @@ fn detect_mode(apps: &[AppActivity], windows: &[WindowActivity]) -> &'static str
 
 fn coding_suggestions(top_apps: &[String]) -> Vec<Suggestion> {
     let mut suggestions = vec![
-        Suggestion { text: "summarize my coding session".into() },
-        Suggestion { text: "any errors or warnings in my terminal?".into() },
+        Suggestion {
+            text: "summarize my coding session".into(),
+        },
+        Suggestion {
+            text: "any errors or warnings in my terminal?".into(),
+        },
     ];
-    if let Some(editor) = top_apps
+    if let Some(editor) = top_apps.iter().find(|a| {
+        [
+            "cursor",
+            "code",
+            "zed",
+            "xcode",
+            "intellij idea",
+            "webstorm",
+            "pycharm",
+            "neovim",
+            "vim",
+        ]
         .iter()
-        .find(|a| ["cursor", "code", "zed", "xcode", "intellij idea", "webstorm", "pycharm", "neovim", "vim"]
-            .iter().any(|c| *c == a.to_lowercase()))
-    {
+        .any(|c| *c == a.to_lowercase())
+    }) {
         suggestions.push(Suggestion {
             text: format!("what files did I edit in {}?", editor),
         });
     }
-    if let Some(terminal) = top_apps
+    if let Some(terminal) = top_apps.iter().find(|a| {
+        [
+            "wezterm",
+            "iterm2",
+            "terminal",
+            "alacritty",
+            "kitty",
+            "warp",
+        ]
         .iter()
-        .find(|a| ["wezterm", "iterm2", "terminal", "alacritty", "kitty", "warp"]
-            .iter().any(|c| *c == a.to_lowercase()))
-    {
+        .any(|c| *c == a.to_lowercase())
+    }) {
         suggestions.push(Suggestion {
             text: format!("what commands did I run in {}?", terminal),
         });
@@ -332,16 +403,20 @@ fn coding_suggestions(top_apps: &[String]) -> Vec<Suggestion> {
 }
 
 fn browsing_suggestions(windows: &[WindowActivity]) -> Vec<Suggestion> {
-    let mut suggestions = vec![
-        Suggestion { text: "summarize the pages I browsed".into() },
-    ];
+    let mut suggestions = vec![Suggestion {
+        text: "summarize the pages I browsed".into(),
+    }];
 
     let browser_windows: Vec<_> = windows
         .iter()
         .filter(|w| {
             BROWSER_APPS.iter().any(|b| *b == w.app_name.to_lowercase())
-                && !COMMUNICATION_SITES.iter().any(|s| w.window_name.to_lowercase().contains(s))
-                && !MEETING_SITES.iter().any(|s| w.window_name.to_lowercase().contains(s))
+                && !COMMUNICATION_SITES
+                    .iter()
+                    .any(|s| w.window_name.to_lowercase().contains(s))
+                && !MEETING_SITES
+                    .iter()
+                    .any(|s| w.window_name.to_lowercase().contains(s))
                 && w.window_name.len() > 5
                 && w.window_name != "Untitled"
                 && w.window_name != "New Tab"
@@ -361,17 +436,27 @@ fn browsing_suggestions(windows: &[WindowActivity]) -> Vec<Suggestion> {
         });
     }
 
-    suggestions.push(Suggestion { text: "how much time did I spend browsing?".into() });
+    suggestions.push(Suggestion {
+        text: "how much time did I spend browsing?".into(),
+    });
     suggestions.truncate(4);
     suggestions
 }
 
 fn meeting_suggestions() -> Vec<Suggestion> {
     vec![
-        Suggestion { text: "summarize my last meeting".into() },
-        Suggestion { text: "what action items came up?".into() },
-        Suggestion { text: "who said what in the call?".into() },
-        Suggestion { text: "list the key decisions made".into() },
+        Suggestion {
+            text: "summarize my last meeting".into(),
+        },
+        Suggestion {
+            text: "what action items came up?".into(),
+        },
+        Suggestion {
+            text: "who said what in the call?".into(),
+        },
+        Suggestion {
+            text: "list the key decisions made".into(),
+        },
     ]
 }
 
@@ -381,44 +466,65 @@ fn writing_suggestions(top_apps: &[String]) -> Vec<Suggestion> {
         .find(|a| WRITING_APPS.iter().any(|w| *w == a.to_lowercase()))
         .cloned();
 
-    let mut suggestions = vec![
-        Suggestion { text: "summarize what I wrote".into() },
-    ];
+    let mut suggestions = vec![Suggestion {
+        text: "summarize what I wrote".into(),
+    }];
     if let Some(app_name) = app {
         suggestions.push(Suggestion {
             text: format!("show my recent notes in {}", app_name),
         });
     }
-    suggestions.push(Suggestion { text: "what topics was I writing about?".into() });
+    suggestions.push(Suggestion {
+        text: "what topics was I writing about?".into(),
+    });
     suggestions.truncate(4);
     suggestions
 }
 
 fn communication_suggestions(windows: &[WindowActivity]) -> Vec<Suggestion> {
-    let mut suggestions = vec![
-        Suggestion { text: "summarize my conversations".into() },
-    ];
+    let mut suggestions = vec![Suggestion {
+        text: "summarize my conversations".into(),
+    }];
 
     let mut seen = std::collections::HashSet::new();
     for w in windows.iter().take(10) {
-        let is_comm = COMMUNICATION_APPS.iter().any(|c| *c == w.app_name.to_lowercase())
-            || COMMUNICATION_SITES.iter().any(|s| w.window_name.to_lowercase().contains(s));
-        if !is_comm { continue; }
+        let is_comm = COMMUNICATION_APPS
+            .iter()
+            .any(|c| *c == w.app_name.to_lowercase())
+            || COMMUNICATION_SITES
+                .iter()
+                .any(|s| w.window_name.to_lowercase().contains(s));
+        if !is_comm {
+            continue;
+        }
 
-        let name = if COMMUNICATION_APPS.iter().any(|c| *c == w.app_name.to_lowercase()) {
+        let name = if COMMUNICATION_APPS
+            .iter()
+            .any(|c| *c == w.app_name.to_lowercase())
+        {
             w.app_name.clone()
         } else {
-            w.window_name.split_whitespace().next().unwrap_or("").to_string()
+            w.window_name
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string()
         };
-        if name.is_empty() || seen.contains(&name.to_lowercase()) { continue; }
+        if name.is_empty() || seen.contains(&name.to_lowercase()) {
+            continue;
+        }
         seen.insert(name.to_lowercase());
         suggestions.push(Suggestion {
             text: format!("what did I discuss on {}?", name),
         });
-        if suggestions.len() >= 3 { break; }
+        if suggestions.len() >= 3 {
+            break;
+        }
     }
 
-    suggestions.push(Suggestion { text: "any messages I need to reply to?".into() });
+    suggestions.push(Suggestion {
+        text: "any messages I need to reply to?".into(),
+    });
     suggestions.truncate(4);
     suggestions
 }
@@ -430,18 +536,32 @@ fn video_editing_suggestions(top_apps: &[String]) -> Vec<Suggestion> {
         .map(|s| s.as_str())
         .unwrap_or("my editor");
     vec![
-        Suggestion { text: format!("how long was my {} session?", app) },
-        Suggestion { text: "what project was I editing?".into() },
-        Suggestion { text: "summarize my editing timeline".into() },
+        Suggestion {
+            text: format!("how long was my {} session?", app),
+        },
+        Suggestion {
+            text: "what project was I editing?".into(),
+        },
+        Suggestion {
+            text: "summarize my editing timeline".into(),
+        },
     ]
 }
 
 fn idle_suggestions() -> Vec<Suggestion> {
     vec![
-        Suggestion { text: "what did I work on in the last hour?".into() },
-        Suggestion { text: "summarize my day so far".into() },
-        Suggestion { text: "which apps did I use most today?".into() },
-        Suggestion { text: "how did I spend my time today?".into() },
+        Suggestion {
+            text: "what did I work on in the last hour?".into(),
+        },
+        Suggestion {
+            text: "summarize my day so far".into(),
+        },
+        Suggestion {
+            text: "which apps did I use most today?".into(),
+        },
+        Suggestion {
+            text: "how did I spend my time today?".into(),
+        },
     ]
 }
 
@@ -480,7 +600,9 @@ async fn fetch_app_activity() -> Result<Vec<AppActivity>, String> {
     if !resp.status().is_success() {
         return Ok(vec![]);
     }
-    resp.json().await.map_err(|e| format!("parse app activity: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("parse app activity: {}", e))
 }
 
 async fn fetch_window_activity() -> Result<Vec<WindowActivity>, String> {
@@ -550,9 +672,7 @@ async fn fetch_accessibility_snippets() -> Vec<AccessibilitySnippet> {
         .await;
 
     match resp {
-        Ok(r) if r.status().is_success() => {
-            r.json().await.unwrap_or_default()
-        }
+        Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
         _ => vec![],
     }
 }
@@ -569,9 +689,7 @@ async fn fetch_audio_snippets() -> Vec<AudioSnippet> {
         .await;
 
     match resp {
-        Ok(r) if r.status().is_success() => {
-            r.json().await.unwrap_or_default()
-        }
+        Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
         _ => vec![],
     }
 }
@@ -590,9 +708,15 @@ async fn fetch_ocr_snippets() -> Vec<String> {
     match resp {
         Ok(r) if r.status().is_success() => {
             #[derive(Deserialize)]
-            struct Row { snippet: String }
-            r.json::<Vec<Row>>().await.unwrap_or_default()
-                .into_iter().map(|r| r.snippet).collect()
+            struct Row {
+                snippet: String,
+            }
+            r.json::<Vec<Row>>()
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r| r.snippet)
+                .collect()
         }
         _ => vec![],
     }
@@ -612,9 +736,15 @@ async fn count_accessibility_rows() -> i64 {
     match resp {
         Ok(r) if r.status().is_success() => {
             #[derive(Deserialize)]
-            struct Row { cnt: i64 }
-            r.json::<Vec<Row>>().await.unwrap_or_default()
-                .first().map(|r| r.cnt).unwrap_or(0)
+            struct Row {
+                cnt: i64,
+            }
+            r.json::<Vec<Row>>()
+                .await
+                .unwrap_or_default()
+                .first()
+                .map(|r| r.cnt)
+                .unwrap_or(0)
         }
         _ => 0,
     }
@@ -622,10 +752,7 @@ async fn count_accessibility_rows() -> i64 {
 
 /// Build a context string that fits within ~4500 chars (~1100 tokens) using
 /// the best available data sources. Priority: accessibility > OCR, always audio.
-async fn build_activity_context(
-    apps: &[AppActivity],
-    windows: &[WindowActivity],
-) -> String {
+async fn build_activity_context(apps: &[AppActivity], windows: &[WindowActivity]) -> String {
     const MAX_CHARS: usize = 4500;
     let mut parts = Vec::new();
     let mut char_budget = MAX_CHARS;
@@ -663,7 +790,9 @@ async fn build_activity_context(
         for a in &audio {
             let speaker = a.speaker_name.as_deref().unwrap_or("unknown");
             let line = format!("  [{}] {}", speaker, a.transcription.trim());
-            if used + line.len() > audio_budget { break; }
+            if used + line.len() > audio_budget {
+                break;
+            }
             used += line.len() + 1;
             parts.push(line);
         }
@@ -683,11 +812,16 @@ async fn build_activity_context(
                 let text = s.snippet.trim().replace('\n', " ");
                 let end = text.floor_char_boundary(text.len().min(150));
                 let line = format!("  [{}] {}", s.app_name, &text[..end]);
-                if used + line.len() > char_budget { break; }
+                if used + line.len() > char_budget {
+                    break;
+                }
                 used += line.len() + 1;
                 parts.push(line);
             }
-            debug!("suggestions: using accessibility data ({} snippets)", snippets.len());
+            debug!(
+                "suggestions: using accessibility data ({} snippets)",
+                snippets.len()
+            );
         }
     } else {
         let snippets = fetch_ocr_snippets().await;
@@ -696,11 +830,16 @@ async fn build_activity_context(
             let mut used = 0;
             for s in &snippets {
                 let line = format!("  \"{}\"", s.trim());
-                if used + line.len() > char_budget { break; }
+                if used + line.len() > char_budget {
+                    break;
+                }
                 used += line.len() + 1;
                 parts.push(line);
             }
-            info!("suggestions: using OCR data ({} snippets, no accessibility available)", snippets.len());
+            info!(
+                "suggestions: using OCR data ({} snippets, no accessibility available)",
+                snippets.len()
+            );
         }
     }
 
@@ -745,12 +884,13 @@ async fn generate_ai_suggestions(
 
     let context = build_activity_context(apps, windows).await;
 
-    let prompt = format!(
-        "{}Activity mode: {}\n\n{}",
-        AI_SYSTEM_PROMPT, mode, context
-    );
+    let prompt = format!("{}Activity mode: {}\n\n{}", AI_SYSTEM_PROMPT, mode, context);
 
-    debug!("suggestions: AI prompt length = {} chars (~{} tokens)", prompt.len(), prompt.len() / 4);
+    debug!(
+        "suggestions: AI prompt length = {} chars (~{} tokens)",
+        prompt.len(),
+        prompt.len() / 4
+    );
 
     let client = reqwest::Client::new();
     let resp = client
@@ -770,7 +910,10 @@ async fn generate_ai_suggestions(
             let content = data["choices"][0]["message"]["content"]
                 .as_str()
                 .unwrap_or("");
-            debug!("suggestions AI response: {}", &content[..content.floor_char_boundary(content.len().min(300))]);
+            debug!(
+                "suggestions AI response: {}",
+                &content[..content.floor_char_boundary(content.len().min(300))]
+            );
             parse_ai_response(content)
         }
         Ok(r) => {
@@ -793,7 +936,11 @@ fn parse_ai_response(content: &str) -> Option<AiResult> {
                 .as_array()
                 .map(|arr| {
                     arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| Suggestion { text: s.to_string() }))
+                        .filter_map(|v| {
+                            v.as_str().map(|s| Suggestion {
+                                text: s.to_string(),
+                            })
+                        })
                         .take(4)
                         .collect::<Vec<_>>()
                 })
@@ -821,7 +968,11 @@ fn parse_ai_response(content: &str) -> Option<AiResult> {
             if let Ok(arr) = serde_json::from_str::<Vec<String>>(&content[start..=end]) {
                 if !arr.is_empty() {
                     return Some(AiResult {
-                        suggestions: arr.into_iter().take(4).map(|text| Suggestion { text }).collect(),
+                        suggestions: arr
+                            .into_iter()
+                            .take(4)
+                            .map(|text| Suggestion { text })
+                            .collect(),
                         tags: vec![],
                     });
                 }
@@ -865,7 +1016,9 @@ async fn generate_suggestions() -> Result<CachedSuggestions, String> {
 
     info!(
         "suggestions: mode={}, apps={}, windows={}",
-        mode, apps.len(), windows.len()
+        mode,
+        apps.len(),
+        windows.len()
     );
 
     // Try AI-powered suggestions + tags in one call
@@ -882,8 +1035,16 @@ async fn generate_suggestions() -> Result<CachedSuggestions, String> {
             None => {
                 // Template fallback — generate basic tags from mode + top apps
                 let fallback_tags = generate_heuristic_tags(mode, &top_apps);
-                info!("suggestions: template fallback (mode={}, {} tags)", mode, fallback_tags.len());
-                (template_suggestions(mode, &top_apps, &windows), fallback_tags, false)
+                info!(
+                    "suggestions: template fallback (mode={}, {} tags)",
+                    mode,
+                    fallback_tags.len()
+                );
+                (
+                    template_suggestions(mode, &top_apps, &windows),
+                    fallback_tags,
+                    false,
+                )
             }
         };
 
@@ -918,9 +1079,7 @@ fn generate_heuristic_tags(mode: &str, top_apps: &[String]) -> Vec<String> {
 }
 
 /// Store AI-generated tags on recent frames using the existing tags + vision_tags tables.
-async fn store_tags(
-    tags: &[String],
-) -> Result<(), String> {
+async fn store_tags(tags: &[String]) -> Result<(), String> {
     let client = reqwest::Client::new();
 
     // Get recent frame IDs (last 10 minutes, sample up to 10)
@@ -939,8 +1098,13 @@ async fn store_tags(
     }
 
     #[derive(Deserialize)]
-    struct FrameRow { id: i64 }
-    let frames: Vec<FrameRow> = resp.json().await.map_err(|e| format!("parse frames: {}", e))?;
+    struct FrameRow {
+        id: i64,
+    }
+    let frames: Vec<FrameRow> = resp
+        .json()
+        .await
+        .map_err(|e| format!("parse frames: {}", e))?;
 
     if frames.is_empty() {
         return Ok(());
@@ -961,7 +1125,12 @@ async fn store_tags(
         }
     }
 
-    info!("suggestions: tagged {}/{} frames with {} tags", tagged, frames.len(), tags.len());
+    info!(
+        "suggestions: tagged {}/{} frames with {} tags",
+        tagged,
+        frames.len(),
+        tags.len()
+    );
     Ok(())
 }
 
@@ -1079,7 +1248,11 @@ mod tests {
 
     /// Score a single suggestion against quality criteria.
     /// Returns (specificity, actionability, naturalness, brevity) each 0-3.
-    fn score_suggestion(text: &str, app_names: &[String], speakers: &[String]) -> (f64, f64, f64, f64) {
+    fn score_suggestion(
+        text: &str,
+        app_names: &[String],
+        speakers: &[String],
+    ) -> (f64, f64, f64, f64) {
         let lower = text.to_lowercase();
         let words: Vec<&str> = text.split_whitespace().collect();
 
@@ -1098,16 +1271,38 @@ mod tests {
         specificity = specificity.min(3.0);
 
         // Actionability: does it lead to a useful response?
-        let action_words = ["summarize", "show", "list", "what", "how much", "how long", "which", "any", "who"];
+        let action_words = [
+            "summarize",
+            "show",
+            "list",
+            "what",
+            "how much",
+            "how long",
+            "which",
+            "any",
+            "who",
+        ];
         let has_action = action_words.iter().any(|w| lower.contains(w));
-        let is_yes_no = lower.starts_with("did ") || lower.starts_with("is ") || lower.starts_with("are ") || lower.starts_with("were ");
-        let actionability = if has_action && !is_yes_no { 3.0 }
-            else if has_action { 2.0 }
-            else if !is_yes_no { 1.0 }
-            else { 0.0 };
+        let is_yes_no = lower.starts_with("did ")
+            || lower.starts_with("is ")
+            || lower.starts_with("are ")
+            || lower.starts_with("were ");
+        let actionability = if has_action && !is_yes_no {
+            3.0
+        } else if has_action {
+            2.0
+        } else if !is_yes_no {
+            1.0
+        } else {
+            0.0
+        };
 
         // Naturalness: lowercase, no weird capitalization, conversational
-        let starts_upper = text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+        let starts_upper = text
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false);
         let has_question_mark = text.ends_with('?');
         let naturalness = match (starts_upper, has_question_mark) {
             (false, false) => 3.0, // casual, no question mark = natural chat
@@ -1146,7 +1341,11 @@ mod tests {
         println!("\n=== Data Source Availability ===");
         println!("  apps:          {} entries", apps.len());
         println!("  windows:       {} entries", windows.len());
-        println!("  accessibility: {} entries (count={})", accessibility.len(), acc_count);
+        println!(
+            "  accessibility: {} entries (count={})",
+            accessibility.len(),
+            acc_count
+        );
         println!("  audio:         {} entries", audio.len());
         println!("  ocr:           {} entries", ocr.len());
 
@@ -1156,14 +1355,22 @@ mod tests {
         if !accessibility.is_empty() {
             println!("\n  accessibility samples:");
             for a in accessibility.iter().take(3) {
-                println!("    [{}] {}...", a.app_name, &a.snippet[..a.snippet.len().min(80)]);
+                println!(
+                    "    [{}] {}...",
+                    a.app_name,
+                    &a.snippet[..a.snippet.len().min(80)]
+                );
             }
         }
         if !audio.is_empty() {
             println!("\n  audio samples:");
             for a in audio.iter().take(3) {
                 let speaker = a.speaker_name.as_deref().unwrap_or("?");
-                println!("    [{}] {}...", speaker, &a.transcription[..a.transcription.len().min(80)]);
+                println!(
+                    "    [{}] {}...",
+                    speaker,
+                    &a.transcription[..a.transcription.len().min(80)]
+                );
             }
         }
         if !ocr.is_empty() {
@@ -1177,9 +1384,17 @@ mod tests {
         let context = build_activity_context(&apps, &windows).await;
         let est_tokens = context.len() / 4;
         println!("\n=== Context Builder ===");
-        println!("  context length: {} chars (~{} tokens)", context.len(), est_tokens);
+        println!(
+            "  context length: {} chars (~{} tokens)",
+            context.len(),
+            est_tokens
+        );
         println!("  uses accessibility: {}", acc_count > 5);
-        assert!(context.len() < 5000, "context too large: {} chars (budget 4500)", context.len());
+        assert!(
+            context.len() < 5000,
+            "context too large: {} chars (budget 4500)",
+            context.len()
+        );
     }
 
     #[tokio::test]
@@ -1203,7 +1418,8 @@ mod tests {
 
         // Collect speaker names from audio
         let audio = fetch_audio_snippets().await;
-        let speakers: Vec<String> = audio.iter()
+        let speakers: Vec<String> = audio
+            .iter()
             .filter_map(|a| a.speaker_name.clone())
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
@@ -1224,7 +1440,8 @@ mod tests {
                 Some(suggestions) => {
                     let mut run_scores = Vec::new();
                     for s in &suggestions {
-                        let (spec, act, nat, brev) = score_suggestion(&s.text, &top_apps, &speakers);
+                        let (spec, act, nat, brev) =
+                            score_suggestion(&s.text, &top_apps, &speakers);
                         let total = weighted_score(spec, act, nat, brev);
                         run_scores.push(total);
                     }
@@ -1233,7 +1450,8 @@ mod tests {
 
                     println!("\n  Run {}: avg={:.2}/3.00", run + 1, avg);
                     for (i, s) in suggestions.iter().enumerate() {
-                        let (spec, act, nat, brev) = score_suggestion(&s.text, &top_apps, &speakers);
+                        let (spec, act, nat, brev) =
+                            score_suggestion(&s.text, &top_apps, &speakers);
                         let total = weighted_score(spec, act, nat, brev);
                         println!("    [{}] \"{}\"\n        spec={:.1} act={:.1} nat={:.1} brev={:.1} → {:.2}",
                             i + 1, s.text, spec, act, nat, brev, total);
@@ -1255,34 +1473,65 @@ mod tests {
             let (spec, act, nat, brev) = score_suggestion(&s.text, &top_apps, &speakers);
             let total = weighted_score(spec, act, nat, brev);
             template_scores.push(total);
-            println!("    [{}] \"{}\"\n        spec={:.1} act={:.1} nat={:.1} brev={:.1} → {:.2}",
-                i + 1, s.text, spec, act, nat, brev, total);
+            println!(
+                "    [{}] \"{}\"\n        spec={:.1} act={:.1} nat={:.1} brev={:.1} → {:.2}",
+                i + 1,
+                s.text,
+                spec,
+                act,
+                nat,
+                brev,
+                total
+            );
         }
-        let template_avg = template_scores.iter().sum::<f64>() / template_scores.len().max(1) as f64;
+        let template_avg =
+            template_scores.iter().sum::<f64>() / template_scores.len().max(1) as f64;
 
         // Summary
-        let ai_avg = if all_scores.is_empty() { 0.0 }
-            else { all_scores.iter().sum::<f64>() / all_scores.len() as f64 };
+        let ai_avg = if all_scores.is_empty() {
+            0.0
+        } else {
+            all_scores.iter().sum::<f64>() / all_scores.len() as f64
+        };
         let consistency = if all_scores.len() > 1 {
             let mean = ai_avg;
-            let variance = all_scores.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / all_scores.len() as f64;
+            let variance = all_scores.iter().map(|s| (s - mean).powi(2)).sum::<f64>()
+                / all_scores.len() as f64;
             variance.sqrt()
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         println!("\n=== Results ===");
-        println!("  AI avg score:       {:.2}/3.00 (over {} runs)", ai_avg, all_scores.len());
-        println!("  AI consistency:     {:.3} std dev (lower=better)", consistency);
+        println!(
+            "  AI avg score:       {:.2}/3.00 (over {} runs)",
+            ai_avg,
+            all_scores.len()
+        );
+        println!(
+            "  AI consistency:     {:.3} std dev (lower=better)",
+            consistency
+        );
         println!("  Template avg score: {:.2}/3.00", template_avg);
-        println!("  AI vs Template:     {:+.2} ({:.0}% {})",
+        println!(
+            "  AI vs Template:     {:+.2} ({:.0}% {})",
             ai_avg - template_avg,
             ((ai_avg - template_avg) / template_avg.max(0.01) * 100.0).abs(),
-            if ai_avg > template_avg { "better" } else { "worse" }
+            if ai_avg > template_avg {
+                "better"
+            } else {
+                "worse"
+            }
         );
 
         // Quality gate — AI should beat templates
         if !all_scores.is_empty() {
-            assert!(ai_avg >= template_avg * 0.8,
-                "AI quality ({:.2}) too far below templates ({:.2})", ai_avg, template_avg);
+            assert!(
+                ai_avg >= template_avg * 0.8,
+                "AI quality ({:.2}) too far below templates ({:.2})",
+                ai_avg,
+                template_avg
+            );
         }
     }
 
@@ -1315,8 +1564,11 @@ mod tests {
 
         // If we have accessibility data, we should NOT be using OCR
         if acc_count > 5 {
-            assert!(has_accessibility_section || !has_ocr_section,
-                "should prefer accessibility over OCR when {} rows available", acc_count);
+            assert!(
+                has_accessibility_section || !has_ocr_section,
+                "should prefer accessibility over OCR when {} rows available",
+                acc_count
+            );
             println!("  ✓ correctly prioritized accessibility over OCR");
         } else if has_ocr_section {
             println!("  ✓ correctly fell back to OCR (no accessibility data)");
@@ -1325,7 +1577,11 @@ mod tests {
         // Context should fit in the token budget
         let est_tokens = context.len() / 4;
         println!("  estimated tokens: {}", est_tokens);
-        assert!(est_tokens < 1300, "context too large: {} tokens (budget ~1200)", est_tokens);
+        assert!(
+            est_tokens < 1300,
+            "context too large: {} tokens (budget ~1200)",
+            est_tokens
+        );
         println!("  ✓ within token budget");
     }
 }

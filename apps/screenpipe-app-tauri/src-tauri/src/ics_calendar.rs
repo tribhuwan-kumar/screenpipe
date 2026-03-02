@@ -176,10 +176,7 @@ async fn fetch_and_parse_feed(
             }
         },
         Err(e) => {
-            warn!(
-                "ics_calendar: failed to fetch '{}': {}",
-                entry.name, e
-            );
+            warn!("ics_calendar: failed to fetch '{}': {}", entry.name, e);
             Vec::new()
         }
     }
@@ -193,8 +190,12 @@ pub async fn start_ics_calendar_poller(app: AppHandle) {
 
     loop {
         if let Ok(Some(store)) = IcsCalendarSettingsStore::get(&app) {
-            let enabled_entries: Vec<_> =
-                store.entries.iter().filter(|e| e.enabled).cloned().collect();
+            let enabled_entries: Vec<_> = store
+                .entries
+                .iter()
+                .filter(|e| e.enabled)
+                .cloned()
+                .collect();
 
             if !enabled_entries.is_empty() {
                 let mut all_events = Vec::new();
@@ -204,9 +205,7 @@ pub async fn start_ics_calendar_poller(app: AppHandle) {
                 }
 
                 if !all_events.is_empty() {
-                    if let Err(e) =
-                        screenpipe_events::send_event("calendar_events", all_events)
-                    {
+                    if let Err(e) = screenpipe_events::send_event("calendar_events", all_events) {
                         debug!("ics_calendar: failed to send events: {}", e);
                     }
                 }
@@ -221,9 +220,7 @@ pub async fn start_ics_calendar_poller(app: AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn ics_calendar_get_entries(
-    app: AppHandle,
-) -> Result<Vec<IcsCalendarEntry>, String> {
+pub async fn ics_calendar_get_entries(app: AppHandle) -> Result<Vec<IcsCalendarEntry>, String> {
     let store = IcsCalendarSettingsStore::get(&app)?;
     Ok(store.map(|s| s.entries).unwrap_or_default())
 }
@@ -258,9 +255,7 @@ pub async fn ics_calendar_test_url(url: String) -> Result<u32, String> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn ics_calendar_get_upcoming(
-    app: AppHandle,
-) -> Result<Vec<CalendarEventItem>, String> {
+pub async fn ics_calendar_get_upcoming(app: AppHandle) -> Result<Vec<CalendarEventItem>, String> {
     let store = IcsCalendarSettingsStore::get(&app)?;
     let entries = store.map(|s| s.entries).unwrap_or_default();
     let enabled: Vec<_> = entries.into_iter().filter(|e| e.enabled).collect();

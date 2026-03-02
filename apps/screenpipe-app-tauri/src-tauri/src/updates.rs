@@ -15,9 +15,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::menu::{MenuItem, MenuItemBuilder};
 use tauri::{Emitter, Manager, Wry};
-use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_dialog::MessageDialogButtons;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::oneshot;
@@ -41,27 +41,37 @@ pub async fn install_specific_version(app: &tauri::AppHandle, version: &str) -> 
     info!("rollback: installing v{} from {}", version, rollback_url);
 
     // Build updater pointed at our rollback endpoint
-    let mut builder = app.updater_builder()
-        .endpoints(vec![rollback_url.parse().map_err(|e| format!("invalid url: {}", e))?])
+    let mut builder = app
+        .updater_builder()
+        .endpoints(vec![rollback_url
+            .parse()
+            .map_err(|e| format!("invalid url: {}", e))?])
         .map_err(|e| format!("failed to build updater: {}", e))?;
 
     // Add auth header so R2 download works for paid users
     if let Ok(Some(settings)) = SettingsStore::get(app) {
         if let Some(ref token) = settings.user.token {
-            builder = builder.header("Authorization", format!("Bearer {}", token))
+            builder = builder
+                .header("Authorization", format!("Bearer {}", token))
                 .map_err(|e| format!("failed to set auth header: {}", e))?;
         }
     }
 
-    let update = builder.build()
+    let update = builder
+        .build()
         .map_err(|e| format!("failed to build updater: {}", e))?
-        .check().await
+        .check()
+        .await
         .map_err(|e| format!("failed to check rollback endpoint: {}", e))?
-        .ok_or_else(|| "rollback endpoint returned no update (version may not exist)".to_string())?;
+        .ok_or_else(|| {
+            "rollback endpoint returned no update (version may not exist)".to_string()
+        })?;
 
     info!("rollback: downloading v{}", version);
 
-    update.download_and_install(|_, _| {}, || {}).await
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
         .map_err(|e| format!("failed to download/install v{}: {}", version, e))?;
 
     info!("rollback: v{} installed, restart required", version);
@@ -71,20 +81,30 @@ pub async fn install_specific_version(app: &tauri::AppHandle, version: &str) -> 
 /// Get Tauri target-arch string for the current platform
 fn get_target_arch() -> &'static str {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { "darwin-aarch64" }
+    {
+        "darwin-aarch64"
+    }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { "darwin-x86_64" }
+    {
+        "darwin-x86_64"
+    }
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    { "windows-x86_64" }
+    {
+        "windows-x86_64"
+    }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { "linux-x86_64" }
+    {
+        "linux-x86_64"
+    }
     #[cfg(not(any(
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "x86_64"),
         all(target_os = "windows", target_arch = "x86_64"),
         all(target_os = "linux", target_arch = "x86_64"),
     )))]
-    { "unknown" }
+    {
+        "unknown"
+    }
 }
 
 /// Check if this is a source/community build (not an official release)
@@ -143,13 +163,19 @@ impl UpdatesManager {
         show_dialog: bool,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         // Prevent concurrent update checks (boot check + periodic/manual race)
-        if self.is_checking.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        if self
+            .is_checking
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             info!("update check already in progress, skipping");
             return Ok(false);
         }
         struct CheckGuard<'a>(&'a AtomicBool);
         impl<'a> Drop for CheckGuard<'a> {
-            fn drop(&mut self) { self.0.store(false, Ordering::SeqCst); }
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
         }
         let _guard = CheckGuard(&self.is_checking);
 
@@ -207,7 +233,11 @@ impl UpdatesManager {
                 info!(
                     "updater returned None — no update available (current v{}, endpoints: {:?})",
                     current_version,
-                    self.app.config().plugins.0.get("updater")
+                    self.app
+                        .config()
+                        .plugins
+                        .0
+                        .get("updater")
                         .and_then(|u| u.get("endpoints"))
                 );
             }
@@ -238,12 +268,12 @@ impl UpdatesManager {
                 } else {
                     "assets/screenpipe-logo-tray-updates-white.png"
                 };
-    
+
                 let path = self
                     .app
                     .path()
                     .resolve(icon_path, tauri::path::BaseDirectory::Resource)?;
-    
+
                 if let Ok(image) = tauri::image::Image::from_path(path) {
                     crate::safe_icon::safe_set_icon_as_template(&tray, image)?;
                 }
@@ -265,30 +295,32 @@ impl UpdatesManager {
                 let menu_item = self.update_menu_item.clone();
                 let mut downloaded: u64 = 0;
                 let mut last_pct: u8 = 0;
-                let download_result = update.download_and_install(
-                    move |chunk_len, content_len| {
-                        downloaded += chunk_len as u64;
-                        let pct = content_len
-                            .map(|total| ((downloaded as f64 / total as f64) * 100.0) as u8)
-                            .unwrap_or(0);
-                        // Only emit every 5% to avoid flooding
-                        if pct >= last_pct + 5 || pct == 100 {
-                            last_pct = pct;
-                            let progress = serde_json::json!({
-                                "version": update_version,
-                                "downloaded": downloaded,
-                                "total": content_len,
-                                "percent": pct,
-                            });
-                            let _ = app_handle.emit("update-download-progress", progress);
-                            info!("update download: {}%", pct);
-                        }
-                        if let Some(ref m) = menu_item {
-                            let _ = m.set_text(&format!("Downloading update... {}%", pct));
-                        }
-                    },
-                    || {},
-                ).await;
+                let download_result = update
+                    .download_and_install(
+                        move |chunk_len, content_len| {
+                            downloaded += chunk_len as u64;
+                            let pct = content_len
+                                .map(|total| ((downloaded as f64 / total as f64) * 100.0) as u8)
+                                .unwrap_or(0);
+                            // Only emit every 5% to avoid flooding
+                            if pct >= last_pct + 5 || pct == 100 {
+                                last_pct = pct;
+                                let progress = serde_json::json!({
+                                    "version": update_version,
+                                    "downloaded": downloaded,
+                                    "total": content_len,
+                                    "percent": pct,
+                                });
+                                let _ = app_handle.emit("update-download-progress", progress);
+                                info!("update download: {}%", pct);
+                            }
+                            if let Some(ref m) = menu_item {
+                                let _ = m.set_text(&format!("Downloading update... {}%", pct));
+                            }
+                        },
+                        || {},
+                    )
+                    .await;
 
                 match download_result {
                     Ok(_) => {
@@ -300,23 +332,33 @@ impl UpdatesManager {
                     }
                     Err(e) => {
                         let err_str = e.to_string();
-                        if err_str.contains("401") || err_str.contains("403")
-                            || err_str.contains("Unauthorized") || err_str.contains("Forbidden") {
+                        if err_str.contains("401")
+                            || err_str.contains("403")
+                            || err_str.contains("Unauthorized")
+                            || err_str.contains("Forbidden")
+                        {
                             warn!("update download requires authentication: {}", err_str);
-                            let _ = self.app.emit("update-auth-required", serde_json::json!({
-                                "version": update.version,
-                                "message": "sign in to get the latest update",
-                            }));
+                            let _ = self.app.emit(
+                                "update-auth-required",
+                                serde_json::json!({
+                                    "version": update.version,
+                                    "message": "sign in to get the latest update",
+                                }),
+                            );
                             let app_notif = self.app.clone();
                             let version_str = update.version.clone();
                             // std::thread::spawn (not spawn_blocking) to escape tokio runtime context entirely.
                             // notify_rust on Linux internally calls block_on for D-Bus, which panics
                             // if any tokio runtime exists on the current thread — even blocking threads.
                             let _ = std::thread::spawn(move || {
-                                let _ = app_notif.notification()
+                                let _ = app_notif
+                                    .notification()
                                     .builder()
                                     .title("screenpipe update available")
-                                    .body(format!("v{} is ready — sign in to download", version_str))
+                                    .body(format!(
+                                        "v{} is ready — sign in to download",
+                                        version_str
+                                    ))
                                     .show();
                             });
                             if let Some(ref item) = self.update_menu_item {
@@ -353,7 +395,8 @@ impl UpdatesManager {
             let version_str = update.version.clone();
             std::thread::spawn(move || {
                 if auto_update {
-                    if let Err(e) = app_notif.notification()
+                    if let Err(e) = app_notif
+                        .notification()
                         .builder()
                         .title("screenpipe updating")
                         .body(format!("v{} downloaded — restarting now", version_str))
@@ -362,10 +405,14 @@ impl UpdatesManager {
                         error!("failed to send update notification: {}", e);
                     }
                 } else {
-                    if let Err(e) = app_notif.notification()
+                    if let Err(e) = app_notif
+                        .notification()
                         .builder()
                         .title("screenpipe update available")
-                        .body(format!("v{} is ready — open screenpipe to update", version_str))
+                        .body(format!(
+                            "v{} is ready — open screenpipe to update",
+                            version_str
+                        ))
                         .show()
                     {
                         error!("failed to send update notification: {}", e);
@@ -376,7 +423,10 @@ impl UpdatesManager {
             // Auto-update: if enabled and update is downloaded, restart automatically
             // This ensures users get updates even if tray icon is hidden (e.g., behind notch)
             if auto_update && *self.update_installed.lock().await {
-                info!("auto-update enabled, restarting to apply update v{}", update.version);
+                info!(
+                    "auto-update enabled, restarting to apply update v{}",
+                    update.version
+                );
                 // Give user time to read the notification
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 if let Err(err) =
@@ -408,7 +458,6 @@ impl UpdatesManager {
                 if rx.await? {
                     #[cfg(target_os = "windows")]
                     {
-
                         if let Some(ref item) = self.update_menu_item {
                             item.set_enabled(false)?;
                             item.set_text("Downloading latest version of screenpipe")?;
@@ -424,21 +473,26 @@ impl UpdatesManager {
                         let menu_item_win = self.update_menu_item.clone();
                         let mut dl: u64 = 0;
                         let mut lp: u8 = 0;
-                        update.download_and_install(
-                            move |chunk_len, content_len| {
-                                dl += chunk_len as u64;
-                                let pct = content_len
-                                    .map(|t| ((dl as f64 / t as f64) * 100.0) as u8)
-                                    .unwrap_or(0);
-                                if pct >= lp + 5 || pct == 100 {
-                                    lp = pct;
-                                    if let Some(ref m) = menu_item_win {
-                                        let _ = m.set_text(&format!("Downloading update... {}%", pct));
+                        update
+                            .download_and_install(
+                                move |chunk_len, content_len| {
+                                    dl += chunk_len as u64;
+                                    let pct = content_len
+                                        .map(|t| ((dl as f64 / t as f64) * 100.0) as u8)
+                                        .unwrap_or(0);
+                                    if pct >= lp + 5 || pct == 100 {
+                                        lp = pct;
+                                        if let Some(ref m) = menu_item_win {
+                                            let _ = m.set_text(&format!(
+                                                "Downloading update... {}%",
+                                                pct
+                                            ));
+                                        }
                                     }
-                                }
-                            },
-                            || {},
-                        ).await?;
+                                },
+                                || {},
+                            )
+                            .await?;
                         *self.update_installed.lock().await = true;
 
                         if let Some(ref item) = self.update_menu_item {
@@ -511,10 +565,16 @@ impl UpdatesManager {
         let clicked_download = rx.await?;
         if clicked_download {
             // Open download page
-            let _ = self.app.opener().open_url("https://screenpi.pe/download", None::<&str>);
+            let _ = self
+                .app
+                .opener()
+                .open_url("https://screenpi.pe/download", None::<&str>);
         } else {
             // Open GitHub releases
-            let _ = self.app.opener().open_url("https://github.com/screenpipe/screenpipe/releases", None::<&str>);
+            let _ = self.app.opener().open_url(
+                "https://github.com/screenpipe/screenpipe/releases",
+                None::<&str>,
+            );
         }
 
         Ok(())

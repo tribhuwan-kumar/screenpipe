@@ -1,8 +1,8 @@
 use super::get_base_dir;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
+use std::sync::Arc;
 use tauri::AppHandle;
 use tauri_plugin_store::StoreBuilder;
 use tracing::error;
@@ -50,7 +50,8 @@ impl OnboardingStore {
         match store.is_empty() {
             true => Ok(None),
             false => {
-                let onboarding = serde_json::from_value(store.get("onboarding").unwrap_or(Value::Null));
+                let onboarding =
+                    serde_json::from_value(store.get("onboarding").unwrap_or(Value::Null));
                 match onboarding {
                     Ok(onboarding) => Ok(onboarding),
                     Err(e) => {
@@ -62,7 +63,10 @@ impl OnboardingStore {
         }
     }
 
-    pub fn update(app: &AppHandle, update: impl FnOnce(&mut OnboardingStore)) -> Result<(), String> {
+    pub fn update(
+        app: &AppHandle,
+        update: impl FnOnce(&mut OnboardingStore),
+    ) -> Result<(), String> {
         let Ok(store) = get_store(app, None) else {
             return Err("Failed to get onboarding store".to_string());
         };
@@ -95,7 +99,7 @@ impl OnboardingStore {
     }
 }
 
-#[derive(Serialize, Deserialize,Type,Clone)]
+#[derive(Serialize, Deserialize, Type, Clone)]
 #[serde(default)]
 pub struct SettingsStore {
     #[serde(rename = "aiPresets")]
@@ -112,7 +116,7 @@ pub struct SettingsStore {
     /// Persistent analytics ID used for PostHog tracking (both frontend and backend)
     #[serde(rename = "analyticsId")]
     pub analytics_id: String,
-  
+
     #[serde(rename = "devMode")]
     pub dev_mode: bool,
     #[serde(rename = "audioTranscriptionEngine")]
@@ -200,7 +204,11 @@ pub struct SettingsStore {
     pub enable_input_capture: bool,
     /// Enable accessibility text capture (AX tree walker).
     /// Requires accessibility permission on macOS.
-    #[serde(rename = "enableAccessibility", alias = "enableUiEvents", default = "default_true")]
+    #[serde(
+        rename = "enableAccessibility",
+        alias = "enableUiEvents",
+        default = "default_true"
+    )]
     pub enable_accessibility: bool,
     /// Auto-install updates and restart when a new version is available.
     /// When disabled, users must click "update now" in the tray menu.
@@ -241,12 +249,16 @@ fn default_true() -> bool {
 
 fn default_overlay_mode() -> String {
     #[cfg(target_os = "macos")]
-    { "fullscreen".to_string() }
+    {
+        "fullscreen".to_string()
+    }
     #[cfg(not(target_os = "macos"))]
-    { "window".to_string() }
+    {
+        "window".to_string()
+    }
 }
 
-#[derive(Serialize, Deserialize, Type,Clone,Default)]
+#[derive(Serialize, Deserialize, Type, Clone, Default)]
 pub enum AIProviderType {
     #[default]
     #[serde(rename = "openai")]
@@ -261,7 +273,7 @@ pub enum AIProviderType {
     Pi,
 }
 
-#[derive(Serialize, Deserialize,Type,Clone)]
+#[derive(Serialize, Deserialize, Type, Clone)]
 #[serde(default)]
 pub struct AIPreset {
     pub id: String,
@@ -294,7 +306,7 @@ impl Default for AIPreset {
     }
 }
 
-#[derive(Serialize, Deserialize,Type,Clone)]
+#[derive(Serialize, Deserialize, Type, Clone)]
 #[serde(default)]
 pub struct User {
     pub id: Option<String>,
@@ -338,7 +350,7 @@ impl Default for User {
     }
 }
 
-#[derive(Serialize, Deserialize,Type,Clone)]
+#[derive(Serialize, Deserialize, Type, Clone)]
 #[serde(default)]
 pub struct Credits {
     pub amount: i32,
@@ -346,13 +358,11 @@ pub struct Credits {
 
 impl Default for Credits {
     fn default() -> Self {
-        Self {
-            amount: 0,
-        }
+        Self { amount: 0 }
     }
 }
 
-#[derive(Serialize, Deserialize,Type,Clone)]
+#[derive(Serialize, Deserialize, Type, Clone)]
 #[serde(default)]
 pub struct EmbeddedLLM {
     pub enabled: bool,
@@ -443,7 +453,7 @@ impl Default for SettingsStore {
             is_loading: false,
             user_id: "".to_string(),
             analytics_id: uuid::Uuid::new_v4().to_string(),
-         
+
             dev_mode: false,
             audio_transcription_engine: "whisper-large-v3-turbo-quantized".to_string(),
             #[cfg(target_os = "macos")]
@@ -516,7 +526,7 @@ impl Default for SettingsStore {
             realtime_audio_transcription_engine: "deepgram".to_string(),
             disable_vision: false,
             disable_ocr: false,
-            use_all_monitors: true,  // Match CLI default - dynamic monitor detection
+            use_all_monitors: true, // Match CLI default - dynamic monitor detection
             show_shortcut_overlay: true,
             device_id: uuid::Uuid::new_v4().to_string(),
             adaptive_fps: false,
@@ -570,7 +580,10 @@ impl SettingsStore {
     }
 
     /// Build a unified `RecordingConfig` from this settings store.
-    pub fn to_recording_config(&self, data_dir: std::path::PathBuf) -> screenpipe_server::RecordingConfig {
+    pub fn to_recording_config(
+        &self,
+        data_dir: std::path::PathBuf,
+    ) -> screenpipe_server::RecordingConfig {
         use screenpipe_audio::audio_manager::builder::TranscriptionMode;
         use screenpipe_audio::core::engine::AudioTranscriptionEngine;
         let audio_engine_str = self.resolve_audio_engine();
@@ -584,7 +597,8 @@ impl SettingsStore {
             use_pii_removal: self.use_pii_removal,
             enable_input_capture: true, // always enabled, setting removed from UI
             enable_accessibility: true, // always enabled, setting removed from UI
-            audio_transcription_engine: audio_engine_str.parse()
+            audio_transcription_engine: audio_engine_str
+                .parse()
                 .unwrap_or(AudioTranscriptionEngine::WhisperLargeV3Turbo),
             transcription_mode: match self.extra.get("transcriptionMode").and_then(|v| v.as_str()) {
                 Some("smart") | Some("batch") => TranscriptionMode::Batch,
@@ -597,7 +611,9 @@ impl SettingsStore {
             ignored_windows: self.ignored_windows.clone(),
             included_windows: self.included_windows.clone(),
             ignored_urls: self.ignored_urls.clone(),
-            languages: self.languages.iter()
+            languages: self
+                .languages
+                .iter()
                 .filter(|s| s != &"default")
                 .filter_map(|s| s.parse().ok())
                 .collect(),
@@ -610,11 +626,25 @@ impl SettingsStore {
             },
             user_id: self.user.id.as_ref().filter(|id| !id.is_empty()).cloned(),
             // OpenAI Compatible transcription
-            openai_compatible_endpoint: self.extra.get("openaiCompatibleEndpoint").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            openai_compatible_api_key: self.extra.get("openaiCompatibleApiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            openai_compatible_model: self.extra.get("openaiCompatibleModel").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            openai_compatible_endpoint: self
+                .extra
+                .get("openaiCompatibleEndpoint")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            openai_compatible_api_key: self
+                .extra
+                .get("openaiCompatibleApiKey")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            openai_compatible_model: self
+                .extra
+                .get("openaiCompatibleModel")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             // Fallback chain for speaker identification: userName setting → cloud name → cloud email
-            user_name: self.extra.get("userName")
+            user_name: self
+                .extra
+                .get("userName")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .filter(|s| !s.trim().is_empty())
@@ -624,8 +654,15 @@ impl SettingsStore {
             use_chinese_mirror: self.use_chinese_mirror,
             analytics_enabled: self.analytics_enabled,
             analytics_id: self.analytics_id.clone(),
-            vocabulary: self.extra.get("vocabularyWords")
-                .and_then(|v| serde_json::from_value::<Vec<screenpipe_audio::transcription::VocabularyEntry>>(v.clone()).ok())
+            vocabulary: self
+                .extra
+                .get("vocabularyWords")
+                .and_then(|v| {
+                    serde_json::from_value::<Vec<screenpipe_audio::transcription::VocabularyEntry>>(
+                        v.clone(),
+                    )
+                    .ok()
+                })
                 .unwrap_or_default(),
         }
     }
@@ -634,8 +671,8 @@ impl SettingsStore {
         let engine = self.audio_transcription_engine.clone();
         let has_user_id = self.user.id.as_ref().map_or(false, |id| !id.is_empty());
         let is_subscribed = self.user.cloud_subscribed == Some(true);
-        let has_deepgram_key = !self.deepgram_api_key.is_empty()
-            && self.deepgram_api_key != "default";
+        let has_deepgram_key =
+            !self.deepgram_api_key.is_empty() && self.deepgram_api_key != "default";
         match engine.as_str() {
             "screenpipe-cloud" if !has_user_id => {
                 tracing::warn!("screenpipe-cloud selected but user not logged in, falling back to whisper-large-v3-turbo-quantized");
@@ -653,7 +690,7 @@ impl SettingsStore {
         }
     }
 
-    pub fn save(&self,app: &AppHandle) -> Result<(), String> {
+    pub fn save(&self, app: &AppHandle) -> Result<(), String> {
         let Ok(store) = get_store(app, None) else {
             return Err("Failed to get store".to_string());
         };
@@ -673,7 +710,10 @@ pub fn init_store(app: &AppHandle) -> Result<SettingsStore, String> {
             // Fallback to defaults when deserialization fails (e.g., corrupted store)
             // DON'T save - preserve original store in case it can be manually recovered
             // This prevents crashes from invalid values like negative integers in u32 fields
-            error!("Failed to deserialize settings, using defaults (store not overwritten): {}", e);
+            error!(
+                "Failed to deserialize settings, using defaults (store not overwritten): {}",
+                e
+            );
             (SettingsStore::default(), false)
         }
     };
@@ -693,7 +733,10 @@ pub fn init_onboarding_store(app: &AppHandle) -> Result<OnboardingStore, String>
         Err(e) => {
             // Fallback to defaults when deserialization fails
             // DON'T save - preserve original store
-            error!("Failed to deserialize onboarding, using defaults (store not overwritten): {}", e);
+            error!(
+                "Failed to deserialize onboarding, using defaults (store not overwritten): {}",
+                e
+            );
             (OnboardingStore::default(), false)
         }
     };
@@ -716,7 +759,9 @@ pub struct RemindersSettingsStore {
     pub audio_only: bool,
 }
 
-fn reminders_audio_only_default() -> bool { true }
+fn reminders_audio_only_default() -> bool {
+    true
+}
 
 // ─── Cloud Sync Settings ─────────────────────────────────────────────────────
 
@@ -734,8 +779,7 @@ impl CloudSyncSettingsStore {
         if store.is_empty() {
             return Ok(None);
         }
-        let settings =
-            serde_json::from_value(store.get("cloud_sync").unwrap_or(Value::Null));
+        let settings = serde_json::from_value(store.get("cloud_sync").unwrap_or(Value::Null));
         match settings {
             Ok(settings) => Ok(settings),
             Err(_) => Ok(None),
@@ -758,7 +802,9 @@ pub struct CloudArchiveSettingsStore {
     pub retention_days: u32,
 }
 
-fn default_archive_retention() -> u32 { 7 }
+fn default_archive_retention() -> u32 {
+    7
+}
 
 impl CloudArchiveSettingsStore {
     pub fn get(app: &AppHandle) -> Result<Option<Self>, String> {
@@ -766,8 +812,7 @@ impl CloudArchiveSettingsStore {
         if store.is_empty() {
             return Ok(None);
         }
-        let settings =
-            serde_json::from_value(store.get("cloud_archive").unwrap_or(Value::Null));
+        let settings = serde_json::from_value(store.get("cloud_archive").unwrap_or(Value::Null));
         match settings {
             Ok(settings) => Ok(settings),
             Err(_) => Ok(None),
@@ -801,8 +846,7 @@ impl IcsCalendarSettingsStore {
         if store.is_empty() {
             return Ok(None);
         }
-        let settings =
-            serde_json::from_value(store.get("ics_calendars").unwrap_or(Value::Null));
+        let settings = serde_json::from_value(store.get("ics_calendars").unwrap_or(Value::Null));
         match settings {
             Ok(settings) => Ok(settings),
             Err(_) => Ok(None),

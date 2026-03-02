@@ -77,13 +77,11 @@ pub async fn validate_data_dir(path: String) -> Result<(), String> {
     }
 
     // Try to create the directory (and the data subdirectory)
-    fs::create_dir_all(p.join("data"))
-        .map_err(|e| format!("Cannot create directory: {}", e))?;
+    fs::create_dir_all(p.join("data")).map_err(|e| format!("Cannot create directory: {}", e))?;
 
     // Check writability by writing and removing a temp file
     let probe = p.join(".screenpipe_probe");
-    fs::write(&probe, b"ok")
-        .map_err(|e| format!("Directory is not writable: {}", e))?;
+    fs::write(&probe, b"ok").map_err(|e| format!("Directory is not writable: {}", e))?;
     let _ = fs::remove_file(&probe);
 
     Ok(())

@@ -54,18 +54,31 @@ async fn test_shutdown_tasks_terminate() {
     MOCK_QUIT_REQUESTED.store(true, Ordering::SeqCst);
 
     // Wait for tasks to terminate, with a timeout
-    let perm_monitor_result = tokio::time::timeout(Duration::from_millis(200), perm_monitor_handle).await;
-    let tray_updater_result = tokio::time::timeout(Duration::from_millis(200), tray_updater_handle).await;
+    let perm_monitor_result =
+        tokio::time::timeout(Duration::from_millis(200), perm_monitor_handle).await;
+    let tray_updater_result =
+        tokio::time::timeout(Duration::from_millis(200), tray_updater_handle).await;
 
     // Assert that both tasks completed successfully (i.e., didn't timeout)
-    assert!(perm_monitor_result.is_ok(), "Permission monitor task should have terminated within timeout");
-    assert!(tray_updater_result.is_ok(), "Tray menu updater task should have terminated within timeout");
+    assert!(
+        perm_monitor_result.is_ok(),
+        "Permission monitor task should have terminated within timeout"
+    );
+    assert!(
+        tray_updater_result.is_ok(),
+        "Tray menu updater task should have terminated within timeout"
+    );
 
     // Also assert that the spawned tasks themselves didn't panic and completed gracefully
-    assert!(perm_monitor_result.unwrap().is_ok(), "Permission monitor task panicked or failed to complete");
-    assert!(tray_updater_result.unwrap().is_ok(), "Tray menu updater task panicked or failed to complete");
+    assert!(
+        perm_monitor_result.unwrap().is_ok(),
+        "Permission monitor task panicked or failed to complete"
+    );
+    assert!(
+        tray_updater_result.unwrap().is_ok(),
+        "Tray menu updater task panicked or failed to complete"
+    );
 
     // Reset for subsequent tests if this were part of a larger suite
     MOCK_QUIT_REQUESTED.store(false, Ordering::SeqCst);
 }
-

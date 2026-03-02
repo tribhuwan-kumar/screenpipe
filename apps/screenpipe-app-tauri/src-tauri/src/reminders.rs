@@ -219,7 +219,10 @@ pub async fn reminders_create(
 /// Optional custom_prompt appended to the AI instructions.
 #[tauri::command]
 #[specta::specta]
-pub async fn reminders_scan(custom_prompt: Option<String>, audio_only: Option<bool>) -> Result<ScanResult, String> {
+pub async fn reminders_scan(
+    custom_prompt: Option<String>,
+    audio_only: Option<bool>,
+) -> Result<ScanResult, String> {
     #[cfg(target_os = "macos")]
     {
         do_scan(custom_prompt.as_deref(), audio_only.unwrap_or(true)).await
@@ -566,45 +569,51 @@ async fn fetch_recent_context(audio_only: bool) -> Result<String, String> {
     let mut parts = Vec::new();
 
     // Screen data (OCR) — skip when audio_only
-    if !audio_only { if let Ok(resp) = client
-        .get(format!("{}/search", API))
-        .query(&[
-            ("content_type", "ocr"),
-            ("limit", "100"),
-            ("start_time", &thirty_min_ago.to_rfc3339()),
-            ("end_time", &now.to_rfc3339()),
-        ])
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-    {
-        if let Ok(data) = resp.json::<serde_json::Value>().await {
-            let mut last_app = String::new();
-            if let Some(items) = data["data"].as_array() {
-                for item in items {
-                    if item["type"] == "OCR" {
-                        let content = &item["content"];
-                        let app = content["app_name"].as_str().unwrap_or("");
-                        let window = content["window_name"].as_str().unwrap_or("");
+    if !audio_only {
+        if let Ok(resp) = client
+            .get(format!("{}/search", API))
+            .query(&[
+                ("content_type", "ocr"),
+                ("limit", "100"),
+                ("start_time", &thirty_min_ago.to_rfc3339()),
+                ("end_time", &now.to_rfc3339()),
+            ])
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
+            if let Ok(data) = resp.json::<serde_json::Value>().await {
+                let mut last_app = String::new();
+                if let Some(items) = data["data"].as_array() {
+                    for item in items {
+                        if item["type"] == "OCR" {
+                            let content = &item["content"];
+                            let app = content["app_name"].as_str().unwrap_or("");
+                            let window = content["window_name"].as_str().unwrap_or("");
 
-                        if app == last_app {
-                            continue;
+                            if app == last_app {
+                                continue;
+                            }
+                            last_app = app.to_string();
+
+                            let text = content["text"].as_str().unwrap_or("");
+                            let truncated = if text.len() > 50 {
+                                // find a valid char boundary at or before byte 50
+                                let mut end = 50;
+                                while !text.is_char_boundary(end) {
+                                    end -= 1;
+                                }
+                                &text[..end]
+                            } else {
+                                text
+                            };
+                            parts.push(format!("[screen] {} — {} | {}", app, window, truncated));
                         }
-                        last_app = app.to_string();
-
-                        let text = content["text"].as_str().unwrap_or("");
-                        let truncated = if text.len() > 50 {
-                            // find a valid char boundary at or before byte 50
-                            let mut end = 50;
-                            while !text.is_char_boundary(end) { end -= 1; }
-                            &text[..end]
-                        } else { text };
-                        parts.push(format!("[screen] {} — {} | {}", app, window, truncated));
                     }
                 }
             }
         }
-    } }
+    }
 
     // Audio data
     if let Ok(resp) = client
@@ -685,7 +694,11 @@ async fn call_ai_for_reminders(
     // Build system prompt with optional custom instructions
     let system_prompt = match custom_prompt {
         Some(cp) if !cp.trim().is_empty() => {
-            format!("{}\n\nAdditional user instructions:\n{}", REMINDERS_PROMPT, cp.trim())
+            format!(
+                "{}\n\nAdditional user instructions:\n{}",
+                REMINDERS_PROMPT,
+                cp.trim()
+            )
         }
         _ => REMINDERS_PROMPT.to_string(),
     };
@@ -810,14 +823,13 @@ pub(crate) fn parse_action_items(response: &str) -> Vec<ActionItemParsed> {
         }
     }
 
-    warn!(
-        "reminders: failed to parse AI response | raw: {}",
-        {
-            let mut end = response.len().min(200);
-            while !response.is_char_boundary(end) { end -= 1; }
-            &response[..end]
+    warn!("reminders: failed to parse AI response | raw: {}", {
+        let mut end = response.len().min(200);
+        while !response.is_char_boundary(end) {
+            end -= 1;
         }
-    );
+        &response[..end]
+    });
     Vec::new()
 }
 

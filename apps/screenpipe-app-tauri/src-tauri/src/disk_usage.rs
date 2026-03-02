@@ -122,7 +122,10 @@ pub async fn disk_usage(
                 let now = chrono::Local::now().timestamp();
                 let one_hour = 60 * 60; // 1 hour cache (reduced from 2 days)
                 if now - cached.timestamp < one_hour {
-                    info!("Using cached disk usage data (age: {}s)", now - cached.timestamp);
+                    info!(
+                        "Using cached disk usage data (age: {}s)",
+                        now - cached.timestamp
+                    );
                     return Ok(Some(cached.usage));
                 }
             }
@@ -164,7 +167,8 @@ pub async fn disk_usage(
     };
 
     // Calculate individual media file sizes recursively, tracking per-monitor usage
-    let mut monitor_sizes: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut monitor_sizes: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
 
     if data_dir.exists() {
         info!("Scanning data directory recursively for media files");
@@ -176,9 +180,8 @@ pub async fn disk_usage(
         ) -> io::Result<()> {
             // Regex to extract monitor name prefix before the timestamp
             // Matches: "monitor_1_2026-..." or "Display 3 (output)_2026-..."
-            let monitor_re = regex::Regex::new(
-                r"^(.+?)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\w+$"
-            ).ok();
+            let monitor_re =
+                regex::Regex::new(r"^(.+?)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.\w+$").ok();
 
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
@@ -228,13 +231,20 @@ pub async fn disk_usage(
             Ok(())
         }
 
-        if let Err(e) = scan_media_files(&data_dir, &mut total_video_size, &mut total_audio_size, &mut monitor_sizes) {
+        if let Err(e) = scan_media_files(
+            &data_dir,
+            &mut total_video_size,
+            &mut total_audio_size,
+            &mut monitor_sizes,
+        ) {
             warn!("Error scanning media files: {}", e);
         }
 
         info!(
             "Video files total: {} bytes, Audio files total: {} bytes, monitors: {:?}",
-            total_video_size, total_audio_size, monitor_sizes.keys().collect::<Vec<_>>()
+            total_video_size,
+            total_audio_size,
+            monitor_sizes.keys().collect::<Vec<_>>()
         );
     } else {
         warn!("Data directory does not exist: {}", data_dir.display());

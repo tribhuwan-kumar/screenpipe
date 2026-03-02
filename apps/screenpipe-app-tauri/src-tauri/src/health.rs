@@ -57,16 +57,25 @@ static RECORDING_INFO: Lazy<RwLock<RecordingInfo>> = Lazy::new(|| {
 });
 
 pub fn get_recording_status() -> RecordingStatus {
-    RECORDING_INFO.read().unwrap_or_else(|e| e.into_inner()).status
+    RECORDING_INFO
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .status
 }
 
 pub fn get_recording_info() -> RecordingInfo {
-    RECORDING_INFO.read().unwrap_or_else(|e| e.into_inner()).clone()
+    RECORDING_INFO
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 #[allow(dead_code)]
 fn set_recording_status(status: RecordingStatus) {
-    RECORDING_INFO.write().unwrap_or_else(|e| e.into_inner()).status = status;
+    RECORDING_INFO
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .status = status;
 }
 
 fn set_recording_info(status: RecordingStatus, devices: Vec<DeviceInfo>) {
@@ -195,7 +204,12 @@ fn parse_devices_from_health(health_result: &Result<HealthCheckResponse>) -> Vec
             let last_seen = rest
                 .split("last activity: ")
                 .nth(1)
-                .and_then(|s| s.trim_end_matches(')').trim_end_matches("s ago").parse::<u64>().ok())
+                .and_then(|s| {
+                    s.trim_end_matches(')')
+                        .trim_end_matches("s ago")
+                        .parse::<u64>()
+                        .ok()
+                })
                 .unwrap_or(0);
 
             let kind = if name_and_type.contains("(input)") {
@@ -288,9 +302,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         }
                     };
 
-                    let icon_path = match app
-                        .path()
-                        .resolve(icon_path, BaseDirectory::Resource) {
+                    let icon_path = match app.path().resolve(icon_path, BaseDirectory::Resource) {
                         Ok(p) => p,
                         Err(e) => {
                             error!("failed to resolve icon path: {}", e);
@@ -300,7 +312,9 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
 
                     match tauri::image::Image::from_path(&icon_path) {
                         Ok(image) => {
-                            if let Err(e) = crate::safe_icon::safe_set_icon_as_template(&main_tray, image) {
+                            if let Err(e) =
+                                crate::safe_icon::safe_set_icon_as_template(&main_tray, image)
+                            {
                                 error!("failed to set tray icon: {}", e);
                             }
                         }
@@ -421,14 +435,16 @@ mod tests {
     fn test_healthy_response_always_recording() {
         let result = make_healthy_response();
         // Even at 0s elapsed, a healthy response means recording
-        let status = decide_no_debounce(&result, Duration::from_secs(0), STARTUP_GRACE_PERIOD, false);
+        let status =
+            decide_no_debounce(&result, Duration::from_secs(0), STARTUP_GRACE_PERIOD, false);
         assert_eq!(status, RecordingStatus::Recording);
     }
 
     #[test]
     fn test_unhealthy_response_always_error() {
         let result = make_unhealthy_response();
-        let status = decide_no_debounce(&result, Duration::from_secs(0), STARTUP_GRACE_PERIOD, false);
+        let status =
+            decide_no_debounce(&result, Duration::from_secs(0), STARTUP_GRACE_PERIOD, false);
         assert_eq!(status, RecordingStatus::Error);
     }
 
@@ -436,26 +452,47 @@ mod tests {
     fn test_connection_error_during_grace_period_is_starting() {
         // During the grace period, connection errors should show "starting"
         let result = make_connection_error();
-        let status = decide_no_debounce(&result, Duration::from_secs(0), STARTUP_GRACE_PERIOD, false);
+        let status =
+            decide_no_debounce(&result, Duration::from_secs(0), STARTUP_GRACE_PERIOD, false);
         assert_eq!(status, RecordingStatus::Starting);
 
         let result = make_connection_error();
-        let status = decide_no_debounce(&result, Duration::from_secs(15), STARTUP_GRACE_PERIOD, false);
+        let status = decide_no_debounce(
+            &result,
+            Duration::from_secs(15),
+            STARTUP_GRACE_PERIOD,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Starting);
 
         let result = make_connection_error();
-        let status = decide_no_debounce(&result, Duration::from_secs(29), STARTUP_GRACE_PERIOD, false);
+        let status = decide_no_debounce(
+            &result,
+            Duration::from_secs(29),
+            STARTUP_GRACE_PERIOD,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Starting);
     }
 
     #[test]
     fn test_connection_error_after_grace_period_is_stopped() {
         let result = make_connection_error();
-        let status = decide_no_debounce(&result, Duration::from_secs(31), STARTUP_GRACE_PERIOD, false);
+        let status = decide_no_debounce(
+            &result,
+            Duration::from_secs(31),
+            STARTUP_GRACE_PERIOD,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Stopped);
 
         let result = make_connection_error();
-        let status = decide_no_debounce(&result, Duration::from_secs(120), STARTUP_GRACE_PERIOD, false);
+        let status = decide_no_debounce(
+            &result,
+            Duration::from_secs(120),
+            STARTUP_GRACE_PERIOD,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Stopped);
     }
 
@@ -505,8 +542,11 @@ mod tests {
             CONSECUTIVE_FAILURES_THRESHOLD,
             RecordingStatus::Recording,
         );
-        assert_eq!(status, RecordingStatus::Recording,
-            "single failure while recording should NOT flip to Stopped");
+        assert_eq!(
+            status,
+            RecordingStatus::Recording,
+            "single failure while recording should NOT flip to Stopped"
+        );
     }
 
     #[test]
@@ -522,8 +562,11 @@ mod tests {
             CONSECUTIVE_FAILURES_THRESHOLD,
             RecordingStatus::Recording,
         );
-        assert_eq!(status, RecordingStatus::Recording,
-            "two failures while recording should NOT flip to Stopped");
+        assert_eq!(
+            status,
+            RecordingStatus::Recording,
+            "two failures while recording should NOT flip to Stopped"
+        );
     }
 
     #[test]
@@ -539,8 +582,11 @@ mod tests {
             CONSECUTIVE_FAILURES_THRESHOLD,
             RecordingStatus::Recording,
         );
-        assert_eq!(status, RecordingStatus::Stopped,
-            "should transition to Stopped after reaching failure threshold");
+        assert_eq!(
+            status,
+            RecordingStatus::Stopped,
+            "should transition to Stopped after reaching failure threshold"
+        );
     }
 
     #[test]
@@ -589,8 +635,11 @@ mod tests {
             CONSECUTIVE_FAILURES_THRESHOLD,
             RecordingStatus::Recording,
         );
-        assert_eq!(status, RecordingStatus::Error,
-            "explicit unhealthy should bypass debounce");
+        assert_eq!(
+            status,
+            RecordingStatus::Error,
+            "explicit unhealthy should bypass debounce"
+        );
     }
 
     #[test]
@@ -603,38 +652,98 @@ mod tests {
         let mut consecutive_failures: u32 = 0;
 
         // tick 1: healthy
-        let status = decide_status(&make_healthy_response(), Duration::from_secs(60), grace, true, 0, threshold, current);
+        let status = decide_status(
+            &make_healthy_response(),
+            Duration::from_secs(60),
+            grace,
+            true,
+            0,
+            threshold,
+            current,
+        );
         assert_eq!(status, RecordingStatus::Recording);
         current = status;
         consecutive_failures = 0;
 
         // tick 2: timeout (failure 1)
         consecutive_failures += 1;
-        let status = decide_status(&make_connection_error(), Duration::from_secs(61), grace, true, consecutive_failures, threshold, current);
-        assert_eq!(status, RecordingStatus::Recording, "tick 2: should hold Recording after 1 failure");
+        let status = decide_status(
+            &make_connection_error(),
+            Duration::from_secs(61),
+            grace,
+            true,
+            consecutive_failures,
+            threshold,
+            current,
+        );
+        assert_eq!(
+            status,
+            RecordingStatus::Recording,
+            "tick 2: should hold Recording after 1 failure"
+        );
         current = status;
 
         // tick 3: healthy again — reset
         consecutive_failures = 0;
-        let status = decide_status(&make_healthy_response(), Duration::from_secs(62), grace, true, consecutive_failures, threshold, current);
+        let status = decide_status(
+            &make_healthy_response(),
+            Duration::from_secs(62),
+            grace,
+            true,
+            consecutive_failures,
+            threshold,
+            current,
+        );
         assert_eq!(status, RecordingStatus::Recording, "tick 3: healthy again");
         current = status;
 
         // tick 4: timeout (failure 1)
         consecutive_failures += 1;
-        let status = decide_status(&make_connection_error(), Duration::from_secs(63), grace, true, consecutive_failures, threshold, current);
-        assert_eq!(status, RecordingStatus::Recording, "tick 4: should hold Recording");
+        let status = decide_status(
+            &make_connection_error(),
+            Duration::from_secs(63),
+            grace,
+            true,
+            consecutive_failures,
+            threshold,
+            current,
+        );
+        assert_eq!(
+            status,
+            RecordingStatus::Recording,
+            "tick 4: should hold Recording"
+        );
         current = status;
 
         // tick 5: timeout (failure 2)
         consecutive_failures += 1;
-        let status = decide_status(&make_connection_error(), Duration::from_secs(64), grace, true, consecutive_failures, threshold, current);
-        assert_eq!(status, RecordingStatus::Recording, "tick 5: should still hold Recording");
+        let status = decide_status(
+            &make_connection_error(),
+            Duration::from_secs(64),
+            grace,
+            true,
+            consecutive_failures,
+            threshold,
+            current,
+        );
+        assert_eq!(
+            status,
+            RecordingStatus::Recording,
+            "tick 5: should still hold Recording"
+        );
         current = status;
 
         // tick 6: healthy — all good
         consecutive_failures = 0;
-        let status = decide_status(&make_healthy_response(), Duration::from_secs(65), grace, true, consecutive_failures, threshold, current);
+        let status = decide_status(
+            &make_healthy_response(),
+            Duration::from_secs(65),
+            grace,
+            true,
+            consecutive_failures,
+            threshold,
+            current,
+        );
         assert_eq!(status, RecordingStatus::Recording, "tick 6: healthy");
 
         // The user would have seen NO flickering through this whole sequence!
@@ -648,18 +757,46 @@ mod tests {
         let mut current = RecordingStatus::Recording;
 
         // Failure 1
-        let status = decide_status(&make_connection_error(), Duration::from_secs(60), grace, true, 1, threshold, current);
+        let status = decide_status(
+            &make_connection_error(),
+            Duration::from_secs(60),
+            grace,
+            true,
+            1,
+            threshold,
+            current,
+        );
         assert_eq!(status, RecordingStatus::Recording);
         current = status;
 
         // Failure 2
-        let status = decide_status(&make_connection_error(), Duration::from_secs(61), grace, true, 2, threshold, current);
+        let status = decide_status(
+            &make_connection_error(),
+            Duration::from_secs(61),
+            grace,
+            true,
+            2,
+            threshold,
+            current,
+        );
         assert_eq!(status, RecordingStatus::Recording);
         current = status;
 
         // Failure 3 — at threshold, transitions
-        let status = decide_status(&make_connection_error(), Duration::from_secs(62), grace, true, 3, threshold, current);
-        assert_eq!(status, RecordingStatus::Stopped, "should detect real crash after threshold failures");
+        let status = decide_status(
+            &make_connection_error(),
+            Duration::from_secs(62),
+            grace,
+            true,
+            3,
+            threshold,
+            current,
+        );
+        assert_eq!(
+            status,
+            RecordingStatus::Stopped,
+            "should detect real crash after threshold failures"
+        );
     }
 
     // ==================== icon mapping tests ====================
@@ -699,17 +836,35 @@ mod tests {
         let grace = Duration::from_secs(30);
 
         // t=0s: first health check, server not started yet
-        let status = decide_no_debounce(&make_connection_error(), Duration::from_secs(0), grace, false);
+        let status = decide_no_debounce(
+            &make_connection_error(),
+            Duration::from_secs(0),
+            grace,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Starting);
-        assert!(!is_unhealthy_icon(status_to_icon_key(status)), "should NOT show failed icon at boot");
+        assert!(
+            !is_unhealthy_icon(status_to_icon_key(status)),
+            "should NOT show failed icon at boot"
+        );
 
         // t=1s: still starting
-        let status = decide_no_debounce(&make_connection_error(), Duration::from_secs(1), grace, false);
+        let status = decide_no_debounce(
+            &make_connection_error(),
+            Duration::from_secs(1),
+            grace,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Starting);
         assert!(!is_unhealthy_icon(status_to_icon_key(status)));
 
         // t=5s: server is up, healthy response
-        let status = decide_no_debounce(&make_healthy_response(), Duration::from_secs(5), grace, false);
+        let status = decide_no_debounce(
+            &make_healthy_response(),
+            Duration::from_secs(5),
+            grace,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Recording);
         assert!(!is_unhealthy_icon(status_to_icon_key(status)));
     }
@@ -729,7 +884,10 @@ mod tests {
             RecordingStatus::Recording,
         );
         assert_eq!(status, RecordingStatus::Stopped);
-        assert!(is_unhealthy_icon(status_to_icon_key(status)), "should show failed icon after crash");
+        assert!(
+            is_unhealthy_icon(status_to_icon_key(status)),
+            "should show failed icon after crash"
+        );
     }
 
     #[test]
@@ -737,8 +895,16 @@ mod tests {
         let grace = Duration::from_secs(30);
 
         // Server never starts — after grace period, show the error
-        let status = decide_no_debounce(&make_connection_error(), Duration::from_secs(35), grace, false);
+        let status = decide_no_debounce(
+            &make_connection_error(),
+            Duration::from_secs(35),
+            grace,
+            false,
+        );
         assert_eq!(status, RecordingStatus::Stopped);
-        assert!(is_unhealthy_icon(status_to_icon_key(status)), "should show failed icon if server never started");
+        assert!(
+            is_unhealthy_icon(status_to_icon_key(status)),
+            "should show failed icon if server never started"
+        );
     }
 }

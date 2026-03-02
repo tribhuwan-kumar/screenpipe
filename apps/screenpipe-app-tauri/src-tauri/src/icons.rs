@@ -209,9 +209,9 @@ fn get_exe_by_reg_key(app_name: &str) -> Option<String> {
                                 // Look for any exe matching app_name in install dir
                                 if let Ok(entries) = std::fs::read_dir(install_dir) {
                                     for entry in entries.flatten() {
-                                        let fname = entry.file_name().to_string_lossy().to_lowercase();
-                                        if fname.ends_with(".exe") && fname.contains(&app_lower)
-                                        {
+                                        let fname =
+                                            entry.file_name().to_string_lossy().to_lowercase();
+                                        if fname.ends_with(".exe") && fname.contains(&app_lower) {
                                             return Some(
                                                 entry.path().to_string_lossy().to_string(),
                                             );
@@ -230,8 +230,7 @@ fn get_exe_by_reg_key(app_name: &str) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn powershell_exe() -> std::path::PathBuf {
-    let system_root =
-        std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
     std::path::PathBuf::from(system_root)
         .join("System32")
         .join("WindowsPowerShell")
@@ -286,9 +285,12 @@ async fn get_exe_from_potential_path(app_name: &str) -> Option<String> {
                             if sub_name.starts_with("app-") && sub.path().is_dir() {
                                 if let Ok(app_entries) = std::fs::read_dir(sub.path()) {
                                     for app_entry in app_entries.flatten() {
-                                        let fname = app_entry.file_name().to_string_lossy().to_lowercase();
+                                        let fname =
+                                            app_entry.file_name().to_string_lossy().to_lowercase();
                                         if fname.ends_with(".exe") && fname.contains(&app_lower) {
-                                            return Some(app_entry.path().to_string_lossy().to_string());
+                                            return Some(
+                                                app_entry.path().to_string_lossy().to_string(),
+                                            );
                                         }
                                     }
                                 }
@@ -311,7 +313,9 @@ async fn get_exe_from_potential_path(app_name: &str) -> Option<String> {
                     if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
                         for sub in sub_entries.flatten() {
                             let fname = sub.file_name().to_string_lossy().to_lowercase();
-                            if fname.ends_with(".exe") && (fname.contains(&app_lower) || fname.contains("gui")) {
+                            if fname.ends_with(".exe")
+                                && (fname.contains(&app_lower) || fname.contains("gui"))
+                            {
                                 return Some(sub.path().to_string_lossy().to_string());
                             }
                         }
@@ -322,10 +326,7 @@ async fn get_exe_from_potential_path(app_name: &str) -> Option<String> {
     }
 
     // Try direct path in Program Files (fast, no PowerShell)
-    let program_dirs = [
-        r"C:\Program Files",
-        r"C:\Program Files (x86)",
-    ];
+    let program_dirs = [r"C:\Program Files", r"C:\Program Files (x86)"];
     for dir in &program_dirs {
         let base = std::path::Path::new(dir);
         if let Ok(entries) = std::fs::read_dir(base) {
@@ -336,7 +337,9 @@ async fn get_exe_from_potential_path(app_name: &str) -> Option<String> {
                     if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
                         for sub in sub_entries.flatten() {
                             let fname = sub.file_name().to_string_lossy().to_lowercase();
-                            if fname.ends_with(".exe") && (fname.contains(&app_lower) || fname.contains("gui")) {
+                            if fname.ends_with(".exe")
+                                && (fname.contains(&app_lower) || fname.contains("gui"))
+                            {
                                 return Some(sub.path().to_string_lossy().to_string());
                             }
                         }
