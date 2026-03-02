@@ -64,6 +64,7 @@ mod reminders;
 mod calendar;
 mod ics_calendar;
 mod pi;
+mod chatgpt_oauth;
 mod embedded_server;
 mod suggestions;
 mod hardware;
@@ -1209,6 +1210,9 @@ async fn main() {
                 // Shortcut reminder commands
                 commands::show_shortcut_reminder,
                 commands::hide_shortcut_reminder,
+                // Notification panel commands
+                commands::show_notification_panel,
+                commands::hide_notification_panel,
                 // Window-specific shortcut commands (dynamic registration)
                 commands::register_window_shortcuts,
                 commands::unregister_window_shortcuts,
@@ -1245,6 +1249,10 @@ async fn main() {
                 pi::pi_abort,
                 pi::pi_new_session,
                 pi::pi_update_config,
+                // ChatGPT OAuth commands
+                chatgpt_oauth::chatgpt_oauth_login,
+                chatgpt_oauth::chatgpt_oauth_status,
+                chatgpt_oauth::chatgpt_oauth_logout,
                 // Reminders commands
                 reminders::reminders_status,
                 reminders::reminders_authorize,
@@ -1289,7 +1297,8 @@ async fn main() {
             .typ::<store::IcsCalendarEntry>()
             .typ::<suggestions::CachedSuggestions>()
             .typ::<suggestions::Suggestion>()
-            .typ::<hardware::HardwareCapability>();
+            .typ::<hardware::HardwareCapability>()
+            .typ::<chatgpt_oauth::ChatGptOAuthStatus>();
 
         if let Err(e) = builder
             .export(
@@ -1431,6 +1440,9 @@ async fn main() {
             // Shortcut reminder commands
             commands::show_shortcut_reminder,
             commands::hide_shortcut_reminder,
+            // Notification panel commands
+            commands::show_notification_panel,
+            commands::hide_notification_panel,
             // Window-specific shortcut commands (dynamic registration)
             commands::register_window_shortcuts,
             commands::unregister_window_shortcuts,
@@ -1470,6 +1482,10 @@ async fn main() {
             pi::pi_abort,
             pi::pi_new_session,
             pi::pi_update_config,
+            // ChatGPT OAuth commands
+            chatgpt_oauth::chatgpt_oauth_login,
+            chatgpt_oauth::chatgpt_oauth_status,
+            chatgpt_oauth::chatgpt_oauth_logout,
             // Reminders commands
             reminders::reminders_status,
             reminders::reminders_authorize,

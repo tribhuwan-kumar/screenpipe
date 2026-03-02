@@ -108,7 +108,7 @@ const INITIAL_DIAGNOSTICS: DiagnosticResults = {
 };
 
 export interface AIProviderCardProps {
-  type: "openai" | "native-ollama" | "custom" | "embedded" | "pi";
+  type: "openai" | "openai-chatgpt" | "native-ollama" | "custom" | "embedded" | "pi";
   title: string;
   description: string;
   imageSrc: string;
@@ -198,6 +198,8 @@ const AISection = ({
   const [testResults, setTestResults] = useState<DiagnosticResults>(INITIAL_DIAGNOSTICS);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticsAbortRef = useRef<AbortController | null>(null);
+  const [chatgptLoggedIn, setChatgptLoggedIn] = useState(false);
+  const [chatgptLoading, setChatgptLoading] = useState(false);
 
   // Optimized validation with debouncing
   const debouncedValidatePreset = useMemo(
@@ -251,6 +253,17 @@ const AISection = ({
       debouncedValidatePreset(settingsPreset);
     }
   }, [settingsPreset, debouncedValidatePreset]);
+
+  // Check ChatGPT OAuth status when provider is selected
+  useEffect(() => {
+    if (settingsPreset?.provider === "openai-chatgpt") {
+      commands.chatgptOauthStatus().then((res) => {
+        if (res.status === "ok") {
+          setChatgptLoggedIn(res.data.logged_in);
+        }
+      });
+    }
+  }, [settingsPreset?.provider]);
 
   const isFormValid = useMemo(() => {
     return Object.keys(validationErrors).length === 0 && 
@@ -391,6 +404,10 @@ const AISection = ({
       case "custom":
         newUrl = settingsPreset?.url || "";
         break;
+      case "openai-chatgpt":
+        newUrl = "https://api.openai.com/v1";
+        newModel = "gpt-4o";
+        break;
       case "pi":
         newUrl = ""; // Pi uses RPC mode, not HTTP
         newModel = "claude-haiku-4-5";
@@ -408,7 +425,7 @@ const AISection = ({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   const runDiagnostics = useCallback(async () => {
-    if (settingsPreset?.provider === "pi") return;
+    if (settingsPreset?.provider === "pi" || settingsPreset?.provider === "openai-chatgpt") return;
 
     // Abort any previous run
     diagnosticsAbortRef.current?.abort();
@@ -612,6 +629,7 @@ const AISection = ({
   }, [settingsPreset?.provider, settingsPreset?.url, settingsPreset?.apiKey, settingsPreset?.model]);
 
   const isApiKeyRequired =
+    settingsPreset?.provider !== "openai-chatgpt" &&
     settingsPreset?.url !== "https://api.screenpi.pe/v1" &&
     settingsPreset?.url !== "http://localhost:11434/v1" &&
     settingsPreset?.url !== "embedded";
@@ -735,7 +753,7 @@ const AISection = ({
 
   // Auto-trigger diagnostics when provider + url + apiKey are set (debounced)
   useEffect(() => {
-    if (settingsPreset?.provider === "pi") return;
+    if (settingsPreset?.provider === "pi" || settingsPreset?.provider === "openai-chatgpt") return;
     if (!settingsPreset?.provider) return;
 
     const needsApiKey =
@@ -795,6 +813,15 @@ const AISection = ({
             imageSrc="/images/ollama.png"
             selected={settingsPreset?.provider === "native-ollama"}
             onClick={() => handleAiProviderChange("native-ollama")}
+          />
+
+          <AIProviderCard
+            type="openai-chatgpt"
+            title="ChatGPT"
+            description="Sign in with your ChatGPT Plus/Pro subscription"
+            imageSrc="/images/openai.png"
+            selected={settingsPreset?.provider === "openai-chatgpt"}
+            onClick={() => handleAiProviderChange("openai-chatgpt")}
           />
 
           <AIProviderCard
@@ -886,6 +913,52 @@ const AISection = ({
             </div>
           </div>
         )}
+
+      {settingsPreset?.provider === "openai-chatgpt" && (
+        <div className="w-full">
+          <div className="flex flex-col gap-4 mb-4 w-full">
+            <Label className="flex items-center gap-1">
+              ChatGPT Account
+            </Label>
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant={chatgptLoggedIn ? "outline" : "default"}
+                disabled={chatgptLoading}
+                onClick={async () => {
+                  if (chatgptLoggedIn) {
+                    setChatgptLoading(true);
+                    await commands.chatgptOauthLogout();
+                    setChatgptLoggedIn(false);
+                    setChatgptLoading(false);
+                  } else {
+                    setChatgptLoading(true);
+                    try {
+                      const res = await commands.chatgptOauthLogin();
+                      if (res.status === "ok" && res.data) {
+                        setChatgptLoggedIn(true);
+                      }
+                    } catch (e) {
+                      console.error("chatgpt oauth failed:", e);
+                    }
+                    setChatgptLoading(false);
+                  }
+                }}
+              >
+                {chatgptLoading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : chatgptLoggedIn ? (
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                ) : null}
+                {chatgptLoggedIn ? "Sign out" : "Sign in with ChatGPT"}
+              </Button>
+              {chatgptLoggedIn && (
+                <span className="text-sm text-muted-foreground">Signed in</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full">
         <div className="flex flex-col gap-4 mb-4 w-full">

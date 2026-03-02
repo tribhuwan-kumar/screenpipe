@@ -431,6 +431,7 @@ fn ensure_pi_config(user_token: Option<&str>, provider_config: Option<&PiProvide
     if let Some(config) = provider_config {
         let provider_name = match config.provider.as_str() {
             "openai" => "openai-byok",
+            "openai-chatgpt" => "openai-chatgpt",
             "native-ollama" => "ollama",
             "custom" => "custom",
             _ => "", // screenpipe-cloud already added above
@@ -439,6 +440,8 @@ fn ensure_pi_config(user_token: Option<&str>, provider_config: Option<&PiProvide
         if !provider_name.is_empty() {
             let base_url = if config.provider == "native-ollama" && config.url.is_empty() {
                 "http://localhost:11434/v1".to_string()
+            } else if config.provider == "openai-chatgpt" {
+                "https://api.openai.com/v1".to_string()
             } else {
                 config.url.clone()
             };
@@ -448,6 +451,7 @@ fn ensure_pi_config(user_token: Option<&str>, provider_config: Option<&PiProvide
             let api_key = match config.provider.as_str() {
                 "native-ollama" => "ollama".to_string(), // Ollama ignores API key but Pi requires one
                 "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
+                "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
                 "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
                 _ => "".to_string(),
             };
@@ -707,6 +711,7 @@ pub async fn pi_start_inner(
         Some(config) => {
             let provider_name = match config.provider.as_str() {
                 "openai" => "openai-byok",
+                "openai-chatgpt" => "openai-chatgpt",
                 "native-ollama" => "ollama",
                 "custom" => "custom",
                 "screenpipe-cloud" | "pi" | _ => "screenpipe",
@@ -846,6 +851,16 @@ pub async fn pi_start_inner(
 
     // Pass the user's API key as env var for non-screenpipe providers
     if let Some(ref config) = provider_config {
+        // ChatGPT OAuth: inject token from stored OAuth file (no api_key in config)
+        if config.provider == "openai-chatgpt" {
+            match crate::chatgpt_oauth::get_valid_token().await {
+                Ok(token) => { cmd.env("OPENAI_CHATGPT_TOKEN", token); }
+                Err(e) => {
+                    return Err(format!("ChatGPT OAuth token unavailable: {}. Please sign in again.", e));
+                }
+            }
+        }
+
         if let Some(ref api_key) = config.api_key {
             if !api_key.is_empty() {
                 // Pi resolves apiKey from env vars, so set it

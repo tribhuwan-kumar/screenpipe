@@ -12,6 +12,7 @@ export type VadSensitivity = "low" | "medium" | "high";
 export type AIProviderType =
 	| "native-ollama"
 	| "openai"
+	| "openai-chatgpt"
 	| "custom"
 	| "embedded"
 	| "pi";
@@ -52,6 +53,9 @@ export type AIPreset = {
 	  }
 	| {
 			provider: "pi";
+	  }
+	| {
+			provider: "openai-chatgpt";
 	  }
 );
 
