@@ -1057,10 +1057,11 @@ mod tests {
 
         let providers = config.get("providers").unwrap().as_object().unwrap();
 
-        // Should have both screenpipe and ollama providers
+        // When a non-screenpipe provider is explicitly set, screenpipe provider
+        // is intentionally NOT added (to avoid silent credit drain via fallback).
         assert!(
-            providers.contains_key("screenpipe"),
-            "missing screenpipe provider"
+            !providers.contains_key("screenpipe"),
+            "screenpipe provider should NOT be added when ollama is explicitly chosen"
         );
         assert!(providers.contains_key("ollama"), "missing ollama provider");
 
