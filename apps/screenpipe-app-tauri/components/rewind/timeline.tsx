@@ -227,6 +227,10 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	// Ref to hold navigateToSearchResult so arrow-key effect doesn't depend on it directly
 	const navigateToSearchResultRef = useRef<(index: number) => void>(() => {});
 
+	// Loading overlay for search result navigation — minimum 2s display
+	const [searchNavLoading, setSearchNavLoading] = useState(false);
+	const searchNavLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 	// Get timeline selection for chat context
 	const { selectionRange, loadTagsForFrames, tags } = useTimelineSelection();
 	const { promptPipes } = usePipes();
@@ -1461,6 +1465,11 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		const result = searchResults[index];
 		if (!result) return;
 
+		// Show loading overlay with minimum 2s display
+		setSearchNavLoading(true);
+		if (searchNavLoadingTimerRef.current) clearTimeout(searchNavLoadingTimerRef.current);
+		searchNavLoadingTimerRef.current = setTimeout(() => setSearchNavLoading(false), 2000);
+
 		// Update highlight to new frame
 		setHighlight(highlightTerms, result.frame_id);
 
@@ -1739,13 +1748,20 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 						/>
 					) : null}
 
+					{/* Search result loading overlay */}
+					{searchNavLoading && inSearchReviewMode && (
+						<div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition-opacity duration-300">
+							<Loader2 className="w-8 h-8 text-white animate-spin" />
+						</div>
+					)}
+
 					{/* Search result navigation indicator */}
 					{inSearchReviewMode && (
 						<div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-full bg-black/70 backdrop-blur-sm border border-white/10 text-white text-sm shadow-lg">
 							<span className="text-white/60 truncate max-w-[120px]">&ldquo;{searchQuery}&rdquo;</span>
 							<button
 								className="px-1.5 hover:text-white/80 disabled:text-white/30"
-								disabled={searchResultIndex <= 0}
+								disabled={searchResultIndex <= 0 || searchNavLoading}
 								onClick={() => navigateToSearchResult(searchResultIndex - 1)}
 							>
 								&#9664;
@@ -1755,7 +1771,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 							</span>
 							<button
 								className="px-1.5 hover:text-white/80 disabled:text-white/30"
-								disabled={searchResultIndex >= searchResults.length - 1}
+								disabled={searchResultIndex >= searchResults.length - 1 || searchNavLoading}
 								onClick={() => navigateToSearchResult(searchResultIndex + 1)}
 							>
 								&#9654;

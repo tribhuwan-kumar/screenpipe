@@ -917,6 +917,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 					style={{ zIndex: 2 }}
 					alt="Current frame"
 					draggable={false}
+					onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
 				/>
 			)}
 
@@ -929,6 +930,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 					style={{ zIndex: 2 }}
 					alt="Current frame"
 					draggable={false}
+					onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
 				/>
 			)}
 
@@ -989,35 +991,6 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 				naturalDimensions={naturalDimensions}
 				userToken={settings.user?.token ?? null}
 			/>
-
-			{/* URL chips — bottom of frame, always shown when URLs are detected.
-			    Previously gated on textPositions.length === 0 which hid chips whenever
-			    OCR was available — but the inline clickable URLs in TextOverlay are now
-			    below the SelectableTextLayer (z-index 7 vs 6), so chips are the only
-			    reliable way to surface URLs. */}
-			{!isLoading && !hasError && detectedUrls.length > 0 && (
-				<div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1.5 max-w-[90%] overflow-x-auto">
-					{detectedUrls.map((url) => (
-						<button
-							key={url.normalized}
-							type="button"
-							onClick={async () => {
-								try {
-									const { open } = await import("@tauri-apps/plugin-shell");
-									await open(url.normalized);
-								} catch {
-									window.open(url.normalized, "_blank");
-								}
-							}}
-							className="flex items-center gap-1 px-2 py-1 text-[11px] font-mono bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm whitespace-nowrap transition-colors max-w-[200px]"
-							title={url.normalized}
-						>
-							<ExternalLink className="w-3 h-3 shrink-0" />
-							<span className="truncate">{url.display}</span>
-						</button>
-					))}
-				</div>
-			)}
 
 		</div>
 	);
