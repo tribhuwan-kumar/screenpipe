@@ -215,7 +215,7 @@ mod tests {
 
         let engine = Arc::new(AudioTranscriptionEngine::WhisperLargeV3TurboQuantized);
         let transcription_engine =
-            TranscriptionEngine::new(engine.clone(), None, vec![Language::Arabic], vec![])
+            TranscriptionEngine::new(engine.clone(), None, None, vec![Language::Arabic], vec![])
                 .await
                 .expect("failed to create transcription engine");
 
@@ -274,18 +274,14 @@ mod tests {
 
         let mut transcription_result = String::new();
         while let Some(segment) = segments.recv().await {
-            let transcript = stt(
-                &segment.samples,
-                audio_input.sample_rate,
-                &audio_input.device.to_string(),
-                Arc::new(AudioTranscriptionEngine::WhisperLargeV3Turbo),
-                None,
-                None,
-                vec![Language::Arabic],
-                &mut whisper_state,
-            )
-            .await
-            .unwrap();
+            let transcript = session
+                .transcribe(
+                    &segment.samples,
+                    segment.sample_rate,
+                    &audio_input.device.to_string(),
+                )
+                .await
+                .unwrap();
 
             transcription_result.push_str(&transcript);
             transcription_result.push('\n');
@@ -348,7 +344,7 @@ mod tests {
 
         let engine = Arc::new(AudioTranscriptionEngine::WhisperLargeV3TurboQuantized);
         let transcription_engine =
-            TranscriptionEngine::new(engine.clone(), None, vec![Language::English], vec![])
+            TranscriptionEngine::new(engine.clone(), None, None, vec![Language::English], vec![])
                 .await
                 .expect("failed to create transcription engine");
 
@@ -378,18 +374,14 @@ mod tests {
 
         let mut transcription = String::new();
         while let Some(segment) = segments.recv().await {
-            let transcript = stt(
-                &segment.samples,
-                audio_input.sample_rate,
-                &audio_input.device.to_string(),
-                Arc::new(AudioTranscriptionEngine::WhisperLargeV3Turbo),
-                None,
-                None,
-                vec![Language::English],
-                &mut whisper_state,
-            )
-            .await
-            .unwrap();
+            let transcript = session
+                .transcribe(
+                    &segment.samples,
+                    segment.sample_rate,
+                    &audio_input.device.to_string(),
+                )
+                .await
+                .unwrap();
 
             transcription.push_str(&transcript);
         }

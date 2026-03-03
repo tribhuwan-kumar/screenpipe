@@ -55,7 +55,7 @@ async fn test_transcription_accuracy() {
 
     let engine = Arc::new(AudioTranscriptionEngine::WhisperTinyQuantized);
     let transcription_engine =
-        TranscriptionEngine::new(engine.clone(), None, vec![Language::English], vec![])
+        TranscriptionEngine::new(engine.clone(), None, None, vec![Language::English], vec![])
             .await
             .expect("failed to create transcription engine");
 
@@ -134,18 +134,14 @@ async fn test_transcription_accuracy() {
 
             let mut transcription = String::new();
             while let Some(segment) = segments.recv().await {
-                let transcript = stt(
-                    &segment.samples,
-                    audio_input.sample_rate,
-                    &audio_input.device.to_string(),
-                    Arc::new(AudioTranscriptionEngine::WhisperLargeV3Turbo),
-                    None,
-                    None,
-                    vec![Language::English],
-                    &mut whisper_state,
-                )
-                .await
-                .unwrap();
+                let transcript = session
+                    .transcribe(
+                        &segment.samples,
+                        segment.sample_rate,
+                        &audio_input.device.to_string(),
+                    )
+                    .await
+                    .unwrap();
 
                 transcription.push_str(&transcript);
             }

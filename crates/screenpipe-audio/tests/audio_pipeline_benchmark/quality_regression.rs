@@ -30,7 +30,7 @@ async fn whisper_hallucination_on_silence() {
 
     let engine = Arc::new(AudioTranscriptionEngine::WhisperLargeV3TurboQuantized);
     let transcription_engine =
-        TranscriptionEngine::new(engine.clone(), None, vec![Language::English], vec![])
+        TranscriptionEngine::new(engine.clone(), None, None, vec![Language::English], vec![])
             .await
             .expect("failed to create transcription engine");
     let mut session = transcription_engine
@@ -68,7 +68,7 @@ async fn whisper_hallucination_on_noise() {
 
     let engine = Arc::new(AudioTranscriptionEngine::WhisperLargeV3TurboQuantized);
     let transcription_engine =
-        TranscriptionEngine::new(engine.clone(), None, vec![Language::English], vec![])
+        TranscriptionEngine::new(engine.clone(), None, None, vec![Language::English], vec![])
             .await
             .expect("failed to create transcription engine");
     let mut session = transcription_engine
@@ -104,7 +104,7 @@ async fn whisper_hallucination_on_ambient() {
 
     let engine = Arc::new(AudioTranscriptionEngine::WhisperLargeV3TurboQuantized);
     let transcription_engine =
-        TranscriptionEngine::new(engine.clone(), None, vec![Language::English], vec![])
+        TranscriptionEngine::new(engine.clone(), None, None, vec![Language::English], vec![])
             .await
             .expect("failed to create transcription engine");
     let mut session = transcription_engine
@@ -148,7 +148,7 @@ async fn whisper_real_speech_still_works() {
 
     let engine = Arc::new(AudioTranscriptionEngine::WhisperLargeV3TurboQuantized);
     let transcription_engine =
-        TranscriptionEngine::new(engine.clone(), None, vec![Language::English], vec![])
+        TranscriptionEngine::new(engine.clone(), None, None, vec![Language::English], vec![])
             .await
             .expect("failed to create transcription engine");
     let mut session = transcription_engine
