@@ -20,8 +20,10 @@ use crate::server::AppState;
 #[derive(Debug, Deserialize, OaSchema)]
 pub struct ActivitySummaryQuery {
     /// Start of time range (required)
+    #[serde(deserialize_with = "super::time::deserialize_flexible_datetime")]
     pub start_time: DateTime<Utc>,
     /// End of time range (required)
+    #[serde(deserialize_with = "super::time::deserialize_flexible_datetime")]
     pub end_time: DateTime<Utc>,
     /// Optional app name filter
     #[serde(default)]

@@ -31,8 +31,8 @@ curl -X POST http://localhost:3030/audio/retranscribe \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `start` | ISO 8601 | **Yes** | Start of time range to retranscribe |
-| `end` | ISO 8601 | **Yes** | End of time range to retranscribe |
+| `start` | ISO 8601 or relative | **Yes** | Start of time range to retranscribe. Accepts ISO 8601 or relative (`1h ago`, `2d ago`). |
+| `end` | ISO 8601 or relative | **Yes** | End of time range to retranscribe. Accepts ISO 8601 or relative (`now`, `30m ago`). |
 | `engine` | string | No | STT engine override (see engines below) |
 | `vocabulary` | array | No | Custom vocabulary entries for word bias |
 | `prompt` | string | No | Custom prompt to guide Whisper transcription (becomes initial_prompt) |

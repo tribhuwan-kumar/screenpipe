@@ -39,9 +39,15 @@ pub(crate) struct SearchQuery {
     pagination: PaginationQuery,
     #[serde(default)]
     content_type: ContentType,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     start_time: Option<DateTime<Utc>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     end_time: Option<DateTime<Utc>>,
     #[serde(default)]
     app_name: Option<String>,
@@ -444,9 +450,15 @@ pub struct KeywordSearchRequest {
     limit: u32,
     #[serde(default)]
     offset: u32,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     start_time: Option<DateTime<Utc>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     end_time: Option<DateTime<Utc>>,
     #[serde(default)]
     fuzzy_match: bool,

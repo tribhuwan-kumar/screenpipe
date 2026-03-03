@@ -32,8 +32,8 @@ curl "http://localhost:3030/search?q=QUERY&content_type=all&limit=10&start_time=
 | `content_type` | string | No | `all` (default), `ocr`, `audio`, `input`, `accessibility` |
 | `limit` | integer | No | Max results 1-20. Default: 10 |
 | `offset` | integer | No | Pagination offset. Default: 0 |
-| `start_time` | ISO 8601 | **Yes** | Start of time range. ALWAYS include this. |
-| `end_time` | ISO 8601 | No | End of time range. Defaults to now. |
+| `start_time` | ISO 8601 or relative | **Yes** | Start of time range. ALWAYS include this. Accepts ISO 8601 (`2024-01-15T10:00:00Z`) or relative (`16h ago`, `2d ago`, `30m ago`). |
+| `end_time` | ISO 8601 or relative | No | End of time range. Defaults to now. Accepts ISO 8601 or relative (`now`, `1h ago`). |
 | `app_name` | string | No | Filter by app (e.g. "Google Chrome", "Slack", "zoom.us", "Code") |
 | `window_name` | string | No | Filter by window title substring |
 | `speaker_name` | string | No | Filter audio by speaker name (case-insensitive partial match) |
@@ -80,21 +80,23 @@ Don't jump straight to heavy `/search` calls. Escalate through these steps, stop
 ### Example Searches
 
 ```bash
-# What happened in the last hour
-curl "http://localhost:3030/search?content_type=all&limit=10&start_time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)"
+# What happened in the last hour (relative time)
+curl "http://localhost:3030/search?content_type=all&limit=10&start_time=1h%20ago&end_time=now"
 
 # Slack messages today
 curl "http://localhost:3030/search?app_name=Slack&content_type=ocr&limit=10&start_time=$(date -u +%Y-%m-%dT00:00:00Z)"
 
-# Audio transcriptions from meetings
-curl "http://localhost:3030/search?content_type=audio&limit=5&start_time=$(date -u -v-4H +%Y-%m-%dT%H:%M:%SZ)"
+# Audio transcriptions from meetings (relative time)
+curl "http://localhost:3030/search?content_type=audio&limit=5&start_time=4h%20ago"
 
 # What a specific person said
-curl "http://localhost:3030/search?content_type=audio&speaker_name=John&limit=10&start_time=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ)"
+curl "http://localhost:3030/search?content_type=audio&speaker_name=John&limit=10&start_time=24h%20ago"
 
 # Browser activity
-curl "http://localhost:3030/search?app_name=Google%20Chrome&content_type=ocr&limit=10&start_time=$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ)"
+curl "http://localhost:3030/search?app_name=Google%20Chrome&content_type=ocr&limit=10&start_time=2h%20ago"
 ```
+
+> **Tip:** The API supports relative time strings like `16h ago`, `2d ago`, `30m ago`, `1w ago`, and `now` for `start_time` and `end_time`. No need to compute ISO timestamps with shell commands.
 
 ### Response Format
 
@@ -188,13 +190,13 @@ curl -o /tmp/frame_12345.png "http://localhost:3030/frames/12345"
 
 ### Activity Summary (lightweight overview)
 ```bash
-curl "http://localhost:3030/activity-summary?start_time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)&end_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+curl "http://localhost:3030/activity-summary?start_time=1h%20ago&end_time=now"
 ```
-Returns app usage, recent texts, and audio summary in ~200-500 tokens. Great starting point before deeper searches.
+Returns app usage (with active session minutes, first/last seen times), recent texts, and audio summary in ~200-500 tokens. Great starting point before deeper searches.
 
 ### Elements Search (structured UI data)
 ```bash
-curl "http://localhost:3030/elements?q=Submit&role=AXButton&start_time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)&limit=10"
+curl "http://localhost:3030/elements?q=Submit&role=AXButton&start_time=1h%20ago&limit=10"
 ```
 Returns individual UI elements (~100-500 bytes each) — much lighter than `/search` for targeted lookups.
 

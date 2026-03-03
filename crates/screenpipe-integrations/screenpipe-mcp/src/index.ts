@@ -106,12 +106,12 @@ const BASE_TOOLS: Tool[] = [
         start_time: {
           type: "string",
           format: "date-time",
-          description: "ISO 8601 UTC start time (e.g., 2024-01-15T10:00:00Z)",
+          description: "Start time: ISO 8601 UTC (e.g., 2024-01-15T10:00:00Z) or relative (e.g., '16h ago', '2d ago', 'now')",
         },
         end_time: {
           type: "string",
           format: "date-time",
-          description: "ISO 8601 UTC end time (e.g., 2024-01-15T18:00:00Z)",
+          description: "End time: ISO 8601 UTC (e.g., 2024-01-15T18:00:00Z) or relative (e.g., 'now', '1h ago')",
         },
         app_name: {
           type: "string",
@@ -150,7 +150,7 @@ const BASE_TOOLS: Tool[] = [
     description:
       "Export a video of screen recordings for a specific time range. " +
       "Creates an MP4 video from the recorded frames between the start and end times.\n\n" +
-      "IMPORTANT: Use ISO 8601 UTC timestamps (e.g., 2024-01-15T10:00:00Z)\n\n" +
+      "IMPORTANT: Use ISO 8601 UTC timestamps (e.g., 2024-01-15T10:00:00Z) or relative times (e.g., '16h ago', 'now')\n\n" +
       "EXAMPLES:\n" +
       "- Last 30 minutes: Calculate timestamps from current time\n" +
       "- Specific meeting: Use the meeting's start and end times in UTC",
@@ -165,13 +165,13 @@ const BASE_TOOLS: Tool[] = [
           type: "string",
           format: "date-time",
           description:
-            "Start time in ISO 8601 format UTC. MUST include timezone (Z for UTC). Example: '2024-01-15T10:00:00Z'",
+            "Start time: ISO 8601 UTC (e.g., '2024-01-15T10:00:00Z') or relative (e.g., '16h ago', 'now')",
         },
         end_time: {
           type: "string",
           format: "date-time",
           description:
-            "End time in ISO 8601 format UTC. MUST include timezone (Z for UTC). Example: '2024-01-15T10:30:00Z'",
+            "End time: ISO 8601 UTC (e.g., '2024-01-15T10:30:00Z') or relative (e.g., 'now', '1h ago')",
         },
         fps: {
           type: "number",
@@ -199,12 +199,12 @@ const BASE_TOOLS: Tool[] = [
         start_time: {
           type: "string",
           format: "date-time",
-          description: "ISO 8601 UTC start filter (e.g., 2024-01-15T10:00:00Z)",
+          description: "Start filter: ISO 8601 UTC (e.g., 2024-01-15T10:00:00Z) or relative (e.g., '16h ago', 'now')",
         },
         end_time: {
           type: "string",
           format: "date-time",
-          description: "ISO 8601 UTC end filter (e.g., 2024-01-15T18:00:00Z)",
+          description: "End filter: ISO 8601 UTC (e.g., 2024-01-15T18:00:00Z) or relative (e.g., 'now', '1h ago')",
         },
         limit: {
           type: "integer",
@@ -238,12 +238,12 @@ const BASE_TOOLS: Tool[] = [
         start_time: {
           type: "string",
           format: "date-time",
-          description: "Start of time range in ISO 8601 UTC (e.g., 2024-01-15T10:00:00Z)",
+          description: "Start of time range: ISO 8601 UTC (e.g., 2024-01-15T10:00:00Z) or relative (e.g., '16h ago', 'now')",
         },
         end_time: {
           type: "string",
           format: "date-time",
-          description: "End of time range in ISO 8601 UTC (e.g., 2024-01-15T18:00:00Z)",
+          description: "End of time range: ISO 8601 UTC (e.g., 2024-01-15T18:00:00Z) or relative (e.g., 'now', '1h ago')",
         },
         app_name: {
           type: "string",
@@ -288,12 +288,12 @@ const BASE_TOOLS: Tool[] = [
         start_time: {
           type: "string",
           format: "date-time",
-          description: "ISO 8601 UTC start time",
+          description: "Start time: ISO 8601 UTC or relative (e.g., '16h ago', 'now')",
         },
         end_time: {
           type: "string",
           format: "date-time",
-          description: "ISO 8601 UTC end time",
+          description: "End time: ISO 8601 UTC or relative (e.g., 'now', '1h ago')",
         },
         app_name: {
           type: "string",
@@ -426,8 +426,8 @@ Screenpipe captures four types of data:
 | q | Search query | (none - returns all) |
 | content_type | all/ocr/audio/input/accessibility | all |
 | limit | Max results | 10 |
-| start_time | ISO 8601 UTC | (no filter) |
-| end_time | ISO 8601 UTC | (no filter) |
+| start_time | ISO 8601 UTC or relative (e.g. '16h ago') | (no filter) |
+| end_time | ISO 8601 UTC or relative (e.g. 'now') | (no filter) |
 | app_name | Filter by app | (no filter) |
 | include_frames | Include screenshots | false |
 

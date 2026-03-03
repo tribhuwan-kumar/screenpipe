@@ -36,8 +36,8 @@ curl -X POST http://localhost:3030/frames/export \
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `start_time` | ISO 8601 | No* | Start of time range |
-| `end_time` | ISO 8601 | No* | End of time range |
+| `start_time` | ISO 8601 or relative | No* | Start of time range. Accepts ISO 8601 or relative (`16h ago`, `30m ago`, `now`). |
+| `end_time` | ISO 8601 or relative | No* | End of time range. Accepts ISO 8601 or relative (`now`, `1h ago`). |
 | `frame_ids` | array of integers | No* | Specific frame IDs to export |
 | `fps` | float | No | Frames per second (default: 1.0) |
 

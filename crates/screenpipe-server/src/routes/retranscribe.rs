@@ -23,7 +23,15 @@ pub struct RetranscribeRequest {
     /// Explicit chunk IDs to retranscribe (preferred — avoids timestamp mismatches)
     pub audio_chunk_ids: Option<Vec<i64>>,
     /// Fallback: time range to query chunks (used when audio_chunk_ids is absent)
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     pub start: Option<DateTime<Utc>>,
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     pub end: Option<DateTime<Utc>>,
     /// Optional engine override: "whisper-large-v3", "deepgram", etc.
     pub engine: Option<String>,

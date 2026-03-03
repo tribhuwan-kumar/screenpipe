@@ -33,7 +33,9 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 
 #[derive(Deserialize)]
 pub struct StreamFramesRequest {
+    #[serde(deserialize_with = "super::time::deserialize_flexible_datetime")]
     start_time: DateTime<Utc>,
+    #[serde(deserialize_with = "super::time::deserialize_flexible_datetime")]
     end_time: DateTime<Utc>,
     #[serde(rename = "order")]
     #[serde(default = "Order::default")]
@@ -1007,7 +1009,15 @@ use crate::video_utils::extract_high_quality_frame;
 #[derive(Debug, Deserialize)]
 pub struct VideoExportPostRequest {
     frame_ids: Option<Vec<i64>>,
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     start_time: Option<DateTime<Utc>>,
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     end_time: Option<DateTime<Utc>>,
     #[serde(default = "default_post_fps")]
     fps: f64,

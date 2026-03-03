@@ -17,7 +17,9 @@ use crate::server::AppState;
 
 #[derive(Deserialize)]
 pub struct DeleteTimeRangeRequest {
+    #[serde(deserialize_with = "super::time::deserialize_flexible_datetime")]
     pub start: DateTime<Utc>,
+    #[serde(deserialize_with = "super::time::deserialize_flexible_datetime")]
     pub end: DateTime<Utc>,
 }
 

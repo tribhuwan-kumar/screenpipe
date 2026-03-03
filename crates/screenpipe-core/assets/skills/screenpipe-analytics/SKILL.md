@@ -55,7 +55,9 @@ CREATE TABLE frames (
 ```
 
 **Key facts:**
-- ~0.5 fps capture rate → approximate screen time: `COUNT(*) * 2 / 60` = minutes
+- Frames are event-driven (accessibility captures fire on content change), NOT fixed-interval. Frame count does NOT reliably translate to screen time.
+- For accurate time estimates, use the `/activity-summary` endpoint which uses gap-based duration (consecutive frames with gaps < 5min = active time).
+- For raw SQL, approximate with gap analysis, NOT `COUNT(*) * 2 / 60` (which assumes fixed 0.5 fps and is wildly inaccurate).
 - `app_name` is the focused application
 - `browser_url` is populated for browser windows
 - `window_name` contains document/tab titles
@@ -346,9 +348,8 @@ GROUP BY date(timestamp)              -- daily
 GROUP BY strftime('%H:00', timestamp) -- hourly
 GROUP BY strftime('%w', timestamp)    -- by weekday
 
--- Screen time approximation
-ROUND(COUNT(*) * 2.0 / 60, 1)   -- frames → minutes
-ROUND(COUNT(*) * 2.0 / 3600, 1) -- frames → hours
+-- Frame count (NOT accurate screen time — use /activity-summary for that)
+COUNT(*) as frame_count  -- number of captured frames (event-driven, not fixed rate)
 
 -- Domain extraction from browser_url
 CASE WHEN INSTR(SUBSTR(browser_url, INSTR(browser_url, '://') + 3), '/') > 0
@@ -378,7 +379,7 @@ LEFT JOIN frames f ON u.frame_id = f.id
 
 ## Tips
 
-- **Screen time from frames** is approximate: each frame represents ~2 seconds of screen time at 0.5 fps capture rate.
+- **Screen time from frame counts is unreliable** — frames are event-driven, not fixed-interval. Use the `/activity-summary` endpoint for accurate time estimates.
 - **Combine multiple queries** to build a full picture — e.g., app usage + website usage + typing stats.
 - **Use HAVING** to filter out noise — `HAVING frames > 5` removes apps you glanced at briefly.
 - **Window titles reveal context** — for coding, they contain file names and project names. For browsers, they contain page titles.

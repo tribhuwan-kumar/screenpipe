@@ -29,9 +29,15 @@ pub(crate) struct ElementsQuery {
     source: Option<String>,
     #[serde(default)]
     role: Option<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     start_time: Option<DateTime<Utc>>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "super::time::deserialize_flexible_datetime_option"
+    )]
     end_time: Option<DateTime<Utc>>,
     #[serde(default)]
     app_name: Option<String>,

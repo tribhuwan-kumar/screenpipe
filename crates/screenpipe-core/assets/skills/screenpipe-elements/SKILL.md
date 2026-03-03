@@ -34,8 +34,8 @@ curl "http://localhost:3030/elements?q=QUERY&start_time=ISO8601&end_time=ISO8601
 | `frame_id` | integer | No | Filter to elements from a specific frame |
 | `source` | string | No | `accessibility` or `ocr` |
 | `role` | string | No | Filter by element role (e.g. `AXButton`, `AXStaticText`, `AXLink`, `line`) |
-| `start_time` | ISO 8601 | **Recommended** | Start of time range |
-| `end_time` | ISO 8601 | No | End of time range |
+| `start_time` | ISO 8601 or relative | **Recommended** | Start of time range. Accepts ISO 8601 or relative (`16h ago`, `2d ago`, `now`). |
+| `end_time` | ISO 8601 or relative | No | End of time range. Accepts ISO 8601 or relative (`now`, `1h ago`). |
 | `app_name` | string | No | Filter by app name |
 | `limit` | integer | No | Max results. Default: 50 |
 | `offset` | integer | No | Pagination offset. Default: 0 |
