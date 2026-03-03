@@ -214,35 +214,15 @@ export function SummaryCards({
 
       {/* ─── Dynamic AI suggestions ─────────────────────────────────────────── */}
       <div className="w-full max-w-lg">
-        <div className="flex items-center justify-between mb-1.5 px-1">
-          <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium font-mono">
-            based on your activity
-          </span>
-          {onRefreshSuggestions && (
-            <button
-              onClick={onRefreshSuggestions}
-              disabled={suggestionsRefreshing}
-              className="group flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-foreground font-mono uppercase tracking-wider transition-colors duration-150 disabled:opacity-30"
-              title="refresh suggestions"
-            >
-              <RefreshCw
-                className={`w-3 h-3 transition-transform duration-150 ${
-                  suggestionsRefreshing ? "animate-spin" : "group-hover:rotate-45"
-                }`}
-                strokeWidth={1.5}
-              />
-              <span className="hidden sm:inline">
-                {suggestionsRefreshing ? "generating" : "refresh"}
-              </span>
-            </button>
-          )}
+        <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium font-mono mb-1.5 px-1">
+          based on your activity
         </div>
 
         {/* Skeleton while refreshing */}
         {suggestionsRefreshing ? (
           <SuggestionSkeleton />
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <AnimatePresence mode="popLayout">
               {autoSuggestions.slice(0, 4).map((s, i) => (
                 <motion.button
@@ -260,6 +240,16 @@ export function SummaryCards({
                 </motion.button>
               ))}
             </AnimatePresence>
+            {onRefreshSuggestions && (
+              <button
+                onClick={onRefreshSuggestions}
+                disabled={suggestionsRefreshing}
+                className="p-1 text-muted-foreground/30 hover:text-foreground transition-colors duration-150 disabled:opacity-30 cursor-pointer"
+                title="refresh suggestions"
+              >
+                <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
+            )}
           </div>
         )}
       </div>
