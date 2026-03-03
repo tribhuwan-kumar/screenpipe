@@ -28,7 +28,7 @@
 
 
 <p align="center">
-  <a href="https://screenpi.pe" target="_blank">
+  <a href="https://screenpi.pe/onboarding" target="_blank">
     <img src="https://img.shields.io/badge/download-desktop%20app-black?style=for-the-badge" alt="download">
   </a>
 </p>
@@ -74,7 +74,7 @@ screenpipe turns your computer into a personal AI that knows everything you've d
 
 ## install
 
-[download the desktop app](https://screenpi.pe) — one-time purchase, all features, auto-updates
+[download the desktop app](https://screenpi.pe/onboarding) — one-time purchase, all features, auto-updates
 
 or run the CLI:
 
