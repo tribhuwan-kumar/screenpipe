@@ -511,7 +511,8 @@ impl PiExecutor {
 
         loop {
             line_bytes.clear();
-            let n = tokio::io::AsyncBufReadExt::read_until(&mut reader, b'\n', &mut line_bytes).await?;
+            let n =
+                tokio::io::AsyncBufReadExt::read_until(&mut reader, b'\n', &mut line_bytes).await?;
             if n == 0 {
                 break;
             }
@@ -1129,7 +1130,11 @@ mod tests {
         child3.wait().await.unwrap();
 
         assert_eq!(lines.len(), 2);
-        assert!(lines[0].starts_with("Hi"), "first line should start with Hi, got: {}", lines[0]);
+        assert!(
+            lines[0].starts_with("Hi"),
+            "first line should start with Hi, got: {}",
+            lines[0]
+        );
         assert_eq!(lines[1], "OK");
     }
 

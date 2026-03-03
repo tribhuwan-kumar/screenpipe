@@ -33,6 +33,8 @@ pub struct AppUsage {
     pub name: String,
     pub frame_count: i64,
     pub minutes: f64,
+    pub first_seen: String,
+    pub last_seen: String,
 }
 
 #[derive(Serialize, OaSchema)]
@@ -87,11 +89,20 @@ pub async fn get_activity_summary(
         .unwrap_or_default();
 
     let apps_query = format!(
-        "SELECT app_name, COUNT(*) as frame_count, ROUND(COUNT(*) * 2.0 / 60, 1) as minutes \
-         FROM frames \
-         WHERE timestamp BETWEEN '{}' AND '{}'{} \
-         AND app_name IS NOT NULL AND app_name != '' \
-         GROUP BY app_name ORDER BY 2 DESC LIMIT 20",
+        "SELECT app_name, \
+         COUNT(*) as frame_count, \
+         ROUND(SUM(CASE WHEN gap_sec < 300 THEN gap_sec ELSE 0 END) / 60.0, 1) as minutes, \
+         MIN(ts) as first_seen, \
+         MAX(ts) as last_seen \
+         FROM ( \
+           SELECT app_name, timestamp as ts, \
+             (JULIANDAY(LEAD(timestamp) OVER (PARTITION BY app_name ORDER BY timestamp)) \
+              - JULIANDAY(timestamp)) * 86400 AS gap_sec \
+           FROM frames \
+           WHERE timestamp BETWEEN '{}' AND '{}'{} \
+           AND app_name IS NOT NULL AND app_name != '' \
+         ) gaps \
+         GROUP BY app_name ORDER BY minutes DESC LIMIT 20",
         start, end, app_filter
     );
 
@@ -149,11 +160,23 @@ pub async fn get_activity_summary(
                             .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
                     })
                     .unwrap_or(0.0);
+                let first_seen = row
+                    .get("first_seen")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let last_seen = row
+                    .get("last_seen")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 total_frames += frame_count;
                 apps.push(AppUsage {
                     name,
                     frame_count,
                     minutes,
+                    first_seen,
+                    last_seen,
                 });
             }
         }

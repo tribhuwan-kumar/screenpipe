@@ -223,7 +223,9 @@ const BASE_TOOLS: Tool[] = [
     name: "activity-summary",
     description:
       "Get a lightweight compressed activity overview for a time range (~200-500 tokens). " +
-      "Returns app usage (name, frame count, minutes), recent accessibility texts, and audio speaker summary. " +
+      "Returns app usage (name, frame count, active minutes, first/last seen), recent accessibility texts, and audio speaker summary. " +
+      "Minutes are based on active session time (consecutive frames with gaps < 5min count as active). " +
+      "first_seen/last_seen show the wall-clock span per app. " +
       "Use this FIRST for broad questions like 'what was I doing?' before drilling into search-content or search-elements. " +
       "Much cheaper than search-content for getting an overview.",
     annotations: {
@@ -993,8 +995,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Format apps
         const appsLines = (data.apps || []).map(
-          (a: { name: string; frame_count: number; minutes: number }) =>
-            `  ${a.name}: ${a.minutes} min (${a.frame_count} frames)`
+          (a: { name: string; frame_count: number; minutes: number; first_seen?: string; last_seen?: string }) => {
+            const timeSpan = a.first_seen && a.last_seen
+              ? `, ${a.first_seen.slice(11, 16)}–${a.last_seen.slice(11, 16)} UTC`
+              : "";
+            return `  ${a.name}: ${a.minutes} min (${a.frame_count} frames${timeSpan})`;
+          }
         );
 
         // Format audio
