@@ -13,6 +13,7 @@ import {
   Zap,
   Shield,
   RefreshCw,
+  Lock,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
@@ -250,6 +251,9 @@ export function AccountSection() {
             <div className="flex items-center gap-2">
               <span>✓</span> priority support
             </div>
+            <div className="flex items-center gap-2">
+              <span>✓</span> encrypted pipe sync across devices
+            </div>
           </div>
 
           {/* Pipe sync */}
@@ -372,6 +376,10 @@ export function AccountSection() {
                   <Sparkles className="h-3.5 w-3.5 shrink-0" />
                   priority support
                 </div>
+                <div className="flex items-center gap-2 text-foreground">
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                  encrypted pipe sync across devices
+                </div>
               </div>
 
               <Button
@@ -384,6 +392,28 @@ export function AccountSection() {
               </Button>
             </Card>
           </details>
+
+          {/* Locked pipe sync toggle — not logged in */}
+          <Card className="p-4 opacity-75">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">pipe sync across devices</p>
+                <p className="text-xs text-muted-foreground">
+                  sync your pipes & configs to all devices linked to your account
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch disabled checked={false} />
+                <button
+                  onClick={() => commands.openLoginWindow()}
+                  className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium flex items-center gap-1 hover:bg-primary/20 transition-colors cursor-pointer"
+                >
+                  <Lock className="h-3 w-3" />
+                  Pro
+                </button>
+              </div>
+            </div>
+          </Card>
         </>
       ) : (
         /* Logged in, free tier: show upsell */
@@ -438,6 +468,10 @@ export function AccountSection() {
                   <Sparkles className="h-3.5 w-3.5 shrink-0" />
                   priority support
                 </div>
+                <div className="flex items-center gap-2 text-foreground">
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                  encrypted pipe sync across devices
+                </div>
               </div>
 
               <Button
@@ -451,6 +485,28 @@ export function AccountSection() {
 
             </Card>
           </div>
+
+          {/* Locked pipe sync toggle — free tier */}
+          <Card className="p-4 opacity-75">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">pipe sync across devices</p>
+                <p className="text-xs text-muted-foreground">
+                  sync your pipes & configs to all devices linked to your account
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch disabled checked={false} />
+                <button
+                  onClick={handleCheckout}
+                  className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium flex items-center gap-1 hover:bg-primary/20 transition-colors cursor-pointer"
+                >
+                  <Lock className="h-3 w-3" />
+                  Pro
+                </button>
+              </div>
+            </div>
+          </Card>
 
           {/* Current free tier - compact */}
           <div className="px-3 py-2 rounded-lg border border-border/50">

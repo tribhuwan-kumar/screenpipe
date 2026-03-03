@@ -8223,7 +8223,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.8"
+version = "2.1.7"
 dependencies = [
  "anyhow",
  "arboard",
@@ -8271,7 +8271,6 @@ dependencies = [
  "sentry 0.42.0",
  "serde",
  "serde_json",
- "sha2",
  "specta",
  "specta-typescript",
  "sysinfo",
@@ -8302,7 +8301,6 @@ dependencies = [
  "tracing-appender",
  "tracing-oslog",
  "tracing-subscriber",
- "urlencoding",
  "uuid",
  "windows 0.58.0",
  "windows-icons",
@@ -8322,7 +8320,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-audio"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "anyhow",
  "audiopipe",
@@ -8374,7 +8372,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-core"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -8415,7 +8413,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-db"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8440,7 +8438,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-events"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8456,7 +8454,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-integrations"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8476,7 +8474,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-server"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8532,7 +8530,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-vision"
-version = "0.3.160"
+version = "0.3.159"
 dependencies = [
  "accessibility-sys",
  "anyhow",
@@ -11681,12 +11679,6 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
-
-[[package]]
-name = "urlencoding"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "urlpattern"
