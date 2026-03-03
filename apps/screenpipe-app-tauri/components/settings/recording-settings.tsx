@@ -49,6 +49,9 @@ import {
   CheckCircle2,
   XCircle,
   Circle,
+  Upload,
+  Trash2,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -72,6 +75,7 @@ import { Badge } from "@/components/ui/badge";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { platform } from "@tauri-apps/plugin-os";
 import posthog from "posthog-js";
 import { Language } from "@/lib/language";
@@ -212,6 +216,277 @@ const INITIAL_TX_DIAGNOSTICS: TxDiagnostics = {
   models: { status: "pending", message: "" },
   transcribe: { status: "pending", message: "" },
 };
+
+// ─── Transcription Dictionary ────────────────────────────────────────────────
+
+const VOCAB_LIMIT = 1000;
+const DEEPGRAM_LIMIT = 100;
+const WHISPER_CHAR_LIMIT = 800;
+
+function parseTerms(raw: string): string[] {
+  // Auto-detect delimiter: if there are newlines, split by newlines; otherwise commas; otherwise semicolons; otherwise tabs
+  let delimiter: RegExp;
+  if (raw.includes("\n")) {
+    delimiter = /\n/;
+  } else if (raw.includes(",")) {
+    delimiter = /,/;
+  } else if (raw.includes(";")) {
+    delimiter = /;/;
+  } else if (raw.includes("\t")) {
+    delimiter = /\t/;
+  } else {
+    // Single term
+    return raw.trim() ? [raw.trim()] : [];
+  }
+  return raw
+    .split(delimiter)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+function TranscriptionDictionary({
+  vocabularyWords,
+  onChange,
+}: {
+  vocabularyWords: Array<{ word: string; replacement?: string }>;
+  onChange: (words: Array<{ word: string; replacement?: string }>) => void;
+}) {
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [filter, setFilter] = useState("");
+  const { toast } = useToast();
+
+  const parsed = useMemo(() => parseTerms(bulkText), [bulkText]);
+  const totalAfterImport = vocabularyWords.length + parsed.length;
+  const overLimit = totalAfterImport > VOCAB_LIMIT;
+
+  const filtered = useMemo(() => {
+    if (!filter) return vocabularyWords;
+    const q = filter.toLowerCase();
+    return vocabularyWords.filter(
+      (e) => e.word.toLowerCase().includes(q) || e.replacement?.toLowerCase().includes(q)
+    );
+  }, [vocabularyWords, filter]);
+
+  const handleBulkImport = () => {
+    if (parsed.length === 0) return;
+    const existing = new Set(vocabularyWords.map((e) => e.word.toLowerCase()));
+    const newTerms = parsed.filter((t) => !existing.has(t.toLowerCase()));
+    const available = VOCAB_LIMIT - vocabularyWords.length;
+    const toAdd = newTerms.slice(0, available);
+    if (toAdd.length === 0) {
+      toast({ title: "no new terms", description: "all terms already exist in your dictionary" });
+      return;
+    }
+    const updated = [...vocabularyWords, ...toAdd.map((w) => ({ word: w }))];
+    onChange(updated);
+    toast({
+      title: `added ${toAdd.length} terms`,
+      description: newTerms.length > toAdd.length
+        ? `${newTerms.length - toAdd.length} skipped (limit: ${VOCAB_LIMIT})`
+        : undefined,
+    });
+    setBulkText("");
+    setShowBulk(false);
+  };
+
+  return (
+    <Card className="border-border bg-card">
+      <CardContent className="px-3 py-2.5">
+        {/* Header */}
+        <div className="flex items-center space-x-2.5 mb-2">
+          <Languages className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+              transcription dictionary
+              <HelpTooltip text="Add custom words to improve transcription accuracy. Whisper uses ~800 chars, Deepgram uses up to 100 keywords. All replacements apply as post-processing on every engine." />
+              {vocabularyWords.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {vocabularyWords.length} / {VOCAB_LIMIT}
+                </Badge>
+              )}
+            </h3>
+            <p className="text-xs text-muted-foreground">bias transcription toward custom words</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2 gap-1"
+              onClick={() => setShowBulk(!showBulk)}
+            >
+              <Upload className="h-3 w-3" />
+              bulk import
+            </Button>
+            {vocabularyWords.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2 text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  if (confirm(`remove all ${vocabularyWords.length} terms?`)) {
+                    onChange([]);
+                  }
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Engine limits info */}
+        {vocabularyWords.length > 0 && (
+          <div className="text-[10px] text-muted-foreground/60 font-mono mb-2 px-1 flex gap-3">
+            <span>whisper: {Math.min(vocabularyWords.reduce((n, e) => n + (e.replacement || e.word).length + 2, 0), WHISPER_CHAR_LIMIT)}/{WHISPER_CHAR_LIMIT} chars</span>
+            <span>deepgram: {Math.min(vocabularyWords.length, DEEPGRAM_LIMIT)}/{DEEPGRAM_LIMIT} keywords</span>
+          </div>
+        )}
+
+        {/* Bulk import */}
+        {showBulk && (
+          <div className="mb-2 border border-border p-2 space-y-2">
+            <Textarea
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              placeholder={"paste terms separated by commas, newlines, semicolons, or tabs\n\ne.g. kubernetes, posthog, screenpipe, terraform"}
+              className="text-xs font-mono min-h-[80px] resize-y"
+              spellCheck={false}
+              autoCorrect="off"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                {parsed.length > 0 ? (
+                  <>
+                    {parsed.length} terms detected
+                    {overLimit && (
+                      <span className="text-destructive ml-1">
+                        (exceeds limit by {totalAfterImport - VOCAB_LIMIT})
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  "paste or type terms above"
+                )}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2"
+                  onClick={() => { setBulkText(""); setShowBulk(false); }}
+                >
+                  cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  disabled={parsed.length === 0}
+                  onClick={handleBulkImport}
+                >
+                  add {Math.min(parsed.length, VOCAB_LIMIT - vocabularyWords.length)} terms
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search filter (show when > 20 terms) */}
+        {vocabularyWords.length > 20 && (
+          <div className="relative mb-2">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="filter terms..."
+              className="h-7 text-xs pl-7"
+              spellCheck={false}
+            />
+          </div>
+        )}
+
+        {/* Existing entries */}
+        {filtered.length > 0 && (
+          <div className="space-y-0.5 mb-2 max-h-64 overflow-y-auto">
+            {filtered.map((entry, idx) => {
+              const realIdx = vocabularyWords.indexOf(entry);
+              return (
+                <div key={realIdx} className="flex items-center gap-2 text-sm bg-muted/50 px-2 py-0.5 group">
+                  <span className="font-mono text-xs truncate">{entry.word}</span>
+                  {entry.replacement && (
+                    <>
+                      <span className="text-muted-foreground text-xs shrink-0">→</span>
+                      <span className="font-mono text-xs truncate">{entry.replacement}</span>
+                    </>
+                  )}
+                  <button
+                    className="ml-auto text-muted-foreground hover:text-destructive text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    onClick={() => {
+                      const current = [...vocabularyWords];
+                      current.splice(realIdx, 1);
+                      onChange(current);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+            {filter && filtered.length < vocabularyWords.length && (
+              <p className="text-[10px] text-muted-foreground px-2 pt-1">
+                showing {filtered.length} of {vocabularyWords.length}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Add single entry */}
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const wordInput = form.elements.namedItem("vocab-word") as HTMLInputElement;
+            const replacementInput = form.elements.namedItem("vocab-replacement") as HTMLInputElement;
+            const word = wordInput.value.trim();
+            if (!word) return;
+            if (vocabularyWords.length >= VOCAB_LIMIT) {
+              toast({ title: "limit reached", description: `maximum ${VOCAB_LIMIT} terms allowed` });
+              return;
+            }
+            const replacement = replacementInput.value.trim() || undefined;
+
+            // Detect bulk paste in single input
+            const terms = parseTerms(word);
+            if (terms.length > 1) {
+              const existing = new Set(vocabularyWords.map((e) => e.word.toLowerCase()));
+              const newTerms = terms.filter((t) => !existing.has(t.toLowerCase()));
+              const available = VOCAB_LIMIT - vocabularyWords.length;
+              const toAdd = newTerms.slice(0, available);
+              if (toAdd.length > 0) {
+                onChange([...vocabularyWords, ...toAdd.map((w) => ({ word: w }))]);
+                toast({ title: `added ${toAdd.length} terms` });
+              }
+              wordInput.value = "";
+              replacementInput.value = "";
+              return;
+            }
+
+            onChange([...vocabularyWords, { word, replacement }]);
+            wordInput.value = "";
+            replacementInput.value = "";
+          }}
+        >
+          <Input name="vocab-word" placeholder="e.g. screenpipe" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
+          <Input name="vocab-replacement" placeholder="replacement (optional)" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
+          <Button type="submit" size="sm" variant="outline" className="h-7 text-xs px-2">
+            add
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function RecordingSettings() {
   const { settings, updateSettings, getDataDir, loadUser } = useSettings();
@@ -1828,77 +2103,10 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
 
         {/* Transcription Dictionary */}
         {!settings.disableAudio && (
-        <Card className="border-border bg-card">
-          <CardContent className="px-3 py-2.5">
-            <div className="flex items-center space-x-2.5 mb-2">
-              <Languages className="h-4 w-4 text-muted-foreground shrink-0" />
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                  Transcription dictionary
-                  <HelpTooltip text="Add custom words to improve transcription accuracy (e.g. 'screenpipe', 'posthog'). Optionally set a replacement to auto-correct the output." />
-                  {(settings.vocabularyWords?.length ?? 0) > 0 && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                      {settings.vocabularyWords!.length} words
-                    </Badge>
-                  )}
-                </h3>
-                <p className="text-xs text-muted-foreground">bias transcription toward custom words</p>
-              </div>
-            </div>
-
-            {/* Existing entries */}
-            {(settings.vocabularyWords ?? []).length > 0 && (
-              <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
-                {(settings.vocabularyWords ?? []).map((entry, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1">
-                    <span className="font-mono text-xs">{entry.word}</span>
-                    {entry.replacement && (
-                      <>
-                        <span className="text-muted-foreground text-xs">→</span>
-                        <span className="font-mono text-xs">{entry.replacement}</span>
-                      </>
-                    )}
-                    <button
-                      className="ml-auto text-muted-foreground hover:text-destructive text-xs"
-                      onClick={() => {
-                        const current = [...(settings.vocabularyWords ?? [])];
-                        current.splice(idx, 1);
-                        handleSettingsChange({ vocabularyWords: current }, true);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Add new entry */}
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget;
-                const wordInput = form.elements.namedItem("vocab-word") as HTMLInputElement;
-                const replacementInput = form.elements.namedItem("vocab-replacement") as HTMLInputElement;
-                const word = wordInput.value.trim();
-                if (!word) return;
-                const replacement = replacementInput.value.trim() || undefined;
-                const current = [...(settings.vocabularyWords ?? [])];
-                current.push({ word, replacement });
-                handleSettingsChange({ vocabularyWords: current }, true);
-                wordInput.value = "";
-                replacementInput.value = "";
-              }}
-            >
-              <Input name="vocab-word" placeholder="e.g. screenpipe" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
-              <Input name="vocab-replacement" placeholder="replacement (optional)" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
-              <Button type="submit" size="sm" variant="outline" className="h-7 text-xs px-2">
-                add
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <TranscriptionDictionary
+          vocabularyWords={settings.vocabularyWords ?? []}
+          onChange={(words) => handleSettingsChange({ vocabularyWords: words }, true)}
+        />
         )}
 
       </div>
