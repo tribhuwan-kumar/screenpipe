@@ -163,6 +163,7 @@ impl AudioManager {
             let engine_ref = self.engine.clone();
             let on_insert_bg = self.on_transcription_insert.clone();
             let options_ref = self.options.clone();
+            let seg_mgr = self.segmentation_manager.clone();
             tokio::spawn(async move {
                 // Wait for model to load + initial recordings
                 tokio::time::sleep(Duration::from_secs(120)).await;
@@ -190,6 +191,7 @@ impl AudioManager {
                             openai_config,
                             langs,
                             &vocab,
+                            Some(seg_mgr.clone()),
                         )
                         .await;
                         if count > 0 {
@@ -524,6 +526,7 @@ impl AudioManager {
                                 openai_compatible_config.clone(),
                                 languages.clone(),
                                 &vocabulary,
+                                Some(segmentation_manager.clone()),
                             )
                             .await;
                             for _ in 0..count {

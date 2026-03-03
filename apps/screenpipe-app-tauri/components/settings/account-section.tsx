@@ -226,20 +226,11 @@ export function AccountSection() {
                 <CreditCard className="w-3.5 h-3.5 mr-1.5" />
                 Billing <ExternalLinkIcon className="w-3.5 h-3.5 ml-1.5" />
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  openUrl("https://screenpi.pe/billing")
-                }
-              >
-                Billing <ExternalLinkIcon className="w-3.5 h-3.5 ml-1.5" />
-              </Button>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <span>✓</span> encrypted cloud sync — 50GB, 3 devices
+              <span>✓</span> encrypted cloud archive
             </div>
             <div className="flex items-center gap-2">
               <span>✓</span> cloud transcription — higher quality

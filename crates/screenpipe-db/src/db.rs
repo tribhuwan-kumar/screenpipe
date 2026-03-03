@@ -790,8 +790,15 @@ impl DatabaseManager {
         is_input_device: bool,
         timestamp: DateTime<Utc>,
         duration_secs: Option<f64>,
+        speaker_id: Option<i64>,
     ) -> Result<(), sqlx::Error> {
-        let text_length = transcription.len() as i64;
+        // Skip empty transcriptions
+        let trimmed = transcription.trim();
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+
+        let text_length = trimmed.len() as i64;
         let start_time: f64 = 0.0;
         let end_time: f64 = duration_secs.unwrap_or(0.0);
         let mut tx = self.begin_immediate_with_retry().await?;
@@ -802,11 +809,11 @@ impl DatabaseManager {
             .await?;
 
         sqlx::query(
-            "INSERT INTO audio_transcriptions (audio_chunk_id, transcription, text_length, offset_index, timestamp, transcription_engine, device, is_input_device, start_time, end_time)
-             VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO audio_transcriptions (audio_chunk_id, transcription, text_length, offset_index, timestamp, transcription_engine, device, is_input_device, start_time, end_time, speaker_id)
+             VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )
         .bind(audio_chunk_id)
-        .bind(transcription)
+        .bind(trimmed)
         .bind(text_length)
         .bind(timestamp)
         .bind(engine)
@@ -814,6 +821,7 @@ impl DatabaseManager {
         .bind(is_input_device)
         .bind(start_time)
         .bind(end_time)
+        .bind(speaker_id)
         .execute(&mut **tx.conn())
         .await?;
 

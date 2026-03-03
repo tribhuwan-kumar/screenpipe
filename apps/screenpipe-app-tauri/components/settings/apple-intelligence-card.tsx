@@ -66,11 +66,25 @@ export function AppleIntelligenceCard() {
     setOs(platform());
   }, []);
 
-  // Load AI enabled state
+  // Load AI enabled state — default to true only on macOS 26+ with 32GB+ RAM
   useEffect(() => {
     try {
       const stored = localStorage?.getItem("apple-intelligence-enabled");
-      if (stored !== null) setEnabled(stored !== "false");
+      if (stored !== null) {
+        setEnabled(stored !== "false");
+        return;
+      }
+      // No stored preference — auto-detect based on hardware
+      if (platform() === "macos") {
+        import("@/lib/utils/tauri").then(({ commands }) => {
+          commands.getHardwareCapability().then((hw) => {
+            const meetsRequirements = hw.totalMemoryGb >= 32;
+            setEnabled(meetsRequirements);
+          }).catch(() => {});
+        });
+      } else {
+        setEnabled(false);
+      }
     } catch {}
   }, []);
 

@@ -233,6 +233,7 @@ pub async fn retranscribe_handler(
                 is_input,
                 timestamp,
                 Some(duration_secs),
+                None,
             )
             .await
         {
