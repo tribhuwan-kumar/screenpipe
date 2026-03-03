@@ -1,47 +1,65 @@
 ---
 title: "OpenClaw - AI assistant with screenpipe memory"
 sidebarTitle: "OpenClaw"
-description: "Connect screenpipe to OpenClaw (formerly Moltbot/Clawdbot) to give your personal AI assistant access to everything you've seen and heard."
+description: "Connect screenpipe to OpenClaw to give your personal AI assistant access to everything you've seen and heard."
 icon: "robot"
 ---
 
-[OpenClaw](https://openclaw.ai) (formerly Moltbot/Clawdbot) is a self-hosted personal AI assistant that connects to your messaging apps (WhatsApp, Telegram, Discord, iMessage, etc.) and can take actions on your behalf.
+[OpenClaw](https://openclaw.ai) is a self-hosted personal AI assistant that connects to your messaging apps (WhatsApp, Telegram, Discord, iMessage, etc.) and can take actions on your behalf.
 
-with screenpipe, OpenClaw can recall what you've seen on screen, reference past conversations, and answer questions about your digital history.
+With screenpipe, OpenClaw can recall what you've seen on screen, reference past conversations, and answer questions about your digital history.
 
-## quick start (one command)
+## setup (MCP)
 
-```bash
-# full setup with morning summaries at 8am
-bunx @screenpipe/agent --setup user@your-server --morning 08:00
+The recommended way to connect screenpipe to OpenClaw is via MCP (Model Context Protocol). OpenClaw has native MCP support, and screenpipe ships an MCP server.
 
-# that's it! you'll get daily briefings via telegram/whatsapp/etc
+1. Make sure screenpipe is running on your machine
+
+2. Add screenpipe to your OpenClaw MCP config:
+
+```json
+{
+  "mcpServers": {
+    "screenpipe": {
+      "command": "npx",
+      "args": ["-y", "screenpipe-mcp"]
+    }
+  }
+}
 ```
 
-this single command:
-1. syncs your screen data (permanent daemon, survives reboot)
-2. installs screenpipe skills (recall, search, digest, context)
-3. schedules morning summary cron job
+3. Restart OpenClaw — it will now have access to your screen history, audio transcriptions, and more
 
-### manual setup (if you prefer)
+You can test the MCP server independently:
 
 ```bash
-# step 1: sync data
-bunx @screenpipe/sync --daemon --remote user@your-server:~/.screenpipe/
-
-# step 2: install skills
-bunx @screenpipe/skills install --remote user@your-server
+npx @modelcontextprotocol/inspector npx screenpipe-mcp
 ```
 
-## setup options
+## alternative: REST API
 
-### option 1: custom skill (advanced)
+If OpenClaw runs on the same machine as screenpipe, you can create a skill that queries the REST API:
 
-if you prefer manual setup, create a skill that queries screenpipe's SQLite database directly.
+```bash
+# search content
+curl -s "http://localhost:3030/search?q=QUERY&limit=20"
 
-1. create `~/openclaw/skills/screenpipe/skill.md`:
+# filter by type: ocr, audio
+curl -s "http://localhost:3030/search?q=QUERY&content_type=ocr"
 
-```markdown
+# filter by app
+curl -s "http://localhost:3030/search?q=QUERY&app_name=Chrome"
+```
+
+For remote setups, use a secure tunnel (Tailscale, Cloudflare Tunnel, etc.).
+
+## alternative: custom skill
+
+Create a skill that queries screenpipe's SQLite database directly.
+
+Create `~/openclaw/skills/screenpipe/skill.md`:
+
+````markdown
 ---
 name: screenpipe
 description: Search screen recordings and audio transcriptions from the user's computer
@@ -51,79 +69,26 @@ tools:
 
 # screenpipe skill
 
-query the user's screen history via SQLite at ~/.screenpipe/db.sqlite.
+Query the user's screen history via the local API at http://localhost:3030.
 
 ## search content
 
 ```bash
-# full-text search
-sqlite3 ~/.screenpipe/db.sqlite "
-  SELECT f.timestamp, o.app_name, substr(o.text, 1, 200)
-  FROM ocr_text o
-  JOIN frames f ON o.frame_id = f.id
-  WHERE o.text LIKE '%QUERY%'
-  ORDER BY f.timestamp DESC
-  LIMIT 20;
-"
-
-# app usage today
-sqlite3 ~/.screenpipe/db.sqlite "
-  SELECT o.app_name, COUNT(*) as frames
-  FROM ocr_text o
-  JOIN frames f ON o.frame_id = f.id
-  WHERE date(f.timestamp) = date('now')
-  GROUP BY o.app_name
-  ORDER BY frames DESC;
-"
-```
-```
-
-2. restart OpenClaw to load the skill
-
-### option 3: REST API (requires tunnel)
-
-if OpenClaw runs on the same machine as screenpipe, query the REST API directly:
-
-```bash
-# search content
 curl -s "http://localhost:3030/search?q=QUERY&limit=20"
-
-# filter by type: vision, audio, input
-curl -s "http://localhost:3030/search?q=QUERY&content_type=vision"
-
-# filter by app
-curl -s "http://localhost:3030/search?q=QUERY&app_name=Chrome"
 ```
 
-for remote setups, use a secure tunnel (tailscale, cloudflare tunnel).
-
-### option 4: MCP
-
-OpenClaw supports MCP via the mcporter skill:
+## get recent activity
 
 ```bash
-# test the MCP server
-npx @modelcontextprotocol/inspector npx screenpipe-mcp
+curl -s "http://localhost:3030/search?limit=10&content_type=ocr"
 ```
+````
 
-add to your OpenClaw MCP config:
-
-```json
-{
-  "screenpipe": {
-    "command": "npx",
-    "args": ["-y", "screenpipe-mcp"]
-  }
-}
-```
-
-<Note>
-MCP uses more context tokens than skills. the OpenClaw team recommends skills for most use cases.
-</Note>
+Restart OpenClaw to load the skill.
 
 ## example prompts
 
-once configured, message OpenClaw from any chat app:
+Once configured, message OpenClaw from any chat app:
 
 - "what was I reading about yesterday afternoon?"
 - "find the slack message from john about the deployment"
@@ -132,32 +97,12 @@ once configured, message OpenClaw from any chat app:
 - "what tabs did I have open when researching that bug?"
 - "when did I last see the budget spreadsheet?"
 
-## requirements
-
-- screenpipe running locally on your computer
-- SSH access to your OpenClaw server (for sync)
-- or: screenpipe + OpenClaw on same machine (for REST API)
-
 ## troubleshooting
 
-**sync not working?**
-- check SSH access: `ssh user@openclaw-server "echo ok"`
-- check daemon: `launchctl list | grep screenpipe`
-- check logs: `tail /tmp/screenpipe-sync.log`
-
-**skills not loading?**
-- check files exist: `ssh server "ls ~/openclaw/skills/screenpipe/"`
-- restart OpenClaw to reload skills
+**MCP not connecting?**
+- Test the server: `npx @modelcontextprotocol/inspector npx screenpipe-mcp`
+- Check screenpipe is running: `curl http://localhost:3030/health`
 
 **no results from queries?**
-- verify screenpipe is running locally: `curl http://localhost:3030/health`
-- check data exists: `sqlite3 ~/.screenpipe/db.sqlite "SELECT COUNT(*) FROM ocr_text;"`
-- ensure screenpipe has screen recording permissions
-
-## packages
-
-| Package | Description |
-|---------|-------------|
-| [@screenpipe/agent](https://www.npmjs.com/package/@screenpipe/agent) | One-liner full setup (recommended) |
-| [@screenpipe/sync](https://www.npmjs.com/package/@screenpipe/sync) | Sync screen data to remote servers |
-| [@screenpipe/skills](https://www.npmjs.com/package/@screenpipe/skills) | Pre-built skills for AI agents |
+- Verify screenpipe is running: `curl http://localhost:3030/health`
+- Ensure screenpipe has screen recording permissions
