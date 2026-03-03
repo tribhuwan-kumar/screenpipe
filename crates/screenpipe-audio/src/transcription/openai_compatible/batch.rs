@@ -53,7 +53,9 @@ pub async fn transcribe_with_openai_compatible(
         Some(c) => c,
         None => Arc::new(
             Client::builder()
-                .timeout(std::time::Duration::from_secs(OPENAI_COMPATIBLE_TIMEOUT_SECS))
+                .timeout(std::time::Duration::from_secs(
+                    OPENAI_COMPATIBLE_TIMEOUT_SECS,
+                ))
                 .build()?,
         ),
     };

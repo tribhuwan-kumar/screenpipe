@@ -15,9 +15,7 @@ use std::sync::Arc;
 use crate::power::{PowerManagerHandle, PowerMode, PowerStatus};
 
 /// GET /power — return current power status.
-pub async fn get_power_status(
-    State(handle): State<Arc<PowerManagerHandle>>,
-) -> Json<PowerStatus> {
+pub async fn get_power_status(State(handle): State<Arc<PowerManagerHandle>>) -> Json<PowerStatus> {
     let state = handle.current_state().await;
     let profile = handle.current_profile();
     let user_pref = handle.user_pref().await;

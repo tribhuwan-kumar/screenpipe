@@ -3122,9 +3122,11 @@ impl DatabaseManager {
     ) -> Result<TimeSeriesChunk, SqlxError> {
         // Acquire a heavy-read permit (max 2 concurrent). This prevents slow
         // queries (60s+ on legacy data) from consuming all pool connections.
-        let _permit = self.heavy_read_semaphore.acquire().await.map_err(|_| {
-            SqlxError::Protocol("heavy_read_semaphore closed".to_string())
-        })?;
+        let _permit = self
+            .heavy_read_semaphore
+            .acquire()
+            .await
+            .map_err(|_| SqlxError::Protocol("heavy_read_semaphore closed".to_string()))?;
 
         // Get frames with OCR data, grouped by minute to handle multiple monitors.
         // OCR text is truncated to 200 chars for the timeline stream — full text

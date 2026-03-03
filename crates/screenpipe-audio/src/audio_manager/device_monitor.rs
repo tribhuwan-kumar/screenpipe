@@ -138,36 +138,35 @@ pub async fn start_device_monitor(
                     // Atomic swap: start new device FIRST, then stop old ones.
                     // This ensures continuous audio capture — if the new device
                     // fails to start, the old devices keep running as fallback.
-                    if let Some(new_default_output) =
-                        default_tracker.check_output_changed().await
-                    {
+                    if let Some(new_default_output) = default_tracker.check_output_changed().await {
                         info!(
                             "[DEVICE_RECOVERY] system default output changed to: {}",
                             new_default_output
                         );
 
-                        let new_started =
-                            if let Ok(new_device) = parse_audio_device(&new_default_output) {
-                                failed_devices.remove(&new_default_output);
-                                match audio_manager.start_device(&new_device).await {
-                                    Ok(()) => {
-                                        info!(
-                                            "[DEVICE_RECOVERY] started new system default output: {}",
-                                            new_default_output
-                                        );
-                                        true
-                                    }
-                                    Err(e) => {
-                                        warn!(
+                        let new_started = if let Ok(new_device) =
+                            parse_audio_device(&new_default_output)
+                        {
+                            failed_devices.remove(&new_default_output);
+                            match audio_manager.start_device(&new_device).await {
+                                Ok(()) => {
+                                    info!(
+                                        "[DEVICE_RECOVERY] started new system default output: {}",
+                                        new_default_output
+                                    );
+                                    true
+                                }
+                                Err(e) => {
+                                    warn!(
                                             "[DEVICE_RECOVERY] failed to start new default output {}: {} — keeping old devices running",
                                             new_default_output, e
                                         );
-                                        false
-                                    }
+                                    false
                                 }
-                            } else {
-                                false
-                            };
+                            }
+                        } else {
+                            false
+                        };
 
                         // Only stop old output devices if the new one started successfully
                         if new_started {

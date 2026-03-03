@@ -55,6 +55,8 @@ pub struct AudioManagerOptions {
     pub output_path: Option<PathBuf>,
     /// Enable PII removal from audio transcriptions
     pub use_pii_removal: bool,
+    /// Filter music-dominant audio before transcription using spectral analysis
+    pub filter_music: bool,
     /// When true, automatically follow system default audio devices
     /// and switch when the system default changes (e.g., device plug/unplug)
     pub use_system_default_audio: bool,
@@ -91,6 +93,7 @@ impl Default for AudioManagerOptions {
             deepgram_url,
             deepgram_websocket_url,
             use_pii_removal: false,
+            filter_music: false,
             use_system_default_audio: true,
             transcription_mode: TranscriptionMode::default(),
             meeting_detector: None,
@@ -179,6 +182,11 @@ impl AudioManagerBuilder {
 
     pub fn use_pii_removal(mut self, use_pii_removal: bool) -> Self {
         self.options.use_pii_removal = use_pii_removal;
+        self
+    }
+
+    pub fn filter_music(mut self, filter_music: bool) -> Self {
+        self.options.filter_music = filter_music;
         self
     }
 

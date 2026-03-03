@@ -785,10 +785,16 @@ mod tests {
     async fn test_get_all_executions() {
         let store = setup_test_store().await;
         for _ in 0..5 {
-            store.create_execution("pipe-a", "manual", "m", None).await.unwrap();
+            store
+                .create_execution("pipe-a", "manual", "m", None)
+                .await
+                .unwrap();
         }
         for _ in 0..3 {
-            store.create_execution("pipe-b", "scheduled", "m", None).await.unwrap();
+            store
+                .create_execution("pipe-b", "scheduled", "m", None)
+                .await
+                .unwrap();
         }
 
         let all = store.get_all_executions(3).await.unwrap();

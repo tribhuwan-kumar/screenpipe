@@ -406,6 +406,7 @@ impl AudioManager {
         let audio_transcription_engine = options.transcription_engine.clone();
         let vocabulary = options.vocabulary.clone();
         let is_batch_mode = options.transcription_mode == TranscriptionMode::Batch;
+        let filter_music = options.filter_music;
         let vad_engine = self.vad_engine.clone();
         let whisper_receiver = self.recording_receiver.clone();
         let metrics = self.metrics.clone();
@@ -550,6 +551,7 @@ impl AudioManager {
                                 &mut session,
                                 metrics.clone(),
                                 persisted_file_path.clone(),
+                                filter_music,
                             )
                             .await
                             {
@@ -573,6 +575,7 @@ impl AudioManager {
                             &mut session,
                             metrics.clone(),
                             persisted_file_path.clone(),
+                            filter_music,
                         )
                         .await
                         {
@@ -596,6 +599,7 @@ impl AudioManager {
                         &mut session,
                         metrics.clone(),
                         persisted_file_path.clone(),
+                        filter_music,
                     )
                     .await
                     {

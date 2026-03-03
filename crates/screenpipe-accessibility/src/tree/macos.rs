@@ -657,9 +657,19 @@ fn normalize_bounds(
 ) -> Option<super::NodeBounds> {
     // Pick reference frame: monitor (matches screenshot) > window (legacy fallback)
     let (ref_x, ref_y, ref_w, ref_h) = if state.monitor_w > 0.0 && state.monitor_h > 0.0 {
-        (state.monitor_x, state.monitor_y, state.monitor_w, state.monitor_h)
+        (
+            state.monitor_x,
+            state.monitor_y,
+            state.monitor_w,
+            state.monitor_h,
+        )
     } else if state.window_w > 0.0 && state.window_h > 0.0 {
-        (state.window_x, state.window_y, state.window_w, state.window_h)
+        (
+            state.window_x,
+            state.window_y,
+            state.window_w,
+            state.window_h,
+        )
     } else {
         return None;
     };

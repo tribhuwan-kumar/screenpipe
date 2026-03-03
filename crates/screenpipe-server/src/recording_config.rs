@@ -28,6 +28,8 @@ pub struct RecordingConfig {
     pub disable_audio: bool,
     pub disable_vision: bool,
     pub use_pii_removal: bool,
+    /// Filter music-dominant audio before transcription using spectral analysis
+    pub filter_music: bool,
     pub enable_input_capture: bool,
     pub enable_accessibility: bool,
 
@@ -107,6 +109,7 @@ impl RecordingConfig {
             .deepgram_api_key(self.deepgram_api_key.clone())
             .output_path(output_path)
             .use_pii_removal(self.use_pii_removal)
+            .filter_music(self.filter_music)
             .transcription_mode(self.transcription_mode.clone())
             .vocabulary(self.vocabulary.clone())
     }

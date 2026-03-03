@@ -341,15 +341,12 @@ async fn handle_stream_frames_socket(
                                         Ok(mut chunks) => {
                                             if is_descending {
                                                 chunks.frames.sort_by_key(|a| {
-                                                    std::cmp::Reverse((
-                                                        a.timestamp,
-                                                        a.offset_index,
-                                                    ))
+                                                    std::cmp::Reverse((a.timestamp, a.offset_index))
                                                 });
                                             } else {
-                                                chunks.frames.sort_by_key(|a| {
-                                                    (a.timestamp, a.offset_index)
-                                                });
+                                                chunks
+                                                    .frames
+                                                    .sort_by_key(|a| (a.timestamp, a.offset_index));
                                             }
                                             let mut sent = sent_ids_backfill.lock().await;
                                             for chunk in chunks.frames {

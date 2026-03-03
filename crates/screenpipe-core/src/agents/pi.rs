@@ -118,10 +118,7 @@ impl PiExecutor {
     /// Web search uses the screenpipe cloud backend, so we only enable it
     /// for screenpipe-cloud to avoid sending data to our backend when the
     /// user chose a local/custom provider.
-    pub fn ensure_web_search_extension(
-        project_dir: &Path,
-        provider: Option<&str>,
-    ) -> Result<()> {
+    pub fn ensure_web_search_extension(project_dir: &Path, provider: Option<&str>) -> Result<()> {
         let ext_dir = project_dir.join(".pi").join("extensions");
         let ext_path = ext_dir.join("web-search.ts");
 

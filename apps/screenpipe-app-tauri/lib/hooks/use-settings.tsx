@@ -123,6 +123,8 @@ export type Settings = SettingsStore & {
 	openaiCompatibleApiKey?: string;
 	/** OpenAI-compatible transcription model name */
 	openaiCompatibleModel?: string;
+	/** Filter music-dominant audio before transcription (reduces Spotify/YouTube music noise) */
+	filterMusic?: boolean;
 }
 
 export function getEffectiveFilters(settings: Settings) {
@@ -273,6 +275,7 @@ let DEFAULT_SETTINGS: Settings = {
 			transcriptionMode: "batch",
 			cloudArchiveEnabled: false,
 			cloudArchiveRetentionDays: 7,
+			filterMusic: false,
 		};
 
 export function createDefaultSettingsObject(): Settings {

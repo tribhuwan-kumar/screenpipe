@@ -166,6 +166,10 @@ pub struct Cli {
     #[arg(long, default_value_t = true)]
     pub use_pii_removal: bool,
 
+    /// Filter music-dominant audio before transcription (reduces Spotify/YouTube music noise)
+    #[arg(long, default_value_t = false)]
+    pub filter_music: bool,
+
     #[arg(long, default_value_t = false)]
     pub disable_vision: bool,
 
@@ -354,6 +358,10 @@ pub struct RecordArgs {
     #[arg(long, default_value_t = true)]
     pub use_pii_removal: bool,
 
+    /// Filter music-dominant audio before transcription (reduces Spotify/YouTube music noise)
+    #[arg(long, default_value_t = false)]
+    pub filter_music: bool,
+
     /// Disable vision recording
     #[arg(long, default_value_t = false)]
     pub disable_vision: bool,
@@ -439,6 +447,7 @@ impl RecordArgs {
             use_all_monitors: cli.use_all_monitors,
             language: cli.language.clone(),
             use_pii_removal: cli.use_pii_removal,
+            filter_music: cli.filter_music,
             disable_vision: cli.disable_vision,
             vad_engine: cli.vad_engine.clone(),
             ignored_windows: cli.ignored_windows.clone(),
@@ -495,6 +504,7 @@ impl RecordArgs {
             disable_audio: self.disable_audio,
             disable_vision: self.disable_vision,
             use_pii_removal: self.use_pii_removal,
+            filter_music: self.filter_music,
             enable_input_capture: self.enable_input_capture,
             enable_accessibility: self.enable_accessibility,
             audio_transcription_engine: self.audio_transcription_engine.into(),

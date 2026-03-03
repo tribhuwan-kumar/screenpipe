@@ -123,6 +123,7 @@ async fn test_transcription_accuracy() {
                 embedding_extractor,
                 &audio_input.device.name,
                 false,
+                false,
             )
             .await
             .unwrap();

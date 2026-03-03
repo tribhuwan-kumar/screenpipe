@@ -263,6 +263,7 @@ mod tests {
             embedding_extractor,
             &audio_input.device.to_string(),
             false,
+            false,
         )
         .await
         .unwrap();
@@ -365,6 +366,7 @@ mod tests {
             embedding_manager,
             embedding_extractor,
             &audio_input.device.to_string(),
+            false,
             false,
         )
         .await

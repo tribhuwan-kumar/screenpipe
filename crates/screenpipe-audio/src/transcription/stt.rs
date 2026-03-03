@@ -88,7 +88,9 @@ impl OpenAICompatibleConfig {
         } else {
             let client = Arc::new(
                 Client::builder()
-                    .timeout(std::time::Duration::from_secs(OPENAI_COMPATIBLE_TIMEOUT_SECS))
+                    .timeout(std::time::Duration::from_secs(
+                        OPENAI_COMPATIBLE_TIMEOUT_SECS,
+                    ))
                     .build()
                     .expect("failed to create reqwest client"),
             );
@@ -246,6 +248,7 @@ pub async fn process_audio_input(
     session: &mut TranscriptionSession,
     metrics: Arc<AudioPipelineMetrics>,
     pre_written_path: Option<String>,
+    filter_music: bool,
 ) -> Result<()> {
     // NOTE: capture_timestamp is set when audio enters the channel, but smart mode
     // deferral can delay processing by 20+ minutes. The DB now uses Utc::now() at
@@ -276,6 +279,7 @@ pub async fn process_audio_input(
         embedding_extractor,
         &audio.device.to_string(),
         is_output_device,
+        filter_music,
     )
     .await?;
 

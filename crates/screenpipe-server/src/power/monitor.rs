@@ -118,10 +118,9 @@ async fn macos_battery_state(state: &mut PowerState) {
 
     // Thermal state + low power mode via NSProcessInfo
     // This runs synchronously via Core Foundation — very fast
-    let (thermal, low_power) =
-        tokio::task::spawn_blocking(macos_thermal_and_low_power)
-            .await
-            .unwrap_or((ThermalState::Nominal, false));
+    let (thermal, low_power) = tokio::task::spawn_blocking(macos_thermal_and_low_power)
+        .await
+        .unwrap_or((ThermalState::Nominal, false));
 
     state.thermal_state = thermal;
     state.os_low_power = low_power;
@@ -134,7 +133,9 @@ fn parse_macos_battery_pct(pmset_output: &str) -> Option<u8> {
         if let Some(idx) = line.find('%') {
             // Walk backwards from '%' to find the start of the number
             let before = &line[..idx];
-            let num_start = before.rfind(|c: char| !c.is_ascii_digit()).map_or(0, |i| i + 1);
+            let num_start = before
+                .rfind(|c: char| !c.is_ascii_digit())
+                .map_or(0, |i| i + 1);
             if let Ok(pct) = before[num_start..].parse::<u8>() {
                 return Some(pct.min(100));
             }
@@ -190,8 +191,7 @@ fn macos_thermal_and_low_power() -> (ThermalState, bool) {
         // isLowPowerModeEnabled returns BOOL (signed char, 0 or 1)
         let sel_low_power =
             sel_registerName(CString::new("isLowPowerModeEnabled").unwrap().as_ptr());
-        let low_power_raw: c_long =
-            std::mem::transmute(objc_msgSend(process_info, sel_low_power));
+        let low_power_raw: c_long = std::mem::transmute(objc_msgSend(process_info, sel_low_power));
         let low_power = low_power_raw != 0;
 
         (thermal, low_power)
