@@ -549,6 +549,48 @@ struct CaptureOutput {
     image: image::DynamicImage,
 }
 
+fn resolve_capture_metadata(
+    tree_snapshot: Option<&screenpipe_accessibility::tree::TreeSnapshot>,
+    trigger: &CaptureTrigger,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let (mut app_name, mut window_name, browser_url) = match tree_snapshot {
+        Some(snap) => (
+            Some(snap.app_name.clone()),
+            Some(snap.window_name.clone()),
+            snap.browser_url.clone(),
+        ),
+        None => (None, None, None),
+    };
+
+    match trigger {
+        CaptureTrigger::AppSwitch {
+            app_name: trigger_app_name,
+        } if !trigger_app_name.is_empty() => {
+            if app_name.as_deref() != Some(trigger_app_name.as_str()) {
+                debug!(
+                    "focused app mismatch on app_switch: trigger='{}', tree={:?}; using trigger value",
+                    trigger_app_name, app_name
+                );
+            }
+            app_name = Some(trigger_app_name.clone());
+        }
+        CaptureTrigger::WindowFocus {
+            window_name: trigger_window_name,
+        } if !trigger_window_name.is_empty() => {
+            if window_name.as_deref() != Some(trigger_window_name.as_str()) {
+                debug!(
+                    "focused window mismatch on window_focus: trigger='{}', tree={:?}; using trigger value",
+                    trigger_window_name, window_name
+                );
+            }
+            window_name = Some(trigger_window_name.clone());
+        }
+        _ => {}
+    }
+
+    (app_name, window_name, browser_url)
+}
+
 /// Perform a single event-driven capture.
 ///
 /// When `previous_content_hash` is `Some` and matches the current accessibility
@@ -611,15 +653,10 @@ async fn do_capture(
         }
     }
 
-    // Use tree snapshot metadata for app/window/url if available
-    let (app_name_owned, window_name_owned, browser_url_owned) = match &tree_snapshot {
-        Some(snap) => (
-            Some(snap.app_name.clone()),
-            Some(snap.window_name.clone()),
-            snap.browser_url.clone(),
-        ),
-        None => (None, None, None),
-    };
+    // Use tree metadata by default, but for focus-change triggers prefer the
+    // event payload when the tree lags or reports the wrong frontmost target.
+    let (app_name_owned, window_name_owned, browser_url_owned) =
+        resolve_capture_metadata(tree_snapshot.as_ref(), trigger);
 
     // Skip lock screen / screensaver — these waste disk and pollute timeline.
     // Also update the global SCREEN_IS_LOCKED flag so subsequent loop iterations

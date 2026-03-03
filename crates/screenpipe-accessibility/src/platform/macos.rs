@@ -688,6 +688,108 @@ extern "C" fn tap_callback(
 // App/Window Observer
 // ============================================================================
 
+struct FocusState {
+    last_app: Option<String>,
+    last_pid: i32,
+    last_window: Option<String>,
+}
+
+struct ObserverCallbackState {
+    tx: Sender<UiEvent>,
+    start: Instant,
+    config: UiCaptureConfig,
+    current_app: Arc<Mutex<Option<String>>>,
+    current_window: Arc<Mutex<Option<String>>>,
+    focus: Mutex<FocusState>,
+    refresh_requested: Arc<AtomicBool>,
+}
+
+fn emit_focus_state(state: &ObserverCallbackState) {
+    let Some((pid, name)) = get_focused_app_info() else {
+        return;
+    };
+
+    if !state.config.should_capture_app(&name) {
+        return;
+    }
+
+    let mut focus = state.focus.lock();
+    let app_changed = focus.last_app.as_ref() != Some(&name) || focus.last_pid != pid;
+
+    if app_changed {
+        *state.current_app.lock() = Some(name.clone());
+
+        if state.config.capture_app_switch {
+            let focused_element = get_focused_element_context(&state.config);
+
+            let mut event = UiEvent::app_switch(
+                Utc::now(),
+                state.start.elapsed().as_millis() as u64,
+                name.clone(),
+                pid,
+            );
+            event.element = focused_element;
+            let _ = state.tx.try_send(event);
+        }
+
+        focus.last_app = Some(name.clone());
+        focus.last_pid = pid;
+    }
+
+    let window_title = get_focused_window_title(pid);
+    let should_capture = window_title
+        .as_ref()
+        .map(|w| state.config.should_capture_window(w))
+        .unwrap_or(true);
+
+    if should_capture && (window_title != focus.last_window || app_changed) {
+        *state.current_window.lock() = window_title.clone();
+
+        if state.config.capture_window_focus {
+            let focused_element = get_focused_element_context(&state.config);
+
+            let event = UiEvent {
+                id: None,
+                timestamp: Utc::now(),
+                relative_ms: state.start.elapsed().as_millis() as u64,
+                data: EventData::WindowFocus {
+                    app: name,
+                    title: window_title.clone().map(|s| truncate(&s, 200)),
+                },
+                app_name: None,
+                window_title: None,
+                browser_url: None,
+                element: focused_element,
+                frame_id: None,
+            };
+            let _ = state.tx.try_send(event);
+        }
+
+        focus.last_window = window_title;
+    }
+}
+
+extern "C" fn ax_focus_observer_callback(
+    _observer: &mut ax::Observer,
+    _elem: &mut ax::UiElement,
+    notification: &ax::Notification,
+    context: *mut std::ffi::c_void,
+) {
+    if context.is_null() {
+        return;
+    }
+
+    let state = unsafe { &*(context as *const ObserverCallbackState) };
+
+    if notification == ax::notification::app_activated()
+        || notification == ax::notification::app_deactivated()
+    {
+        state.refresh_requested.store(true, Ordering::SeqCst);
+    }
+
+    emit_focus_state(state);
+}
+
 fn run_app_observer(
     tx: Sender<UiEvent>,
     stop: Arc<AtomicBool>,
@@ -697,90 +799,159 @@ fn run_app_observer(
     current_window: Arc<Mutex<Option<String>>>,
 ) {
     let workspace = ns::Workspace::shared();
+    let mut notification_center = workspace.notification_center();
+    let refresh_requested = Arc::new(AtomicBool::new(true));
+    let callback_state = Box::new(ObserverCallbackState {
+        tx,
+        start,
+        config,
+        current_app,
+        current_window,
+        focus: Mutex::new(FocusState {
+            last_app: None,
+            last_pid: 0,
+            last_window: None,
+        }),
+        refresh_requested: refresh_requested.clone(),
+    });
+    let callback_state_ptr = Box::into_raw(callback_state);
 
-    let mut last_app: Option<String> = None;
-    let mut last_pid: i32 = 0;
-    let mut last_window: Option<String> = None;
-
-    while !stop.load(Ordering::Relaxed) {
-        let apps = workspace.running_apps();
-        let active_app = apps.iter().find(|app| app.is_active());
-
-        if let Some(app) = active_app {
-            let name = app
-                .localized_name()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "?".to_string());
-            let pid = app.pid();
-
-            // Check exclusions
-            if !config.should_capture_app(&name) {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                continue;
-            }
-
-            let app_changed = last_app.as_ref() != Some(&name) || last_pid != pid;
-
-            if app_changed {
-                // Update shared state for event tap thread
-                *current_app.lock() = Some(name.clone());
-
-                if config.capture_app_switch {
-                    // Capture focused element's context (including text field values)
-                    let focused_element = get_focused_element_context(&config);
-
-                    let mut event = UiEvent::app_switch(
-                        Utc::now(),
-                        start.elapsed().as_millis() as u64,
-                        name.clone(),
-                        pid,
-                    );
-                    event.element = focused_element;
-                    let _ = tx.try_send(event);
+    // NSWorkspace still helps for session/space lifecycle changes, but app-to-app
+    // reattachment comes from AX notifications on the observed app itself.
+    let _workspace_observers = vec![
+        notification_center.add_observer_guard(
+            ns::workspace::notification::did_activate_app(),
+            None,
+            None,
+            {
+                let refresh_requested = refresh_requested.clone();
+                move |_note| {
+                    refresh_requested.store(true, Ordering::SeqCst);
                 }
-                last_app = Some(name.clone());
-                last_pid = pid;
-            }
-
-            // Check window change
-            let window_title = get_focused_window_title(pid);
-
-            // Check window exclusions
-            let should_capture = window_title
-                .as_ref()
-                .map(|w| config.should_capture_window(w))
-                .unwrap_or(true);
-
-            if should_capture && (window_title != last_window || app_changed) {
-                // Update shared state for event tap thread
-                *current_window.lock() = window_title.clone();
-
-                if config.capture_window_focus {
-                    // Capture focused element's context (including text field values)
-                    let focused_element = get_focused_element_context(&config);
-
-                    let event = UiEvent {
-                        id: None,
-                        timestamp: Utc::now(),
-                        relative_ms: start.elapsed().as_millis() as u64,
-                        data: EventData::WindowFocus {
-                            app: name,
-                            title: window_title.clone().map(|s| truncate(&s, 200)),
-                        },
-                        app_name: None,
-                        window_title: None,
-                        browser_url: None,
-                        element: focused_element,
-                        frame_id: None,
-                    };
-                    let _ = tx.try_send(event);
+            },
+        ),
+        notification_center.add_observer_guard(
+            ns::workspace::notification::active_space_did_change(),
+            None,
+            None,
+            {
+                let refresh_requested = refresh_requested.clone();
+                move |_note| {
+                    refresh_requested.store(true, Ordering::SeqCst);
                 }
-                last_window = window_title;
+            },
+        ),
+        notification_center.add_observer_guard(
+            ns::workspace::notification::did_unhide_app(),
+            None,
+            None,
+            {
+                let refresh_requested = refresh_requested.clone();
+                move |_note| {
+                    refresh_requested.store(true, Ordering::SeqCst);
+                }
+            },
+        ),
+        notification_center.add_observer_guard(
+            ns::workspace::notification::did_wake(),
+            None,
+            None,
+            {
+                let refresh_requested = refresh_requested.clone();
+                move |_note| {
+                    refresh_requested.store(true, Ordering::SeqCst);
+                }
+            },
+        ),
+        notification_center.add_observer_guard(
+            ns::workspace::notification::session_did_become_active(),
+            None,
+            None,
+            {
+                let refresh_requested = refresh_requested.clone();
+                move |_note| {
+                    refresh_requested.store(true, Ordering::SeqCst);
+                }
+            },
+        ),
+    ];
+
+    let run_loop = cf::RunLoop::current();
+    let run_loop_mode = cf::RunLoopMode::default();
+    let mut observed_pid: i32 = 0;
+    let mut observer: Option<cidre::arc::R<ax::Observer>> = None;
+
+    let mut reattach_observer = || {
+        let Some((pid, _name)) = get_focused_app_info() else {
+            return;
+        };
+
+        if observed_pid == pid {
+            emit_focus_state(unsafe { &*callback_state_ptr });
+            return;
+        }
+
+        if let Some(existing) = observer.take() {
+            run_loop.remove_src(existing.run_loop_src(), run_loop_mode);
+        }
+
+        let app = ax::UiElement::with_app_pid(pid);
+        let mut new_observer = match ax::Observer::with_cb(pid, ax_focus_observer_callback) {
+            Ok(observer) => observer,
+            Err(err) => {
+                error!("failed to create AXObserver for pid {}: {:?}", pid, err);
+                observed_pid = 0;
+                return;
+            }
+        };
+
+        let context = callback_state_ptr as *mut std::ffi::c_void;
+        for notification in [
+            ax::notification::app_activated(),
+            ax::notification::app_deactivated(),
+            ax::notification::focused_window_changed(),
+            ax::notification::focused_ui_element_changed(),
+        ] {
+            if let Err(err) = new_observer.add_notification(&app, notification, context) {
+                debug!(
+                    "failed to register AX notification {:?} for pid {}: {:?}",
+                    notification, pid, err
+                );
             }
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        run_loop.add_src(new_observer.run_loop_src(), run_loop_mode);
+        observed_pid = pid;
+        observer = Some(new_observer);
+        emit_focus_state(unsafe { &*callback_state_ptr });
+    };
+
+    while !stop.load(Ordering::Relaxed) {
+        cf::RunLoop::run_in_mode(run_loop_mode, 0.1, true);
+
+        if refresh_requested.swap(false, Ordering::SeqCst) {
+            reattach_observer();
+        }
     }
+
+    if let Some(existing) = observer.take() {
+        run_loop.remove_src(existing.run_loop_src(), run_loop_mode);
+    }
+
+    unsafe {
+        drop(Box::from_raw(callback_state_ptr));
+    }
+}
+
+fn get_focused_app_info() -> Option<(i32, String)> {
+    let sys = ax::UiElement::sys_wide();
+    let app = sys.focused_app().ok()?;
+    let pid = app.pid().ok()?;
+    let name = ns::RunningApp::with_pid(pid)
+        .and_then(|app| app.localized_name())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    Some((pid, name))
 }
 
 // ============================================================================

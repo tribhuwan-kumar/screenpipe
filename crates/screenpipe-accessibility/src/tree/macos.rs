@@ -213,11 +213,19 @@ impl MacosTreeWalker {
     fn walk_focused_window_inner(&self) -> Result<Option<TreeSnapshot>> {
         let start = Instant::now();
 
-        // 1. Get the focused (active) application via NSWorkspace
-        let workspace = ns::Workspace::shared();
-        let apps = workspace.running_apps();
-        let active_app = apps.iter().find(|app| app.is_active());
-        let Some(app) = active_app else {
+        // 1. Get the focused application via the AX system-wide element.
+        // This stays within the accessibility stack instead of relying on
+        // NSWorkspace's foreground-app state from a background thread.
+        let sys = ax::UiElement::sys_wide();
+        let focused_app = match sys.focused_app() {
+            Ok(app) => app,
+            Err(_) => return Ok(None),
+        };
+        let pid = match focused_app.pid() {
+            Ok(pid) => pid,
+            Err(_) => return Ok(None),
+        };
+        let Some(app) = ns::RunningApp::with_pid(pid) else {
             return Ok(None);
         };
 
@@ -225,7 +233,6 @@ impl MacosTreeWalker {
             .localized_name()
             .map(|s| s.to_string())
             .unwrap_or_default();
-        let pid = app.pid();
 
         // Skip excluded apps (password managers, etc.)
         let app_lower = app_name.to_lowercase();
@@ -252,7 +259,7 @@ impl MacosTreeWalker {
         }
 
         // 2. Get the focused window via AX API
-        let mut ax_app = ax::UiElement::with_app_pid(pid);
+        let mut ax_app = focused_app;
         let _ = ax_app.set_messaging_timeout_secs(self.config.element_timeout_secs);
 
         // Enable accessibility for Chromium/Electron apps. These apps only build
