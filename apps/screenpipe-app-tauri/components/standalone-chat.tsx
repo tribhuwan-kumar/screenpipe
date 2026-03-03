@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSettings, ChatMessage, ChatConversation } from "@/lib/hooks/use-settings";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip } from "lucide-react";
+import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip, RefreshCw } from "lucide-react";
 import { SchedulePromptDialog } from "@/components/chat/schedule-prompt-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -3273,7 +3273,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
         {/* Auto-suggestions above input */}
         {!isLoading && messages.length > 0 && autoSuggestions.length > 0 && (
-          <div className="px-3 pt-2 flex flex-wrap gap-1.5">
+          <div className="px-3 pt-2 flex flex-wrap items-center gap-1.5">
             <AnimatePresence mode="popLayout">
               {autoSuggestions.slice(0, 3).map((s, i) => (
                 <motion.button
@@ -3291,6 +3291,14 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 </motion.button>
               ))}
             </AnimatePresence>
+            <button
+              onClick={refreshSuggestions}
+              disabled={suggestionsRefreshing}
+              className="p-1 text-muted-foreground/30 hover:text-foreground transition-colors duration-150 disabled:opacity-30 cursor-pointer"
+              title="refresh suggestions"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${suggestionsRefreshing ? "animate-spin" : ""}`} strokeWidth={1.5} />
+            </button>
           </div>
         )}
 
