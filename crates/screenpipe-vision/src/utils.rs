@@ -176,7 +176,7 @@ pub async fn capture_monitor_image(
     let capture_start = Instant::now();
     let image = monitor.capture_image().await.map_err(|e| {
         debug!("failed to capture monitor image: {}", e);
-        anyhow::anyhow!("monitor capture failed")
+        anyhow::anyhow!("monitor capture failed: {}", e)
     })?;
     let capture_duration = capture_start.elapsed();
     Ok((image, capture_duration))

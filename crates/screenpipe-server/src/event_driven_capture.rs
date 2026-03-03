@@ -242,6 +242,10 @@ pub async fn event_driven_capture_loop(
     // Track last successful DB write time — dedup is bypassed after 30s
     // to guarantee the timeline always has periodic entries
     let mut last_db_write = Instant::now();
+    // Debounce consecutive capture errors — log error! once on first failure,
+    // then suppress until success. Prevents monitor disconnect from flooding
+    // Sentry with 100k+ identical events.
+    let mut consecutive_capture_errors: u32 = 0;
 
     // Capture immediately on startup so the timeline has a frame right away.
     // Also seeds the frame comparer so subsequent visual-change checks work.
@@ -414,6 +418,14 @@ pub async fn event_driven_capture_loop(
                     Ok(Ok(output)) => {
                         state.mark_captured();
 
+                        if consecutive_capture_errors > 0 {
+                            info!(
+                                "monitor {} capture recovered after {} consecutive errors",
+                                monitor_id, consecutive_capture_errors
+                            );
+                            consecutive_capture_errors = 0;
+                        }
+
                         // Feed the captured frame to comparer so we don't
                         // re-trigger on the same visual state (reuses capture
                         // image — no extra screenshot needed)
@@ -450,12 +462,27 @@ pub async fn event_driven_capture_loop(
                         }
                     }
                     Ok(Err(e)) => {
-                        error!(
-                            "event capture failed (trigger={}, monitor={}): {}",
-                            trigger.as_str(),
-                            monitor_id,
-                            e
-                        );
+                        consecutive_capture_errors += 1;
+                        if consecutive_capture_errors == 1 {
+                            // First failure — log at error level (shows in Sentry)
+                            error!(
+                                "event capture failed (trigger={}, monitor={}): {}",
+                                trigger.as_str(),
+                                monitor_id,
+                                e
+                            );
+                        } else if consecutive_capture_errors % 100 == 0 {
+                            // Periodic reminder at warn level (no Sentry flood)
+                            warn!(
+                                "monitor {} capture still failing ({} consecutive errors): {}",
+                                monitor_id, consecutive_capture_errors, e
+                            );
+                        } else {
+                            debug!(
+                                "monitor {} capture error #{}: {}",
+                                monitor_id, consecutive_capture_errors, e
+                            );
+                        }
                     }
                     Err(_timeout) => {
                         warn!(
