@@ -2236,25 +2236,23 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       piContentBlocksRef.current = [];
       piThinkingStartRef.current = null;
       piMessageIdRef.current = msgId;
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === msgId)) return prev;
-        return [
-          ...prev,
-          {
-            id: `pipe-user-${executionId}`,
-            role: "user" as const,
-            content: `Watching pipe: ${pipeName}`,
-            timestamp: Date.now(),
-          },
-          {
-            id: msgId,
-            role: "assistant" as const,
-            content: "",
-            timestamp: Date.now(),
-            contentBlocks: [],
-          },
-        ];
-      });
+      // Clear previous messages and reset conversation so pipe history doesn't bleed across pipes
+      setConversationId(null);
+      setMessages([
+        {
+          id: `pipe-user-${executionId}`,
+          role: "user" as const,
+          content: `Watching pipe: ${pipeName}`,
+          timestamp: Date.now(),
+        },
+        {
+          id: msgId,
+          role: "assistant" as const,
+          content: "",
+          timestamp: Date.now(),
+          contentBlocks: [],
+        },
+      ]);
       setIsStreaming(true);
 
       // Poll immediately in case execution already finished before we started listening
