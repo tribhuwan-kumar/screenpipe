@@ -990,7 +990,11 @@ analyticsId: string; devMode: boolean; audioTranscriptionEngine: string; ocrEngi
 /**
  * When true, automatically follow system default audio devices
  */
-useSystemDefaultAudio?: boolean; usePiiRemoval: boolean; port: number; dataDir: string; disableAudio: boolean; ignoredWindows: string[]; includedWindows: string[]; ignoredUrls?: string[]; fps: number; vadSensitivity: string; analyticsEnabled: boolean; audioChunkDuration: number; useChineseMirror: boolean; languages: string[]; embeddedLLM: EmbeddedLLM; autoStartEnabled: boolean; platform: string; disabledShortcuts: string[]; user: User; showScreenpipeShortcut: string; startRecordingShortcut: string; stopRecordingShortcut: string; startAudioShortcut: string; stopAudioShortcut: string; showChatShortcut: string; searchShortcut: string; realtimeAudioTranscriptionEngine: string; disableVision: boolean; 
+useSystemDefaultAudio?: boolean; usePiiRemoval: boolean; 
+/**
+ * Filter music-dominant audio before transcription using spectral analysis
+ */
+filterMusic?: boolean; port: number; dataDir: string; disableAudio: boolean; ignoredWindows: string[]; includedWindows: string[]; ignoredUrls?: string[]; fps: number; vadSensitivity: string; analyticsEnabled: boolean; audioChunkDuration: number; useChineseMirror: boolean; languages: string[]; embeddedLLM: EmbeddedLLM; autoStartEnabled: boolean; platform: string; disabledShortcuts: string[]; user: User; showScreenpipeShortcut: string; startRecordingShortcut: string; stopRecordingShortcut: string; startAudioShortcut: string; stopAudioShortcut: string; showChatShortcut: string; searchShortcut: string; realtimeAudioTranscriptionEngine: string; disableVision: boolean; 
 /**
  * When true, screen capture continues but OCR text extraction is skipped.
  * Reduces CPU usage significantly while still recording video.
