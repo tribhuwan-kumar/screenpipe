@@ -1,4 +1,4 @@
-use image::DynamicImage;
+use image::{DynamicImage, GenericImageView};
 use rusty_tesseract::{Args, DataOutput, Image};
 use screenpipe_core::{Language, TESSERACT_LANGUAGES};
 use std::collections::HashMap;
@@ -72,7 +72,8 @@ pub fn perform_ocr_tesseract(
 
     // Extract text from data output
     let text = data_output_to_text(&data_output);
-    let json_output = data_output_to_json(&data_output);
+    let (img_w, img_h) = image.dimensions();
+    let json_output = data_output_to_json(&data_output, img_w, img_h);
 
     let overall_confidence = calculate_overall_confidence(&data_output);
 
@@ -92,8 +93,10 @@ fn data_output_to_text(data_output: &DataOutput) -> String {
     text
 }
 
-fn data_output_to_json(data_output: &DataOutput) -> String {
+fn data_output_to_json(data_output: &DataOutput, img_w: u32, img_h: u32) -> String {
     let mut words: Vec<HashMap<String, String>> = Vec::new();
+    let w = if img_w > 0 { img_w as f64 } else { 1.0 };
+    let h = if img_h > 0 { img_h as f64 } else { 1.0 };
 
     for record in &data_output.data {
         // Only include records that have text (word_num > 0 means it's a word)
@@ -101,11 +104,11 @@ fn data_output_to_json(data_output: &DataOutput) -> String {
             let mut word_data = HashMap::new();
             word_data.insert("text".to_string(), record.text.clone());
             word_data.insert("conf".to_string(), format!("{:.2}", record.conf));
-            // Include bounding box coordinates for PII redaction
-            word_data.insert("left".to_string(), record.left.to_string());
-            word_data.insert("top".to_string(), record.top.to_string());
-            word_data.insert("width".to_string(), record.width.to_string());
-            word_data.insert("height".to_string(), record.height.to_string());
+            // Normalize bounding box coordinates to 0-1 range (matching Apple Vision output)
+            word_data.insert("left".to_string(), (record.left as f64 / w).to_string());
+            word_data.insert("top".to_string(), (record.top as f64 / h).to_string());
+            word_data.insert("width".to_string(), (record.width as f64 / w).to_string());
+            word_data.insert("height".to_string(), (record.height as f64 / h).to_string());
             // Include position metadata
             word_data.insert("level".to_string(), record.level.to_string());
             word_data.insert("page_num".to_string(), record.page_num.to_string());
