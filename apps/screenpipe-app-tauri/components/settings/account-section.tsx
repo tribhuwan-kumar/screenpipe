@@ -124,7 +124,10 @@ export function AccountSection() {
               );
               if (subResponse.ok) {
                 const subData = await subResponse.json();
-                if (subData.hasSubscription) {
+                // Treat trialing subscriptions as active (API returns hasSubscription: false for trials)
+                const subStatus = subData.subscription?.status;
+                const isActive = subData.hasSubscription || subStatus === "trialing" || subStatus === "active";
+                if (isActive) {
                   updateSettings({
                     user: { ...settings.user!, cloud_subscribed: true },
                   });

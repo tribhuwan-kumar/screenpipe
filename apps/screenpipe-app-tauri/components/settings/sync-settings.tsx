@@ -797,8 +797,12 @@ export function SyncSettings() {
         const data = await response.json();
         console.log("cloud sync subscription check:", data);
 
-        // Trust cloud_subscribed from /api/user if cloud-sync endpoint disagrees
-        const hasSubscription = data.hasSubscription || !!settings.user?.cloud_subscribed;
+        // Treat trialing subscriptions as active (API returns hasSubscription: false for trials)
+        const subscriptionStatus = data.subscription?.status;
+        const hasSubscription = data.hasSubscription ||
+          subscriptionStatus === "trialing" ||
+          subscriptionStatus === "active" ||
+          !!settings.user?.cloud_subscribed;
         setSubscription({
           hasSubscription,
           tier: data.subscription?.tier || null,
