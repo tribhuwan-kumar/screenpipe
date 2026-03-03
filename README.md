@@ -27,28 +27,22 @@
 </p>
 
 
-
-
 <p align="center">
-    <a href="https://screenpi.pe" target="_blank">
-        <img src="https://img.shields.io/badge/download-desktop%20app-black?style=for-the-badge" alt="download">
-    </a>
+  <a href="https://screenpi.pe" target="_blank">
+    <img src="https://img.shields.io/badge/download-desktop%20app-black?style=for-the-badge" alt="download">
+  </a>
 </p>
 
 <p align="center">
-    <a href="https://discord.gg/dU9EBuw7Uq">
-        <img src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white&style=flat-square" alt="discord">
-    </a>
-    <a href="https://twitter.com/screen_pipe">
-        <img alt="x" src="https://img.shields.io/twitter/url/https/twitter.com/diffuserslib.svg?style=social&label=follow%20%40screen_pipe">
-    </a>
-
-   <a href="https://www.youtube.com/@screen_pipe">
-  <img
-    alt="YouTube subscribers"
-    src="https://img.shields.io/youtube/channel/subscribers/UCwjkpAsb70_mENKvy7hT5bw?style=for-the-badge&logo=youtube&logoColor=white&label=subscribers"
-  />
-</a>
+  <a href="https://discord.gg/dU9EBuw7Uq">
+    <img src="https://img.shields.io/discord/823813159592001537?style=for-the-badge&logo=discord&logoColor=white" alt="discord">
+  </a>
+  <a href="https://twitter.com/screen_pipe">
+    <img src="https://img.shields.io/twitter/follow/screen_pipe?style=for-the-badge&logo=x&logoColor=white&label=follow" alt="twitter">
+  </a>
+  <a href="https://www.youtube.com/@screen_pipe">
+    <img src="https://img.shields.io/youtube/channel/subscribers/UCwjkpAsb70_mENKvy7hT5bw?style=for-the-badge&logo=youtube&logoColor=white&label=subscribers" alt="youtube">
+  </a>
 </p>
 
 ![image](https://github.com/user-attachments/assets/dec2e07c-b3d5-46dd-9f36-c0c26a82c9fb)
