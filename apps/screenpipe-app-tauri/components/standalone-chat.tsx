@@ -3272,7 +3272,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         </AnimatePresence>
 
         {/* Auto-suggestions above input */}
-        {!isLoading && autoSuggestions.length > 0 && (
+        {!isLoading && messages.length > 0 && autoSuggestions.length > 0 && (
           <div className="px-3 pt-2 flex flex-wrap gap-1.5">
             <AnimatePresence mode="popLayout">
               {autoSuggestions.slice(0, 3).map((s, i) => (
