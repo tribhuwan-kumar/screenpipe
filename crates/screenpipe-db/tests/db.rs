@@ -1342,23 +1342,21 @@ mod tests {
     async fn test_insert_and_search_ui_monitoring() {
         let db = setup_test_db().await;
 
-        // Insert UI monitoring data
+        // Insert accessibility data (replaces legacy ui_monitoring table)
         sqlx::query(
             r#"
-            INSERT INTO ui_monitoring (
-                text_output,
+            INSERT INTO accessibility (
+                text_content,
                 timestamp,
-                app,
-                window,
-                initial_traversal_at
-            ) VALUES (?, ?, ?, ?, ?)
+                app_name,
+                window_name
+            ) VALUES (?, ?, ?, ?)
             "#,
         )
         .bind("Hello from UI monitoring")
         .bind(Utc::now())
         .bind("test_app")
         .bind("test_window")
-        .bind(Utc::now())
         .execute(&db.pool)
         .await
         .unwrap();
@@ -1512,23 +1510,21 @@ mod tests {
         .await
         .unwrap();
 
-        // Insert UI monitoring data
+        // Insert accessibility data (replaces legacy ui_monitoring table)
         sqlx::query(
             r#"
-            INSERT INTO ui_monitoring (
-                text_output,
+            INSERT INTO accessibility (
+                text_content,
                 timestamp,
-                app,
-                window,
-                initial_traversal_at
-            ) VALUES (?, ?, ?, ?, ?)
+                app_name,
+                window_name
+            ) VALUES (?, ?, ?, ?)
             "#,
         )
         .bind("Hello from UI")
         .bind(Utc::now())
         .bind("test_app")
         .bind("test_window")
-        .bind(Utc::now())
         .execute(&db.pool)
         .await
         .unwrap();
