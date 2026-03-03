@@ -56,7 +56,7 @@ fn extract_browser_url(
     // Tier 2: For Arc, use AppleScript (AXDocument may not be set)
     let app_lower = app_name.to_lowercase();
     if app_lower.contains("arc") {
-        if let Some(url) = get_arc_url(window_name) {
+        if let Some(url) = get_arc_url() {
             debug!("browser_url: tier2 Arc AppleScript hit: {}", url);
             return Some(url);
         }
@@ -79,13 +79,8 @@ fn extract_browser_url(
 }
 
 /// Get Arc browser's current URL via AppleScript.
-/// Cross-checks the returned title against window_name to avoid stale results.
-fn get_arc_url(window_name: &str) -> Option<String> {
-    let script = r#"tell application "Arc"
-        set t to title of active tab of front window
-        set u to URL of active tab of front window
-        return t & "\n" & u
-    end tell"#;
+fn get_arc_url() -> Option<String> {
+    let script = r#"tell application "Arc" to return URL of active tab of front window"#;
 
     let output = match Command::new("osascript").arg("-e").arg(script).output() {
         Ok(o) => o,
@@ -105,36 +100,10 @@ fn get_arc_url(window_name: &str) -> Option<String> {
         return None;
     }
 
-    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let mut lines = result.lines();
-    let title = match lines.next() {
-        Some(t) => t,
-        None => {
-            debug!("get_arc_url: no title line in output");
-            return None;
-        }
-    };
-    let url = match lines.next() {
-        Some(u) => u,
-        None => {
-            debug!("get_arc_url: no URL line in output (title={})", title);
-            return None;
-        }
-    };
-
-    // Cross-check: window title should contain the tab title (or vice versa)
-    let window_lower = window_name.to_lowercase();
-    let title_lower = title.to_lowercase();
-    if !window_lower.contains(&title_lower) && !title_lower.contains(&window_lower) {
-        debug!(
-            "get_arc_url: title mismatch — window='{}', arc_title='{}', url='{}'",
-            window_name, title, url
-        );
-        return None;
-    }
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     if url.starts_with("http://") || url.starts_with("https://") {
-        Some(url.to_string())
+        Some(url)
     } else {
         debug!("get_arc_url: URL not http(s): {}", url);
         None
