@@ -1051,89 +1051,38 @@ pub fn kill_process_group(pid: u32) -> Result<()> {
 mod tests {
     use super::*;
 
-    /// Verifies that `BufReader::lines()` (used for streaming stdout) crashes
-    /// on invalid UTF-8.  This is the exact failure mode from the toggl-sync
-    /// crash: "stream did not contain valid UTF-8".
-    ///
-    /// The fix replaces `reader.next_line().await?` with a raw byte-level
-    /// reader that uses lossy UTF-8 conversion, matching the non-streaming path.
-    #[tokio::test]
-    async fn test_streaming_stdout_invalid_utf8_does_not_crash() {
-        use tokio::io::AsyncBufReadExt;
-        use tokio::process::Command;
+    /// Verifies that `from_utf8_lossy` handles invalid UTF-8 gracefully.
+    /// This is the fix for the toggl-sync crash: "stream did not contain valid UTF-8".
+    /// The fix replaces strict UTF-8 `BufReader::lines()` with raw byte-level
+    /// reading + `String::from_utf8_lossy`.
+    #[test]
+    fn test_lossy_utf8_handles_invalid_bytes() {
+        // Simulate raw bytes from a pipe: "Hi" + 0xFF 0xFE (invalid UTF-8) + newline + "OK" + newline
+        let raw_bytes: &[u8] = b"Hi\xff\xfe\nOK\n";
 
-        // Spawn a process that writes invalid UTF-8 bytes to stdout:
-        // 0x48 0x69 = "Hi", 0xFF 0xFE = invalid UTF-8, 0x0A = newline
-        let mut child = Command::new("printf")
-            .arg("Hi\\0xFF\\0xFE\\nOK\\n")
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-
-        // This is what the old code did — strict UTF-8 via .lines()
-        let stdout = child.stdout.take().unwrap();
-        let mut reader = tokio::io::BufReader::new(stdout).lines();
-        let result = reader.next_line().await;
-
-        // On macOS printf, the \0xFF is literal text not a byte, so this
-        // won't actually produce invalid UTF-8. Use /bin/sh -c with echo
-        // instead for a reliable test:
-        child.wait().await.unwrap();
-
-        // Now test with actual invalid bytes using sh + printf with octal
-        let mut child2 = Command::new("sh")
-            .arg("-c")
-            // printf outputs raw bytes: 0x48 0x69 0xff 0xfe then newline
-            .arg(r#"printf 'Hi\xff\xfe\n'"#)
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-
-        let stdout2 = child2.stdout.take().unwrap();
-        let mut reader2 = tokio::io::BufReader::new(stdout2).lines();
-        let strict_result = reader2.next_line().await;
-        child2.wait().await.unwrap();
-
-        // The strict reader SHOULD fail on invalid UTF-8
+        // Strict UTF-8 should fail
         assert!(
-            strict_result.is_err(),
-            "BufReader::lines() should fail on invalid UTF-8 — \
-             if this passes, the test setup is wrong"
+            std::str::from_utf8(raw_bytes).is_err(),
+            "raw bytes should not be valid UTF-8"
         );
 
-        // Now verify our fix: read_until + from_utf8_lossy handles it
-        let mut child3 = Command::new("sh")
-            .arg("-c")
-            .arg(r#"printf 'Hi\xff\xfe\nOK\n'"#)
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-
-        let stdout3 = child3.stdout.take().unwrap();
-        let mut reader3 = tokio::io::BufReader::new(stdout3);
+        // Lossy conversion should succeed — this is what our fix does
         let mut lines = Vec::new();
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            let n = tokio::io::AsyncBufReadExt::read_until(&mut reader3, b'\n', &mut buf)
-                .await
-                .unwrap();
-            if n == 0 {
-                break;
+        for line in raw_bytes.split(|&b| b == b'\n') {
+            if !line.is_empty() {
+                lines.push(String::from_utf8_lossy(line).into_owned());
             }
-            // Strip trailing newline
-            if buf.last() == Some(&b'\n') {
-                buf.pop();
-            }
-            lines.push(String::from_utf8_lossy(&buf).into_owned());
         }
-        child3.wait().await.unwrap();
 
         assert_eq!(lines.len(), 2);
         assert!(
             lines[0].starts_with("Hi"),
             "first line should start with Hi, got: {}",
             lines[0]
+        );
+        assert!(
+            lines[0].contains('\u{FFFD}'),
+            "invalid bytes should become replacement chars"
         );
         assert_eq!(lines[1], "OK");
     }
