@@ -132,6 +132,9 @@ pub struct SettingsStore {
     pub use_system_default_audio: bool,
     #[serde(rename = "usePiiRemoval")]
     pub use_pii_removal: bool,
+    /// Filter music-dominant audio before transcription using spectral analysis
+    #[serde(rename = "filterMusic", default)]
+    pub filter_music: bool,
     #[serde(rename = "port")]
     pub port: u16,
     #[serde(rename = "dataDir")]
@@ -482,6 +485,7 @@ impl Default for SettingsStore {
             audio_devices: vec!["default".to_string()],
             use_system_default_audio: true,
             use_pii_removal: true,
+            filter_music: false,
             port: 3030,
             data_dir: "default".to_string(),
             disable_audio: false,
@@ -564,12 +568,43 @@ impl SettingsStore {
     /// Remove legacy field aliases that conflict with their renamed counterparts.
     /// e.g. `enableUiEvents` was renamed to `enableAccessibility` — if both exist
     /// in the stored JSON, serde rejects it as a duplicate field.
+    /// Also sanitize unknown AI provider types to prevent deserialization failures
+    /// (e.g. synced settings from a newer version with a provider this version doesn't know).
     fn sanitize_legacy_fields(mut val: Value) -> Value {
         if let Some(obj) = val.as_object_mut() {
             if obj.contains_key("enableAccessibility") {
                 obj.remove("enableUiEvents");
             } else if let Some(v) = obj.remove("enableUiEvents") {
                 obj.insert("enableAccessibility".to_string(), v);
+            }
+
+            // Sanitize unknown provider types in aiPresets to prevent deserialization failures
+            let known_providers = [
+                "openai",
+                "openai-chatgpt",
+                "native-ollama",
+                "custom",
+                "screenpipe-cloud",
+                "opencode",
+                "pi",
+            ];
+            if let Some(presets) = obj.get_mut("aiPresets") {
+                if let Some(arr) = presets.as_array_mut() {
+                    for preset in arr.iter_mut() {
+                        if let Some(provider) = preset.get("provider").and_then(|p| p.as_str()) {
+                            if !known_providers.contains(&provider) {
+                                tracing::warn!(
+                                    "unknown AI provider '{}' in preset, falling back to 'custom'",
+                                    provider
+                                );
+                                preset
+                                    .as_object_mut()
+                                    .unwrap()
+                                    .insert("provider".to_string(), Value::String("custom".to_string()));
+                            }
+                        }
+                    }
+                }
             }
         }
         val
@@ -611,6 +646,7 @@ impl SettingsStore {
             disable_audio: self.disable_audio,
             disable_vision: self.disable_vision,
             use_pii_removal: self.use_pii_removal,
+            filter_music: self.filter_music,
             enable_input_capture: true, // always enabled, setting removed from UI
             enable_accessibility: true, // always enabled, setting removed from UI
             audio_transcription_engine: audio_engine_str
