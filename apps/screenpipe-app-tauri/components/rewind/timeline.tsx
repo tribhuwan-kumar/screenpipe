@@ -27,6 +27,7 @@ import { useTimelineStore } from "@/lib/hooks/use-timeline-store";
 import { findNearestDateWithFrames } from "@/lib/actions/has-frames-date";
 import { CurrentFrameTimeline } from "@/components/rewind/current-frame-timeline";
 import { useSearchHighlight } from "@/lib/hooks/use-search-highlight";
+import { useKeywordSearchStore } from "@/lib/hooks/use-keyword-search-store";
 import { usePlatform } from "@/lib/hooks/use-platform";
 import { useAudioPlayback } from "@/lib/hooks/use-audio-playback";
 import { useHealthCheck } from "@/lib/hooks/use-health-check";
@@ -178,7 +179,14 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	const arrowNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const dismissSearchHighlight = useSearchHighlight((s) => s.dismiss);
+	const clearSearchHighlight = useSearchHighlight((s) => s.clear);
 	const hasSearchHighlight = useSearchHighlight((s) => s.highlightTerms.length > 0 && !s.dismissed);
+	const highlightTerms = useSearchHighlight((s) => s.highlightTerms);
+	const highlightFrameId = useSearchHighlight((s) => s.highlightFrameId);
+	const setHighlight = useSearchHighlight((s) => s.setHighlight);
+
+	const searchResults = useKeywordSearchStore((s) => s.searchResults);
+	const searchQuery = useKeywordSearchStore((s) => s.searchQuery);
 
 	// Dismiss search highlights when user scrolls/navigates away (not from the initial search jump).
 	// Grace period after searchNavFrame clears: the image-load callback sets searchNavFrame=false
@@ -207,6 +215,17 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		}
 		prevIndexRef.current = currentIndex;
 	}, [currentIndex, searchNavFrame, hasSearchHighlight, dismissSearchHighlight]);
+
+	// Search-result navigation: find current position in result set
+	const searchResultIndex = useMemo(() => {
+		if (!hasSearchHighlight || searchResults.length === 0 || !highlightFrameId) return -1;
+		return searchResults.findIndex((r) => r.frame_id === highlightFrameId);
+	}, [hasSearchHighlight, searchResults, highlightFrameId]);
+
+	const inSearchReviewMode = hasSearchHighlight && searchResults.length > 0 && searchResultIndex >= 0;
+
+	// Ref to hold navigateToSearchResult so arrow-key effect doesn't depend on it directly
+	const navigateToSearchResultRef = useRef<(index: number) => void>(() => {});
 
 	// Get timeline selection for chat context
 	const { selectionRange, loadTagsForFrames, tags } = useTimelineSelection();
@@ -997,11 +1016,16 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		return () => window.removeEventListener("keydown", handleCopyFrame);
 	}, [currentFrame, isMac, showSearchModal]);
 
-	// Handle Escape: reset filters first, then close search modal, then close window
+	// Handle Escape: exit search review → close search modal → reset filters → close window
 	// In embedded mode, only handle closing the search modal (don't close the window)
 	useEffect(() => {
 		if (embedded) return;
 		const unlisten = listen("escape-pressed", () => {
+			// Exit search-result review mode first
+			if (inSearchReviewMode) {
+				clearSearchHighlight();
+				return;
+			}
 			if (showSearchModal) {
 				setShowSearchModal(false);
 				resetFilters();
@@ -1016,7 +1040,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 			commands.closeWindow("Main");
 		});
 		return () => { unlisten.then((fn) => fn()); };
-	}, [showSearchModal, embedded, resetFilters]);
+	}, [showSearchModal, embedded, resetFilters, inSearchReviewMode, clearSearchHighlight]);
 
 	// Handle arrow key navigation via JS keydown (no global hotkey stealing)
 	useEffect(() => {
@@ -1027,6 +1051,21 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 			// Skip when a text input is focused (let cursor movement work normally)
 			const target = e.target as HTMLElement;
 			if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) {
+				return;
+			}
+
+			// Search-result review mode: Left/Right cycle through search results
+			if (inSearchReviewMode && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+				e.preventDefault();
+				if (isPlaying) pausePlayback();
+				// ArrowLeft = older = next result index (results are newest-first)
+				// ArrowRight = newer = previous result index
+				const newIndex = e.key === "ArrowLeft"
+					? Math.min(searchResultIndex + 1, searchResults.length - 1)
+					: Math.max(searchResultIndex - 1, 0);
+				if (newIndex !== searchResultIndex) {
+					navigateToSearchResultRef.current(newIndex);
+				}
 				return;
 			}
 
@@ -1104,7 +1143,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 
 		window.addEventListener("keydown", handleArrowKeys);
 		return () => window.removeEventListener("keydown", handleArrowKeys);
-	}, [frames, setCurrentFrame, showSearchModal, isPlaying, seekPlayback, pausePlayback]);
+	}, [frames, setCurrentFrame, showSearchModal, isPlaying, seekPlayback, pausePlayback, inSearchReviewMode, searchResultIndex, searchResults]);
 
 	useEffect(() => {
 		const getStartDateAndSet = async () => {
@@ -1417,6 +1456,34 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		}, 90000);
 	};
 
+	// Navigate to a specific search result by index (arrow keys in search review mode)
+	const navigateToSearchResult = useCallback((index: number) => {
+		const result = searchResults[index];
+		if (!result) return;
+
+		// Update highlight to new frame
+		setHighlight(highlightTerms, result.frame_id);
+
+		const targetDate = new Date(result.timestamp);
+		setSeekingTimestamp(result.timestamp);
+
+		if (!isSameDay(targetDate, currentDate)) {
+			navigateDirectToDate(targetDate);
+		} else {
+			pendingNavigationRef.current = targetDate;
+			const hasTargetDayFrames = frames.some((f) =>
+				isSameDay(new Date(f.timestamp), targetDate)
+			);
+			if (hasTargetDayFrames) {
+				setSearchNavFrame(true);
+				jumpToTime(targetDate);
+				pendingNavigationRef.current = null;
+				setSeekingTimestamp(null);
+			}
+		}
+	}, [searchResults, highlightTerms, setHighlight, currentDate, frames, setSeekingTimestamp]); // eslint-disable-line react-hooks/exhaustive-deps
+	navigateToSearchResultRef.current = navigateToSearchResult;
+
 	const handleDateChange = async (newDate: Date) => {
 		// Guard against double-click / re-entry while navigation is in progress
 		if (isNavigatingRef.current) return;
@@ -1670,7 +1737,40 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 								}
 							}}
 						/>
-					) : !showBlockingLoader && !error && frames.length === 0 && !isLoading ? (
+					) : null}
+
+					{/* Search result navigation indicator */}
+					{inSearchReviewMode && (
+						<div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-full bg-black/70 backdrop-blur-sm border border-white/10 text-white text-sm shadow-lg">
+							<span className="text-white/60 truncate max-w-[120px]">&ldquo;{searchQuery}&rdquo;</span>
+							<button
+								className="px-1.5 hover:text-white/80 disabled:text-white/30"
+								disabled={searchResultIndex <= 0}
+								onClick={() => navigateToSearchResult(searchResultIndex - 1)}
+							>
+								&#9664;
+							</button>
+							<span className="tabular-nums font-medium">
+								{searchResultIndex + 1} / {searchResults.length}
+							</span>
+							<button
+								className="px-1.5 hover:text-white/80 disabled:text-white/30"
+								disabled={searchResultIndex >= searchResults.length - 1}
+								onClick={() => navigateToSearchResult(searchResultIndex + 1)}
+							>
+								&#9654;
+							</button>
+							<button
+								className="ml-1 text-white/50 hover:text-white/80"
+								onClick={() => clearSearchHighlight()}
+								title="Exit search review (Esc)"
+							>
+								<X className="w-3.5 h-3.5" />
+							</button>
+						</div>
+					)}
+
+					{!currentFrame && !showBlockingLoader && !error && frames.length === 0 && !isLoading ? (
 						<div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
 							<div className="text-center p-8 max-w-md">
 								{/* Animated icon */}

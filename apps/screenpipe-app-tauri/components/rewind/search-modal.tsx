@@ -320,6 +320,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     isSearching,
     searchKeywords,
     resetSearch,
+    setCurrentResultIndex,
   } = useKeywordSearchStore();
 
   // Compute app distribution from results and filter
@@ -717,9 +718,12 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     if (queryTokens.length > 0) {
       setHighlight(queryTokens, result.frame_id);
     }
+    // Track which result was selected so timeline arrow keys can cycle from here
+    const idx = searchResults.findIndex((r) => r.frame_id === result.frame_id);
+    if (idx >= 0) setCurrentResultIndex(idx);
     onNavigateToTimestamp(result.timestamp);
     onClose();
-  }, [onNavigateToTimestamp, onClose, queryTokens, setHighlight]);
+  }, [onNavigateToTimestamp, onClose, queryTokens, setHighlight, searchResults, setCurrentResultIndex]);
 
   // Keyboard navigation — skip arrow key capture when input is focused (let cursor move)
   useEffect(() => {
