@@ -990,8 +990,12 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 				userToken={settings.user?.token ?? null}
 			/>
 
-			{/* URL chips — bottom of frame, when no OCR TextOverlay is showing */}
-			{!isLoading && !hasError && textPositions.length === 0 && detectedUrls.length > 0 && (
+			{/* URL chips — bottom of frame, always shown when URLs are detected.
+			    Previously gated on textPositions.length === 0 which hid chips whenever
+			    OCR was available — but the inline clickable URLs in TextOverlay are now
+			    below the SelectableTextLayer (z-index 7 vs 6), so chips are the only
+			    reliable way to surface URLs. */}
+			{!isLoading && !hasError && detectedUrls.length > 0 && (
 				<div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1.5 max-w-[90%] overflow-x-auto">
 					{detectedUrls.map((url) => (
 						<button
