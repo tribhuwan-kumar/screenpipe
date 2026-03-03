@@ -11,7 +11,7 @@ export interface Suggestion {
   text: string;
 }
 
-type ActivityMode =
+export type ActivityMode =
   | "coding"
   | "browsing"
   | "meeting"
@@ -27,31 +27,61 @@ export function useAutoSuggestions() {
   const [mode, setMode] = useState<ActivityMode>("idle");
   const [tags, setTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevTextsRef = useRef<string>("");
 
+  const applySuggestions = useCallback(
+    (data: { suggestions: Suggestion[]; mode: string; tags?: string[] }) => {
+      const newTexts = data.suggestions.map((s) => s.text).join("|");
+      // Only update state if suggestions actually changed (avoids re-render flicker)
+      if (newTexts !== prevTextsRef.current) {
+        prevTextsRef.current = newTexts;
+        setSuggestions(data.suggestions);
+      }
+      setMode(data.mode as ActivityMode);
+      setTags(data.tags || []);
+    },
+    []
+  );
+
+  // Read from cache (lightweight)
   const refresh = useCallback(async () => {
     try {
       const result = await commands.getCachedSuggestions();
       if (result.status === "ok") {
-        setSuggestions(result.data.suggestions);
-        setMode(result.data.mode as ActivityMode);
-        setTags(result.data.tags || []);
+        applySuggestions(result.data);
       } else {
         throw new Error("failed");
       }
     } catch {
       // Fallback if Tauri command not available yet
       setSuggestions([
-        { text: "What did I do in the last hour?" },
-        { text: "Summarize my day so far" },
-        { text: "Which apps did I use most today?" },
+        { text: "what did I do in the last hour?" },
+        { text: "summarize my day so far" },
+        { text: "which apps did I use most today?" },
       ]);
       setMode("idle");
       setTags([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applySuggestions]);
+
+  // Force regenerate (calls AI, bypasses scheduler guards)
+  const forceRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const result = await commands.forceRegenerateSuggestions();
+      if (result.status === "ok") {
+        applySuggestions(result.data);
+      }
+    } catch (err) {
+      console.error("force refresh failed:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [applySuggestions]);
 
   useEffect(() => {
     refresh();
@@ -61,5 +91,5 @@ export function useAutoSuggestions() {
     };
   }, [refresh]);
 
-  return { suggestions, mode, tags, loading, refresh };
+  return { suggestions, mode, tags, loading, refreshing, refresh, forceRefresh };
 }

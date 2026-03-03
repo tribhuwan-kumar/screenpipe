@@ -884,6 +884,18 @@ async getCachedSuggestions() : Promise<Result<CachedSuggestions, string>> {
 }
 },
 /**
+ * Force-regenerate suggestions immediately, bypassing the scheduler's
+ * CPU/power guards. Returns the fresh suggestions and updates the cache.
+ */
+async forceRegenerateSuggestions() : Promise<Result<CachedSuggestions, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("force_regenerate_suggestions") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Tauri command: validate that a path is usable as a data directory.
  * Called from the frontend before saving the setting.
  */

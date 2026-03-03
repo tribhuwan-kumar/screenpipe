@@ -64,6 +64,19 @@ pub async fn get_cached_suggestions(
     }))
 }
 
+/// Force-regenerate suggestions immediately, bypassing the scheduler's
+/// CPU/power guards. Returns the fresh suggestions and updates the cache.
+#[tauri::command]
+#[specta::specta]
+pub async fn force_regenerate_suggestions(
+    state: tauri::State<'_, SuggestionsState>,
+) -> Result<CachedSuggestions, String> {
+    let cached = generate_suggestions().await?;
+    let mut guard = state.cache.lock().await;
+    *guard = Some(cached.clone());
+    Ok(cached)
+}
+
 // ─── Auto-start ─────────────────────────────────────────────────────────────
 
 /// Auto-start the suggestions scheduler on app launch.

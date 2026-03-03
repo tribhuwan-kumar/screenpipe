@@ -4,8 +4,8 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown, ChevronUp, Plus, RefreshCw } from "lucide-react";
 import { PipeAIIconLarge } from "@/components/pipe-ai-icon";
 import { type TemplatePipe } from "@/lib/hooks/use-pipes";
 import { FALLBACK_TEMPLATES, type CustomTemplate } from "@/lib/summary-templates";
@@ -15,6 +15,8 @@ import { CustomSummaryBuilder } from "./custom-summary-builder";
 interface SummaryCardsProps {
   onSendMessage: (message: string, displayLabel?: string) => void;
   autoSuggestions: Suggestion[];
+  suggestionsRefreshing?: boolean;
+  onRefreshSuggestions?: () => void;
   customTemplates: CustomTemplate[];
   onSaveCustomTemplate: (template: CustomTemplate) => void;
   onDeleteCustomTemplate: (id: string) => void;
@@ -23,9 +25,40 @@ interface SummaryCardsProps {
   pipesLoading?: boolean;
 }
 
+// ─── Shimmer skeleton for loading state ──────────────────────────────────────
+
+function SuggestionSkeleton() {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="relative overflow-hidden h-[26px] border border-border/20 bg-muted/10"
+          style={{ width: `${80 + i * 30}px` }}
+        >
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.04] to-transparent"
+            animate={{ x: ["-100%", "200%"] }}
+            transition={{
+              duration: 1.2,
+              repeat: Infinity,
+              ease: "linear",
+              delay: i * 0.15,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
+
 export function SummaryCards({
   onSendMessage,
   autoSuggestions,
+  suggestionsRefreshing = false,
+  onRefreshSuggestions,
   customTemplates,
   onSaveCustomTemplate,
   onDeleteCustomTemplate,
@@ -52,8 +85,8 @@ export function SummaryCards({
     <div className="relative flex flex-col items-center py-4 px-4">
       {/* Header */}
       <div className="relative mx-auto mb-3 w-fit">
-        <div className="absolute -inset-4 border border-dashed border-border/50 rounded-xl" />
-        <div className="absolute -inset-2 border border-border/30 rounded-lg" />
+        <div className="absolute -inset-4 border border-dashed border-border/50" />
+        <div className="absolute -inset-2 border border-border/30" />
         <PipeAIIconLarge size={40} thinking={false} className="relative text-foreground/80" />
       </div>
       <h3 className="text-sm font-medium mb-0.5 text-foreground">
@@ -69,13 +102,13 @@ export function SummaryCards({
           <button
             key={pipe.name}
             onClick={() => handleCardClick(pipe)}
-            className="group text-left p-2 rounded-lg border border-border/40 bg-muted/20 hover:bg-muted/50 hover:border-border/70 transition-all duration-150 cursor-pointer"
+            className="group text-left p-2 border border-border/40 bg-muted/20 hover:bg-foreground hover:text-background hover:border-foreground transition-all duration-150 cursor-pointer"
           >
             <div className="text-sm mb-0.5">{pipe.icon}</div>
-            <div className="text-[11px] font-medium text-foreground group-hover:text-foreground mb-0.5 leading-tight">
+            <div className="text-[11px] font-medium group-hover:text-background mb-0.5 leading-tight">
               {pipe.title}
             </div>
-            <div className="text-[10px] text-muted-foreground leading-tight line-clamp-1">
+            <div className="text-[10px] text-muted-foreground group-hover:text-background/60 leading-tight line-clamp-1">
               {pipe.description}
             </div>
           </button>
@@ -83,13 +116,13 @@ export function SummaryCards({
         {/* Custom Summary card */}
         <button
           onClick={() => setShowBuilder(true)}
-          className="group text-left p-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-all duration-150 cursor-pointer"
+          className="group text-left p-2 border border-dashed border-border/40 bg-muted/5 hover:bg-foreground hover:text-background hover:border-foreground transition-all duration-150 cursor-pointer"
         >
           <div className="text-sm mb-0.5">{"\u2728"}</div>
-          <div className="text-[11px] font-medium text-foreground group-hover:text-foreground mb-0.5 leading-tight">
+          <div className="text-[11px] font-medium group-hover:text-background mb-0.5 leading-tight">
             Custom Summary
           </div>
-          <div className="text-[10px] text-muted-foreground leading-tight line-clamp-1">
+          <div className="text-[10px] text-muted-foreground group-hover:text-background/60 leading-tight line-clamp-1">
             Build your own
           </div>
         </button>
@@ -97,13 +130,13 @@ export function SummaryCards({
         {discover.length > 0 && (
           <button
             onClick={() => setShowAll(!showAll)}
-            className="group text-left p-2 rounded-lg border border-border/40 bg-muted/10 hover:bg-muted/30 hover:border-border/60 transition-all duration-150 cursor-pointer"
+            className="group text-left p-2 border border-border/40 bg-muted/10 hover:bg-foreground hover:text-background hover:border-foreground transition-all duration-150 cursor-pointer"
           >
             <div className="text-sm mb-0.5">{"\u{1F50D}"}</div>
-            <div className="text-[11px] font-medium text-foreground group-hover:text-foreground mb-0.5 leading-tight">
+            <div className="text-[11px] font-medium group-hover:text-background mb-0.5 leading-tight">
               {showAll ? "Show Less" : "Discover"}
             </div>
-            <div className="text-[10px] text-muted-foreground leading-tight line-clamp-1 flex items-center gap-1">
+            <div className="text-[10px] text-muted-foreground group-hover:text-background/60 leading-tight line-clamp-1 flex items-center gap-1">
               {showAll ? (
                 <>Collapse <ChevronUp className="w-3 h-3 inline" /></>
               ) : (
@@ -126,13 +159,13 @@ export function SummaryCards({
             <button
               key={pipe.name}
               onClick={() => handleCardClick(pipe)}
-              className="group text-left p-2 rounded-lg border border-border/30 bg-muted/10 hover:bg-muted/40 hover:border-border/60 transition-all duration-150 cursor-pointer"
+              className="group text-left p-2 border border-border/30 bg-muted/10 hover:bg-foreground hover:text-background hover:border-foreground transition-all duration-150 cursor-pointer"
             >
               <div className="text-sm mb-0.5">{pipe.icon}</div>
-              <div className="text-[11px] font-medium text-foreground group-hover:text-foreground mb-0.5 leading-tight">
+              <div className="text-[11px] font-medium group-hover:text-background mb-0.5 leading-tight">
                 {pipe.title}
               </div>
-              <div className="text-[10px] text-muted-foreground leading-tight line-clamp-1">
+              <div className="text-[10px] text-muted-foreground group-hover:text-background/60 leading-tight line-clamp-1">
                 {pipe.description}
               </div>
             </button>
@@ -154,13 +187,13 @@ export function SummaryCards({
                 tabIndex={0}
                 onClick={() => handleCustomTemplateClick(ct)}
                 onKeyDown={(e) => e.key === "Enter" && handleCustomTemplateClick(ct)}
-                className="group text-left p-2 rounded-lg border border-border/30 bg-muted/10 hover:bg-muted/40 hover:border-border/60 transition-all duration-150 cursor-pointer relative"
+                className="group text-left p-2 border border-border/30 bg-muted/10 hover:bg-foreground hover:text-background hover:border-foreground transition-all duration-150 cursor-pointer relative"
               >
                 <div className="text-sm mb-0.5">{"\u{1F4CC}"}</div>
-                <div className="text-[11px] font-medium text-foreground group-hover:text-foreground mb-0.5 leading-tight">
+                <div className="text-[11px] font-medium group-hover:text-background mb-0.5 leading-tight">
                   {ct.title}
                 </div>
-                <div className="text-[10px] text-muted-foreground leading-tight line-clamp-1">
+                <div className="text-[10px] text-muted-foreground group-hover:text-background/60 leading-tight line-clamp-1">
                   {ct.description || ct.timeRange}
                 </div>
                 <button
@@ -168,7 +201,7 @@ export function SummaryCards({
                     e.stopPropagation();
                     onDeleteCustomTemplate(ct.id);
                   }}
-                  className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                  className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 hover:bg-background/20 text-background transition-all"
                   title="Delete template"
                 >
                   <Plus className="w-3 h-3 rotate-45" />
@@ -179,26 +212,57 @@ export function SummaryCards({
         </div>
       )}
 
-      {/* Dynamic AI suggestions */}
-      {autoSuggestions.length > 0 && (
-        <div className="w-full max-w-lg">
-          <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium mb-1.5 px-1">
+      {/* ─── Dynamic AI suggestions ─────────────────────────────────────────── */}
+      <div className="w-full max-w-lg">
+        <div className="flex items-center justify-between mb-1.5 px-1">
+          <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium font-mono">
             based on your activity
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {autoSuggestions.slice(0, 4).map((s, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onSendMessage(s.text)}
-                className="px-2.5 py-1 text-[11px] bg-muted/20 hover:bg-muted/50 rounded-full border border-border/20 hover:border-border/50 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              >
-                {s.text}
-              </button>
-            ))}
-          </div>
+          </span>
+          {onRefreshSuggestions && (
+            <button
+              onClick={onRefreshSuggestions}
+              disabled={suggestionsRefreshing}
+              className="group flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-foreground font-mono uppercase tracking-wider transition-colors duration-150 disabled:opacity-30"
+              title="refresh suggestions"
+            >
+              <RefreshCw
+                className={`w-3 h-3 transition-transform duration-150 ${
+                  suggestionsRefreshing ? "animate-spin" : "group-hover:rotate-45"
+                }`}
+                strokeWidth={1.5}
+              />
+              <span className="hidden sm:inline">
+                {suggestionsRefreshing ? "generating" : "refresh"}
+              </span>
+            </button>
+          )}
         </div>
-      )}
+
+        {/* Skeleton while refreshing */}
+        {suggestionsRefreshing ? (
+          <SuggestionSkeleton />
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            <AnimatePresence mode="popLayout">
+              {autoSuggestions.slice(0, 4).map((s, i) => (
+                <motion.button
+                  key={s.text}
+                  layout
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15, delay: i * 0.04 }}
+                  type="button"
+                  onClick={() => onSendMessage(s.text)}
+                  className="px-2.5 py-1 font-mono text-[11px] bg-muted/20 hover:bg-foreground hover:text-background border border-border/20 hover:border-foreground text-muted-foreground transition-all duration-150 cursor-pointer"
+                >
+                  {s.text}
+                </motion.button>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
 
       {/* Custom Summary Builder modal */}
       {showBuilder && (

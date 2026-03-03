@@ -1299,6 +1299,7 @@ async fn main() {
                 voice_training::train_voice,
                 // Suggestions
                 suggestions::get_cached_suggestions,
+                suggestions::force_regenerate_suggestions,
                 // Config commands
                 config::validate_data_dir,
                 // Hardware detection
@@ -1536,6 +1537,7 @@ async fn main() {
             voice_training::train_voice,
             // Suggestions
             suggestions::get_cached_suggestions,
+                suggestions::force_regenerate_suggestions,
             // Config commands
             config::validate_data_dir,
             // Hardware detection
