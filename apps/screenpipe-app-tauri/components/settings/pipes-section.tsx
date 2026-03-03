@@ -45,6 +45,7 @@ import { useSettings } from "@/lib/hooks/use-settings";
 import { AIPresetsSelector } from "@/components/rewind/ai-presets-selector";
 import { useTeam } from "@/lib/hooks/use-team";
 import { useToast } from "@/components/ui/use-toast";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import posthog from "posthog-js";
 
@@ -1123,6 +1124,37 @@ export function PipesSection() {
                       </p>
                     </div>
 
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-xs">history</Label>
+                        <HelpTooltip text="when enabled, the pipe remembers previous conversations across runs. useful for pipes that need context from past executions." />
+                      </div>
+                      <Switch
+                        checked={!!pipe.config.config?.history}
+                        onCheckedChange={(checked) => {
+                          const pipeName = pipe.config.name;
+                          setPipes((prev) =>
+                            prev.map((p) =>
+                              p.config.name === pipeName
+                                ? { ...p, config: { ...p.config, config: { ...p.config.config, history: checked } } }
+                                : p
+                            )
+                          );
+                          const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ history: checked }),
+                          }).then(() => {
+                            delete pendingConfigSaves.current[pipeName];
+                            fetchPipes();
+                          }).catch(() => {
+                            delete pendingConfigSaves.current[pipeName];
+                          });
+                          pendingConfigSaves.current[pipeName] = savePromise;
+                        }}
+                      />
+                    </div>
+
                     <div>
                       <div className="flex items-center gap-2">
                         <Label className="text-xs">pipe.md</Label>
@@ -1147,6 +1179,9 @@ export function PipesSection() {
                         value={promptDrafts[pipe.config.name] ?? pipe.raw_content}
                         onChange={(e) => handlePipeEdit(pipe.config.name, e.target.value)}
                         className="text-xs font-mono h-64 mt-1"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                       />
                     </div>
 

@@ -442,6 +442,7 @@ impl AudioManager {
             let mut had_deferred_segments = false;
 
             while let Ok(audio) = whisper_receiver.recv() {
+                metrics.record_chunk_received();
                 debug!("received audio from device: {:?}", audio.device.name);
 
                 // Audio-based call detection: update meeting detector with speech activity.
@@ -558,6 +559,7 @@ impl AudioManager {
                             )
                             .await
                             {
+                                metrics.record_process_error();
                                 error!("Error processing audio: {:?}", e);
                             }
                         }
@@ -582,6 +584,7 @@ impl AudioManager {
                         )
                         .await
                         {
+                            metrics.record_process_error();
                             error!("Error processing audio: {:?}", e);
                         }
                     }
@@ -606,6 +609,7 @@ impl AudioManager {
                     )
                     .await
                     {
+                        metrics.record_process_error();
                         error!("Error processing audio: {:?}", e);
                     }
                 }

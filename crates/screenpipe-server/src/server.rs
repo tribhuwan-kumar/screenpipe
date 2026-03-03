@@ -278,6 +278,7 @@ impl SCServer {
 
         // Spawn periodic audio pipeline metrics reporter (every 60 seconds)
         let audio_metrics_for_posthog = self.audio_metrics.clone();
+        let audio_manager_for_posthog = self.audio_manager.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             loop {
@@ -285,13 +286,21 @@ impl SCServer {
                 let snap = audio_metrics_for_posthog.snapshot();
                 // Only report if the pipeline has processed any chunks
                 if snap.chunks_sent > 0 || snap.vad_rejected > 0 {
+                    let devices: Vec<String> = audio_manager_for_posthog
+                        .current_devices()
+                        .iter()
+                        .map(|d| d.to_string())
+                        .collect();
+                    let device_count = devices.len();
                     analytics::capture_event_nonblocking(
                         "audio_pipeline_health",
                         json!({
                             "uptime_secs": snap.uptime_secs,
                             "chunks_sent": snap.chunks_sent,
+                            "chunks_received": snap.chunks_received,
                             "chunks_channel_full": snap.chunks_channel_full,
                             "stream_timeouts": snap.stream_timeouts,
+                            "process_errors": snap.process_errors,
                             "vad_passed": snap.vad_passed,
                             "vad_rejected": snap.vad_rejected,
                             "avg_speech_ratio": snap.avg_speech_ratio,
@@ -304,6 +313,13 @@ impl SCServer {
                             "db_overlaps_trimmed": snap.db_overlaps_trimmed,
                             "total_words": snap.total_words,
                             "words_per_minute": snap.words_per_minute,
+                            "audio_level_rms": snap.audio_level_rms,
+                            "segments_deferred": snap.segments_deferred,
+                            "segments_batch_processed": snap.segments_batch_processed,
+                            "batch_pause_events": snap.batch_pause_events,
+                            "batch_resume_events": snap.batch_resume_events,
+                            "audio_devices": devices,
+                            "audio_device_count": device_count,
                         }),
                     );
                 }

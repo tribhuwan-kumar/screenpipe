@@ -384,6 +384,8 @@ impl AnalyticsManager {
             "pipeline_ocr_cache_hit_rate": pipeline["ocr_cache_hit_rate"].as_f64(),
             // Audio pipeline quality
             "audio_chunks_sent": audio_pipeline["chunks_sent"].as_u64(),
+            "audio_chunks_received": audio_pipeline["chunks_received"].as_u64(),
+            "audio_process_errors": audio_pipeline["process_errors"].as_u64(),
             "audio_vad_passed": audio_pipeline["vad_passed"].as_u64(),
             "audio_vad_rejected": audio_pipeline["vad_rejected"].as_u64(),
             "audio_vad_passthrough_rate": audio_pipeline["vad_passthrough_rate"].as_f64(),
@@ -391,6 +393,9 @@ impl AnalyticsManager {
             "audio_transcription_errors": audio_pipeline["transcription_errors"].as_u64(),
             "audio_total_words": audio_pipeline["total_words"].as_u64(),
             "audio_words_per_minute": audio_pipeline["words_per_minute"].as_f64(),
+            "audio_level_rms": audio_pipeline["audio_level_rms"].as_f64(),
+            "audio_segments_deferred": audio_pipeline["segments_deferred"].as_u64(),
+            "audio_devices": audio_pipeline["audio_devices"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
             // Accessibility tree walker quality
             "ax_walks_total": health["accessibility"]["walks_total"].as_u64(),
             "ax_walks_stored": health["accessibility"]["walks_stored"].as_u64(),
