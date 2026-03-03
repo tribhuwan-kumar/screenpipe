@@ -11,7 +11,6 @@ use super::{AgentExecutor, AgentOutput, ExecutionHandle};
 use anyhow::{anyhow, Result};
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use tokio::io::AsyncBufReadExt;
 use tracing::{debug, error, info, warn};
 
 const PI_PACKAGE: &str = "@mariozechner/pi-coding-agent@0.53.0";
@@ -502,11 +501,25 @@ impl PiExecutor {
             .take()
             .ok_or_else(|| anyhow!("failed to capture pi stdout"))?;
 
-        let mut reader = tokio::io::BufReader::new(child_stdout).lines();
+        // Use raw byte-level reads with lossy UTF-8 conversion instead of
+        // BufReader::lines() which crashes on invalid UTF-8 bytes.
+        // See: toggl-sync crash "stream did not contain valid UTF-8".
+        let mut reader = tokio::io::BufReader::new(child_stdout);
         let mut stdout_buf = String::new();
         let mut llm_error: Option<String> = None;
+        let mut line_bytes = Vec::new();
 
-        while let Some(line) = reader.next_line().await? {
+        loop {
+            line_bytes.clear();
+            let n = tokio::io::AsyncBufReadExt::read_until(&mut reader, b'\n', &mut line_bytes).await?;
+            if n == 0 {
+                break;
+            }
+            // Strip trailing newline
+            if line_bytes.last() == Some(&b'\n') {
+                line_bytes.pop();
+            }
+            let line = String::from_utf8_lossy(&line_bytes).into_owned();
             let _ = line_tx.send(line.clone());
 
             // Detect LLM-level errors (e.g. credits_exhausted) even when
@@ -539,11 +552,11 @@ impl PiExecutor {
 
         let status = child.wait().await?;
 
-        // Read remaining stderr
+        // Read remaining stderr (lossy — same reason as stdout above)
         let mut stderr = if let Some(mut stderr_handle) = child.stderr.take() {
-            let mut buf = String::new();
-            tokio::io::AsyncReadExt::read_to_string(&mut stderr_handle, &mut buf).await?;
-            buf
+            let mut raw = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut stderr_handle, &mut raw).await?;
+            String::from_utf8_lossy(&raw).into_owned()
         } else {
             String::new()
         };
@@ -1036,6 +1049,89 @@ pub fn kill_process_group(pid: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verifies that `BufReader::lines()` (used for streaming stdout) crashes
+    /// on invalid UTF-8.  This is the exact failure mode from the toggl-sync
+    /// crash: "stream did not contain valid UTF-8".
+    ///
+    /// The fix replaces `reader.next_line().await?` with a raw byte-level
+    /// reader that uses lossy UTF-8 conversion, matching the non-streaming path.
+    #[tokio::test]
+    async fn test_streaming_stdout_invalid_utf8_does_not_crash() {
+        use tokio::io::AsyncBufReadExt;
+        use tokio::process::Command;
+
+        // Spawn a process that writes invalid UTF-8 bytes to stdout:
+        // 0x48 0x69 = "Hi", 0xFF 0xFE = invalid UTF-8, 0x0A = newline
+        let mut child = Command::new("printf")
+            .arg("Hi\\0xFF\\0xFE\\nOK\\n")
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        // This is what the old code did — strict UTF-8 via .lines()
+        let stdout = child.stdout.take().unwrap();
+        let mut reader = tokio::io::BufReader::new(stdout).lines();
+        let result = reader.next_line().await;
+
+        // On macOS printf, the \0xFF is literal text not a byte, so this
+        // won't actually produce invalid UTF-8. Use /bin/sh -c with echo
+        // instead for a reliable test:
+        child.wait().await.unwrap();
+
+        // Now test with actual invalid bytes using sh + printf with octal
+        let mut child2 = Command::new("sh")
+            .arg("-c")
+            // printf outputs raw bytes: 0x48 0x69 0xff 0xfe then newline
+            .arg(r#"printf 'Hi\xff\xfe\n'"#)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let stdout2 = child2.stdout.take().unwrap();
+        let mut reader2 = tokio::io::BufReader::new(stdout2).lines();
+        let strict_result = reader2.next_line().await;
+        child2.wait().await.unwrap();
+
+        // The strict reader SHOULD fail on invalid UTF-8
+        assert!(
+            strict_result.is_err(),
+            "BufReader::lines() should fail on invalid UTF-8 — \
+             if this passes, the test setup is wrong"
+        );
+
+        // Now verify our fix: read_until + from_utf8_lossy handles it
+        let mut child3 = Command::new("sh")
+            .arg("-c")
+            .arg(r#"printf 'Hi\xff\xfe\nOK\n'"#)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let stdout3 = child3.stdout.take().unwrap();
+        let mut reader3 = tokio::io::BufReader::new(stdout3);
+        let mut lines = Vec::new();
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            let n = tokio::io::AsyncBufReadExt::read_until(&mut reader3, b'\n', &mut buf)
+                .await
+                .unwrap();
+            if n == 0 {
+                break;
+            }
+            // Strip trailing newline
+            if buf.last() == Some(&b'\n') {
+                buf.pop();
+            }
+            lines.push(String::from_utf8_lossy(&buf).into_owned());
+        }
+        child3.wait().await.unwrap();
+
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("Hi"), "first line should start with Hi, got: {}", lines[0]);
+        assert_eq!(lines[1], "OK");
+    }
 
     #[test]
     fn test_ensure_pi_config_adds_ollama_provider() {
