@@ -1466,7 +1466,14 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     // Don't overwrite pipe-specific preset when watching a pipe execution
     if (activePipeExecution) return;
     const defaultPreset = settings.aiPresets?.find((p) => p.defaultPreset);
-    setActivePreset(defaultPreset || settings.aiPresets?.[0]);
+    const next = defaultPreset || settings.aiPresets?.[0];
+    // Only update if the preset actually changed (avoid triggering downstream restart)
+    setActivePreset((prev) => {
+      if (prev && next && prev.provider === next.provider && prev.model === next.model) {
+        return prev; // same reference → no re-render → no restart
+      }
+      return next;
+    });
   }, [settings.aiPresets]);
 
   const hasPresets = settings.aiPresets && settings.aiPresets.length > 0;
@@ -1547,26 +1554,44 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return () => clearInterval(interval);
   }, []);
 
-  // Track previous preset to detect changes
-  const prevPresetRef = useRef<{ provider?: string; model?: string; token?: string | null }>({});
+  // Track what provider+model Pi is actually running with (survives remounts via ref)
+  const piRunningConfigRef = useRef<{ provider?: string; model?: string; token?: string | null }>({});
+  const piRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Restart Pi when user switches preset so the new model takes effect immediately.
   // Pi uses CLI args from startup, so config-only updates don't change the running model.
+  // Debounced to collapse rapid settings saves into a single restart.
   useEffect(() => {
     if (!activePreset) return;
-    const prev = prevPresetRef.current;
+    const running = piRunningConfigRef.current;
     const currentToken = settings.user?.token ?? null;
-    const presetChanged = prev.provider && (prev.provider !== activePreset.provider || prev.model !== activePreset.model);
-    const tokenChanged = prev.token !== undefined && prev.token !== currentToken;
-    prevPresetRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
+    const configChanged = running.provider !== undefined &&
+      (running.provider !== activePreset.provider || running.model !== activePreset.model);
+    const tokenChanged = running.token !== undefined && running.token !== currentToken;
 
-    if (!presetChanged && !tokenChanged) return;
+    if (!configChanged && !tokenChanged) {
+      // First mount or same config — just record what we expect Pi to be running
+      if (running.provider === undefined) {
+        piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
+      }
+      return;
+    }
 
-    const providerConfig = buildProviderConfig();
-    console.log("[Pi] Preset changed, restarting:", providerConfig?.provider, providerConfig?.model);
-    commands.piUpdateConfig(settings.user?.token ?? null, providerConfig).catch((e) => {
-      console.error("[Pi] Preset switch failed:", e);
-    });
+    // Debounce: cancel any pending restart, schedule new one
+    if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
+    piRestartTimerRef.current = setTimeout(() => {
+      piRestartTimerRef.current = null;
+      const providerConfig = buildProviderConfig();
+      console.log("[Pi] Preset changed, restarting:", providerConfig?.provider, providerConfig?.model);
+      piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
+      commands.piUpdateConfig(settings.user?.token ?? null, providerConfig).catch((e) => {
+        console.error("[Pi] Preset switch failed:", e);
+      });
+    }, 400);
+
+    return () => {
+      if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePreset?.provider, activePreset?.model, settings.user?.token]);
 
@@ -2060,6 +2085,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               if (result.status === "ok") {
                 setPiInfo(result.data);
                 piSessionSyncedRef.current = false;
+                // Keep running-config ref in sync so preset watcher doesn't re-trigger
+                if (providerConfig) {
+                  piRunningConfigRef.current = { provider: providerConfig.provider, model: providerConfig.model, token: settings.user?.token ?? null };
+                }
               } else {
                 console.error("[Pi] Auto-restart failed:", result.error);
                 // Don't give up — user can still trigger restart on next message
@@ -2364,6 +2393,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         if (result.status === "ok" && result.data.running) {
           setPiInfo(result.data);
           piSessionSyncedRef.current = false;
+          // Keep running-config ref in sync so preset watcher doesn't re-trigger
+          if (providerConfig) {
+            piRunningConfigRef.current = { provider: providerConfig.provider, model: providerConfig.model, token: settings.user?.token ?? null };
+          }
         } else {
           toast({ title: "Failed to start Pi", description: result.status === "error" ? result.error : "Unknown error", variant: "destructive" });
           return;
