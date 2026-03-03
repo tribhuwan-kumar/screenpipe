@@ -959,8 +959,10 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 			)}
 
 			{/* Selectable text layer — rendered as its own layer, NOT inside TextOverlay's
-			    pointer-events:none wrapper. This ensures WebKit allows text selection. */}
-			{!isLoading && !hasError && !ocrLoading && renderedImageInfo && textPositions.length > 0 && (
+			    pointer-events:none wrapper. This ensures WebKit allows text selection.
+			    NOTE: intentionally omit !ocrLoading — keep the layer mounted with previous
+			    positions while new OCR data loads, so text selection isn't interrupted. */}
+			{!isLoading && !hasError && renderedImageInfo && textPositions.length > 0 && (
 				<div className="absolute" style={{ zIndex: 4, top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }}>
 					<div style={{
 						position: "absolute",

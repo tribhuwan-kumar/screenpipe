@@ -180,10 +180,29 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	const dismissSearchHighlight = useSearchHighlight((s) => s.dismiss);
 	const hasSearchHighlight = useSearchHighlight((s) => s.highlightTerms.length > 0 && !s.dismissed);
 
-	// Dismiss search highlights when user scrolls/navigates away (not from the initial search jump)
+	// Dismiss search highlights when user scrolls/navigates away (not from the initial search jump).
+	// Grace period after searchNavFrame clears: the image-load callback sets searchNavFrame=false
+	// in the same tick that may also bump currentIndex (snap/debounce), so we wait a short window
+	// before allowing dismiss — otherwise the highlight vanishes instantly after navigation.
 	const prevIndexRef = useRef(currentIndex);
+	const searchNavJustClearedRef = useRef(false);
+	const searchNavGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 	useEffect(() => {
-		if (prevIndexRef.current !== currentIndex && !searchNavFrame && hasSearchHighlight) {
+		if (!searchNavFrame) {
+			// searchNavFrame just turned off — start grace period
+			searchNavJustClearedRef.current = true;
+			searchNavGraceRef.current = setTimeout(() => {
+				searchNavJustClearedRef.current = false;
+			}, 500);
+		}
+		return () => {
+			if (searchNavGraceRef.current) clearTimeout(searchNavGraceRef.current);
+		};
+	}, [searchNavFrame]);
+
+	useEffect(() => {
+		if (prevIndexRef.current !== currentIndex && !searchNavFrame && !searchNavJustClearedRef.current && hasSearchHighlight) {
 			dismissSearchHighlight();
 		}
 		prevIndexRef.current = currentIndex;
