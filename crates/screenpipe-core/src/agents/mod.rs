@@ -42,6 +42,9 @@ pub trait AgentExecutor: Send + Sync {
     /// If `None`, uses screenpipe cloud as default.
     /// `pid_tx` receives the OS PID immediately after the subprocess spawns,
     /// enabling the caller to track/kill the process before `run()` returns.
+    /// `continue_session` — when `true`, the agent resumes its last session for
+    /// this working directory (Pi: `--continue`); when `false`, starts fresh
+    /// (Pi: `--no-session`).
     async fn run(
         &self,
         prompt: &str,
@@ -51,6 +54,7 @@ pub trait AgentExecutor: Send + Sync {
         provider_url: Option<&str>,
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
+        continue_session: bool,
     ) -> Result<AgentOutput>;
 
     /// Execute the prompt with line-by-line streaming of stdout.
@@ -68,6 +72,7 @@ pub trait AgentExecutor: Send + Sync {
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         line_tx: tokio::sync::mpsc::UnboundedSender<String>,
+        continue_session: bool,
     ) -> Result<AgentOutput> {
         let output = self
             .run(
@@ -78,6 +83,7 @@ pub trait AgentExecutor: Send + Sync {
                 provider_url,
                 provider_api_key,
                 pid_tx,
+                continue_session,
             )
             .await?;
         for line in output.stdout.lines() {

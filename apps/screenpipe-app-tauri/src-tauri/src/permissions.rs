@@ -223,6 +223,27 @@ pub fn check_microphone_permission() -> OSPermissionStatus {
     }
 }
 
+/// Check only screen recording permission (no dialog trigger)
+/// Uses CGPreflightScreenCaptureAccess which is safe to poll repeatedly
+#[tauri::command(async)]
+#[specta::specta]
+pub fn check_screen_recording_permission() -> OSPermissionStatus {
+    #[cfg(target_os = "macos")]
+    {
+        use core_graphics_helmer_fork::access::ScreenCaptureAccess;
+        if ScreenCaptureAccess.preflight() {
+            OSPermissionStatus::Granted
+        } else {
+            OSPermissionStatus::Denied
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        OSPermissionStatus::NotNeeded
+    }
+}
+
 /// Check only accessibility permission
 /// Use this for polling to check if user has granted accessibility permission
 #[tauri::command(async)]

@@ -2069,6 +2069,15 @@ impl DatabaseManager {
         browser_url: Option<&str>,
         focused: Option<bool>,
     ) -> Result<Vec<OCRResult>, sqlx::Error> {
+        // Acquire a heavy-read permit (max 2 concurrent). OCR searches can
+        // return massive text blobs and hold connections for seconds, starving
+        // the pool for writes (audio, vision, UI capture).
+        let _permit = self
+            .heavy_read_semaphore
+            .acquire()
+            .await
+            .map_err(|_| SqlxError::Protocol("heavy_read_semaphore closed".to_string()))?;
+
         let mut frame_fts_parts = Vec::new();
 
         if let Some(app) = app_name {

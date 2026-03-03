@@ -180,6 +180,18 @@ pub async fn install_pipe(
     }
 }
 
+/// DELETE /pipes/:id/history — clear a pipe's chat history (Pi session files).
+pub async fn clear_pipe_history(
+    State(pm): State<SharedPipeManager>,
+    Path(id): Path<String>,
+) -> Json<Value> {
+    let mgr = pm.lock().await;
+    match mgr.clear_pipe_history(&id).await {
+        Ok(()) => Json(json!({ "success": true })),
+        Err(e) => Json(json!({ "error": e.to_string() })),
+    }
+}
+
 /// DELETE /pipes/:id — delete a pipe.
 pub async fn delete_pipe(
     State(pm): State<SharedPipeManager>,

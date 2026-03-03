@@ -20,8 +20,10 @@ use std::{
     hash::{Hash, Hasher},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
-use tracing::{debug, error};
+use tokio::time::timeout;
+use tracing::{debug, error, warn};
 
 use crate::analytics;
 use crate::server::AppState;
@@ -164,41 +166,51 @@ pub(crate) async fn search(
 
     let content_type = query.content_type.clone();
 
-    let (results, total) = try_join(
-        state.db.search(
-            query_str,
-            content_type.clone(),
-            query.pagination.limit,
-            query.pagination.offset,
-            query.start_time,
-            query.end_time,
-            query.app_name.as_deref(),
-            query.window_name.as_deref(),
-            query.min_length,
-            query.max_length,
-            query.speaker_ids.clone(),
-            query.frame_name.as_deref(),
-            query.browser_url.as_deref(),
-            query.focused,
-            query.speaker_name.as_deref(),
-        ),
-        state.db.count_search_results(
-            query_str,
-            content_type,
-            query.start_time,
-            query.end_time,
-            query.app_name.as_deref(),
-            query.window_name.as_deref(),
-            query.min_length,
-            query.max_length,
-            query.speaker_ids.clone(),
-            query.frame_name.as_deref(),
-            query.browser_url.as_deref(),
-            query.focused,
-            query.speaker_name.as_deref(),
+    let (results, total) = timeout(
+        Duration::from_secs(30),
+        try_join(
+            state.db.search(
+                query_str,
+                content_type.clone(),
+                query.pagination.limit,
+                query.pagination.offset,
+                query.start_time,
+                query.end_time,
+                query.app_name.as_deref(),
+                query.window_name.as_deref(),
+                query.min_length,
+                query.max_length,
+                query.speaker_ids.clone(),
+                query.frame_name.as_deref(),
+                query.browser_url.as_deref(),
+                query.focused,
+                query.speaker_name.as_deref(),
+            ),
+            state.db.count_search_results(
+                query_str,
+                content_type,
+                query.start_time,
+                query.end_time,
+                query.app_name.as_deref(),
+                query.window_name.as_deref(),
+                query.min_length,
+                query.max_length,
+                query.speaker_ids.clone(),
+                query.frame_name.as_deref(),
+                query.browser_url.as_deref(),
+                query.focused,
+                query.speaker_name.as_deref(),
+            ),
         ),
     )
     .await
+    .map_err(|_| {
+        warn!("search query timed out after 30s");
+        (
+            StatusCode::REQUEST_TIMEOUT,
+            JsonResponse(json!({"error": "search query timed out after 30s — try a narrower time range or add filters"})),
+        )
+    })?
     .map_err(|e| {
         error!("failed to perform search operations: {}", e);
         (

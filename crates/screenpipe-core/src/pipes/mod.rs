@@ -831,8 +831,38 @@ impl PipeManager {
             None
         };
 
-        let prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
+        // Check if history/session continuation is enabled for this pipe
+        let history_enabled = config
+            .config
+            .get("history")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let pipe_dir = self.pipes_dir.clone().join(name);
+
+        // Session compaction: if history is enabled and sessions are too large,
+        // compact them into a summary and prepend to the prompt
+        let compaction_summary = if history_enabled && config.agent == "pi" {
+            maybe_compact_session(
+                &pipe_dir,
+                executor.as_ref(),
+                &run_model,
+                run_provider.as_deref(),
+                run_provider_url.as_deref(),
+                run_api_key.as_deref(),
+            )
+            .await
+        } else {
+            None
+        };
+
+        let mut prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
+        if let Some(ref summary) = compaction_summary {
+            prompt = format!(
+                "<conversation_summary>\n{}\n</conversation_summary>\n\n{}",
+                summary, prompt
+            );
+        }
         let pipe_name = name.to_string();
 
         // Mark running in DB
@@ -921,6 +951,7 @@ impl PipeManager {
                     run_api_key.as_deref(),
                     Some(pid_tx),
                     line_tx,
+                    history_enabled,
                 ),
             )
             .await;
@@ -1165,8 +1196,36 @@ impl PipeManager {
             None
         };
 
+        // Check if history/session continuation is enabled for this pipe
+        let history_enabled = config
+            .config
+            .get("history")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Session compaction check
+        let compaction_summary = if history_enabled && config.agent == "pi" {
+            maybe_compact_session(
+                &pipe_dir,
+                executor.as_ref(),
+                &run_model,
+                run_provider.as_deref(),
+                run_provider_url.as_deref(),
+                run_api_key.as_deref(),
+            )
+            .await
+        } else {
+            None
+        };
+
         // Build prompt with context header
-        let prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
+        let mut prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
+        if let Some(ref summary) = compaction_summary {
+            prompt = format!(
+                "<conversation_summary>\n{}\n</conversation_summary>\n\n{}",
+                summary, prompt
+            );
+        }
 
         // Create a channel so the executor can report PID immediately
         let (pid_tx, pid_rx) = tokio::sync::oneshot::channel::<u32>();
@@ -1244,6 +1303,7 @@ impl PipeManager {
                 run_api_key.as_deref(),
                 Some(pid_tx),
                 line_tx,
+                history_enabled,
             ),
         )
         .await;
@@ -1608,6 +1668,17 @@ impl PipeManager {
         Ok(())
     }
 
+    /// Clear a pipe's chat history by deleting its Pi session files.
+    pub async fn clear_pipe_history(&self, name: &str) -> Result<()> {
+        let pipe_dir = self.pipes_dir.join(name);
+        if !pipe_dir.exists() {
+            return Err(anyhow!("pipe '{}' not found", name));
+        }
+        delete_pi_sessions(&pipe_dir)?;
+        info!("cleared history for pipe '{}'", name);
+        Ok(())
+    }
+
     /// Stop a running pipe.
     pub async fn stop_pipe(&self, name: &str) -> Result<()> {
         let handle = {
@@ -1787,9 +1858,38 @@ impl PipeManager {
                         }
                     }
 
-                    let prompt =
-                        render_prompt_with_port(config, body, api_port, preset_prompt.as_deref());
+                    // Check if history/session continuation is enabled
+                    let history_enabled = config
+                        .config
+                        .get("history")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
                     let pipe_dir = pipes_dir.join(name);
+
+                    // Session compaction check (before spawning the task)
+                    let compaction_summary = if history_enabled && config.agent == "pi" {
+                        maybe_compact_session(
+                            &pipe_dir,
+                            executor.as_ref(),
+                            &model,
+                            provider.as_deref(),
+                            provider_url.as_deref(),
+                            api_key.as_deref(),
+                        )
+                        .await
+                    } else {
+                        None
+                    };
+
+                    let mut prompt =
+                        render_prompt_with_port(config, body, api_port, preset_prompt.as_deref());
+                    if let Some(ref summary) = compaction_summary {
+                        prompt = format!(
+                            "<conversation_summary>\n{}\n</conversation_summary>\n\n{}",
+                            summary, prompt
+                        );
+                    }
                     let pipe_name = name.clone();
                     let logs_ref = logs.clone();
                     let running_ref = running.clone();
@@ -1889,6 +1989,7 @@ impl PipeManager {
                                 api_key.as_deref(),
                                 Some(pid_tx),
                                 line_tx,
+                                history_enabled,
                             ),
                         )
                         .await;
@@ -2422,6 +2523,214 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Pi session helpers (for pipe history / --continue)
+// ---------------------------------------------------------------------------
+
+/// Maximum session file size (in bytes) before compaction kicks in.
+/// ~300K chars ≈ 75K tokens — well under Pi's 200K token context window.
+const SESSION_COMPACTION_THRESHOLD: u64 = 300_000;
+
+/// Encode a working-directory path the same way Pi does for session storage.
+/// Pi uses the CWD as a key: `~/.pi/agent/sessions/<encoded-cwd>/`.
+/// The encoding wraps the path with `--` and replaces `/` (or `\`) with `-`.
+/// Example: `/Users/me/.screenpipe/pipes/foo/` → `--Users-me-.screenpipe-pipes-foo--`
+fn encode_pi_session_dir(working_dir: &Path) -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let sessions_base = home.join(".pi").join("agent").join("sessions");
+    // Pi encodes: strip leading/trailing separators, replace all separators
+    // with `-`, wrap with `--` prefix and `--` suffix
+    let cwd_str = working_dir.to_string_lossy();
+    let stripped = cwd_str.trim_matches(|c| c == '/' || c == '\\');
+    let encoded = format!("--{}--", stripped.replace(['/', '\\'], "-"));
+    Some(sessions_base.join(encoded))
+}
+
+/// Get the total size of all session JSONL files for a pipe's working directory.
+fn pi_session_size(session_dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(session_dir) else {
+        return 0;
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "jsonl")
+                .unwrap_or(false)
+        })
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum()
+}
+
+/// Delete all Pi session files for a pipe's working directory.
+pub fn delete_pi_sessions(pipe_dir: &Path) -> Result<()> {
+    let session_dir = encode_pi_session_dir(pipe_dir)
+        .ok_or_else(|| anyhow!("could not determine Pi session directory"))?;
+    if session_dir.exists() {
+        std::fs::remove_dir_all(&session_dir)?;
+        info!("deleted Pi sessions at {:?}", session_dir);
+    }
+    Ok(())
+}
+
+/// Check if a pipe's Pi session needs compaction and handle it.
+///
+/// If sessions exceed `SESSION_COMPACTION_THRESHOLD`:
+/// 1. Read the session JSONL files and extract assistant message content
+/// 2. Run a one-shot Pi call to summarize the conversation history
+/// 3. Delete old session files
+/// 4. Return the summary to be prepended to the next prompt
+///
+/// Returns `None` if no compaction needed or if compaction fails (fallback to normal --continue).
+async fn maybe_compact_session(
+    pipe_dir: &Path,
+    executor: &dyn AgentExecutor,
+    model: &str,
+    provider: Option<&str>,
+    provider_url: Option<&str>,
+    provider_api_key: Option<&str>,
+) -> Option<String> {
+    let session_dir = encode_pi_session_dir(pipe_dir)?;
+    if !session_dir.exists() {
+        return None;
+    }
+
+    let total_size = pi_session_size(&session_dir);
+    if total_size < SESSION_COMPACTION_THRESHOLD {
+        debug!(
+            "session size {}B < threshold {}B, no compaction needed",
+            total_size, SESSION_COMPACTION_THRESHOLD
+        );
+        return None;
+    }
+
+    info!(
+        "session size {}B exceeds threshold, compacting for {:?}",
+        total_size, pipe_dir
+    );
+
+    // Read session files and extract assistant messages
+    let mut conversation_text = String::new();
+    let mut entries: Vec<_> = std::fs::read_dir(&session_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "jsonl")
+                .unwrap_or(false)
+        })
+        .collect();
+    entries.sort_by_key(|e| e.path());
+
+    for entry in &entries {
+        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+            for line in content.lines() {
+                if let Ok(evt) = serde_json::from_str::<serde_json::Value>(line) {
+                    let is_message = evt.get("type").and_then(|t| t.as_str()) == Some("message");
+                    let role = evt
+                        .get("message")
+                        .and_then(|m| m.get("role"))
+                        .and_then(|r| r.as_str());
+                    if is_message && (role == Some("assistant") || role == Some("user")) {
+                        // Pi stores content as an array: [{type: "text", text: "..."}, ...]
+                        // Extract text from all "text" content blocks
+                        let text = evt
+                            .get("message")
+                            .and_then(|m| m.get("content"))
+                            .and_then(|c| {
+                                if let Some(arr) = c.as_array() {
+                                    let parts: Vec<&str> = arr
+                                        .iter()
+                                        .filter(|item| {
+                                            item.get("type").and_then(|t| t.as_str())
+                                                == Some("text")
+                                        })
+                                        .filter_map(|item| {
+                                            item.get("text").and_then(|t| t.as_str())
+                                        })
+                                        .collect();
+                                    if parts.is_empty() {
+                                        None
+                                    } else {
+                                        Some(parts.join("\n"))
+                                    }
+                                } else {
+                                    // Fallback: plain string content
+                                    c.as_str().map(|s| s.to_string())
+                                }
+                            });
+                        if let Some(text) = text {
+                            let prefix = if role == Some("user") {
+                                "User"
+                            } else {
+                                "Assistant"
+                            };
+                            let truncated = &text[..text.len().min(2000)];
+                            conversation_text
+                                .push_str(&format!("{}: {}\n\n", prefix, truncated));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if conversation_text.is_empty() {
+        return None;
+    }
+
+    // Truncate to avoid sending too much to the summarizer
+    let max_input = 50_000;
+    if conversation_text.len() > max_input {
+        conversation_text.truncate(max_input);
+    }
+
+    let summary_prompt = format!(
+        "Summarize this conversation history in under 5000 characters. \
+         Preserve key findings, patterns, decisions, and any important context. \
+         Be concise but complete.\n\n---\n{}",
+        conversation_text
+    );
+
+    // Run a one-shot Pi call (--no-session) to generate the summary
+    match executor
+        .run(
+            &summary_prompt,
+            model,
+            pipe_dir,
+            provider,
+            provider_url,
+            provider_api_key,
+            None,
+            false, // no-session for the summary call
+        )
+        .await
+    {
+        Ok(output) if output.success && !output.stdout.trim().is_empty() => {
+            // Delete old session files
+            if let Err(e) = std::fs::remove_dir_all(&session_dir) {
+                warn!("failed to remove old sessions after compaction: {}", e);
+            }
+            info!("session compacted for {:?}", pipe_dir);
+            Some(output.stdout.trim().to_string())
+        }
+        Ok(output) => {
+            warn!(
+                "session compaction summary call failed: {}",
+                output.stderr
+            );
+            None
+        }
+        Err(e) => {
+            warn!("session compaction summary call error: {}", e);
+            None
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -2781,5 +3090,129 @@ mod tests {
             url_to_pipe_name("https://example.com/pipes/my-pipe"),
             "my-pipe"
         );
+    }
+
+    // -- Pi session encoding ------------------------------------------------
+
+    #[test]
+    fn test_encode_pi_session_dir_unix_path() {
+        // Verify the encoding matches Pi's actual format:
+        // /Users/me/.screenpipe/pipes/foo → --Users-me-.screenpipe-pipes-foo--
+        let dir = Path::new("/Users/me/.screenpipe/pipes/foo");
+        let result = encode_pi_session_dir(dir);
+        // We can't assert the full path (depends on $HOME), but we can check
+        // the directory name component
+        if let Some(path) = result {
+            let dir_name = path.file_name().unwrap().to_str().unwrap();
+            assert_eq!(dir_name, "--Users-me-.screenpipe-pipes-foo--");
+        }
+    }
+
+    #[test]
+    fn test_encode_pi_session_dir_trailing_slash() {
+        let dir = Path::new("/Users/me/.screenpipe/pipes/foo/");
+        if let Some(path) = encode_pi_session_dir(dir) {
+            let dir_name = path.file_name().unwrap().to_str().unwrap();
+            // Trailing slash is stripped
+            assert_eq!(dir_name, "--Users-me-.screenpipe-pipes-foo--");
+        }
+    }
+
+    // -- frontmatter history flag -------------------------------------------
+
+    #[test]
+    fn test_parse_frontmatter_history_flag() {
+        let content = "---\nschedule: every 4h\nenabled: true\nhistory: true\n---\n\nPrompt";
+        let (config, _) = parse_frontmatter(content).unwrap();
+        let history = config
+            .config
+            .get("history")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        assert!(history, "history flag should be true");
+    }
+
+    #[test]
+    fn test_parse_frontmatter_history_default_false() {
+        let content = "---\nschedule: every 1h\n---\n\nPrompt";
+        let (config, _) = parse_frontmatter(content).unwrap();
+        let history = config
+            .config
+            .get("history")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        assert!(!history, "history should default to false");
+    }
+
+    // -- Pi session JSONL content extraction ---------------------------------
+
+    #[test]
+    fn test_pi_session_content_extraction_array_format() {
+        // Pi stores message content as an array of blocks
+        let jsonl = r#"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"hello world"}]}}"#;
+        let evt: serde_json::Value = serde_json::from_str(jsonl).unwrap();
+
+        let is_message = evt.get("type").and_then(|t| t.as_str()) == Some("message");
+        assert!(is_message);
+
+        let role = evt
+            .get("message")
+            .and_then(|m| m.get("role"))
+            .and_then(|r| r.as_str());
+        assert_eq!(role, Some("user"));
+
+        let content = evt
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| {
+                if let Some(arr) = c.as_array() {
+                    let parts: Vec<&str> = arr
+                        .iter()
+                        .filter(|item| {
+                            item.get("type").and_then(|t| t.as_str()) == Some("text")
+                        })
+                        .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                        .collect();
+                    Some(parts.join("\n"))
+                } else {
+                    c.as_str().map(|s| s.to_string())
+                }
+            });
+        assert_eq!(content, Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_pi_session_content_skips_thinking_blocks() {
+        // Assistant messages may have thinking + text blocks; only text should be extracted
+        let jsonl = r#"{"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"let me think..."},{"type":"text","text":"the answer is 42"}]}}"#;
+        let evt: serde_json::Value = serde_json::from_str(jsonl).unwrap();
+
+        let content = evt
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| {
+                if let Some(arr) = c.as_array() {
+                    let parts: Vec<&str> = arr
+                        .iter()
+                        .filter(|item| {
+                            item.get("type").and_then(|t| t.as_str()) == Some("text")
+                        })
+                        .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                        .collect();
+                    Some(parts.join("\n"))
+                } else {
+                    c.as_str().map(|s| s.to_string())
+                }
+            });
+        assert_eq!(content, Some("the answer is 42".to_string()));
+    }
+
+    #[test]
+    fn test_pi_session_ignores_non_message_events() {
+        // session, model_change, tool_use etc. should be ignored
+        let jsonl = r#"{"type":"session","version":3,"id":"abc","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}"#;
+        let evt: serde_json::Value = serde_json::from_str(jsonl).unwrap();
+        let is_message = evt.get("type").and_then(|t| t.as_str()) == Some("message");
+        assert!(!is_message);
     }
 }

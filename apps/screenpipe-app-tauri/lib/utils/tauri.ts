@@ -34,6 +34,13 @@ async checkMicrophonePermission() : Promise<OSPermissionStatus> {
     return await TAURI_INVOKE("check_microphone_permission");
 },
 /**
+ * Check only screen recording permission (no dialog trigger)
+ * Uses CGPreflightScreenCaptureAccess which is safe to poll repeatedly
+ */
+async checkScreenRecordingPermission() : Promise<OSPermissionStatus> {
+    return await TAURI_INVOKE("check_screen_recording_permission");
+},
+/**
  * Check only accessibility permission
  * Use this for polling to check if user has granted accessibility permission
  */

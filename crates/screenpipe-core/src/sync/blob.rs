@@ -30,6 +30,7 @@ pub enum BlobType {
     /// User input events (clicks, keystrokes, clipboard)
     Input,
     /// Pipe configuration manifest (for cross-device pipe sync)
+    #[serde(rename = "pipe_config")]
     PipeConfig,
 }
 

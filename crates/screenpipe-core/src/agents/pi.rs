@@ -341,11 +341,16 @@ impl PiExecutor {
         resolved_provider: &str,
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
+        continue_session: bool,
     ) -> Result<AgentOutput> {
         let mut cmd = build_async_command(pi_path);
         cmd.current_dir(working_dir);
         // Flags MUST come before -p on Windows (see spawn_pi_streaming comment)
-        cmd.arg("--no-session");
+        if continue_session {
+            cmd.arg("--continue");
+        } else {
+            cmd.arg("--no-session");
+        }
         cmd.arg("--provider").arg(resolved_provider);
         cmd.arg("--model").arg(model);
         cmd.arg("-p").arg(prompt);
@@ -432,6 +437,7 @@ impl PiExecutor {
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         line_tx: tokio::sync::mpsc::UnboundedSender<String>,
+        continue_session: bool,
     ) -> Result<AgentOutput> {
         let mut cmd = build_async_command(pi_path);
         cmd.current_dir(working_dir);
@@ -439,7 +445,11 @@ impl PiExecutor {
         // as a single string, and the long prompt text can break arg parsing
         // if flags come after it.
         cmd.arg("--mode").arg("json");
-        cmd.arg("--no-session");
+        if continue_session {
+            cmd.arg("--continue");
+        } else {
+            cmd.arg("--no-session");
+        }
         cmd.arg("--provider").arg(resolved_provider);
         cmd.arg("--model").arg(model);
         cmd.arg("-p").arg(prompt);
@@ -596,6 +606,7 @@ impl AgentExecutor for PiExecutor {
         provider_url: Option<&str>,
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
+        continue_session: bool,
     ) -> Result<AgentOutput> {
         Self::ensure_pi_config(
             self.user_token.as_deref(),
@@ -631,6 +642,7 @@ impl AgentExecutor for PiExecutor {
                 &resolved_provider,
                 provider_api_key,
                 pid_tx,
+                continue_session,
             )
             .await?;
 
@@ -660,6 +672,7 @@ impl AgentExecutor for PiExecutor {
                     &resolved_provider,
                     provider_api_key,
                     None,
+                    continue_session,
                 )
                 .await;
         }
@@ -677,6 +690,7 @@ impl AgentExecutor for PiExecutor {
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         line_tx: tokio::sync::mpsc::UnboundedSender<String>,
+        continue_session: bool,
     ) -> Result<AgentOutput> {
         let resolved_provider = provider.unwrap_or("screenpipe").to_string();
         let resolved_model = Self::resolve_model(model, &resolved_provider);
@@ -709,6 +723,7 @@ impl AgentExecutor for PiExecutor {
                 provider_api_key,
                 pid_tx,
                 line_tx.clone(),
+                continue_session,
             )
             .await?;
 
@@ -738,6 +753,7 @@ impl AgentExecutor for PiExecutor {
                     provider_api_key,
                     None,
                     line_tx,
+                    continue_session,
                 )
                 .await;
         }
