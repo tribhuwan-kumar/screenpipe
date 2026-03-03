@@ -42,7 +42,8 @@
       "assets/*"
     ],
     "macOS": {
-      "entitlements": "entitlements.plist"
+      "entitlements": "entitlements.plist",
+      "hardenedRuntime": true
     }
   },
   "plugins": {
