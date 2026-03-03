@@ -29,6 +29,10 @@ import {
   Loader2,
   ArrowRight,
   Sparkles,
+  Copy,
+  Eye,
+  EyeOff,
+  Key,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { invoke } from "@tauri-apps/api/core";
@@ -51,7 +55,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { useSettings } from "@/lib/hooks/use-settings";
+import { useSettings, getStore } from "@/lib/hooks/use-settings";
 import { motion } from "framer-motion";
 import Lottie from "lottie-react";
 import cloudSyncAnimation from "@/public/animations/cloud-sync.json";
@@ -115,11 +119,11 @@ function formatRelativeTime(dateString: string): string {
   return `${diffDays}d ago`;
 }
 
-// Derive sync password from user ID (deterministic, no user input needed)
-async function deriveSyncPassword(userId: string): Promise<string> {
-  const data = new TextEncoder().encode(userId + "screenpipe-cloud-sync-v1");
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
+// Generate a cryptographically random sync password (64 hex chars = 256 bits)
+function generateRandomSyncPassword(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
@@ -311,8 +315,8 @@ function PasswordSetup({ onSubmit, isLoading }: { onSubmit: (password: string) =
         <CloudSyncAnimation />
         <h3 className="text-xl font-semibold mt-4">Enter Your Encryption Password</h3>
         <p className="text-sm text-muted-foreground mt-2">
-          Enter the password you use for Cloud Sync.
-          If this is your first device, create a new password.
+          Your other device already has cloud sync set up.
+          Enter the encryption password from your first device to decrypt your data.
         </p>
       </div>
 
@@ -354,6 +358,78 @@ function PasswordSetup({ onSubmit, isLoading }: { onSubmit: (password: string) =
         )}
         {isLoading ? "Setting up..." : "Enable Cloud Sync"}
       </Button>
+    </div>
+  );
+}
+
+// Reveal encryption password for second-device setup
+function EncryptionKeyReveal() {
+  const [revealed, setRevealed] = useState(false);
+  const [password, setPassword] = useState<string | null>(null);
+
+  const loadPassword = async () => {
+    try {
+      const store = await getStore();
+      const saved = await store.get<string>("sync_password");
+      setPassword(saved || null);
+    } catch {
+      setPassword(null);
+    }
+  };
+
+  const handleToggle = async () => {
+    if (!revealed) {
+      await loadPassword();
+    }
+    setRevealed(!revealed);
+  };
+
+  const handleCopy = () => {
+    if (password) {
+      navigator.clipboard.writeText(password);
+      toast({
+        title: "copied to clipboard",
+        description: "paste this on your other device to set up sync",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Key className="h-4 w-4 text-muted-foreground" />
+          <h4 className="text-sm font-medium">Encryption Key</h4>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleToggle}>
+          {revealed ? (
+            <EyeOff className="h-4 w-4 mr-2" />
+          ) : (
+            <Eye className="h-4 w-4 mr-2" />
+          )}
+          {revealed ? "Hide" : "Show"}
+        </Button>
+      </div>
+      {revealed && password && (
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <code className="text-xs font-mono break-all flex-1 select-all">
+              {password}
+            </code>
+            <Button variant="ghost" size="sm" onClick={handleCopy}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Save this key to set up sync on another device. If you lose it, your cloud data cannot be decrypted.
+          </p>
+        </Card>
+      )}
+      {revealed && !password && (
+        <p className="text-xs text-muted-foreground">
+          No encryption key found in local store.
+        </p>
+      )}
     </div>
   );
 }
@@ -549,6 +625,10 @@ function ActiveSyncSettings({
             )}
           </div>
 
+          {/* Encryption Key */}
+          <Separator />
+          <EncryptionKeyReveal />
+
           {/* Danger Zone */}
           <Separator />
           <div className="space-y-4">
@@ -655,62 +735,81 @@ export function SyncSettings() {
       console.log("[sync] step 1 - server not reachable");
     }
 
-    // 2. Try to auto-init from saved password (app restart case)
+    // 2. Try to auto-init from saved password in store.bin (app restart case)
     try {
-      const savedPassword = localStorage.getItem("sync_password");
-      console.log("[sync] step 2 - saved password exists:", !!savedPassword);
+      const store = await getStore();
+      const savedPassword = await store.get<string>("sync_password");
+      console.log("[sync] step 2 - store.bin password exists:", !!savedPassword);
       if (savedPassword) {
-        const password = atob(savedPassword);
-        await invoke<boolean>("init_sync", { password });
-        console.log("[sync] step 2 - init_sync with saved password succeeded");
+        await invoke<boolean>("init_sync", { password: savedPassword });
+        console.log("[sync] step 2 - init_sync with stored password succeeded");
+        // Migrate: clean up old localStorage entry if present
+        localStorage.removeItem("sync_password");
         return true;
       }
     } catch (e) {
-      console.log("[sync] step 2 - init_sync with saved password failed:", e);
+      console.log("[sync] step 2 - init_sync with stored password failed:", e);
+    }
+
+    // 2b. Migrate from old localStorage password to store.bin
+    try {
+      const legacyPassword = localStorage.getItem("sync_password");
+      if (legacyPassword) {
+        const password = atob(legacyPassword);
+        console.log("[sync] step 2b - migrating localStorage password to store.bin");
+        await invoke<boolean>("init_sync", { password });
+        // Migration: save to store.bin, remove from localStorage
+        const store = await getStore();
+        await store.set("sync_password", password);
+        await store.save();
+        localStorage.removeItem("sync_password");
+        console.log("[sync] step 2b - migration succeeded");
+        return true;
+      }
+    } catch (e) {
+      console.log("[sync] step 2b - localStorage migration failed:", e);
       localStorage.removeItem("sync_password");
     }
 
-    // 3. Auto-derive password from user ID (new setup, no user input needed)
     const userId = settings.user?.id;
-    console.log("[sync] step 3 - userId for derive:", userId);
-    if (userId) {
-      const derivedPassword = await deriveSyncPassword(userId);
-      console.log("[sync] step 3 - derived password length:", derivedPassword.length);
-      try {
-        await invoke<boolean>("init_sync", { password: derivedPassword });
-        console.log("[sync] step 3 - init_sync with derived password succeeded");
-        try {
-          localStorage.setItem("sync_password", btoa(derivedPassword));
-        } catch {
-          // Non-critical if storage fails
-        }
-        return true;
-      } catch (e) {
-        console.log("[sync] step 3 - init_sync failed, trying migration:", e);
-        // Existing master key encrypted with old manual password — delete old cloud data and retry
-        const token = settings.user?.token;
-        if (token) {
-          try {
-            console.log("[sync] step 3 - deleting old cloud keys for migration");
-            const deleteResp = await fetch("https://screenpi.pe/api/sync/data", {
-              method: "DELETE",
-              headers: { "Authorization": `Bearer ${token}` },
-            });
-            if (deleteResp.ok) {
-              console.log("[sync] step 3 - old data deleted, retrying init_sync");
-              await invoke<boolean>("init_sync", { password: derivedPassword });
-              try {
-                localStorage.setItem("sync_password", btoa(derivedPassword));
-              } catch {
-                // Non-critical
-              }
-              return true;
-            }
-          } catch (retryError) {
-            console.log("[sync] step 3 - migration retry failed:", retryError);
-          }
-        }
-      }
+    if (!userId) {
+      console.log("[sync] no userId, returning false");
+      return false;
+    }
+
+    // 3. Migration: try old deterministic password for users who lost localStorage
+    // (old system derived password from userId, keeping as one-time migration fallback)
+    try {
+      const data = new TextEncoder().encode(userId + "screenpipe-cloud-sync-v1");
+      const hash = await crypto.subtle.digest("SHA-256", data);
+      const legacyDerived = Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      console.log("[sync] step 3 - trying legacy deterministic password migration");
+      await invoke<boolean>("init_sync", { password: legacyDerived });
+      console.log("[sync] step 3 - legacy password worked, saving to store.bin");
+      const store = await getStore();
+      await store.set("sync_password", legacyDerived);
+      await store.save();
+      return true;
+    } catch (e) {
+      console.log("[sync] step 3 - legacy deterministic password failed:", e);
+    }
+
+    // 4. Generate a random password for truly new setup (first device, no existing keys)
+    console.log("[sync] step 4 - generating random password for new setup");
+    const randomPassword = generateRandomSyncPassword();
+    try {
+      await invoke<boolean>("init_sync", { password: randomPassword });
+      console.log("[sync] step 4 - init_sync with random password succeeded");
+      const store = await getStore();
+      await store.set("sync_password", randomPassword);
+      await store.save();
+      return true;
+    } catch (e) {
+      console.log("[sync] step 4 - init_sync failed, showing password prompt:", e);
+      // Server has existing keys encrypted with a different password.
+      // User must enter their password from their other device.
     }
 
     console.log("[sync] tryAutoInitSync returning false");
@@ -920,10 +1019,13 @@ export function SyncSettings() {
       setIsLoading(true);
       await invoke<boolean>("init_sync", { password });
 
-      // Remember password for auto-init on next app launch
-      // Stored in app's WebView localStorage (sandboxed, not accessible externally)
+      // Save password to store.bin (persistent, not accessible via web)
       try {
-        localStorage.setItem("sync_password", btoa(password));
+        const store = await getStore();
+        await store.set("sync_password", password);
+        await store.save();
+        // Clean up any old localStorage entry
+        localStorage.removeItem("sync_password");
       } catch {
         // Non-critical if storage fails
       }
@@ -1051,6 +1153,13 @@ export function SyncSettings() {
 
   const handleLockSync = async () => {
     await invoke("lock_sync");
+    try {
+      const store = await getStore();
+      await store.delete("sync_password");
+      await store.save();
+    } catch {
+      // Non-critical
+    }
     localStorage.removeItem("sync_password");
     await checkSubscriptionAndLoad();
   };
