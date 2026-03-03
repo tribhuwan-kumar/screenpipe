@@ -86,9 +86,8 @@ npx screenpipe@latest record
 
 - 5-10% cpu usage
 - 0.5-3gb ram
-- ~5-10gb storage/month
+- ~20gb storage/month
 - works offline
-- optional encrypted device sync
 
 ---
 
