@@ -41,6 +41,7 @@ import {
   Globe,
   Shield,
   Zap,
+  Music,
   User,
   Users,
   ChevronUp,
@@ -1628,6 +1629,34 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                   checked={["smart", "batch"].includes(settings.transcriptionMode ?? "realtime")}
                   onCheckedChange={(checked) =>
                     handleSettingsChange({ transcriptionMode: checked ? "batch" : "realtime" }, true)
+                  }
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Filter Music */}
+        {!settings.disableAudio &&
+         settings.audioTranscriptionEngine !== "disabled" && (
+          <Card className="border-border bg-card">
+            <CardContent className="px-3 py-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <Music className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      Filter music
+                      <HelpTooltip text="Detect and filter out music-dominant audio (e.g. Spotify, YouTube) before transcription using spectral analysis. Reduces garbage transcriptions from background music." />
+                    </h3>
+                    <p className="text-xs text-muted-foreground">Remove background music from transcriptions</p>
+                  </div>
+                </div>
+                <Switch
+                  id="filterMusic"
+                  checked={settings.filterMusic ?? false}
+                  onCheckedChange={(checked) =>
+                    handleSettingsChange({ filterMusic: checked }, true)
                   }
                 />
               </div>
