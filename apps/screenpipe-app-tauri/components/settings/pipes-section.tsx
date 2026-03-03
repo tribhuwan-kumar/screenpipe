@@ -799,7 +799,7 @@ export function PipesSection() {
             await fetchPipes();
             setRefreshing(false);
           }}>
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
           <Button variant="outline" size="sm" onClick={openPipesFolder}>
             <FolderOpen className="h-4 w-4 mr-1" />
