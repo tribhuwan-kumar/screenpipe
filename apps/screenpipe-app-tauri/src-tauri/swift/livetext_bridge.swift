@@ -293,30 +293,32 @@ public func ltHighlightRanges(_ searchTermsJson: UnsafePointer<CChar>?) -> Int32
               !terms.isEmpty else { return -2 }
 
         let mgr = LiveTextManager.shared
-        guard let overlay = mgr.overlayView,
-              let analysis = mgr.currentAnalysis else { return -3 }
+        guard let overlay = mgr.overlayView else { return -3 }
 
-        // Use transcript from analysis (not overlay.text which requires MainActor)
-        let fullText = analysis.transcript
-
-        // Search case-insensitively in the ORIGINAL string so indices are valid
-        // for overlay.selectedRanges. Using lowercased() creates a new string
-        // whose indices are incompatible — causes fatal "String index out of bounds".
-        var ranges: [Range<String.Index>] = []
-        for term in terms {
-            var searchStart = fullText.startIndex
-            while let range = fullText.range(of: term, options: .caseInsensitive, range: searchStart..<fullText.endIndex) {
-                ranges.append(range)
-                searchStart = range.upperBound
-            }
-        }
-
-        mainThreadPreservingFocus(mgr.hostContentView) {
+        // MUST compute ranges from overlay.text (not analysis.transcript) because
+        // selectedRanges indices must be valid for the overlay's own String instance.
+        // Different String instances have incompatible index storage — using
+        // analysis.transcript indices causes "String index is out of bounds" crash
+        // when VisionKit converts Range<String.Index> → NSRange internally.
+        var result: Int32 = 0
+        DispatchQueue.main.sync {
             MainActor.assumeIsolated {
+                let fullText = overlay.text
+                guard !fullText.isEmpty else { result = -3; return }
+
+                var ranges: [Range<String.Index>] = []
+                for term in terms {
+                    var searchStart = fullText.startIndex
+                    while let range = fullText.range(of: term, options: .caseInsensitive, range: searchStart..<fullText.endIndex) {
+                        ranges.append(range)
+                        searchStart = range.upperBound
+                    }
+                }
                 overlay.selectedRanges = ranges
+                result = Int32(ranges.count)
             }
         }
-        return Int32(ranges.count)
+        return result
     }
     #endif
     return -1
