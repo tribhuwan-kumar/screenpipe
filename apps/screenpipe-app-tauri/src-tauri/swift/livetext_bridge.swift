@@ -154,15 +154,41 @@ public func ltAnalyzeImage(
 
         // Load image from path or URL
         var nsImage: NSImage?
+        var loadError: String?
         if pathStr.hasPrefix("http://") || pathStr.hasPrefix("https://") {
-            if let url = URL(string: pathStr), let data = try? Data(contentsOf: url) {
-                nsImage = NSImage(data: data)
+            if let url = URL(string: pathStr) {
+                // Use URLSession with a short timeout for localhost frames
+                let sem = DispatchSemaphore(value: 0)
+                var fetchedData: Data?
+                var fetchError: Error?
+                let config = URLSessionConfiguration.ephemeral
+                config.timeoutIntervalForRequest = 30
+                let session = URLSession(configuration: config)
+                session.dataTask(with: url) { data, response, error in
+                    fetchedData = data
+                    fetchError = error
+                    sem.signal()
+                }.resume()
+                sem.wait()
+                session.invalidateAndCancel()
+
+                if let err = fetchError {
+                    loadError = "fetch error: \(err.localizedDescription)"
+                } else if let data = fetchedData, !data.isEmpty {
+                    nsImage = NSImage(data: data)
+                    if nsImage == nil { loadError = "NSImage init failed (\(data.count) bytes)" }
+                } else {
+                    loadError = "empty response"
+                }
+            } else {
+                loadError = "invalid URL"
             }
         } else {
             nsImage = NSImage(contentsOfFile: pathStr)
+            if nsImage == nil { loadError = "file not found" }
         }
         guard let image = nsImage, image.cgImage(forProposedRect: nil, context: nil, hints: nil) != nil else {
-            outError.pointee = makeCString("failed to load image: \(pathStr)")
+            outError.pointee = makeCString("failed to load image: \(pathStr) (\(loadError ?? "unknown"))")
             return -4
         }
 

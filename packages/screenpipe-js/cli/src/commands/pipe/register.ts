@@ -101,7 +101,7 @@ export const registerCommand = new Command()
         "louis030195"
       )} on Discord.
       Join the Discord server: ${colors.highlight(
-        "https://discord.gg/dU9EBuw7Uq"
+        "https://discord.gg/screenpipe"
       )}
       This step is required to complete the publishing process.`,
       "Contact Required"

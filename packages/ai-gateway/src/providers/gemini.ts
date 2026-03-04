@@ -428,7 +428,11 @@ export class GeminiProvider implements AIProvider {
 												// Don't emit the tool call - we'll handle it ourselves
 											} else {
 												// For other tools, emit the tool call for client to handle
-												const toolCallId = `call_${Date.now()}_${toolCallIndex}`;
+												// Encode thoughtSignature into the ID so it survives OpenAI format round-trip
+												const sig = part.thoughtSignature || '';
+												const toolCallId = sig
+													? `call_${toolCallIndex}_ts_${btoa(sig)}`
+													: `call_${Date.now()}_${toolCallIndex}`;
 												controller.enqueue(
 													new TextEncoder().encode(
 														`data: ${JSON.stringify({
@@ -515,9 +519,6 @@ export class GeminiProvider implements AIProvider {
 			contents,
 			generationConfig: {
 				temperature: body.temperature ?? 0.7,
-				// Disable thinking to avoid thought_signature requirements on tool calls
-				// (OpenAI format can't round-trip thought signatures)
-				thinkingConfig: { thinkingBudget: 0 },
 			},
 		};
 
@@ -809,16 +810,25 @@ export class GeminiProvider implements AIProvider {
 			}
 
 			// Handle assistant messages with tool calls - convert to Gemini functionCall format
+			// Restore thoughtSignature from encoded tool call IDs for Gemini 3+ models
 			if (msg.role === 'assistant' && (msg as any).tool_calls) {
 				for (const toolCall of (msg as any).tool_calls) {
-					parts.push({
+					const callPart: any = {
 						functionCall: {
 							name: toolCall.function?.name || toolCall.name,
 							args: typeof toolCall.function?.arguments === 'string'
 								? JSON.parse(toolCall.function.arguments)
 								: toolCall.function?.arguments || {},
 						},
-					});
+					};
+					// Extract thoughtSignature from encoded tool call ID
+					const tsMatch = (toolCall.id || '').match(/_ts_(.+)$/);
+					if (tsMatch) {
+						try {
+							callPart.thoughtSignature = atob(tsMatch[1]);
+						} catch {}
+					}
+					parts.push(callPart);
 				}
 			}
 
@@ -857,9 +867,14 @@ export class GeminiProvider implements AIProvider {
 				content += part.text;
 			}
 			// Handle Gemini function calls - convert to OpenAI format
+			// Encode thoughtSignature into ID for round-trip preservation
 			if (part.functionCall) {
+				const sig = part.thoughtSignature || '';
+				const callId = sig
+					? `call_${toolCalls.length}_ts_${btoa(sig)}`
+					: `call_${Date.now()}_${toolCalls.length}`;
 				toolCalls.push({
-					id: `call_${Date.now()}_${toolCalls.length}`,
+					id: callId,
 					type: 'function',
 					function: {
 						name: part.functionCall.name,

@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/dU9EBuw7Uq">
+  <a href="https://discord.gg/screenpipe">
     <img src="https://img.shields.io/discord/823813159592001537?style=for-the-badge&logo=discord&logoColor=white" alt="discord">
   </a>
   <a href="https://twitter.com/screen_pipe">
@@ -93,7 +93,7 @@ npx screenpipe@latest record
 
 <p align="center">
     <a href="https://docs.screenpi.pe">docs</a> ·
-    <a href="https://discord.gg/dU9EBuw7Uq">discord</a> ·
+    <a href="https://discord.gg/screenpipe">discord</a> ·
     <a href="https://twitter.com/screen_pipe">x</a> ·
     <a href="https://www.youtube.com/@screen_pipe">youtube</a> ·
     <a href="https://www.reddit.com/r/screen_pipe">reddit</a>
@@ -108,7 +108,7 @@ screenpipe is an open source application (MIT license) that continuously capture
 
 - **Website**: https://screenpi.pe
 - **Documentation**: https://docs.screenpi.pe
-- **Discord**: https://discord.gg/dU9EBuw7Uq
+- **Discord**: https://discord.gg/screenpipe
 - **License**: MIT
 
 ## Who screenpipe is for

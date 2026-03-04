@@ -723,10 +723,14 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		return () => { cancelled = true; };
 	}, [isMac]);
 
-	// Analyze frame when frameId changes (native Live Text)
+	// Analyze frame when frameId changes OR when renderedImageInfo first becomes available.
 	// Position is handled separately by the update_position effect below.
+	// We track whether we have image info via a boolean to avoid object-reference churn.
 	const renderedInfoRef = useRef(renderedImageInfo);
 	renderedInfoRef.current = renderedImageInfo;
+	const hasRenderedInfo = !!renderedImageInfo;
+
+	const analyzeFailCountRef = useRef(0);
 
 	useEffect(() => {
 		if (!nativeLiveTextActive) return;
@@ -737,24 +741,46 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		const info = renderedInfoRef.current;
 		if (!info) return;
 
+		// For snapshot frames, use the local file path directly (instant).
+		// For video-chunk frames, fall back to HTTP endpoint (requires ffmpeg extraction).
+		const imagePath = isSnapshotFrame && debouncedFrame.filePath
+			? debouncedFrame.filePath
+			: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+
 		// Debounce: wait 300ms after last frame change before analyzing.
 		// This prevents hammering VisionKit during fast scroll.
 		let cancelled = false;
 		const timer = setTimeout(() => {
 			if (cancelled) return;
-			const frameUrl = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 			invoke("livetext_analyze", {
-				imagePath: frameUrl,
+				imagePath,
 				x: info.offsetX,
 				y: info.offsetY,
 				w: info.width,
 				h: info.height,
+			}).then(() => {
+				analyzeFailCountRef.current = 0;
 			}).catch((e: unknown) => {
-				if (!cancelled) console.warn("live text analyze failed:", e);
+				if (cancelled) return;
+				const msg = String(e);
+				// If VisionKit XPC fails (e.g. ad-hoc signed binary), disable native mode
+				if (msg.includes("helper application") || msg.includes("XPC")) {
+					console.warn("[livetext] VisionKit unavailable (code signing?), falling back to web mode");
+					setNativeLiveTextActive(false);
+					return;
+				}
+				// After 3 consecutive failures, fall back to web mode
+				analyzeFailCountRef.current++;
+				if (analyzeFailCountRef.current >= 3) {
+					console.warn("[livetext] too many failures, falling back to web mode");
+					setNativeLiveTextActive(false);
+					return;
+				}
+				console.warn("live text analyze failed:", e);
 			});
 		}, 300);
 		return () => { cancelled = true; clearTimeout(timer); };
-	}, [nativeLiveTextActive, debouncedFrame?.frameId]);
+	}, [nativeLiveTextActive, debouncedFrame?.frameId, isSnapshotFrame, hasRenderedInfo]);
 
 	// Update overlay position on resize (native Live Text)
 	useEffect(() => {
@@ -785,9 +811,11 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		} else if (debouncedFrame?.frameId && renderedInfoRef.current) {
 			// Re-analyze to show overlay again
 			const info = renderedInfoRef.current;
-			const frameUrl = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+			const imagePath = isSnapshotFrame && debouncedFrame.filePath
+				? debouncedFrame.filePath
+				: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 			invoke("livetext_analyze", {
-				imagePath: frameUrl,
+				imagePath,
 				x: info.offsetX,
 				y: info.offsetY,
 				w: info.width,
