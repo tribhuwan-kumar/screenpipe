@@ -214,15 +214,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
           # Install CodeSignTool
-          $cstDir = "$env:RUNNER_TEMP\CodeSignTool"
-          $cstUrl = "https://www.ssl.com/download/codesigntool-for-windows/"
+          $cstDest = "$env:RUNNER_TEMP\CodeSignTool"
           Write-Host "Downloading CodeSignTool..."
           Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip" -OutFile "$env:RUNNER_TEMP\cst.zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\cst.zip" -DestinationPath "$env:RUNNER_TEMP" -Force
-          # Find the extracted folder
-          $cstDir = Get-ChildItem "$env:RUNNER_TEMP\CodeSignTool*" -Directory | Select-Object -First 1
-          if (-not $cstDir) { throw "CodeSignTool extraction failed" }
-          Write-Host "CodeSignTool at: $($cstDir.FullName)"
+          Expand-Archive -Path "$env:RUNNER_TEMP\cst.zip" -DestinationPath "$cstDest" -Force
+          Write-Host "Extracted contents:"
+          Get-ChildItem $cstDest -Recurse -Depth 1 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          # Find jar and java — may be nested one level
+          $jarFile = Get-ChildItem $cstDest -Recurse -Filter "code_sign_tool*.jar" | Select-Object -First 1
+          $javaFile = Get-ChildItem $cstDest -Recurse -Filter "java.exe" | Select-Object -First 1
+          if (-not $jarFile) { throw "CodeSignTool jar not found after extraction" }
+          if (-not $javaFile) { throw "Java not found in CodeSignTool" }
+          Write-Host "CodeSignTool jar: $($jarFile.FullName)"
+          Write-Host "Java: $($javaFile.FullName)"
 
           # Find the installer exe
           $nsisDir = "apps/screenpipe-app-tauri/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
@@ -231,9 +235,9 @@ jobs:
           Write-Host "Signing: $($exe.Name)"
 
           # Sign with CodeSignTool
-          $javaPath = Join-Path $cstDir.FullName "jdk-11.0.2\bin\java.exe"
-          $jarPath = Join-Path $cstDir.FullName "jar\code_sign_tool-1.3.2.jar"
-          $signedDir = Join-Path $cstDir.FullName "signed"
+          $javaPath = $javaFile.FullName
+          $jarPath = $jarFile.FullName
+          $signedDir = Join-Path $cstDest "signed"
           if (Test-Path $signedDir) { Remove-Item $signedDir -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
 
