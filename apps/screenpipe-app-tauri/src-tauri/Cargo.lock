@@ -8223,7 +8223,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.31"
+version = "2.2.32"
 dependencies = [
  "anyhow",
  "arboard",
@@ -12283,7 +12283,7 @@ dependencies = [
 [[package]]
 name = "whisper-rs"
 version = "0.15.1"
-source = "git+https://codeberg.org/tazz4843/whisper-rs.git?rev=d38738df8dc54b12d2918494586ba0817c3cb12f#d38738df8dc54b12d2918494586ba0817c3cb12f"
+source = "git+https://github.com/tazz4843/whisper-rs.git?rev=d38738df8dc54b12d2918494586ba0817c3cb12f#d38738df8dc54b12d2918494586ba0817c3cb12f"
 dependencies = [
  "tracing",
  "whisper-rs-sys",
@@ -12292,7 +12292,7 @@ dependencies = [
 [[package]]
 name = "whisper-rs-sys"
 version = "0.14.1"
-source = "git+https://codeberg.org/tazz4843/whisper-rs.git?rev=d38738df8dc54b12d2918494586ba0817c3cb12f#d38738df8dc54b12d2918494586ba0817c3cb12f"
+source = "git+https://github.com/tazz4843/whisper-rs.git?rev=d38738df8dc54b12d2918494586ba0817c3cb12f#d38738df8dc54b12d2918494586ba0817c3cb12f"
 dependencies = [
  "bindgen 0.71.1",
  "cfg-if 1.0.4",
