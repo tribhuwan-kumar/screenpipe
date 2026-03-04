@@ -517,8 +517,8 @@ impl AudioManager {
                         // Detect session-end: either the transition happened during
                         // check_grace_period (was=true, now=false), OR it happened
                         // between chunks (was=false, now=false, but we had deferred).
-                        let session_just_ended = (was_in_session && !now_in_session)
-                            || (!now_in_session && had_deferred_segments);
+                        let session_just_ended =
+                            !now_in_session && (was_in_session || had_deferred_segments);
 
                         // Max deferral cap: force reconciliation if we've been
                         // deferring longer than MAX_DEFERRAL_SECS, even during an
