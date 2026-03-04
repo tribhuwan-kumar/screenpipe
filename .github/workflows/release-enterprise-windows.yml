@@ -241,6 +241,8 @@ jobs:
           if (Test-Path $signedDir) { Remove-Item $signedDir -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
 
+          # CodeSignTool looks for .\conf\code_sign_tool.properties relative to CWD
+          Push-Location $cstDest
           & $javaPath -jar $jarPath sign `
             "-username=$env:ESIGNER_USERNAME" `
             "-password=$env:ESIGNER_PASSWORD" `
@@ -248,6 +250,7 @@ jobs:
             "-credential_id=$env:ESIGNER_CREDENTIAL_ID" `
             "-input_file_path=$($exe.FullName)" `
             "-output_dir_path=$signedDir"
+          Pop-Location
 
           if ($LASTEXITCODE -ne 0) { throw "Code signing failed with exit code $LASTEXITCODE" }
 
