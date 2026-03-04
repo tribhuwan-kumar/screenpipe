@@ -102,10 +102,11 @@ public func ltInit(_ windowPtr: UInt64) -> Int32 {
         // Swift 6 strict concurrency for @MainActor-isolated properties.
         MainActor.assumeIsolated {
             let overlay = ImageAnalysisOverlayView()
-            // No interaction types — the overlay renders analysis visually but
-            // doesn't steal focus or intercept events. Text selection is handled
-            // by the web-based SelectableTextLayer in the WKWebView below.
-            overlay.preferredInteractionTypes = []
+            // Start with text selection enabled — this is the whole point of the
+            // native overlay (Look Up, Translate, copy, data detectors).
+            // Focus stealing is managed by mainThreadPreservingFocus() and by
+            // hiding the overlay when the search modal is open.
+            overlay.preferredInteractionTypes = [.textSelection, .dataDetectors]
             overlay.isHidden = true
             overlay.frame = NSRect(x: 0, y: 0, width: 100, height: 100)
             overlay.autoresizingMask = [] // we manage position manually
@@ -232,6 +233,7 @@ public func ltAnalyzeImage(
             MainActor.assumeIsolated {
                 overlay.frame = NSRect(x: x, y: appKitY, width: w, height: h)
                 overlay.analysis = analysis
+                overlay.preferredInteractionTypes = [.textSelection, .dataDetectors]
                 overlay.isHidden = false
             }
         }
@@ -339,6 +341,7 @@ public func ltHide() -> Int32 {
         guard let overlay = mgr.overlayView else { return -1 }
         mainThreadPreservingFocus(mgr.hostContentView) {
             MainActor.assumeIsolated {
+                overlay.preferredInteractionTypes = []
                 overlay.isHidden = true
                 overlay.analysis = nil
             }

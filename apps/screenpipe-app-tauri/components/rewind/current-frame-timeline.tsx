@@ -1102,8 +1102,8 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 			)}
 
 			{/* Selectable text layer for web-based text selection (copy, highlight).
-			    Always shown — native overlay is non-interactive (prevents focus stealing). */}
-			{!isLoading && !hasError && renderedImageInfo && textPositions.length > 0 && (
+			    Hidden when native Live Text overlay is active (macOS 13+). */}
+			{!isLoading && !hasError && !nativeLiveTextActive && renderedImageInfo && textPositions.length > 0 && (
 				<div className="absolute" style={{ zIndex: 7, top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }}>
 					<div style={{
 						position: "absolute",
