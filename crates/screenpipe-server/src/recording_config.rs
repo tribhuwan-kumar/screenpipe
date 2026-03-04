@@ -126,6 +126,8 @@ impl RecordingConfig {
             included_windows: self.included_windows.clone(),
             vision_metrics,
             use_pii_removal: self.use_pii_removal,
+            monitor_ids: self.monitor_ids.clone(),
+            use_all_monitors: self.use_all_monitors,
         }
     }
 }

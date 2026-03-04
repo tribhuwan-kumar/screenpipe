@@ -18,6 +18,7 @@ use screenpipe_db::DatabaseManager;
 use screenpipe_server::{
     analytics,
     hot_frame_cache::HotFrameCache,
+    server::bind_listener,
     start_meeting_watcher, start_power_manager, start_sleep_monitor, start_ui_recording,
     vision_manager::{start_monitor_watcher, stop_monitor_watcher, VisionManager},
     RecordingConfig, ResourceMonitor, SCServer,
@@ -445,7 +446,8 @@ pub async fn start_embedded_server(
     // Bind the HTTP listener BEFORE returning success.
     // This ensures port conflicts (AddrInUse) are caught and propagated
     // instead of silently failing in a background task.
-    let listener = tokio::net::TcpListener::bind(SocketAddr::new(
+    // Uses SO_REUSEADDR on Windows to avoid TIME_WAIT port conflicts after unclean shutdown.
+    let listener = bind_listener(SocketAddr::new(
         IpAddr::V4(Ipv4Addr::UNSPECIFIED),
         config.port,
     ))

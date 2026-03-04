@@ -186,6 +186,26 @@ export function DeeplinkHandler() {
         });
       }),
 
+      listen("shortcut-start-audio", async () => {
+        await commands.stopScreenpipe();
+        await commands.spawnScreenpipe(null);
+
+        toast({
+          title: "audio recording started",
+          description: "audio capture has been enabled",
+        });
+      }),
+
+      listen("shortcut-stop-audio", async () => {
+        await commands.stopScreenpipe();
+        await commands.spawnScreenpipe(null);
+
+        toast({
+          title: "audio recording stopped",
+          description: "audio capture has been disabled",
+        });
+      }),
+
       listen("cli-login", async (event) => {
         console.log("received cli-login event:", event);
         await reloadStore();

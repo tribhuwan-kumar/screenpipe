@@ -365,10 +365,14 @@ fn run_native_hooks(
 
             // Check for text buffer flush
             HOOK_STATE.with(|state| {
-                if let Some(ref mut s) = *state.borrow_mut() {
-                    if let Some(last_time) = s.last_text_time {
-                        if last_time.elapsed().as_millis() as u64 >= s.config.text_timeout_ms {
-                            flush_text_buffer(s);
+                // Use try_borrow_mut to avoid panic — LL hook callbacks can
+                // fire synchronously during DispatchMessageW above
+                if let Ok(mut guard) = state.try_borrow_mut() {
+                    if let Some(ref mut s) = *guard {
+                        if let Some(last_time) = s.last_text_time {
+                            if last_time.elapsed().as_millis() as u64 >= s.config.text_timeout_ms {
+                                flush_text_buffer(s);
+                            }
                         }
                     }
                 }
@@ -421,7 +425,12 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, wparam: WPARAM, lparam: 
         let is_key_up = wparam.0 as u32 == WM_KEYUP || wparam.0 as u32 == WM_SYSKEYUP;
 
         HOOK_STATE.with(|state| {
-            if let Some(ref mut s) = *state.borrow_mut() {
+            // Use try_borrow_mut to avoid panic if the RefCell is already borrowed
+            // (e.g., during text buffer flush in the message loop)
+            let Ok(mut guard) = state.try_borrow_mut() else {
+                return;
+            };
+            if let Some(ref mut s) = *guard {
                 // Record activity
                 if let Some(ref feed) = s.activity_feed {
                     if is_key_down {
@@ -617,7 +626,12 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, wparam: WPARAM, lparam: LPA
         let msg = wparam.0 as u32;
 
         HOOK_STATE.with(|state| {
-            if let Some(ref mut s) = *state.borrow_mut() {
+            // Use try_borrow_mut to avoid panic if the RefCell is already borrowed
+            // (e.g., during text buffer flush in the message loop)
+            let Ok(mut guard) = state.try_borrow_mut() else {
+                return;
+            };
+            if let Some(ref mut s) = *guard {
                 // Fast path for WM_MOUSEMOVE — no mutex locks to avoid blocking
                 // the system-wide mouse input pipeline (critical for RDP cursor rendering)
                 if msg == WM_MOUSEMOVE {

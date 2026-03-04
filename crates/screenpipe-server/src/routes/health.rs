@@ -85,6 +85,16 @@ pub struct AudioPipelineHealthInfo {
     pub db_inserted: u64,
     pub total_words: u64,
     pub words_per_minute: f64,
+    // Consumer stage diagnostics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunks_received: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_errors: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_level_rms: Option<f64>,
+    // Audio devices
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_devices: Option<Vec<String>>,
     // Batch/Smart mode fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcription_mode: Option<String>,
@@ -425,6 +435,11 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
                     (None, None)
                 };
 
+            let device_names: Vec<String> = audio_devices
+                .iter()
+                .map(|d| d.to_string())
+                .collect();
+
             Some(AudioPipelineHealthInfo {
                 uptime_secs: audio_snap.uptime_secs,
                 chunks_sent: audio_snap.chunks_sent,
@@ -440,6 +455,11 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
                 db_inserted: audio_snap.db_inserted,
                 total_words: audio_snap.total_words,
                 words_per_minute: audio_snap.words_per_minute,
+                // Consumer stage diagnostics
+                chunks_received: Some(audio_snap.chunks_received),
+                process_errors: Some(audio_snap.process_errors),
+                audio_level_rms: Some(audio_snap.audio_level_rms),
+                audio_devices: if device_names.is_empty() { None } else { Some(device_names) },
                 // Batch/Smart mode
                 transcription_mode: if audio_snap.segments_deferred > 0
                     || audio_snap.segments_batch_processed > 0

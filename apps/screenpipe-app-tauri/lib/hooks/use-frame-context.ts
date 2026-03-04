@@ -28,7 +28,7 @@ export interface FrameContext {
 interface FrameContextResponse {
 	frame_id: number;
 	text: string | null;
-	nodes: { role: string; text: string; depth: number }[];
+	nodes: { role: string; text: string; depth: number; bounds?: AccessibilityNodeBounds }[];
 	urls: string[];
 	text_source: string;
 }

@@ -183,21 +183,25 @@ export class GeminiProvider implements AIProvider {
 		const method = streaming ? 'streamGenerateContent' : 'generateContent';
 		// Map model names to Vertex AI format
 		const vertexModel = this.mapModelToVertex(model);
+		// Gemini 3+ models require the global endpoint, older models use regional
+		const isGlobal = vertexModel.startsWith('gemini-3');
+		if (isGlobal) {
+			return `https://aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/global/publishers/google/models/${vertexModel}:${method}`;
+		}
 		return `https://${this.region}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${this.region}/publishers/google/models/${vertexModel}:${method}`;
 	}
 
 	private mapModelToVertex(model: string): string {
-		// Map common model names to Vertex AI format
+		// Map friendly model names to Vertex AI model IDs
 		const modelMap: Record<string, string> = {
-			'gemini-flash': 'gemini-2.0-flash',
-			'gemini-3-flash': 'gemini-2.0-flash',
-			'gemini-pro': 'gemini-2.0-pro-exp-02-05',
-			'gemini-3-pro': 'gemini-2.0-pro-exp-02-05',
-			'gemini-2.5-flash': 'gemini-2.0-flash',
-			'gemini-2.5-pro': 'gemini-2.0-pro-exp-02-05',
+			'gemini-flash': 'gemini-2.5-flash',
+			'gemini-pro': 'gemini-2.5-pro',
+			'gemini-3-flash': 'gemini-3-flash-preview',
+			'gemini-3-pro': 'gemini-3.1-pro-preview',
 		};
-		console.log('[Gemini Vertex] Model mapping:', model, '->', modelMap[model] || model);
-		return modelMap[model] || model;
+		const mapped = modelMap[model] || model;
+		console.log('[Gemini Vertex] Model mapping:', model, '->', mapped);
+		return mapped;
 	}
 
 	async createCompletion(body: RequestBody): Promise<Response> {
@@ -424,7 +428,11 @@ export class GeminiProvider implements AIProvider {
 												// Don't emit the tool call - we'll handle it ourselves
 											} else {
 												// For other tools, emit the tool call for client to handle
-												const toolCallId = `call_${Date.now()}_${toolCallIndex}`;
+												// Encode thoughtSignature into the ID so it survives OpenAI format round-trip
+												const sig = part.thoughtSignature || '';
+												const toolCallId = sig
+													? `call_${toolCallIndex}_ts_${btoa(sig)}`
+													: `call_${Date.now()}_${toolCallIndex}`;
 												controller.enqueue(
 													new TextEncoder().encode(
 														`data: ${JSON.stringify({
@@ -718,28 +726,42 @@ export class GeminiProvider implements AIProvider {
 	formatMessages(messages: Message[]): any[] {
 		const formatted: any[] = [];
 
+		// Collect consecutive tool responses to batch them into a single user message
+		// (Gemini requires all functionResponse parts in one message matching the functionCall turn)
+		let pendingToolResponses: any[] = [];
+
+		const flushToolResponses = () => {
+			if (pendingToolResponses.length > 0) {
+				formatted.push({
+					role: 'user',
+					parts: pendingToolResponses,
+				});
+				pendingToolResponses = [];
+			}
+		};
+
 		for (const msg of messages) {
 			if (msg.role === 'system') {
 				// System messages are handled via systemInstruction in buildRequestBody
 				continue;
 			}
 
-			// Handle tool results - convert to Gemini functionResponse format
+			// Handle tool results - collect consecutive ones into a single user message
 			if (msg.role === 'tool') {
 				const toolMsg = msg as any;
-				formatted.push({
-					role: 'user',
-					parts: [{
-						functionResponse: {
-							name: toolMsg.name || 'unknown_function',
-							response: {
-								result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-							},
+				pendingToolResponses.push({
+					functionResponse: {
+						name: toolMsg.name || 'unknown_function',
+						response: {
+							result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
 						},
-					}],
+					},
 				});
 				continue;
 			}
+
+			// Flush any pending tool responses before processing non-tool message
+			flushToolResponses();
 
 			const role = msg.role === 'assistant' ? 'model' : 'user';
 			const parts: any[] = [];
@@ -788,16 +810,25 @@ export class GeminiProvider implements AIProvider {
 			}
 
 			// Handle assistant messages with tool calls - convert to Gemini functionCall format
+			// Restore thoughtSignature from encoded tool call IDs for Gemini 3+ models
 			if (msg.role === 'assistant' && (msg as any).tool_calls) {
 				for (const toolCall of (msg as any).tool_calls) {
-					parts.push({
+					const callPart: any = {
 						functionCall: {
 							name: toolCall.function?.name || toolCall.name,
 							args: typeof toolCall.function?.arguments === 'string'
 								? JSON.parse(toolCall.function.arguments)
 								: toolCall.function?.arguments || {},
 						},
-					});
+					};
+					// Extract thoughtSignature from encoded tool call ID
+					const tsMatch = (toolCall.id || '').match(/_ts_(.+)$/);
+					if (tsMatch) {
+						try {
+							callPart.thoughtSignature = atob(tsMatch[1]);
+						} catch {}
+					}
+					parts.push(callPart);
 				}
 			}
 
@@ -806,8 +837,8 @@ export class GeminiProvider implements AIProvider {
 			}
 		}
 
-		// Note: System message is now handled via systemInstruction in buildRequestBody
-		// No need to prepend to first user message anymore
+		// Flush any remaining tool responses at end of messages
+		flushToolResponses();
 
 		return formatted;
 	}
@@ -836,9 +867,14 @@ export class GeminiProvider implements AIProvider {
 				content += part.text;
 			}
 			// Handle Gemini function calls - convert to OpenAI format
+			// Encode thoughtSignature into ID for round-trip preservation
 			if (part.functionCall) {
+				const sig = part.thoughtSignature || '';
+				const callId = sig
+					? `call_${toolCalls.length}_ts_${btoa(sig)}`
+					: `call_${Date.now()}_${toolCalls.length}`;
 				toolCalls.push({
-					id: `call_${Date.now()}_${toolCalls.length}`,
+					id: callId,
 					type: 'function',
 					function: {
 						name: part.functionCall.name,

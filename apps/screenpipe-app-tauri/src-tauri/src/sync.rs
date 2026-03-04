@@ -5,6 +5,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use screenpipe_core::sync::{SyncClientConfig, SyncManager};
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio::sync::RwLock;
@@ -441,26 +442,7 @@ pub async fn lock_sync(app: AppHandle, state: State<'_, SyncState>) -> Result<()
 /// Auto-start cloud sync on app launch if previously enabled.
 /// Called from main.rs during startup.
 pub async fn auto_start_sync(app: &AppHandle, state: &SyncState) {
-    let settings = match CloudSyncSettingsStore::get(app) {
-        Ok(Some(s)) if s.enabled && !s.encrypted_password.is_empty() => s,
-        _ => return,
-    };
-
-    let password = match BASE64.decode(&settings.encrypted_password) {
-        Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(p) => p,
-            Err(_) => {
-                warn!("cloud sync: saved password is not valid UTF-8");
-                return;
-            }
-        },
-        Err(_) => {
-            warn!("cloud sync: saved password is not valid base64");
-            return;
-        }
-    };
-
-    // Get auth token from settings
+    // Get user settings first — needed for both stored-password and auto-derive paths
     let fresh_settings = match SettingsStore::get(app) {
         Ok(Some(s)) => s,
         _ => {
@@ -470,10 +452,57 @@ pub async fn auto_start_sync(app: &AppHandle, state: &SyncState) {
     };
 
     let token = match fresh_settings.user.token {
-        Some(t) if !t.is_empty() => t,
+        Some(ref t) if !t.is_empty() => t.clone(),
         _ => {
             info!("cloud sync: no auth token, skipping auto-start");
             return;
+        }
+    };
+
+    let password = match CloudSyncSettingsStore::get(app) {
+        Ok(Some(s)) if s.enabled && !s.encrypted_password.is_empty() => {
+            // Use stored password
+            match BASE64.decode(&s.encrypted_password) {
+                Ok(bytes) => match String::from_utf8(bytes) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        warn!("cloud sync: saved password is not valid UTF-8");
+                        return;
+                    }
+                },
+                Err(_) => {
+                    warn!("cloud sync: saved password is not valid base64");
+                    return;
+                }
+            }
+        }
+        _ => {
+            // No stored password — auto-derive from user ID if Pro subscriber
+            let is_pro = fresh_settings.user.cloud_subscribed == Some(true);
+            let user_id = fresh_settings.user.id.as_ref().filter(|id| !id.is_empty());
+
+            match (is_pro, user_id) {
+                (true, Some(uid)) => {
+                    info!("cloud sync auto-start: no stored password, deriving from user ID");
+                    let input = format!("{}screenpipe-cloud-sync-v1", uid);
+                    let derived = format!("{:x}", sha2::Sha256::digest(input.as_bytes()));
+
+                    // Save so next restart uses stored password path
+                    let encoded = BASE64.encode(derived.as_bytes());
+                    let store = CloudSyncSettingsStore {
+                        enabled: true,
+                        encrypted_password: encoded,
+                    };
+                    if let Err(e) = store.save(app) {
+                        warn!("cloud sync auto-start: failed to save derived password: {}", e);
+                    }
+
+                    derived
+                }
+                _ => {
+                    return;
+                }
+            }
         }
     };
 

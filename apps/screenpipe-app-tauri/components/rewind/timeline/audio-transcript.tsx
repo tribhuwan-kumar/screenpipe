@@ -4,7 +4,7 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { AudioData, StreamTimeSeriesResponse, TimeRange } from "@/components/rewind/timeline";
 import { Button } from "@/components/ui/button";
-import { GripHorizontal, X, Copy, Check, BotMessageSquare, Sparkles, MoreVertical, RefreshCw, Loader2 } from "lucide-react";
+import { GripHorizontal, X, Copy, Check, BotMessageSquare, Sparkles, MoreVertical, RefreshCw, Loader2, UserCheck } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -26,6 +26,7 @@ import {
 	TimeGapDivider,
 	ParticipantsSummary,
 } from "@/components/conversation-bubble";
+import { SpeakerAssignPopover } from "@/components/speaker-assign-popover";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Meeting, deduplicateAudioItems } from "@/lib/hooks/use-meetings";
@@ -113,6 +114,8 @@ export function AudioTranscript({
 	const activeMeetingId = activeMeeting?.id;
 	useEffect(() => {
 		setMeetingPageSize(MEETING_PAGE_SIZE);
+		setSelectionMode(false);
+		setSelectedChunks(new Set());
 	}, [activeMeetingId]);
 
 	const [position, setPosition] = useState(() => ({
@@ -142,6 +145,10 @@ export function AudioTranscript({
 		Map<number, string>
 	>(new Map());
 
+	// Selection mode for bulk speaker reassign
+	const [selectionMode, setSelectionMode] = useState(false);
+	const [selectedChunks, setSelectedChunks] = useState<Set<number>>(new Set());
+
 	const handleRetranscribed = useCallback(
 		(audioChunkId: number, newText: string) => {
 			setTranscriptionOverrides((prev) => {
@@ -152,6 +159,23 @@ export function AudioTranscript({
 		},
 		[]
 	);
+
+	const toggleChunkSelection = useCallback((chunkId: number) => {
+		setSelectedChunks((prev) => {
+			const next = new Set(prev);
+			if (next.has(chunkId)) {
+				next.delete(chunkId);
+			} else {
+				next.add(chunkId);
+			}
+			return next;
+		});
+	}, []);
+
+	const exitSelectionMode = useCallback(() => {
+		setSelectionMode(false);
+		setSelectedChunks(new Set());
+	}, []);
 
 	const handleSpeakerAssigned = useCallback(
 		(audioChunkId: number, newSpeakerId: number, newSpeakerName: string) => {
@@ -390,6 +414,38 @@ export function AudioTranscript({
 
 		return { items, participants, timeRange, totalDuration, firstChunkBySpeaker };
 	}, [activeMeeting, getSpeakerInfo]);
+
+	const handleBulkAssignToSelected = useCallback(
+		(firstChunkNewSpeakerId: number, firstChunkNewSpeakerName: string) => {
+			const chunks = Array.from(selectedChunks);
+			for (const chunkId of chunks) {
+				setSpeakerOverrides((prev) => {
+					const next = new Map(prev);
+					next.set(chunkId, { speakerId: firstChunkNewSpeakerId, speakerName: firstChunkNewSpeakerName });
+					return next;
+				});
+			}
+
+			// Fire API calls for all selected chunks (first was handled by popover, rest fire-and-forget)
+			const data = activeMeeting ? meetingConversationData : conversationData;
+			for (const chunkId of chunks) {
+				const audio = data.items.find((item) => item.audio.audio_chunk_id === chunkId)?.audio;
+				if (!audio) continue;
+				fetch("http://localhost:3030/speakers/reassign", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						audio_chunk_id: chunkId,
+						new_speaker_name: firstChunkNewSpeakerName,
+						propagate_similar: false,
+					}),
+				}).catch((err) => console.error("bulk reassign error:", err));
+			}
+
+			exitSelectionMode();
+		},
+		[selectedChunks, activeMeeting, meetingConversationData, conversationData, exitSelectionMode]
+	);
 
 	// Copy full transcript to clipboard (nearby or meeting depending on active tab)
 	const handleCopyTranscript = useCallback(() => {
@@ -729,6 +785,14 @@ export function AudioTranscript({
 									<RefreshCw className="h-3 w-3" />
 									retranscribe
 								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => setSelectionMode(true)}
+									disabled={selectionMode}
+									className="text-xs gap-2"
+								>
+									<UserCheck className="h-3 w-3" />
+									select &amp; reassign
+								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
 						<Tooltip>
@@ -867,6 +931,9 @@ export function AudioTranscript({
 																	)
 															: undefined
 													}
+													selectionMode={selectionMode}
+													isSelected={selectedChunks.has(item.audio.audio_chunk_id)}
+													onToggleSelect={() => toggleChunkSelection(item.audio.audio_chunk_id)}
 												/>
 											</div>
 										);
@@ -913,6 +980,9 @@ export function AudioTranscript({
 													newName
 												)
 											}
+											selectionMode={selectionMode}
+											isSelected={selectedChunks.has(item.audio.audio_chunk_id)}
+											onToggleSelect={() => toggleChunkSelection(item.audio.audio_chunk_id)}
 										/>
 									</div>
 								);
@@ -921,6 +991,52 @@ export function AudioTranscript({
 					</div>
 				)}
 			</div>
+
+			{/* Floating selection bar */}
+			{selectionMode && (
+				<div className="absolute bottom-5 left-3 right-3 flex items-center justify-between gap-2 px-3 py-2 bg-popover border border-border text-xs z-10">
+					{selectedChunks.size > 0 ? (
+						<>
+							<span className="text-muted-foreground shrink-0">
+								{selectedChunks.size} selected
+							</span>
+							{(() => {
+								const firstChunkId = Array.from(selectedChunks)[0];
+								const data = activeMeeting ? meetingConversationData : conversationData;
+								const firstAudio = data.items.find(
+									(item) => item.audio.audio_chunk_id === firstChunkId
+								)?.audio;
+								if (!firstAudio) return null;
+								return (
+									<SpeakerAssignPopover
+										audioChunkId={firstChunkId}
+										speakerId={firstAudio.speaker_id}
+										speakerName={firstAudio.speaker_name}
+										audioFilePath={firstAudio.audio_file_path}
+										onAssigned={(newId, newName) =>
+											handleBulkAssignToSelected(newId, newName)
+										}
+									>
+										<span className="px-2 py-1 border border-border hover:bg-accent cursor-pointer transition-colors duration-150">
+											assign to...
+										</span>
+									</SpeakerAssignPopover>
+								);
+							})()}
+						</>
+					) : (
+						<span className="text-muted-foreground">click bubbles to select</span>
+					)}
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-6 px-2 text-xs shrink-0"
+						onClick={exitSelectionMode}
+					>
+						cancel
+					</Button>
+				</div>
+			)}
 
 			{/* Resize handle */}
 			<div

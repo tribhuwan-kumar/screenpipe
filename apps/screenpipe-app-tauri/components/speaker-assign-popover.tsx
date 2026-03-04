@@ -26,6 +26,7 @@ interface SpeakerAssignPopoverProps {
 	speakerName?: string;
 	audioFilePath: string;
 	onAssigned?: (newSpeakerId: number, newSpeakerName: string) => void;
+	children?: React.ReactNode;
 }
 
 export function SpeakerAssignPopover({
@@ -34,6 +35,7 @@ export function SpeakerAssignPopover({
 	speakerName,
 	audioFilePath,
 	onAssigned,
+	children,
 }: SpeakerAssignPopoverProps) {
 	const [open, setOpen] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
@@ -236,13 +238,17 @@ export function SpeakerAssignPopover({
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<span>
-					<SpeakerBadge
-						speakerId={speakerId}
-						speakerName={speakerName}
-						onClick={() => setOpen(true)}
-					/>
-				</span>
+				{children ? (
+					<span onClick={() => setOpen(true)}>{children}</span>
+				) : (
+					<span>
+						<SpeakerBadge
+							speakerId={speakerId}
+							speakerName={speakerName}
+							onClick={() => setOpen(true)}
+						/>
+					</span>
+				)}
 			</PopoverTrigger>
 			<PopoverContent className="w-80 p-3 z-[9999] border border-border rounded-none shadow-none" align="start">
 				<div className="space-y-3">

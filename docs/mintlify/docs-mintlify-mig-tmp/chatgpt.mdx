@@ -1,0 +1,91 @@
+---
+title: "ChatGPT — use your subscription with screenpipe"
+sidebarTitle: "chatgpt"
+description: "Connect your ChatGPT Plus or Pro subscription to power screenpipe's AI chat and pipes — no API key needed."
+icon: "message-bot"
+---
+
+<img src="/chatgpt-icon.svg" alt="ChatGPT" width="80" />
+
+if you have a ChatGPT Plus or Pro subscription, you can connect it directly to screenpipe. this lets you use OpenAI's latest models for chat, summaries, and pipes without managing API keys or paying extra.
+
+## what you get
+
+- **AI chat** — ask questions about your screen history, meetings, and activity using GPT models
+- **pipes** — run scheduled or on-demand automations (summaries, time tracking, etc.) powered by your subscription
+- **no API key needed** — sign in with your OpenAI account, that's it
+
+## how to connect
+
+1. open screenpipe
+2. click the **model selector** next to the chat input (shows "OAI", "Ollama", etc.)
+3. select **ChatGPT** as your provider
+4. click **sign in with ChatGPT**
+5. a browser window opens — log in with your OpenAI account and approve access
+6. done — you'll see a green checkmark and your available models
+
+## choosing a model
+
+after signing in, you can pick from your available models in the dropdown. these depend on your subscription tier:
+
+| subscription | models available |
+|---|---|
+| **ChatGPT Plus** | GPT-4o, GPT-4o mini, and more |
+| **ChatGPT Pro** | GPT-4o, GPT-4o mini, o1, o1-pro, and more |
+
+the model list updates automatically based on what your subscription includes.
+
+## using it for pipes
+
+pipes are automations that run on a schedule or on demand. when you connect your ChatGPT subscription, pipes use it automatically.
+
+examples:
+- **toggl sync** — auto-track time in Toggl based on your screen activity, every 30 minutes
+- **day recap** — one-click summary of what you accomplished today
+- **meeting summary** — summarize meeting transcripts with action items
+
+to set up a pipe:
+1. go to **pipes** in the sidebar
+2. pick a pipe or create your own
+3. in the pipe settings, select your ChatGPT preset
+4. enable the pipe
+
+## how it's different from MCP
+
+screenpipe also supports [MCP integrations](/mcp-server) with ChatGPT Desktop, Claude, and other apps. that's a different thing:
+
+| | ChatGPT subscription | MCP integration |
+|---|---|---|
+| **what it does** | powers screenpipe's built-in AI chat and pipes | lets external apps (ChatGPT Desktop, Claude) query screenpipe data |
+| **setup** | sign in with your OpenAI account inside screenpipe | add screenpipe as an MCP server in the external app |
+| **where you chat** | in screenpipe's chat window | in the external app (ChatGPT Desktop, Claude, etc.) |
+| **runs pipes** | yes | no |
+
+you can use both at the same time.
+
+## signing out
+
+to disconnect your ChatGPT account:
+1. open the model selector
+2. click the **sign out** button next to your ChatGPT connection
+
+this removes the stored tokens from your machine. your data stays local.
+
+## troubleshooting
+
+**sign-in window doesn't open?**
+- make sure screenpipe is running
+- try restarting the app and signing in again
+
+**"could not get token" error?**
+- your session may have expired — sign out and sign back in
+- check that your ChatGPT subscription is active at [openai.com](https://openai.com)
+
+**models not showing up?**
+- sign out and sign back in to refresh your token
+- some models are only available on higher subscription tiers
+
+**pipes failing with auth errors?**
+- tokens refresh automatically, but if it persists, sign out and back in
+
+still stuck? [ask in our discord](https://discord.gg/screenpipe).

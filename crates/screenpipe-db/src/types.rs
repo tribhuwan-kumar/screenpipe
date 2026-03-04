@@ -294,7 +294,8 @@ pub struct AudioChunksResponse {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct OcrTextBlock {
     pub block_num: String,
     pub conf: String,

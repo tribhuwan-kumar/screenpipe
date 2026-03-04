@@ -54,14 +54,16 @@ pub async fn perform_ocr_windows(image: &DynamicImage) -> Result<(String, String
                 }
                 full_text.push_str(&text_str);
 
-                // Get bounding box for PII redaction support
+                // Get bounding box and normalize to 0-1 range (matching Apple Vision output)
                 let rect = word.BoundingRect()?;
+                let img_w = width as f32;
+                let img_h = height as f32;
                 ocr_results.push(serde_json::json!({
                     "text": text_str,
-                    "left": rect.X.to_string(),
-                    "top": rect.Y.to_string(),
-                    "width": rect.Width.to_string(),
-                    "height": rect.Height.to_string(),
+                    "left": (rect.X / img_w).to_string(),
+                    "top": (rect.Y / img_h).to_string(),
+                    "width": (rect.Width / img_w).to_string(),
+                    "height": (rect.Height / img_h).to_string(),
                     "conf": "1.0"  // Windows OCR doesn't provide word-level confidence
                 }));
             }

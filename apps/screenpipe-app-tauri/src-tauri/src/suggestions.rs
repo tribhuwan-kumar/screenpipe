@@ -56,7 +56,7 @@ pub async fn get_cached_suggestions(
 ) -> Result<CachedSuggestions, String> {
     let guard = state.cache.lock().await;
     Ok(guard.clone().unwrap_or_else(|| CachedSuggestions {
-        suggestions: idle_suggestions(),
+        suggestions: idle_suggestions(&[], &[]),
         generated_at: chrono::Utc::now().to_rfc3339(),
         mode: "idle".to_string(),
         ai_generated: false,
@@ -561,21 +561,54 @@ fn video_editing_suggestions(top_apps: &[String]) -> Vec<Suggestion> {
     ]
 }
 
-fn idle_suggestions() -> Vec<Suggestion> {
-    vec![
+fn idle_suggestions(top_apps: &[String], windows: &[WindowActivity]) -> Vec<Suggestion> {
+    let mut suggestions = vec![
         Suggestion {
             text: "what did I work on in the last hour?".into(),
         },
-        Suggestion {
+    ];
+
+    // Add app-specific suggestion from top active app
+    let skip = ["finder", "screenpipe", "screenpipe-app", "loginwindow", "systemuiserver"];
+    if let Some(app) = top_apps.iter().find(|a| !skip.contains(&a.to_lowercase().as_str())) {
+        suggestions.push(Suggestion {
+            text: format!("what was I doing in {}?", app),
+        });
+    }
+
+    // Add a window-specific suggestion from the most active window
+    let interesting_window = windows.iter().find(|w| {
+        w.window_name.len() > 5
+            && w.window_name != "Untitled"
+            && w.window_name != "New Tab"
+            && !skip.contains(&w.app_name.to_lowercase().as_str())
+    });
+    if let Some(w) = interesting_window {
+        let title = if w.window_name.chars().count() > 35 {
+            let truncated: String = w.window_name.chars().take(32).collect();
+            format!("{}...", truncated)
+        } else {
+            w.window_name.clone()
+        };
+        suggestions.push(Suggestion {
+            text: format!("summarize \"{}\"", title),
+        });
+    }
+
+    // Fill remaining slots
+    if suggestions.len() < 4 {
+        suggestions.push(Suggestion {
             text: "summarize my day so far".into(),
-        },
-        Suggestion {
+        });
+    }
+    if suggestions.len() < 4 {
+        suggestions.push(Suggestion {
             text: "which apps did I use most today?".into(),
-        },
-        Suggestion {
-            text: "how did I spend my time today?".into(),
-        },
-    ]
+        });
+    }
+
+    suggestions.truncate(4);
+    suggestions
 }
 
 fn template_suggestions(
@@ -590,7 +623,7 @@ fn template_suggestions(
         "writing" => writing_suggestions(top_apps),
         "communication" => communication_suggestions(windows),
         "video_editing" => video_editing_suggestions(top_apps),
-        _ => idle_suggestions(),
+        _ => idle_suggestions(top_apps, windows),
     }
 }
 

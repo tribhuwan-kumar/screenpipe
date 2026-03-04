@@ -25,9 +25,10 @@ use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
 use windows::Win32::UI::Accessibility::{
-    AutomationElementMode_None, CUIAutomation, IUIAutomation, IUIAutomationCacheRequest,
-    IUIAutomationElement, IUIAutomationFocusChangedEventHandler,
-    IUIAutomationFocusChangedEventHandler_Impl, IUIAutomationTreeWalker, TreeScope_Subtree,
+    AutomationElementMode_Full, AutomationElementMode_None, CUIAutomation, IUIAutomation,
+    IUIAutomationCacheRequest, IUIAutomationElement, IUIAutomationFocusChangedEventHandler,
+    IUIAutomationFocusChangedEventHandler_Impl, IUIAutomationTreeWalker, TreeScope_Element,
+    TreeScope_Subtree,
     UIA_AutomationIdPropertyId, UIA_BoundingRectanglePropertyId, UIA_ClassNamePropertyId,
     UIA_ControlTypePropertyId, UIA_HasKeyboardFocusPropertyId, UIA_IsEnabledPropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_NamePropertyId, UIA_ValueValuePropertyId,
@@ -55,7 +56,9 @@ pub struct ClickElementRequest {
 pub(crate) struct UiaContext {
     automation: IUIAutomation,
     cache_request: IUIAutomationCacheRequest,
-    #[allow(dead_code)]
+    /// Per-element cache request for TreeWalker fallback (Chromium/Electron).
+    /// Uses Full mode so walked elements retain live COM references for navigation.
+    walker_cache_request: IUIAutomationCacheRequest,
     tree_walker: IUIAutomationTreeWalker,
 }
 
@@ -87,11 +90,30 @@ impl UiaContext {
             // Tree scope: entire subtree (single COM call caches everything)
             cache_request.SetTreeScope(TreeScope_Subtree)?;
 
+            // Create walker-specific cache request for Chromium/Electron fallback.
+            // Same properties, but Element scope (one node at a time) and Full
+            // mode (live COM references needed to continue walking).
+            let walker_cache_request = automation.CreateCacheRequest()?;
+            walker_cache_request.AddProperty(UIA_NamePropertyId)?;
+            walker_cache_request.AddProperty(UIA_ControlTypePropertyId)?;
+            walker_cache_request.AddProperty(UIA_AutomationIdPropertyId)?;
+            walker_cache_request.AddProperty(UIA_ClassNamePropertyId)?;
+            walker_cache_request.AddProperty(UIA_BoundingRectanglePropertyId)?;
+            walker_cache_request.AddProperty(UIA_IsEnabledPropertyId)?;
+            walker_cache_request.AddProperty(UIA_ValueValuePropertyId)?;
+            walker_cache_request.AddProperty(UIA_HasKeyboardFocusPropertyId)?;
+            walker_cache_request.AddProperty(UIA_IsKeyboardFocusablePropertyId)?;
+            let control_view_condition2 = automation.ControlViewCondition()?;
+            walker_cache_request.SetTreeFilter(&control_view_condition2)?;
+            walker_cache_request.SetAutomationElementMode(AutomationElementMode_Full)?;
+            walker_cache_request.SetTreeScope(TreeScope_Element)?;
+
             let tree_walker = automation.ControlViewWalker()?;
 
             Ok(Self {
                 automation,
                 cache_request,
+                walker_cache_request,
                 tree_walker,
             })
         }
@@ -99,6 +121,8 @@ impl UiaContext {
 
     /// Capture the full accessibility tree of a window by HWND.
     /// Uses CacheRequest to batch all property reads into minimal cross-process calls.
+    /// Falls back to TreeWalker for apps whose UIA providers don't populate
+    /// the cached subtree (Chromium, Electron, etc.).
     pub(crate) fn capture_window_tree(
         &self,
         hwnd: HWND,
@@ -111,7 +135,116 @@ impl UiaContext {
                 .ok()?;
 
             let mut count = 0;
-            Some(self.build_node(&element, max_elements, &mut count))
+            let root = self.build_node(&element, max_elements, &mut count);
+
+            // Some UIA providers (notably Chromium/Electron) don't populate the
+            // cached subtree via ElementFromHandleBuildCache, returning only a
+            // handful of titlebar nodes. When this happens, fall back to
+            // TreeWalker which makes individual COM calls per element.
+            if count <= 10 {
+                if let Some(walker_root) =
+                    self.capture_window_tree_walker(hwnd, max_elements)
+                {
+                    let walker_count = walker_root.node_count();
+                    if walker_count > count {
+                        debug!(
+                            "Cache returned {} nodes, walker returned {} - using walker result",
+                            count, walker_count
+                        );
+                        return Some(walker_root);
+                    }
+                }
+            }
+
+            Some(root)
+        }
+    }
+
+    /// Fallback tree capture using TreeWalker for UIA providers that don't
+    /// support cached subtree (e.g. Chromium, Electron apps).
+    /// Walks the tree element-by-element via GetFirstChild/GetNextSibling.
+    fn capture_window_tree_walker(
+        &self,
+        hwnd: HWND,
+        max_elements: usize,
+    ) -> Option<AccessibilityNode> {
+        unsafe {
+            // Get a live element (required for TreeWalker navigation)
+            let live_element = self.automation.ElementFromHandle(hwnd).ok()?;
+            // Cache properties on the root element
+            let cached_root = live_element
+                .BuildUpdatedCache(&self.walker_cache_request)
+                .ok()?;
+
+            let mut count = 0;
+            Some(self.build_node_walker(&cached_root, max_elements, &mut count))
+        }
+    }
+
+    /// Recursively build an AccessibilityNode using TreeWalker navigation.
+    /// Unlike build_node which reads pre-cached children, this walks the tree
+    /// one element at a time via COM calls.
+    fn build_node_walker(
+        &self,
+        element: &IUIAutomationElement,
+        max_elements: usize,
+        count: &mut usize,
+    ) -> AccessibilityNode {
+        *count += 1;
+
+        let control_type = self.get_control_type_name(element);
+        let name = self.get_cached_string(element, UIA_NamePropertyId);
+        let automation_id = self.get_cached_string(element, UIA_AutomationIdPropertyId);
+        let class_name = self.get_cached_string(element, UIA_ClassNamePropertyId);
+        let value = self.get_cached_string(element, UIA_ValueValuePropertyId);
+        let bounds = self.get_cached_bounds(element);
+        let is_enabled = self.get_cached_bool(element, UIA_IsEnabledPropertyId);
+        let is_focused = self.get_cached_bool_opt(element, UIA_HasKeyboardFocusPropertyId);
+        let is_keyboard_focusable =
+            self.get_cached_bool_opt(element, UIA_IsKeyboardFocusablePropertyId);
+
+        let mut children = Vec::new();
+        if *count < max_elements {
+            unsafe {
+                // Navigate to first child via TreeWalker
+                if let Ok(child) = self
+                    .tree_walker
+                    .GetFirstChildElementBuildCache(element, &self.walker_cache_request)
+                {
+                    children.push(self.build_node_walker(&child, max_elements, count));
+                    // Iterate siblings
+                    let mut current = child;
+                    while *count < max_elements {
+                        match self
+                            .tree_walker
+                            .GetNextSiblingElementBuildCache(&current, &self.walker_cache_request)
+                        {
+                            Ok(next) => {
+                                children.push(self.build_node_walker(
+                                    &next,
+                                    max_elements,
+                                    count,
+                                ));
+                                current = next;
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+        }
+
+        AccessibilityNode {
+            control_type,
+            name,
+            automation_id,
+            class_name,
+            value,
+            bounds,
+            is_enabled,
+            is_focused,
+            is_keyboard_focusable,
+            children,
         }
     }
 

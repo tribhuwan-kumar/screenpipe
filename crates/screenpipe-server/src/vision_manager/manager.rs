@@ -28,6 +28,11 @@ pub struct VisionManagerConfig {
     pub included_windows: Vec<String>,
     pub vision_metrics: Arc<PipelineMetrics>,
     pub use_pii_removal: bool,
+    /// Stable IDs of monitors the user selected for recording (e.g. "MSI G271_1920x1080_2002,-1080").
+    /// Empty means no explicit selection — honour `use_all_monitors` instead.
+    pub monitor_ids: Vec<String>,
+    /// When true, record every connected monitor regardless of `monitor_ids`.
+    pub use_all_monitors: bool,
 }
 
 /// Status of the VisionManager
@@ -99,6 +104,21 @@ impl VisionManager {
         *self.status.read().await
     }
 
+    /// Check whether a monitor is allowed by the user's monitor filter settings.
+    /// Uses prefix matching (name + resolution) so that position changes after
+    /// reconnect don't break the filter.
+    pub fn is_monitor_allowed(&self, monitor: &screenpipe_vision::monitor::SafeMonitor) -> bool {
+        if self.config.use_all_monitors || self.config.monitor_ids.is_empty() {
+            return true;
+        }
+        let stable_id = monitor.stable_id();
+        fn prefix(sid: &str) -> &str { sid.rsplitn(2, '_').last().unwrap_or(sid) }
+        let monitor_prefix = prefix(&stable_id);
+        self.config.monitor_ids.iter().any(|allowed| {
+            *allowed == stable_id || prefix(allowed) == monitor_prefix
+        })
+    }
+
     /// Start recording on all currently connected monitors
     pub async fn start(&self) -> Result<()> {
         let mut status = self.status.write().await;
@@ -111,9 +131,17 @@ impl VisionManager {
         *status = VisionManagerStatus::Running;
         drop(status);
 
-        // Get all monitors and start recording on each
+        // Get all monitors and start recording on each (filtered by user selection)
         let monitors = list_monitors().await;
         for monitor in monitors {
+            if !self.is_monitor_allowed(&monitor) {
+                info!(
+                    "Skipping monitor {} ({}) — not in allowed list",
+                    monitor.id(),
+                    monitor.stable_id()
+                );
+                continue;
+            }
             let monitor_id = monitor.id();
             if let Err(e) = self.start_monitor(monitor_id).await {
                 warn!(

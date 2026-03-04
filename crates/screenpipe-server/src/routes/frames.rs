@@ -819,17 +819,28 @@ pub async fn run_frame_ocr(
     };
 
     // Run OCR on the image
+    #[cfg(target_os = "macos")]
     let ocr_result = tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "macos")]
-        {
-            let (text, json, _confidence) = screenpipe_vision::perform_ocr_apple(&image, &[]);
-            (text, json)
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = image;
+        let (text, json, _confidence) = screenpipe_vision::perform_ocr_apple(&image, &[]);
+        (text, json)
+    })
+    .await
+    .unwrap_or_else(|_| (String::new(), "[]".to_string()));
+
+    #[cfg(target_os = "windows")]
+    let ocr_result = match screenpipe_vision::perform_ocr_windows(&image).await {
+        Ok((text, json, _confidence)) => (text, json),
+        Err(e) => {
+            error!("Windows on-demand OCR failed: {}", e);
             (String::new(), "[]".to_string())
         }
+    };
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let ocr_result = tokio::task::spawn_blocking(move || {
+        let (text, json, _confidence) =
+            screenpipe_vision::perform_ocr_tesseract(&image, vec![]);
+        (text, json)
     })
     .await
     .unwrap_or_else(|_| (String::new(), "[]".to_string()));
@@ -838,7 +849,12 @@ pub async fn run_frame_ocr(
 
     // Store in DB for future reads (ignore errors — the result is still returned)
     if !ocr_text.is_empty() {
+        #[cfg(target_os = "macos")]
         let engine = Arc::new(screenpipe_db::OcrEngine::AppleNative);
+        #[cfg(target_os = "windows")]
+        let engine = Arc::new(screenpipe_db::OcrEngine::WindowsNative);
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let engine = Arc::new(screenpipe_db::OcrEngine::Tesseract);
         if let Err(e) = state
             .db
             .insert_ocr_text(frame_id, &ocr_text, &ocr_text_json, engine)

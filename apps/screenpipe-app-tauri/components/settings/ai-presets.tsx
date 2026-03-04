@@ -790,6 +790,8 @@ const AISection = ({
             { id: "claude-haiku-4-5", name: "Haiku 4.5 (fast)", provider: "screenpipe" },
             { id: "claude-sonnet-4-5", name: "Sonnet 4.5 (balanced)", provider: "screenpipe" },
             { id: "claude-opus-4-6", name: "Opus 4.6 (powerful, pro)", provider: "screenpipe" },
+            { id: "gemini-3-flash", name: "Gemini 3 Flash (fast)", provider: "screenpipe" },
+            { id: "gemini-3-pro", name: "Gemini 3.1 Pro (balanced)", provider: "screenpipe" },
           ];
           setModels(piModels);
           break;
@@ -904,8 +906,8 @@ const AISection = ({
           {piAvailable && (
             <AIProviderCard
               type="pi"
-              title="Pi Agent"
-              description="AI coding agent powered by Claude. Requires login."
+              title="Screenpipe Cloud"
+              description="AI coding agent powered by Screenpipe Cloud. Requires login."
               imageSrc="/images/screenpipe.png"
               selected={settingsPreset?.provider === "pi"}
               onClick={() => handleAiProviderChange("pi")}

@@ -9,7 +9,10 @@ use screenpipe_db::{DatabaseManager, UntranscribedChunk};
 use tracing::{debug, error, warn};
 
 use crate::core::engine::AudioTranscriptionEngine;
+use crate::segmentation::segmentation_manager::SegmentationManager;
+use crate::speaker::segment::get_segments;
 use crate::transcription::engine::{TranscriptionEngine, TranscriptionSession};
+use crate::transcription::get_or_create_speaker_from_embedding;
 use crate::transcription::{AudioInsertCallback, AudioInsertInfo};
 
 use crate::transcription::VocabularyEntry;
@@ -39,6 +42,7 @@ pub async fn reconcile_untranscribed(
     _openai_compatible_config: Option<OpenAICompatibleConfig>,
     _languages: Vec<Language>,
     _vocabulary: &[VocabularyEntry],
+    segmentation_manager: Option<Arc<SegmentationManager>>,
 ) -> usize {
     let since = chrono::Utc::now() - chrono::Duration::hours(24);
     let chunks = match db.get_untranscribed_chunks(since, 50).await {
@@ -156,6 +160,13 @@ pub async fn reconcile_untranscribed(
             }
         };
 
+        // Extract speaker embedding from the transcribed audio
+        let speaker_id = if let Some(ref seg_mgr) = segmentation_manager {
+            extract_speaker_id(db, &combined_samples, sample_rate, seg_mgr).await
+        } else {
+            None
+        };
+
         // Store the full batch transcription on the FIRST chunk.
         // Delete the remaining chunks (and their files) to avoid duplicates.
         let primary_chunk = valid_chunks[0];
@@ -170,6 +181,7 @@ pub async fn reconcile_untranscribed(
                 is_input,
                 primary_chunk.timestamp,
                 Some(batch_duration),
+                speaker_id,
             )
             .await
         {
@@ -193,7 +205,7 @@ pub async fn reconcile_untranscribed(
                 duration_secs: batch_duration,
                 start_time: Some(0.0),
                 end_time: Some(batch_duration),
-                speaker_id: None,
+                speaker_id,
                 capture_timestamp: capture_ts,
             });
         }
@@ -216,6 +228,66 @@ pub async fn reconcile_untranscribed(
     }
 
     success_count
+}
+
+/// Run speaker segmentation on the audio samples and return the dominant speaker's DB id.
+/// Falls back to None on any error so we never block transcription.
+async fn extract_speaker_id(
+    db: &DatabaseManager,
+    samples: &[f32],
+    sample_rate: u32,
+    seg_mgr: &SegmentationManager,
+) -> Option<i64> {
+    let segments = match get_segments(
+        samples,
+        sample_rate,
+        &seg_mgr.segmentation_model_path,
+        seg_mgr.embedding_extractor.clone(),
+        seg_mgr.embedding_manager.clone(),
+    ) {
+        Ok(iter) => iter,
+        Err(e) => {
+            debug!("reconciliation: speaker segmentation failed: {}", e);
+            return None;
+        }
+    };
+
+    // Find the segment with the longest duration (dominant speaker)
+    let mut best_embedding: Option<Vec<f32>> = None;
+    let mut best_duration: f64 = 0.0;
+
+    for segment_result in segments {
+        match segment_result {
+            Ok(segment) => {
+                if !segment.embedding.is_empty() {
+                    let duration = segment.end - segment.start;
+                    if duration > best_duration {
+                        best_duration = duration;
+                        best_embedding = Some(segment.embedding);
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("reconciliation: segment extraction error: {}", e);
+            }
+        }
+    }
+
+    let embedding = best_embedding?;
+
+    match get_or_create_speaker_from_embedding(db, &embedding).await {
+        Ok(speaker) => {
+            debug!(
+                "reconciliation: matched speaker id={} for batch",
+                speaker.id
+            );
+            Some(speaker.id)
+        }
+        Err(e) => {
+            debug!("reconciliation: speaker matching failed: {}", e);
+            None
+        }
+    }
 }
 
 /// Group chunks into batches of consecutive chunks from the same device.
@@ -246,7 +318,8 @@ fn group_chunks_by_device(chunks: &[UntranscribedChunk]) -> Vec<Vec<&Untranscrib
 
 /// Extract device name and is_input from an audio file path.
 /// Path format: `.../Device Name (output)_2026-02-27_23-15-38.mp4`
-/// Returns (device_name, is_input).
+/// Returns (device_name, is_input). The `(input)`/`(output)` suffix is stripped
+/// to match the naming convention used by the normal transcription pipeline.
 fn extract_device_from_path(file_path: &str) -> (String, bool) {
     let filename = Path::new(file_path)
         .file_stem()
@@ -262,7 +335,15 @@ fn extract_device_from_path(file_path: &str) -> (String, bool) {
     };
 
     let is_input = device_part.contains("(input)");
-    (device_part.to_string(), is_input)
+
+    // Strip the (input)/(output) suffix to match normal pipeline naming
+    let clean_name = device_part
+        .replace(" (input)", "")
+        .replace(" (output)", "")
+        .trim()
+        .to_string();
+
+    (clean_name, is_input)
 }
 
 #[cfg(test)]
@@ -274,7 +355,7 @@ mod tests {
         let (name, is_input) = extract_device_from_path(
             "/Users/user/.screenpipe/data/Display 3 (output)_2026-02-27_23-15-38.mp4",
         );
-        assert_eq!(name, "Display 3 (output)");
+        assert_eq!(name, "Display 3");
         assert!(!is_input);
     }
 
@@ -283,7 +364,7 @@ mod tests {
         let (name, is_input) = extract_device_from_path(
             "/Users/user/.screenpipe/data/input (input)_2026-02-27_23-15-38.mp4",
         );
-        assert_eq!(name, "input (input)");
+        assert_eq!(name, "input");
         assert!(is_input);
     }
 

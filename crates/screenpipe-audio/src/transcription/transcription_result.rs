@@ -158,7 +158,7 @@ pub async fn process_transcription_result(
     }))
 }
 
-async fn get_or_create_speaker_from_embedding(
+pub async fn get_or_create_speaker_from_embedding(
     db: &DatabaseManager,
     embedding: &[f32],
 ) -> Result<Speaker, anyhow::Error> {

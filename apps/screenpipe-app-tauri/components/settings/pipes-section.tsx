@@ -45,6 +45,7 @@ import { useSettings } from "@/lib/hooks/use-settings";
 import { AIPresetsSelector } from "@/components/rewind/ai-presets-selector";
 import { useTeam } from "@/lib/hooks/use-team";
 import { useToast } from "@/components/ui/use-toast";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import posthog from "posthog-js";
 
@@ -413,6 +414,7 @@ function errorTypeBadge(errorType: string | null) {
 export function PipesSection() {
   const [pipes, setPipes] = useState<PipeStatus[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const expandedRef = useRef<string | null>(null);
   const [logs, setLogs] = useState<PipeRunLog[]>([]);
   const [executions, setExecutions] = useState<PipeExecution[]>([]);
   // Per-pipe recent executions (always fetched for all pipes)
@@ -486,7 +488,20 @@ export function PipesSection() {
         fetched.push(pipe);
         results[pipe.config.name] = recent_executions || [];
       }
-      setPipes(fetched);
+      // Preserve optimistic UI for pipes with in-flight config saves
+      const pendingNames = Object.keys(pendingConfigSaves.current);
+      if (pendingNames.length > 0) {
+        setPipes((prev) => {
+          const prevByName = new Map(prev.map((p) => [p.config.name, p]));
+          return fetched.map((p) =>
+            pendingNames.includes(p.config.name) && prevByName.has(p.config.name)
+              ? prevByName.get(p.config.name)!
+              : p
+          );
+        });
+      } else {
+        setPipes(fetched);
+      }
       setPipeExecutions(results);
       // Clear drafts that match the server content (already saved)
       setPromptDrafts((prev) => {
@@ -533,11 +548,39 @@ export function PipesSection() {
       const res = await fetch("http://localhost:3030/pipes?include_executions=true");
       const data = await res.json();
       const rawItems: Array<PipeStatus & { recent_executions?: PipeExecution[] }> = data.data || [];
+      const fetched: PipeStatus[] = [];
       const results: Record<string, PipeExecution[]> = {};
       for (const item of rawItems) {
-        results[item.config.name] = item.recent_executions || [];
+        const { recent_executions, ...pipe } = item;
+        fetched.push(pipe);
+        results[item.config.name] = recent_executions || [];
       }
       setPipeExecutions(results);
+      // Also sync pipe status (is_running) to keep summary consistent
+      const pendingNames = Object.keys(pendingConfigSaves.current);
+      if (pendingNames.length > 0) {
+        setPipes((prev) => {
+          const prevByName = new Map(prev.map((p) => [p.config.name, p]));
+          return fetched.map((p) =>
+            pendingNames.includes(p.config.name) && prevByName.has(p.config.name)
+              ? prevByName.get(p.config.name)!
+              : p
+          );
+        });
+      } else {
+        setPipes(fetched);
+      }
+      // Refresh execution history for the currently expanded pipe
+      const exp = expandedRef.current;
+      if (exp) {
+        try {
+          const execRes = await fetch(`http://localhost:3030/pipes/${exp}/executions?limit=20`);
+          const execData = await execRes.json();
+          setExecutions(execData.data || []);
+        } catch {
+          // non-fatal
+        }
+      }
     } catch {
       // ignore — next poll will retry
     }
@@ -661,8 +704,10 @@ export function PipesSection() {
   const toggleExpand = (name: string) => {
     if (expanded === name) {
       setExpanded(null);
+      expandedRef.current = null;
     } else {
       setExpanded(name);
+      expandedRef.current = name;
       fetchLogs(name);
       fetchExecutions(name);
     }
@@ -799,7 +844,7 @@ export function PipesSection() {
             await fetchPipes();
             setRefreshing(false);
           }}>
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
           <Button variant="outline" size="sm" onClick={openPipesFolder}>
             <FolderOpen className="h-4 w-4 mr-1" />
@@ -1123,6 +1168,37 @@ export function PipesSection() {
                       </p>
                     </div>
 
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-xs">history</Label>
+                        <HelpTooltip text="when enabled, the pipe remembers previous conversations across runs. useful for pipes that need context from past executions." />
+                      </div>
+                      <Switch
+                        checked={!!pipe.config.config?.history}
+                        onCheckedChange={(checked) => {
+                          const pipeName = pipe.config.name;
+                          setPipes((prev) =>
+                            prev.map((p) =>
+                              p.config.name === pipeName
+                                ? { ...p, config: { ...p.config, config: { ...p.config.config, history: checked } } }
+                                : p
+                            )
+                          );
+                          const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ history: checked }),
+                          }).then(() => {
+                            delete pendingConfigSaves.current[pipeName];
+                            fetchPipes();
+                          }).catch(() => {
+                            delete pendingConfigSaves.current[pipeName];
+                          });
+                          pendingConfigSaves.current[pipeName] = savePromise;
+                        }}
+                      />
+                    </div>
+
                     <div>
                       <div className="flex items-center gap-2">
                         <Label className="text-xs">pipe.md</Label>
@@ -1147,6 +1223,9 @@ export function PipesSection() {
                         value={promptDrafts[pipe.config.name] ?? pipe.raw_content}
                         onChange={(e) => handlePipeEdit(pipe.config.name, e.target.value)}
                         className="text-xs font-mono h-64 mt-1"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                       />
                     </div>
 

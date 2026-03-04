@@ -263,6 +263,10 @@ pub async fn sync_init(
                     let mut skipped_schema = 0;
 
                     for blob in &blobs {
+                        // Skip pipe_config blobs — handled by pipe sync separately
+                        if blob.blob_type == BlobType::PipeConfig {
+                            continue;
+                        }
                         let chunk: Result<crate::sync_provider::SyncChunk, _> =
                             serde_json::from_slice(&blob.data);
                         match chunk {

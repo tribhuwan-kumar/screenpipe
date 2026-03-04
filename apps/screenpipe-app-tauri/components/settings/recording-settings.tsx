@@ -6,12 +6,14 @@
 
 const DEFAULT_OPENAI_COMPATIBLE_ENDPOINT = "http://127.0.0.1:8080";
 
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -49,6 +51,9 @@ import {
   CheckCircle2,
   XCircle,
   Circle,
+  Upload,
+  Trash2,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -72,6 +77,7 @@ import { Badge } from "@/components/ui/badge";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { platform } from "@tauri-apps/plugin-os";
 import posthog from "posthog-js";
 import { Language } from "@/lib/language";
@@ -100,6 +106,9 @@ import {
 import { AudioEqualizer } from "@/app/shortcut-reminder/audio-equalizer";
 
 import { useOverlayData } from "@/app/shortcut-reminder/use-overlay-data";
+import { useOpenAIModels } from "./hooks/use-openai-models";
+import { useTranscriptionDiagnostics } from "./hooks/use-transcription-diagnostics";
+import { useVoiceTraining } from "./hooks/use-voice-training";
 
 type PermissionsStatus = {
   screenRecording: string;
@@ -198,20 +207,276 @@ const getAudioDeviceIcon = (name: string) => {
   return Volume2;
 };
 
-type TxDiagnosticStatus = "pass" | "fail" | "skip" | "pending" | "running";
-type TxDiagnosticStep = { status: TxDiagnosticStatus; message: string; latencyMs?: number };
-type TxDiagnostics = {
-  endpoint: TxDiagnosticStep;
-  auth: TxDiagnosticStep;
-  models: TxDiagnosticStep;
-  transcribe: TxDiagnosticStep;
-};
-const INITIAL_TX_DIAGNOSTICS: TxDiagnostics = {
-  endpoint: { status: "pending", message: "" },
-  auth: { status: "pending", message: "" },
-  models: { status: "pending", message: "" },
-  transcribe: { status: "pending", message: "" },
-};
+// ─── Transcription Dictionary ────────────────────────────────────────────────
+
+const VOCAB_LIMIT = 1000;
+const DEEPGRAM_LIMIT = 100;
+const WHISPER_CHAR_LIMIT = 800;
+
+function parseTerms(raw: string): string[] {
+  // Auto-detect delimiter: if there are newlines, split by newlines; otherwise commas; otherwise semicolons; otherwise tabs
+  let delimiter: RegExp;
+  if (raw.includes("\n")) {
+    delimiter = /\n/;
+  } else if (raw.includes(",")) {
+    delimiter = /,/;
+  } else if (raw.includes(";")) {
+    delimiter = /;/;
+  } else if (raw.includes("\t")) {
+    delimiter = /\t/;
+  } else {
+    // Single term
+    return raw.trim() ? [raw.trim()] : [];
+  }
+  return raw
+    .split(delimiter)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+function TranscriptionDictionary({
+  vocabularyWords,
+  onChange,
+}: {
+  vocabularyWords: Array<{ word: string; replacement?: string }>;
+  onChange: (words: Array<{ word: string; replacement?: string }>) => void;
+}) {
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [filter, setFilter] = useState("");
+  const { toast } = useToast();
+
+  const parsed = useMemo(() => parseTerms(bulkText), [bulkText]);
+  const totalAfterImport = vocabularyWords.length + parsed.length;
+  const overLimit = totalAfterImport > VOCAB_LIMIT;
+
+  const filtered = useMemo(() => {
+    if (!filter) return vocabularyWords;
+    const q = filter.toLowerCase();
+    return vocabularyWords.filter(
+      (e) => e.word.toLowerCase().includes(q) || e.replacement?.toLowerCase().includes(q)
+    );
+  }, [vocabularyWords, filter]);
+
+  const handleBulkImport = () => {
+    if (parsed.length === 0) return;
+    const existing = new Set(vocabularyWords.map((e) => e.word.toLowerCase()));
+    const newTerms = parsed.filter((t) => !existing.has(t.toLowerCase()));
+    const available = VOCAB_LIMIT - vocabularyWords.length;
+    const toAdd = newTerms.slice(0, available);
+    if (toAdd.length === 0) {
+      toast({ title: "no new terms", description: "all terms already exist in your dictionary" });
+      return;
+    }
+    const updated = [...vocabularyWords, ...toAdd.map((w) => ({ word: w }))];
+    onChange(updated);
+    toast({
+      title: `added ${toAdd.length} terms`,
+      description: newTerms.length > toAdd.length
+        ? `${newTerms.length - toAdd.length} skipped (limit: ${VOCAB_LIMIT})`
+        : undefined,
+    });
+    setBulkText("");
+    setShowBulk(false);
+  };
+
+  return (
+    <Card className="border-border bg-card">
+      <CardContent className="px-3 py-2.5">
+        {/* Header */}
+        <div className="flex items-center space-x-2.5 mb-2">
+          <Languages className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+              custom vocabulary
+              <HelpTooltip text="Add custom words (names, brands, jargon) to improve transcription accuracy. You can also add replacements to auto-correct common mistranscriptions." />
+              {vocabularyWords.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {vocabularyWords.length} / {VOCAB_LIMIT}
+                </Badge>
+              )}
+            </h3>
+            <p className="text-xs text-muted-foreground">teach names, brands & jargon to your transcription</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2 gap-1"
+              onClick={() => setShowBulk(!showBulk)}
+            >
+              <Upload className="h-3 w-3" />
+              bulk import
+            </Button>
+            {vocabularyWords.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2 text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  if (confirm(`remove all ${vocabularyWords.length} terms?`)) {
+                    onChange([]);
+                  }
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Engine limits info */}
+        {vocabularyWords.length > 0 && (
+          <div className="text-[10px] text-muted-foreground/60 font-mono mb-2 px-1 flex gap-3">
+            <span>offline: {Math.min(vocabularyWords.reduce((n, e) => n + (e.replacement || e.word).length + 2, 0), WHISPER_CHAR_LIMIT)}/{WHISPER_CHAR_LIMIT} chars</span>
+            <span>cloud: {Math.min(vocabularyWords.length, DEEPGRAM_LIMIT)}/{DEEPGRAM_LIMIT} keywords</span>
+          </div>
+        )}
+
+        {/* Bulk import */}
+        {showBulk && (
+          <div className="mb-2 border border-border p-2 space-y-2">
+            <Textarea
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              placeholder={"paste terms separated by commas, newlines, semicolons, or tabs\n\ne.g. kubernetes, posthog, screenpipe, terraform"}
+              className="text-xs font-mono min-h-[80px] resize-y"
+              spellCheck={false}
+              autoCorrect="off"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                {parsed.length > 0 ? (
+                  <>
+                    {parsed.length} terms detected
+                    {overLimit && (
+                      <span className="text-destructive ml-1">
+                        (exceeds limit by {totalAfterImport - VOCAB_LIMIT})
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  "paste or type terms above"
+                )}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2"
+                  onClick={() => { setBulkText(""); setShowBulk(false); }}
+                >
+                  cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  disabled={parsed.length === 0}
+                  onClick={handleBulkImport}
+                >
+                  add {Math.min(parsed.length, VOCAB_LIMIT - vocabularyWords.length)} terms
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search filter (show when > 20 terms) */}
+        {vocabularyWords.length > 20 && (
+          <div className="relative mb-2">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="filter terms..."
+              className="h-7 text-xs pl-7"
+              spellCheck={false}
+            />
+          </div>
+        )}
+
+        {/* Existing entries */}
+        {filtered.length > 0 && (
+          <div className="space-y-0.5 mb-2 max-h-64 overflow-y-auto">
+            {filtered.map((entry, idx) => {
+              const realIdx = vocabularyWords.indexOf(entry);
+              return (
+                <div key={realIdx} className="flex items-center gap-2 text-sm bg-muted/50 px-2 py-0.5 group">
+                  <span className="font-mono text-xs truncate">{entry.word}</span>
+                  {entry.replacement && (
+                    <>
+                      <span className="text-muted-foreground text-xs shrink-0">→</span>
+                      <span className="font-mono text-xs truncate">{entry.replacement}</span>
+                    </>
+                  )}
+                  <button
+                    className="ml-auto text-muted-foreground hover:text-destructive text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    onClick={() => {
+                      const current = [...vocabularyWords];
+                      current.splice(realIdx, 1);
+                      onChange(current);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+            {filter && filtered.length < vocabularyWords.length && (
+              <p className="text-[10px] text-muted-foreground px-2 pt-1">
+                showing {filtered.length} of {vocabularyWords.length}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Add single entry */}
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const wordInput = form.elements.namedItem("vocab-word") as HTMLInputElement;
+            const replacementInput = form.elements.namedItem("vocab-replacement") as HTMLInputElement;
+            const word = wordInput.value.trim();
+            if (!word) return;
+            if (vocabularyWords.length >= VOCAB_LIMIT) {
+              toast({ title: "limit reached", description: `maximum ${VOCAB_LIMIT} terms allowed` });
+              return;
+            }
+            const replacement = replacementInput.value.trim() || undefined;
+
+            // Detect bulk paste in single input
+            const terms = parseTerms(word);
+            if (terms.length > 1) {
+              const existing = new Set(vocabularyWords.map((e) => e.word.toLowerCase()));
+              const newTerms = terms.filter((t) => !existing.has(t.toLowerCase()));
+              const available = VOCAB_LIMIT - vocabularyWords.length;
+              const toAdd = newTerms.slice(0, available);
+              if (toAdd.length > 0) {
+                onChange([...vocabularyWords, ...toAdd.map((w) => ({ word: w }))]);
+                toast({ title: `added ${toAdd.length} terms` });
+              }
+              wordInput.value = "";
+              replacementInput.value = "";
+              return;
+            }
+
+            onChange([...vocabularyWords, { word, replacement }]);
+            wordInput.value = "";
+            replacementInput.value = "";
+          }}
+        >
+          <Input name="vocab-word" placeholder="e.g. screenpipe" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
+          <Input name="vocab-replacement" placeholder="replacement (optional)" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
+          <Button type="submit" size="sm" variant="outline" className="h-7 text-xs px-2">
+            add
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function RecordingSettings() {
   const { settings, updateSettings, getDataDir, loadUser } = useSettings();
@@ -249,39 +514,32 @@ export function RecordingSettings() {
   const overlayData = useOverlayData();
   const [hwCapability, setHwCapability] = useState<HardwareCapability | null>(null);
 
-  // OpenAI Compatible model fetching state
-  const [openAIModels, setOpenAIModels] = useState<string[]>([]);
-  const [allOpenAIModels, setAllOpenAIModels] = useState<string[]>([]); // Store all models
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
-  const [filterTranscriptionModels, setFilterTranscriptionModels] = useState(true); // Default to filtered
+  // OpenAI Compatible model fetching
+  const {
+    openAIModels,
+    allOpenAIModels,
+    isLoadingModels,
+    filterText: filterTranscriptionModels,
+    setFilterText: setFilterTranscriptionModels,
+    fetchOpenAIModels,
+  } = useOpenAIModels({
+    engine: settings.audioTranscriptionEngine,
+    endpoint: settings.openaiCompatibleEndpoint || "",
+    apiKey: settings.openaiCompatibleApiKey || "",
+  });
 
-  // Transcription diagnostics state
-  const [txTestStatus, setTxTestStatus] = useState<"idle" | "testing" | "done">("idle");
-  const [txTestResults, setTxTestResults] = useState<TxDiagnostics>(INITIAL_TX_DIAGNOSTICS);
-  const [txDiagnosticsOpen, setTxDiagnosticsOpen] = useState(false);
-  const txDiagnosticsAbortRef = useRef<AbortController | null>(null);
+  // Transcription diagnostics
+  const {
+    txTestStatus,
+    txTestResults,
+    txDiagnosticsOpen,
+    setTxDiagnosticsOpen,
+    runTranscriptionDiagnostics,
+  } = useTranscriptionDiagnostics({ settings });
 
   useEffect(() => {
     commands.getHardwareCapability().then(setHwCapability).catch(() => {});
   }, []);
-
-  // Transcription model name patterns
-  const TRANSCRIPTION_MODEL_PATTERNS = [
-    /^whisper/i,
-    /whisper/i,
-    /^canary/i,
-    /^parakeet/i,
-    /^speech/i,
-    /audio.*transcri/i,
-    /^transcribe/i,
-    /stt/i,
-    /^moonshine/i,
-    /^sensevoice/i,
-  ];
-
-  const isLikelyTranscriptionModel = (modelId: string): boolean => {
-    return TRANSCRIPTION_MODEL_PATTERNS.some(pattern => pattern.test(modelId));
-  };
 
   const handlePushFilterToTeam = async (configType: string, key: string, filters: string[]) => {
     setPushingFilter(key);
@@ -498,295 +756,6 @@ export function RecordingSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch OpenAI Compatible models when endpoint changes
-  // Tries /v1/models (OpenAI), then /api/tags (Ollama) as fallback
-  const fetchOpenAIModels = useCallback(async (endpoint: string, apiKey?: string) => {
-    setIsLoadingModels(true);
-    try {
-      const headers: Record<string, string> = {};
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-
-      // Try OpenAI-style /v1/models first
-      let models: string[] = [];
-      try {
-        const response = await fetch(`${endpoint}/v1/models`, {
-          headers,
-          signal: AbortSignal.timeout(5000),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          models = (data.data || []).map((m: any) => m.id).filter(Boolean);
-        }
-      } catch {
-        // endpoint may not support /v1/models — try Ollama fallback
-      }
-
-      // Fallback: try Ollama-style /api/tags
-      if (models.length === 0) {
-        try {
-          const ollamaResponse = await fetch(`${endpoint}/api/tags`, {
-            headers,
-            signal: AbortSignal.timeout(5000),
-          });
-          if (ollamaResponse.ok) {
-            const ollamaData = await ollamaResponse.json();
-            models = (ollamaData.models || []).map((m: any) => m.name).filter(Boolean);
-          }
-        } catch {
-          // Ollama endpoint also not available — models stays empty
-        }
-      }
-
-      setAllOpenAIModels(models);
-    } catch (error) {
-      console.error('Failed to fetch OpenAI models:', error);
-      setAllOpenAIModels(['!API_Error']);
-      setOpenAIModels(['!API_Error']);
-    } finally {
-      setIsLoadingModels(false);
-    }
-  }, []);
-
-  // Update displayed models when filter toggle or all models change
-  useEffect(() => {
-    if (allOpenAIModels.length === 0) return;
-    
-    if (allOpenAIModels.includes('!API_Error')) {
-      setOpenAIModels(allOpenAIModels);
-      return;
-    }
-    
-    if (filterTranscriptionModels) {
-      const filtered = allOpenAIModels.filter(isLikelyTranscriptionModel);
-      setOpenAIModels(filtered.length > 0 ? filtered : allOpenAIModels);
-    } else {
-      setOpenAIModels(allOpenAIModels);
-    }
-  }, [allOpenAIModels, filterTranscriptionModels]);
-
-  // Fetch models when OpenAI Compatible is selected - manually triggered
-  // (not on every keystroke - only on focus change or enter key)
-  useEffect(() => {
-    if (settings.audioTranscriptionEngine === 'openai-compatible') {
-      const apiKey = settings.openaiCompatibleApiKey;
-      // Use default endpoint if not set
-      const endpoint = settings.openaiCompatibleEndpoint || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT;
-      fetchOpenAIModels(endpoint, apiKey);
-    }
-  }, [settings.audioTranscriptionEngine, settings.openaiCompatibleApiKey, fetchOpenAIModels]);
-
-  // Run transcription diagnostics (endpoint → auth → models → transcription test)
-  const runTranscriptionDiagnostics = useCallback(async () => {
-    txDiagnosticsAbortRef.current?.abort();
-    const abort = new AbortController();
-    txDiagnosticsAbortRef.current = abort;
-
-    setTxTestStatus("testing");
-    setTxTestResults({
-      endpoint: { status: "pending", message: "" },
-      auth: { status: "pending", message: "" },
-      models: { status: "pending", message: "" },
-      transcribe: { status: "pending", message: "" },
-    });
-    setTxDiagnosticsOpen(true);
-
-    const endpoint = settings.openaiCompatibleEndpoint || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT;
-    const apiKey = settings.openaiCompatibleApiKey;
-
-    const headers: Record<string, string> = {};
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
-
-    const skipRemaining = (failStep: string, message: string) => {
-      const steps = ["endpoint", "auth", "models", "transcribe"] as const;
-      const failIdx = steps.indexOf(failStep as any);
-      setTxTestResults((prev) => ({
-        ...prev,
-        [failStep]: { status: "fail" as const, message },
-        ...Object.fromEntries(
-          steps
-            .filter((_, i) => i > failIdx)
-            .map((k) => [k, { status: "skip" as const, message: "Skipped" }])
-        ),
-      }));
-      setTxTestStatus("done");
-    };
-
-    // Step 1: Endpoint connectivity — try root URL or /v1/models
-    setTxTestResults((prev) => ({
-      ...prev,
-      endpoint: { status: "running", message: "Connecting..." },
-    }));
-
-    let endpointReachable = false;
-    try {
-      await fetch(endpoint, { signal: abort.signal, method: "GET" });
-      endpointReachable = true;
-    } catch {
-      // root URL failed, try /v1/models as fallback
-      try {
-        await fetch(`${endpoint}/v1/models`, { headers, signal: abort.signal });
-        endpointReachable = true;
-      } catch {
-        // neither worked
-      }
-    }
-
-    if (abort.signal.aborted) return;
-
-    if (!endpointReachable) {
-      skipRemaining("endpoint", `Connection failed. Is the server running at ${endpoint}?`);
-      return;
-    }
-
-    setTxTestResults((prev) => ({
-      ...prev,
-      endpoint: { status: "pass", message: `Server reachable` },
-      auth: { status: "running", message: "Checking..." },
-    }));
-
-    // Step 2+3: Try to list models (also tests auth)
-    let modelCount = 0;
-    // Try OpenAI-style /v1/models
-    try {
-      const modelsResponse = await fetch(`${endpoint}/v1/models`, {
-        headers,
-        signal: abort.signal,
-      });
-      if (modelsResponse.status === 401 || modelsResponse.status === 403) {
-        skipRemaining("auth", `${modelsResponse.status} Unauthorized. Check your API key.`);
-        return;
-      }
-      if (modelsResponse.ok) {
-        const data = await modelsResponse.json();
-        modelCount = (data.data || []).filter((m: any) => m.id).length;
-      }
-    } catch {
-      // /v1/models not available, try Ollama fallback
-    }
-
-    // Fallback: try Ollama-style /api/tags
-    if (modelCount === 0) {
-      try {
-        const ollamaResponse = await fetch(`${endpoint}/api/tags`, {
-          headers,
-          signal: abort.signal,
-        });
-        if (ollamaResponse.ok) {
-          const ollamaData = await ollamaResponse.json();
-          modelCount = (ollamaData.models || []).filter((m: any) => m.name).length;
-        }
-      } catch {
-        // no models endpoint available
-      }
-    }
-
-    if (abort.signal.aborted) return;
-
-    setTxTestResults((prev) => ({
-      ...prev,
-      auth: { status: "pass", message: apiKey ? "API key accepted" : "No auth required" },
-      models: {
-        status: "pass",
-        message: modelCount > 0
-          ? `${modelCount} model${modelCount !== 1 ? "s" : ""} available`
-          : "No models listed (you can still type a model name)",
-      },
-      transcribe: { status: "running", message: "Sending test audio..." },
-    }));
-
-    // Step 4: Test transcription with a short silent WAV
-    const model = settings.openaiCompatibleModel || "";
-    const txStart = performance.now();
-    try {
-      // Generate a minimal 1-second silent 16kHz mono WAV
-      const sampleRate = 16000;
-      const numSamples = sampleRate; // 1 second
-      const dataSize = numSamples * 2; // 16-bit = 2 bytes per sample
-      const buffer = new ArrayBuffer(44 + dataSize);
-      const view = new DataView(buffer);
-      // WAV header
-      const writeStr = (offset: number, str: string) => {
-        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-      };
-      writeStr(0, "RIFF");
-      view.setUint32(4, 36 + dataSize, true);
-      writeStr(8, "WAVE");
-      writeStr(12, "fmt ");
-      view.setUint32(16, 16, true); // subchunk size
-      view.setUint16(20, 1, true); // PCM
-      view.setUint16(22, 1, true); // mono
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, sampleRate * 2, true); // byte rate
-      view.setUint16(32, 2, true); // block align
-      view.setUint16(34, 16, true); // bits per sample
-      writeStr(36, "data");
-      view.setUint32(40, dataSize, true);
-      // samples are zero (silence)
-
-      const blob = new Blob([buffer], { type: "audio/wav" });
-      const formData = new FormData();
-      formData.append("file", blob, "test.wav");
-      formData.append("model", model);
-      formData.append("response_format", "json");
-
-      const txResponse = await fetch(`${endpoint}/v1/audio/transcriptions`, {
-        method: "POST",
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-        body: formData,
-        signal: abort.signal,
-      });
-
-      const latencyMs = Math.round(performance.now() - txStart);
-
-      if (!txResponse.ok) {
-        const errText = await txResponse.text().catch(() => "");
-        setTxTestResults((prev) => ({
-          ...prev,
-          transcribe: {
-            status: "fail",
-            message: `${txResponse.status}: ${errText.slice(0, 120) || "Request failed"}`,
-            latencyMs,
-          },
-        }));
-        setTxTestStatus("done");
-        return;
-      }
-
-      const txData = await txResponse.json();
-      const text = txData.text ?? "";
-
-      if (abort.signal.aborted) return;
-
-      setTxTestResults((prev) => ({
-        ...prev,
-        transcribe: {
-          status: "pass",
-          message: text
-            ? `OK (${latencyMs}ms): "${text.slice(0, 80)}"`
-            : `OK (${latencyMs}ms): empty transcription (silent audio)`,
-          latencyMs,
-        },
-      }));
-    } catch (err: any) {
-      if (abort.signal.aborted) return;
-      const latencyMs = Math.round(performance.now() - txStart);
-      setTxTestResults((prev) => ({
-        ...prev,
-        transcribe: {
-          status: "fail",
-          message: `Transcription failed: ${err.message || "Unknown error"}`,
-          latencyMs,
-        },
-      }));
-    }
-
-    setTxTestStatus("done");
-  }, [settings.openaiCompatibleEndpoint, settings.openaiCompatibleApiKey, settings.openaiCompatibleModel]);
-
   // Enhanced validation for specific fields
   const validateDeepgramApiKey = useCallback((apiKey: string): FieldValidationResult => {
     if (!apiKey.trim()) {
@@ -953,11 +922,17 @@ export function RecordingSettings() {
     handleSettingsChange({ useChineseMirror: checked }, true);
   };
 
-  // Voice training state
-  const [voiceTraining, setVoiceTraining] = useState<{ active: boolean; secondsLeft: number; dialogOpen: boolean }>({ active: false, secondsLeft: 0, dialogOpen: false });
-  const [speakerSuggestions, setSpeakerSuggestions] = useState<{ id: number; name: string }[]>([]);
-  const [speakerInputFocused, setSpeakerInputFocused] = useState(false);
-  const trainingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Voice training
+  const {
+    voiceTraining,
+    setVoiceTraining,
+    handleStartTraining,
+    handleFinishTraining,
+    speakerSuggestions,
+    speakerInputFocused,
+    setSpeakerInputFocused,
+    trainingIntervalRef,
+  } = useVoiceTraining({ settings });
 
   const VOICE_TRAINING_TEXT = `The human eye processes around ten million bits of visual information every single second. That's roughly the bandwidth of an ethernet connection, streaming directly into your brain through two tiny biological cameras.
 
@@ -968,60 +943,6 @@ Screenpipe works on a similar philosophy. It watches everything that flows throu
 The average knowledge worker switches between four hundred different windows per day and types roughly forty words per minute across dozens of applications. Without a system to capture and organize this firehose of information, most of it simply evaporates.
 
 Your screen is a pipe. Everything you see, hear, and type flows through it. Screenpipe just makes sure nothing valuable leaks away.`;
-
-  // Search speakers as user types
-  useEffect(() => {
-    const name = (settings.userName || "").trim();
-    if (name.length < 1) { setSpeakerSuggestions([]); return; }
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `http://localhost:${settings.port}/speakers/search?name=${encodeURIComponent(name)}`,
-          { signal: controller.signal }
-        );
-        if (res.ok) setSpeakerSuggestions(await res.json());
-      } catch { /* ignore */ }
-    }, 300);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [settings.userName, settings.port]);
-
-  const handleStartTraining = useCallback(() => {
-    const name = (settings.userName || "").trim();
-    if (!name) {
-      toast({ title: "enter your name first", variant: "destructive" });
-      return;
-    }
-    setVoiceTraining({ active: true, secondsLeft: 30, dialogOpen: true });
-
-    trainingIntervalRef.current = setInterval(() => {
-      setVoiceTraining((prev) => {
-        if (prev.secondsLeft <= 1) {
-          if (trainingIntervalRef.current) clearInterval(trainingIntervalRef.current);
-          return { ...prev, secondsLeft: 0 };
-        }
-        return { ...prev, secondsLeft: prev.secondsLeft - 1 };
-      });
-    }, 1000);
-  }, [settings.userName, toast]);
-
-  const handleFinishTraining = useCallback(async () => {
-    if (trainingIntervalRef.current) clearInterval(trainingIntervalRef.current);
-    setVoiceTraining({ active: false, secondsLeft: 0, dialogOpen: false });
-
-    const name = (settings.userName || "").trim();
-    if (!name) return;
-
-    const now = new Date();
-    const startTime = new Date(now.getTime() - 120000); // 2 min ago to capture chunks that started before dialog
-
-    try {
-      await commands.trainVoice(name, startTime.toISOString(), now.toISOString());
-      toast({ title: "voice training started", description: "screenpipe will match your voice in the background — this may take a few minutes" });
-    } catch (e) {
-      toast({ title: "failed to start voice training", description: String(e), variant: "destructive" });
-    }
-  }, [settings.userName, toast]);
 
   const handleDataDirChange = async () => {
     try {
@@ -1348,7 +1269,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                 <Mic className="h-4 w-4 text-muted-foreground shrink-0" />
                 <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
                   Transcription engine
-                  <HelpTooltip text="Deepgram: cloud-based, higher quality, requires API key or screenpipe cloud. Whisper: runs locally, no API key needed, may be slower. OpenAI Compatible: use any OpenAI-compatible API endpoint." />
+                  <HelpTooltip text="Cloud engines send audio to a server for fast, accurate transcription. Offline engines run on your device — fully private but use more CPU/RAM." />
                 </h3>
               </div>
               <Select
@@ -1359,19 +1280,26 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                   <SelectValue placeholder="Select engine" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="screenpipe-cloud" disabled={!settings.user?.cloud_subscribed}>
-                    Screenpipe Cloud {!settings.user?.cloud_subscribed && "(pro)"}{hwCapability?.recommendedEngine === "screenpipe-cloud" && " (recommended)"}
-                  </SelectItem>
-                  <SelectItem value="whisper-tiny">Whisper Tiny</SelectItem>
-                  <SelectItem value="whisper-tiny-quantized">Whisper Tiny Quantized</SelectItem>
-                  <SelectItem value="whisper-large">Whisper Large V3</SelectItem>
-                  <SelectItem value="whisper-large-quantized">Whisper Large V3 Quantized</SelectItem>
-                  <SelectItem value="whisper-large-v3-turbo">Whisper Large V3 Turbo</SelectItem>
-                  <SelectItem value="whisper-large-v3-turbo-quantized">Whisper Large V3 Turbo Quantized</SelectItem>
-                  <SelectItem value="openai-compatible">OpenAI Compatible</SelectItem>
-                  <SelectItem value="qwen3-asr">Qwen3-ASR (0.6B, ONNX)</SelectItem>
-                  <SelectItem value="deepgram">Deepgram</SelectItem>
-                  <SelectItem value="disabled">Disabled (capture only)</SelectItem>
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">cloud</SelectLabel>
+                    <SelectItem value="screenpipe-cloud" disabled={!settings.user?.cloud_subscribed}>
+                      Screenpipe Cloud {!settings.user?.cloud_subscribed && "(pro)"}{hwCapability?.recommendedEngine === "screenpipe-cloud" && " ★"}
+                    </SelectItem>
+                    <SelectItem value="deepgram">Deepgram</SelectItem>
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">offline</SelectLabel>
+                    <SelectItem value="whisper-large-v3-turbo">Whisper Turbo</SelectItem>
+                    <SelectItem value="whisper-large-v3-turbo-quantized">Whisper Turbo (fast)</SelectItem>
+                    <SelectItem value="whisper-tiny">Whisper Tiny</SelectItem>
+                    <SelectItem value="whisper-tiny-quantized">Whisper Tiny (fast)</SelectItem>
+                    <SelectItem value="qwen3-asr">Qwen3-ASR</SelectItem>
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">other</SelectLabel>
+                    <SelectItem value="openai-compatible">OpenAI Compatible</SelectItem>
+                    <SelectItem value="disabled">Disabled (capture only)</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -1828,77 +1756,10 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
 
         {/* Transcription Dictionary */}
         {!settings.disableAudio && (
-        <Card className="border-border bg-card">
-          <CardContent className="px-3 py-2.5">
-            <div className="flex items-center space-x-2.5 mb-2">
-              <Languages className="h-4 w-4 text-muted-foreground shrink-0" />
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                  Transcription dictionary
-                  <HelpTooltip text="Add custom words to improve transcription accuracy (e.g. 'screenpipe', 'posthog'). Optionally set a replacement to auto-correct the output." />
-                  {(settings.vocabularyWords?.length ?? 0) > 0 && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                      {settings.vocabularyWords!.length} words
-                    </Badge>
-                  )}
-                </h3>
-                <p className="text-xs text-muted-foreground">bias transcription toward custom words</p>
-              </div>
-            </div>
-
-            {/* Existing entries */}
-            {(settings.vocabularyWords ?? []).length > 0 && (
-              <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
-                {(settings.vocabularyWords ?? []).map((entry, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1">
-                    <span className="font-mono text-xs">{entry.word}</span>
-                    {entry.replacement && (
-                      <>
-                        <span className="text-muted-foreground text-xs">→</span>
-                        <span className="font-mono text-xs">{entry.replacement}</span>
-                      </>
-                    )}
-                    <button
-                      className="ml-auto text-muted-foreground hover:text-destructive text-xs"
-                      onClick={() => {
-                        const current = [...(settings.vocabularyWords ?? [])];
-                        current.splice(idx, 1);
-                        handleSettingsChange({ vocabularyWords: current }, true);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Add new entry */}
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget;
-                const wordInput = form.elements.namedItem("vocab-word") as HTMLInputElement;
-                const replacementInput = form.elements.namedItem("vocab-replacement") as HTMLInputElement;
-                const word = wordInput.value.trim();
-                if (!word) return;
-                const replacement = replacementInput.value.trim() || undefined;
-                const current = [...(settings.vocabularyWords ?? [])];
-                current.push({ word, replacement });
-                handleSettingsChange({ vocabularyWords: current }, true);
-                wordInput.value = "";
-                replacementInput.value = "";
-              }}
-            >
-              <Input name="vocab-word" placeholder="e.g. screenpipe" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
-              <Input name="vocab-replacement" placeholder="replacement (optional)" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" autoCapitalize="off" />
-              <Button type="submit" size="sm" variant="outline" className="h-7 text-xs px-2">
-                add
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <TranscriptionDictionary
+          vocabularyWords={settings.vocabularyWords ?? []}
+          onChange={(words) => handleSettingsChange({ vocabularyWords: words }, true)}
+        />
         )}
 
       </div>

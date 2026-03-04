@@ -6,7 +6,8 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, Mic, Speaker } from "lucide-react";
+import { Play, Pause, Mic, Speaker, Check as CheckIcon } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SpeakerAssignPopover } from "@/components/speaker-assign-popover";
 import { VideoComponent } from "@/components/rewind/video";
 
@@ -75,6 +76,9 @@ export interface ConversationBubbleProps {
 	onPlay: () => void;
 	onSpeakerAssigned: (newId: number, newName: string) => void;
 	onTimestampClick?: () => void;
+	selectionMode?: boolean;
+	isSelected?: boolean;
+	onToggleSelect?: () => void;
 }
 
 export function ConversationBubble({
@@ -94,14 +98,28 @@ export function ConversationBubble({
 	onPlay,
 	onSpeakerAssigned,
 	onTimestampClick,
+	selectionMode,
+	isSelected,
+	onToggleSelect,
 }: ConversationBubbleProps) {
 	return (
 		<div
 			className={cn(
-				"flex w-full",
+				"flex w-full items-start gap-1.5",
 				side === "right" ? "justify-end" : "justify-start"
 			)}
+			onClick={selectionMode ? onToggleSelect : undefined}
 		>
+			{selectionMode && (
+				<div className="pt-4 shrink-0">
+					<Checkbox
+						checked={isSelected}
+						onCheckedChange={() => onToggleSelect?.()}
+						onClick={(e) => e.stopPropagation()}
+						className="h-3.5 w-3.5"
+					/>
+				</div>
+			)}
 			<div
 				className={cn(
 					"max-w-[85%] border border-border bg-background transition-all",
@@ -110,7 +128,9 @@ export function ConversationBubble({
 					isFirstInGroup ? "mt-3" : "mt-1",
 					// Brand style: sharp corners, 150ms transitions
 					"animate-in fade-in-0 slide-in-from-bottom-2 duration-150",
-					highlighted && "ring-1 ring-foreground/20 bg-muted/30"
+					highlighted && "ring-1 ring-foreground/20 bg-muted/30",
+					selectionMode && "cursor-pointer",
+					isSelected && "ring-1 ring-foreground/40 bg-muted/20"
 				)}
 			>
 				{/* Header - only show for first in group */}
@@ -148,6 +168,23 @@ export function ConversationBubble({
 								</>
 							)}
 						</span>
+					</div>
+				)}
+
+				{/* Inline speaker chip for non-first-in-group bubbles */}
+				{!isFirstInGroup && (
+					<div className="px-3 pt-1.5">
+						<SpeakerAssignPopover
+							audioChunkId={audioChunkId}
+							speakerId={speakerId}
+							speakerName={speakerName}
+							audioFilePath={audioFilePath}
+							onAssigned={onSpeakerAssigned}
+						>
+							<span className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors duration-150">
+								{speakerName || `speaker #${speakerId ?? "?"}`}
+							</span>
+						</SpeakerAssignPopover>
 					</div>
 				)}
 

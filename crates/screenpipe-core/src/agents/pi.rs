@@ -56,6 +56,24 @@ pub fn screenpipe_cloud_models() -> serde_json::Value {
             "cost": {"input": 0.8, "output": 4, "cacheRead": 0.08, "cacheWrite": 1},
             "contextWindow": 200000,
             "maxTokens": 64000
+        },
+        {
+            "id": "gemini-3-flash",
+            "name": "Gemini 3 Flash",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": {"input": 0.10, "output": 0.40, "cacheRead": 0, "cacheWrite": 0},
+            "contextWindow": 1000000,
+            "maxTokens": 65536
+        },
+        {
+            "id": "gemini-3-pro",
+            "name": "Gemini 3 Pro",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": {"input": 1.25, "output": 10.00, "cacheRead": 0, "cacheWrite": 0},
+            "contextWindow": 1000000,
+            "maxTokens": 65536
         }
     ])
 }
