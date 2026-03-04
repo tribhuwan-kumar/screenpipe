@@ -6,7 +6,7 @@
 
 const DEFAULT_OPENAI_COMPATIBLE_ENDPOINT = "http://127.0.0.1:8080";
 
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -106,6 +106,9 @@ import {
 import { AudioEqualizer } from "@/app/shortcut-reminder/audio-equalizer";
 
 import { useOverlayData } from "@/app/shortcut-reminder/use-overlay-data";
+import { useOpenAIModels } from "./hooks/use-openai-models";
+import { useTranscriptionDiagnostics } from "./hooks/use-transcription-diagnostics";
+import { useVoiceTraining } from "./hooks/use-voice-training";
 
 type PermissionsStatus = {
   screenRecording: string;
@@ -202,21 +205,6 @@ const getAudioDeviceIcon = (name: string) => {
   }
   if (getAudioDeviceType(name) === "input") return Mic;
   return Volume2;
-};
-
-type TxDiagnosticStatus = "pass" | "fail" | "skip" | "pending" | "running";
-type TxDiagnosticStep = { status: TxDiagnosticStatus; message: string; latencyMs?: number };
-type TxDiagnostics = {
-  endpoint: TxDiagnosticStep;
-  auth: TxDiagnosticStep;
-  models: TxDiagnosticStep;
-  transcribe: TxDiagnosticStep;
-};
-const INITIAL_TX_DIAGNOSTICS: TxDiagnostics = {
-  endpoint: { status: "pending", message: "" },
-  auth: { status: "pending", message: "" },
-  models: { status: "pending", message: "" },
-  transcribe: { status: "pending", message: "" },
 };
 
 // ─── Transcription Dictionary ────────────────────────────────────────────────
@@ -526,39 +514,32 @@ export function RecordingSettings() {
   const overlayData = useOverlayData();
   const [hwCapability, setHwCapability] = useState<HardwareCapability | null>(null);
 
-  // OpenAI Compatible model fetching state
-  const [openAIModels, setOpenAIModels] = useState<string[]>([]);
-  const [allOpenAIModels, setAllOpenAIModels] = useState<string[]>([]); // Store all models
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
-  const [filterTranscriptionModels, setFilterTranscriptionModels] = useState(true); // Default to filtered
+  // OpenAI Compatible model fetching
+  const {
+    openAIModels,
+    allOpenAIModels,
+    isLoadingModels,
+    filterText: filterTranscriptionModels,
+    setFilterText: setFilterTranscriptionModels,
+    fetchOpenAIModels,
+  } = useOpenAIModels({
+    engine: settings.audioTranscriptionEngine,
+    endpoint: settings.openaiCompatibleEndpoint || "",
+    apiKey: settings.openaiCompatibleApiKey || "",
+  });
 
-  // Transcription diagnostics state
-  const [txTestStatus, setTxTestStatus] = useState<"idle" | "testing" | "done">("idle");
-  const [txTestResults, setTxTestResults] = useState<TxDiagnostics>(INITIAL_TX_DIAGNOSTICS);
-  const [txDiagnosticsOpen, setTxDiagnosticsOpen] = useState(false);
-  const txDiagnosticsAbortRef = useRef<AbortController | null>(null);
+  // Transcription diagnostics
+  const {
+    txTestStatus,
+    txTestResults,
+    txDiagnosticsOpen,
+    setTxDiagnosticsOpen,
+    runTranscriptionDiagnostics,
+  } = useTranscriptionDiagnostics({ settings });
 
   useEffect(() => {
     commands.getHardwareCapability().then(setHwCapability).catch(() => {});
   }, []);
-
-  // Transcription model name patterns
-  const TRANSCRIPTION_MODEL_PATTERNS = [
-    /^whisper/i,
-    /whisper/i,
-    /^canary/i,
-    /^parakeet/i,
-    /^speech/i,
-    /audio.*transcri/i,
-    /^transcribe/i,
-    /stt/i,
-    /^moonshine/i,
-    /^sensevoice/i,
-  ];
-
-  const isLikelyTranscriptionModel = (modelId: string): boolean => {
-    return TRANSCRIPTION_MODEL_PATTERNS.some(pattern => pattern.test(modelId));
-  };
 
   const handlePushFilterToTeam = async (configType: string, key: string, filters: string[]) => {
     setPushingFilter(key);
@@ -775,295 +756,6 @@ export function RecordingSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch OpenAI Compatible models when endpoint changes
-  // Tries /v1/models (OpenAI), then /api/tags (Ollama) as fallback
-  const fetchOpenAIModels = useCallback(async (endpoint: string, apiKey?: string) => {
-    setIsLoadingModels(true);
-    try {
-      const headers: Record<string, string> = {};
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-
-      // Try OpenAI-style /v1/models first
-      let models: string[] = [];
-      try {
-        const response = await fetch(`${endpoint}/v1/models`, {
-          headers,
-          signal: AbortSignal.timeout(5000),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          models = (data.data || []).map((m: any) => m.id).filter(Boolean);
-        }
-      } catch {
-        // endpoint may not support /v1/models — try Ollama fallback
-      }
-
-      // Fallback: try Ollama-style /api/tags
-      if (models.length === 0) {
-        try {
-          const ollamaResponse = await fetch(`${endpoint}/api/tags`, {
-            headers,
-            signal: AbortSignal.timeout(5000),
-          });
-          if (ollamaResponse.ok) {
-            const ollamaData = await ollamaResponse.json();
-            models = (ollamaData.models || []).map((m: any) => m.name).filter(Boolean);
-          }
-        } catch {
-          // Ollama endpoint also not available — models stays empty
-        }
-      }
-
-      setAllOpenAIModels(models);
-    } catch (error) {
-      console.error('Failed to fetch OpenAI models:', error);
-      setAllOpenAIModels(['!API_Error']);
-      setOpenAIModels(['!API_Error']);
-    } finally {
-      setIsLoadingModels(false);
-    }
-  }, []);
-
-  // Update displayed models when filter toggle or all models change
-  useEffect(() => {
-    if (allOpenAIModels.length === 0) return;
-    
-    if (allOpenAIModels.includes('!API_Error')) {
-      setOpenAIModels(allOpenAIModels);
-      return;
-    }
-    
-    if (filterTranscriptionModels) {
-      const filtered = allOpenAIModels.filter(isLikelyTranscriptionModel);
-      setOpenAIModels(filtered.length > 0 ? filtered : allOpenAIModels);
-    } else {
-      setOpenAIModels(allOpenAIModels);
-    }
-  }, [allOpenAIModels, filterTranscriptionModels]);
-
-  // Fetch models when OpenAI Compatible is selected - manually triggered
-  // (not on every keystroke - only on focus change or enter key)
-  useEffect(() => {
-    if (settings.audioTranscriptionEngine === 'openai-compatible') {
-      const apiKey = settings.openaiCompatibleApiKey;
-      // Use default endpoint if not set
-      const endpoint = settings.openaiCompatibleEndpoint || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT;
-      fetchOpenAIModels(endpoint, apiKey);
-    }
-  }, [settings.audioTranscriptionEngine, settings.openaiCompatibleApiKey, fetchOpenAIModels]);
-
-  // Run transcription diagnostics (endpoint → auth → models → transcription test)
-  const runTranscriptionDiagnostics = useCallback(async () => {
-    txDiagnosticsAbortRef.current?.abort();
-    const abort = new AbortController();
-    txDiagnosticsAbortRef.current = abort;
-
-    setTxTestStatus("testing");
-    setTxTestResults({
-      endpoint: { status: "pending", message: "" },
-      auth: { status: "pending", message: "" },
-      models: { status: "pending", message: "" },
-      transcribe: { status: "pending", message: "" },
-    });
-    setTxDiagnosticsOpen(true);
-
-    const endpoint = settings.openaiCompatibleEndpoint || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT;
-    const apiKey = settings.openaiCompatibleApiKey;
-
-    const headers: Record<string, string> = {};
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
-
-    const skipRemaining = (failStep: string, message: string) => {
-      const steps = ["endpoint", "auth", "models", "transcribe"] as const;
-      const failIdx = steps.indexOf(failStep as any);
-      setTxTestResults((prev) => ({
-        ...prev,
-        [failStep]: { status: "fail" as const, message },
-        ...Object.fromEntries(
-          steps
-            .filter((_, i) => i > failIdx)
-            .map((k) => [k, { status: "skip" as const, message: "Skipped" }])
-        ),
-      }));
-      setTxTestStatus("done");
-    };
-
-    // Step 1: Endpoint connectivity — try root URL or /v1/models
-    setTxTestResults((prev) => ({
-      ...prev,
-      endpoint: { status: "running", message: "Connecting..." },
-    }));
-
-    let endpointReachable = false;
-    try {
-      await fetch(endpoint, { signal: abort.signal, method: "GET" });
-      endpointReachable = true;
-    } catch {
-      // root URL failed, try /v1/models as fallback
-      try {
-        await fetch(`${endpoint}/v1/models`, { headers, signal: abort.signal });
-        endpointReachable = true;
-      } catch {
-        // neither worked
-      }
-    }
-
-    if (abort.signal.aborted) return;
-
-    if (!endpointReachable) {
-      skipRemaining("endpoint", `Connection failed. Is the server running at ${endpoint}?`);
-      return;
-    }
-
-    setTxTestResults((prev) => ({
-      ...prev,
-      endpoint: { status: "pass", message: `Server reachable` },
-      auth: { status: "running", message: "Checking..." },
-    }));
-
-    // Step 2+3: Try to list models (also tests auth)
-    let modelCount = 0;
-    // Try OpenAI-style /v1/models
-    try {
-      const modelsResponse = await fetch(`${endpoint}/v1/models`, {
-        headers,
-        signal: abort.signal,
-      });
-      if (modelsResponse.status === 401 || modelsResponse.status === 403) {
-        skipRemaining("auth", `${modelsResponse.status} Unauthorized. Check your API key.`);
-        return;
-      }
-      if (modelsResponse.ok) {
-        const data = await modelsResponse.json();
-        modelCount = (data.data || []).filter((m: any) => m.id).length;
-      }
-    } catch {
-      // /v1/models not available, try Ollama fallback
-    }
-
-    // Fallback: try Ollama-style /api/tags
-    if (modelCount === 0) {
-      try {
-        const ollamaResponse = await fetch(`${endpoint}/api/tags`, {
-          headers,
-          signal: abort.signal,
-        });
-        if (ollamaResponse.ok) {
-          const ollamaData = await ollamaResponse.json();
-          modelCount = (ollamaData.models || []).filter((m: any) => m.name).length;
-        }
-      } catch {
-        // no models endpoint available
-      }
-    }
-
-    if (abort.signal.aborted) return;
-
-    setTxTestResults((prev) => ({
-      ...prev,
-      auth: { status: "pass", message: apiKey ? "API key accepted" : "No auth required" },
-      models: {
-        status: "pass",
-        message: modelCount > 0
-          ? `${modelCount} model${modelCount !== 1 ? "s" : ""} available`
-          : "No models listed (you can still type a model name)",
-      },
-      transcribe: { status: "running", message: "Sending test audio..." },
-    }));
-
-    // Step 4: Test transcription with a short silent WAV
-    const model = settings.openaiCompatibleModel || "";
-    const txStart = performance.now();
-    try {
-      // Generate a minimal 1-second silent 16kHz mono WAV
-      const sampleRate = 16000;
-      const numSamples = sampleRate; // 1 second
-      const dataSize = numSamples * 2; // 16-bit = 2 bytes per sample
-      const buffer = new ArrayBuffer(44 + dataSize);
-      const view = new DataView(buffer);
-      // WAV header
-      const writeStr = (offset: number, str: string) => {
-        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-      };
-      writeStr(0, "RIFF");
-      view.setUint32(4, 36 + dataSize, true);
-      writeStr(8, "WAVE");
-      writeStr(12, "fmt ");
-      view.setUint32(16, 16, true); // subchunk size
-      view.setUint16(20, 1, true); // PCM
-      view.setUint16(22, 1, true); // mono
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, sampleRate * 2, true); // byte rate
-      view.setUint16(32, 2, true); // block align
-      view.setUint16(34, 16, true); // bits per sample
-      writeStr(36, "data");
-      view.setUint32(40, dataSize, true);
-      // samples are zero (silence)
-
-      const blob = new Blob([buffer], { type: "audio/wav" });
-      const formData = new FormData();
-      formData.append("file", blob, "test.wav");
-      formData.append("model", model);
-      formData.append("response_format", "json");
-
-      const txResponse = await fetch(`${endpoint}/v1/audio/transcriptions`, {
-        method: "POST",
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-        body: formData,
-        signal: abort.signal,
-      });
-
-      const latencyMs = Math.round(performance.now() - txStart);
-
-      if (!txResponse.ok) {
-        const errText = await txResponse.text().catch(() => "");
-        setTxTestResults((prev) => ({
-          ...prev,
-          transcribe: {
-            status: "fail",
-            message: `${txResponse.status}: ${errText.slice(0, 120) || "Request failed"}`,
-            latencyMs,
-          },
-        }));
-        setTxTestStatus("done");
-        return;
-      }
-
-      const txData = await txResponse.json();
-      const text = txData.text ?? "";
-
-      if (abort.signal.aborted) return;
-
-      setTxTestResults((prev) => ({
-        ...prev,
-        transcribe: {
-          status: "pass",
-          message: text
-            ? `OK (${latencyMs}ms): "${text.slice(0, 80)}"`
-            : `OK (${latencyMs}ms): empty transcription (silent audio)`,
-          latencyMs,
-        },
-      }));
-    } catch (err: any) {
-      if (abort.signal.aborted) return;
-      const latencyMs = Math.round(performance.now() - txStart);
-      setTxTestResults((prev) => ({
-        ...prev,
-        transcribe: {
-          status: "fail",
-          message: `Transcription failed: ${err.message || "Unknown error"}`,
-          latencyMs,
-        },
-      }));
-    }
-
-    setTxTestStatus("done");
-  }, [settings.openaiCompatibleEndpoint, settings.openaiCompatibleApiKey, settings.openaiCompatibleModel]);
-
   // Enhanced validation for specific fields
   const validateDeepgramApiKey = useCallback((apiKey: string): FieldValidationResult => {
     if (!apiKey.trim()) {
@@ -1230,11 +922,17 @@ export function RecordingSettings() {
     handleSettingsChange({ useChineseMirror: checked }, true);
   };
 
-  // Voice training state
-  const [voiceTraining, setVoiceTraining] = useState<{ active: boolean; secondsLeft: number; dialogOpen: boolean }>({ active: false, secondsLeft: 0, dialogOpen: false });
-  const [speakerSuggestions, setSpeakerSuggestions] = useState<{ id: number; name: string }[]>([]);
-  const [speakerInputFocused, setSpeakerInputFocused] = useState(false);
-  const trainingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Voice training
+  const {
+    voiceTraining,
+    setVoiceTraining,
+    handleStartTraining,
+    handleFinishTraining,
+    speakerSuggestions,
+    speakerInputFocused,
+    setSpeakerInputFocused,
+    trainingIntervalRef,
+  } = useVoiceTraining({ settings });
 
   const VOICE_TRAINING_TEXT = `The human eye processes around ten million bits of visual information every single second. That's roughly the bandwidth of an ethernet connection, streaming directly into your brain through two tiny biological cameras.
 
@@ -1245,60 +943,6 @@ Screenpipe works on a similar philosophy. It watches everything that flows throu
 The average knowledge worker switches between four hundred different windows per day and types roughly forty words per minute across dozens of applications. Without a system to capture and organize this firehose of information, most of it simply evaporates.
 
 Your screen is a pipe. Everything you see, hear, and type flows through it. Screenpipe just makes sure nothing valuable leaks away.`;
-
-  // Search speakers as user types
-  useEffect(() => {
-    const name = (settings.userName || "").trim();
-    if (name.length < 1) { setSpeakerSuggestions([]); return; }
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `http://localhost:${settings.port}/speakers/search?name=${encodeURIComponent(name)}`,
-          { signal: controller.signal }
-        );
-        if (res.ok) setSpeakerSuggestions(await res.json());
-      } catch { /* ignore */ }
-    }, 300);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [settings.userName, settings.port]);
-
-  const handleStartTraining = useCallback(() => {
-    const name = (settings.userName || "").trim();
-    if (!name) {
-      toast({ title: "enter your name first", variant: "destructive" });
-      return;
-    }
-    setVoiceTraining({ active: true, secondsLeft: 30, dialogOpen: true });
-
-    trainingIntervalRef.current = setInterval(() => {
-      setVoiceTraining((prev) => {
-        if (prev.secondsLeft <= 1) {
-          if (trainingIntervalRef.current) clearInterval(trainingIntervalRef.current);
-          return { ...prev, secondsLeft: 0 };
-        }
-        return { ...prev, secondsLeft: prev.secondsLeft - 1 };
-      });
-    }, 1000);
-  }, [settings.userName, toast]);
-
-  const handleFinishTraining = useCallback(async () => {
-    if (trainingIntervalRef.current) clearInterval(trainingIntervalRef.current);
-    setVoiceTraining({ active: false, secondsLeft: 0, dialogOpen: false });
-
-    const name = (settings.userName || "").trim();
-    if (!name) return;
-
-    const now = new Date();
-    const startTime = new Date(now.getTime() - 120000); // 2 min ago to capture chunks that started before dialog
-
-    try {
-      await commands.trainVoice(name, startTime.toISOString(), now.toISOString());
-      toast({ title: "voice training started", description: "screenpipe will match your voice in the background — this may take a few minutes" });
-    } catch (e) {
-      toast({ title: "failed to start voice training", description: String(e), variant: "destructive" });
-    }
-  }, [settings.userName, toast]);
 
   const handleDataDirChange = async () => {
     try {

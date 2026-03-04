@@ -48,6 +48,16 @@ private class LiveTextManager {
     var currentAnalysis: ImageAnalysis?
     var hostContentView: NSView?
 
+    /// Reusable URLSession for fetching frame images (avoid per-call session alloc).
+    lazy var urlSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 30
+        // No caching — frames are unique, caching just wastes RAM
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
     private init() {}
 
     func ensureAnalyzer() -> ImageAnalyzer {
@@ -153,40 +163,38 @@ public func ltAnalyzeImage(
             return -3
         }
 
-        // Load image from path or URL
+        // Load image from path or URL — use autorelease pool to ensure
+        // transient NSImage/CGImage/Data objects are freed promptly.
         var nsImage: NSImage?
         var loadError: String?
-        if pathStr.hasPrefix("http://") || pathStr.hasPrefix("https://") {
-            if let url = URL(string: pathStr) {
-                // Use URLSession with a short timeout for localhost frames
-                let sem = DispatchSemaphore(value: 0)
-                var fetchedData: Data?
-                var fetchError: Error?
-                let config = URLSessionConfiguration.ephemeral
-                config.timeoutIntervalForRequest = 30
-                let session = URLSession(configuration: config)
-                session.dataTask(with: url) { data, response, error in
-                    fetchedData = data
-                    fetchError = error
-                    sem.signal()
-                }.resume()
-                sem.wait()
-                session.invalidateAndCancel()
+        autoreleasepool {
+            if pathStr.hasPrefix("http://") || pathStr.hasPrefix("https://") {
+                if let url = URL(string: pathStr) {
+                    let sem = DispatchSemaphore(value: 0)
+                    var fetchedData: Data?
+                    var fetchError: Error?
+                    mgr.urlSession.dataTask(with: url) { data, response, error in
+                        fetchedData = data
+                        fetchError = error
+                        sem.signal()
+                    }.resume()
+                    sem.wait()
 
-                if let err = fetchError {
-                    loadError = "fetch error: \(err.localizedDescription)"
-                } else if let data = fetchedData, !data.isEmpty {
-                    nsImage = NSImage(data: data)
-                    if nsImage == nil { loadError = "NSImage init failed (\(data.count) bytes)" }
+                    if let err = fetchError {
+                        loadError = "fetch error: \(err.localizedDescription)"
+                    } else if let data = fetchedData, !data.isEmpty {
+                        nsImage = NSImage(data: data)
+                        if nsImage == nil { loadError = "NSImage init failed (\(data.count) bytes)" }
+                    } else {
+                        loadError = "empty response"
+                    }
                 } else {
-                    loadError = "empty response"
+                    loadError = "invalid URL"
                 }
             } else {
-                loadError = "invalid URL"
+                nsImage = NSImage(contentsOfFile: pathStr)
+                if nsImage == nil { loadError = "file not found" }
             }
-        } else {
-            nsImage = NSImage(contentsOfFile: pathStr)
-            if nsImage == nil { loadError = "file not found" }
         }
         guard let image = nsImage, image.cgImage(forProposedRect: nil, context: nil, hints: nil) != nil else {
             outError.pointee = makeCString("failed to load image: \(pathStr) (\(loadError ?? "unknown"))")
@@ -201,11 +209,11 @@ public func ltAnalyzeImage(
         var analysisResult: ImageAnalysis?
         var analysisError: Error?
 
-        let config = ImageAnalyzer.Configuration([.text, .machineReadableCode])
+        let analyzerConfig = ImageAnalyzer.Configuration([.text, .machineReadableCode])
 
-        Task.detached {
+        Task.detached { [image] in
             do {
-                let analysis = try await analyzer.analyze(image, orientation: .up, configuration: config)
+                let analysis = try await analyzer.analyze(image, orientation: .up, configuration: analyzerConfig)
                 analysisResult = analysis
             } catch {
                 analysisError = error
@@ -213,6 +221,8 @@ public func ltAnalyzeImage(
             semaphore.signal()
         }
         semaphore.wait()
+        // Release image immediately — analysis holds its own data
+        nsImage = nil
 
         if let err = analysisError {
             outError.pointee = makeCString("analysis failed: \(err.localizedDescription)")
@@ -289,13 +299,13 @@ public func ltHighlightRanges(_ searchTermsJson: UnsafePointer<CChar>?) -> Int32
         // Use transcript from analysis (not overlay.text which requires MainActor)
         let fullText = analysis.transcript
 
-        // Find all ranges of all search terms (case-insensitive)
+        // Search case-insensitively in the ORIGINAL string so indices are valid
+        // for overlay.selectedRanges. Using lowercased() creates a new string
+        // whose indices are incompatible — causes fatal "String index out of bounds".
         var ranges: [Range<String.Index>] = []
         for term in terms {
             var searchStart = fullText.startIndex
-            let lowerFull = fullText.lowercased()
-            let lowerTerm = term.lowercased()
-            while let range = lowerFull.range(of: lowerTerm, range: searchStart..<lowerFull.endIndex) {
+            while let range = fullText.range(of: term, options: .caseInsensitive, range: searchStart..<fullText.endIndex) {
                 ranges.append(range)
                 searchStart = range.upperBound
             }
@@ -367,6 +377,7 @@ public func ltDestroy() -> Int32 {
         mgr.analyzer = nil
         mgr.currentAnalysis = nil
         mgr.hostContentView = nil
+        mgr.urlSession.invalidateAndCancel()
         return 0
     }
     #endif

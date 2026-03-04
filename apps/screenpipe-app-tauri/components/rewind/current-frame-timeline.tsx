@@ -12,13 +12,13 @@ import { SelectableTextLayer, getSelectableLayerText, clearSelectableLayerSelect
 import { RegionOcrOverlay } from "@/components/rewind/region-ocr-overlay";
 import { useSearchHighlight } from "@/lib/hooks/use-search-highlight";
 import { useSettings } from "@/lib/hooks/use-settings";
-import { ImageOff, ChevronLeft, ChevronRight, Copy, ImageIcon, Link2, MessageCircle, ExternalLink, Type, Zap } from "lucide-react";
-import { usePipes, type TemplatePipe } from "@/lib/hooks/use-pipes";
-import posthog from "posthog-js";
+import { ImageOff, ChevronLeft, ChevronRight, Copy, ImageIcon, Link2, MessageCircle, Type } from "lucide-react";
+import { usePipes } from "@/lib/hooks/use-pipes";
 import { toast } from "@/components/ui/use-toast";
-import { commands } from "@/lib/utils/tauri";
 import { invoke } from "@tauri-apps/api/core";
-import { showChatWithPrefill } from "@/lib/chat-utils";
+import { useFrameLoading } from "@/components/rewind/hooks/use-frame-loading";
+import { useLiveText } from "@/components/rewind/hooks/use-live-text";
+import { useFrameActions } from "@/components/rewind/hooks/use-frame-actions";
 
 export interface DetectedUrl {
 	normalized: string;
@@ -62,36 +62,6 @@ export const SkeletonLoader: FC = () => {
 	);
 };
 
-// Debounce delay for frame loading (ms) — reduced for arrow keys
-const FRAME_LOAD_DEBOUNCE_MS = 80;
-const FRAME_LOAD_DEBOUNCE_ARROW_MS = 0;
-
-// Number of adjacent frames to preload in each direction
-const PRELOAD_ADJACENT = 3;
-
-// Track which chunks have failed with TTL — entries expire so finished chunks can be retried
-const FAILED_CHUNK_TTL_MS = 30_000;
-const failedChunks = new Map<string, number>();
-
-function isChunkFailed(path: string): boolean {
-	const t = failedChunks.get(path);
-	if (t === undefined) return false;
-	if (Date.now() - t > FAILED_CHUNK_TTL_MS) {
-		failedChunks.delete(path);
-		return false;
-	}
-	return true;
-}
-
-function markChunkFailed(path: string): void {
-	failedChunks.set(path, Date.now());
-}
-
-// Cache calibrated fps per video file path so we only compute once
-const calibratedFpsCache = new Map<string, number>();
-
-
-
 
 
 export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
@@ -113,84 +83,38 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 	const { settings } = useSettings();
 	const { templatePipes } = usePipes();
 	const { highlightTerms, dismissed: highlightDismissed, clear: clearHighlight } = useSearchHighlight();
-	const [isLoading, setIsLoading] = useState(true);
 	const [contextMenuOpen, setContextMenuOpen] = useState(false);
 	const contextMenuPositionRef = useRef<{ x: number; y: number } | null>(null);
-	const [hasError, setHasError] = useState(false);
-	// Native macOS Live Text overlay (VisionKit ImageAnalysisOverlayView)
-	const [nativeLiveTextActive, setNativeLiveTextActive] = useState(false);
-	const liveTextInitRef = useRef(false);
-	const [naturalDimensions, setNaturalDimensions] = useState<{
-		width: number;
-		height: number;
-	} | null>(null);
-	const [renderedImageInfo, setRenderedImageInfo] = useState<{
-		width: number;
-		height: number;
-		offsetX: number;
-		offsetY: number;
-	} | null>(null);
-	// Whether to use <video> seeking or fall back to <img> via ffmpeg
-	// Try video mode first on all platforms; onError fallback handles unsupported codecs
-	const [useVideoMode, setUseVideoMode] = useState(true);
-	// Successfully preloaded fallback image URL — only updated on load success
-	const [displayedFallbackUrl, setDisplayedFallbackUrl] = useState<string | null>(null);
-	// Debounced frame — only updates after scroll settles
-	const [debouncedFrame, setDebouncedFrame] = useState<{
-		filePath: string;
-		offsetIndex: number;
-		fps: number;
-		frameId: string;
-	} | null>(null);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
-	const containerRef = useRef<HTMLDivElement>(null);
-	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const frameLoadStartTimeRef = useRef<number | null>(null);
-	const framesSkippedRef = useRef<number>(0);
-	const lastFrameIdRef = useRef<string | null>(null);
-	// Track currently loaded video chunk to avoid reloading same file
-	const loadedChunkRef = useRef<string | null>(null);
-	// Generation counter to discard stale events
-	const seekGenRef = useRef(0);
 
 	const device = currentFrame?.devices?.[0];
 	const frameId = device?.frame_id;
-	const filePath = device?.metadata?.file_path;
-	const offsetIndex = device?.offset_index ?? 0;
-	const fpsFromServer = device?.fps ?? 0.5;
 
-
-	// Track skipped frames for analytics
-	useEffect(() => {
-		if (frameId && lastFrameIdRef.current && frameId !== lastFrameIdRef.current) {
-			if (frameLoadStartTimeRef.current !== null) {
-				framesSkippedRef.current += 1;
-			}
-		}
-		lastFrameIdRef.current = frameId;
-	}, [frameId]);
-
-	// Snapshot frame direct-load state (bypasses HTTP server entirely)
-	const [snapshotAssetUrl, setSnapshotAssetUrl] = useState<string | null>(null);
-	const [snapshotFailed, setSnapshotFailed] = useState(false);
-
-	// Debounce frame changes — skip debounce for arrow key navigation
-	useEffect(() => {
-		if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-		if (!frameId || !filePath) {
-			setDebouncedFrame(null);
-			return;
-		}
-		setIsLoading(true);
-		const delay = isArrowNav ? FRAME_LOAD_DEBOUNCE_ARROW_MS : FRAME_LOAD_DEBOUNCE_MS;
-		debounceTimerRef.current = setTimeout(() => {
-			setDebouncedFrame({ filePath, offsetIndex, fps: fpsFromServer, frameId });
-		}, delay);
-		return () => {
-			if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-		};
-	}, [frameId, filePath, offsetIndex, fpsFromServer, isArrowNav]);
+	// --- Frame loading hook (debounce, video seek, fallback, snapshot, resize) ---
+	const {
+		debouncedFrame,
+		isLoading,
+		hasError,
+		useVideoMode,
+		setUseVideoMode,
+		displayedFallbackUrl,
+		snapshotAssetUrl,
+		isSnapshotFrame,
+		snapshotFailed,
+		naturalDimensions,
+		renderedImageInfo,
+		containerRef,
+	} = useFrameLoading({
+		currentFrame,
+		adjacentFrames,
+		isArrowNav,
+		searchNavFrame,
+		onSearchNavComplete,
+		onFrameUnavailable,
+		onFrameLoadError,
+		videoRef,
+	});
 
 	// Clear text selection when frame changes (avoid stale selection from previous frame)
 	useEffect(() => {
@@ -203,290 +127,6 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		const timer = setTimeout(clearHighlight, 650);
 		return () => clearTimeout(timer);
 	}, [highlightDismissed, highlightTerms.length, clearHighlight]);
-
-	// Detect snapshot frames (event-driven JPEGs) vs video chunks
-	const isSnapshotFrame = useMemo(() => {
-		if (!debouncedFrame?.filePath) return false;
-		const lower = debouncedFrame.filePath.toLowerCase();
-		return lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png');
-	}, [debouncedFrame?.filePath]);
-
-	// Reset snapshot failure flag when frame changes.
-	// DON'T clear snapshotAssetUrl here — keep the old image visible until
-	// the new one finishes preloading (the snapshot effect sets the URL only
-	// after img.onload). Clearing it eagerly causes a white flash.
-	useEffect(() => {
-		setSnapshotFailed(false);
-	}, [debouncedFrame?.filePath]);
-
-	// Convert file path to asset URL
-	const getVideoUrl = useCallback(async (path: string): Promise<string | null> => {
-		try {
-			const { convertFileSrc } = await import("@tauri-apps/api/core");
-			return convertFileSrc(path);
-		} catch {
-			return null;
-		}
-	}, []);
-
-	// Resolve the effective fps for a chunk: validate server value, or auto-calibrate from video duration.
-	// Pre-migration chunks default to 0.5 which may be wrong (e.g., CLI uses 1.0).
-	// The sanity check catches this and recalibrates.
-	const resolveEffectiveFps = useCallback((
-		path: string,
-		serverFps: number,
-		video: HTMLVideoElement,
-		offsetIndex: number,
-	): number | null => {
-		// 1. Check calibration cache first (from a previous correction)
-		const cached = calibratedFpsCache.get(path);
-		if (cached !== undefined) return cached;
-
-		// 2. Validate server fps against video duration
-		if (serverFps > 0) {
-			const expectedTime = offsetIndex / serverFps;
-			if (expectedTime <= video.duration + 0.5) {
-				return serverFps; // looks valid
-			}
-			// Server fps is wrong (seek would overshoot) — fall through to calibration
-			console.warn(`fps ${serverFps} invalid for offset ${offsetIndex}: would seek to ${expectedTime.toFixed(1)}s but video is ${video.duration.toFixed(1)}s`);
-		}
-
-		// 3. Auto-calibrate from video duration
-		const duration = video.duration;
-		if (duration <= 0 || !isFinite(duration)) return null;
-
-		// Try common fps values: 0.2, 0.5, 1.0, 2.0
-		const commonFps = [0.2, 0.5, 1.0, 2.0];
-		for (const candidate of commonFps) {
-			const maxOffset = Math.floor(duration * candidate);
-			if (offsetIndex < maxOffset) {
-				calibratedFpsCache.set(path, candidate);
-				console.log(`auto-calibrated fps=${candidate} for ${path} (duration=${duration.toFixed(1)}s, offset=${offsetIndex})`);
-				return candidate;
-			}
-		}
-
-		// Last resort: derive directly
-		const derived = (offsetIndex + 1) / duration;
-		calibratedFpsCache.set(path, derived);
-		console.log(`derived fps=${derived.toFixed(3)} for ${path} (duration=${duration.toFixed(1)}s, offset=${offsetIndex})`);
-		return derived;
-	}, []);
-
-	// Main video seeking effect
-	useEffect(() => {
-		if (!debouncedFrame || !useVideoMode || isSnapshotFrame || searchNavFrame) return;
-		const { filePath: path, offsetIndex: idx, fps: serverFps, frameId: fid } = debouncedFrame;
-
-		// If this chunk previously failed, go straight to fallback
-		if (isChunkFailed(path)) {
-			setUseVideoMode(false);
-			return;
-		}
-
-		const gen = ++seekGenRef.current;
-		frameLoadStartTimeRef.current = performance.now();
-
-		const doSeek = async () => {
-			const video = videoRef.current;
-			if (!video) return;
-
-			// Load new chunk if needed
-			if (loadedChunkRef.current !== path) {
-	
-
-				const url = await getVideoUrl(path);
-				if (!url || gen !== seekGenRef.current) return;
-
-				loadedChunkRef.current = path;
-				video.src = url;
-				video.load();
-
-				// Wait for loadeddata (need duration for calibration)
-				await new Promise<void>((resolve, reject) => {
-					const onLoaded = () => {
-						video.removeEventListener("loadeddata", onLoaded);
-						video.removeEventListener("error", onError);
-						resolve();
-					};
-					const onError = () => {
-						video.removeEventListener("loadeddata", onLoaded);
-						video.removeEventListener("error", onError);
-						reject(new Error("video load failed"));
-					};
-					if (video.readyState >= 2) {
-						resolve();
-						return;
-					}
-					video.addEventListener("loadeddata", onLoaded);
-					video.addEventListener("error", onError);
-				});
-			}
-
-			if (gen !== seekGenRef.current) return;
-
-			// Resolve effective fps (auto-calibrate if needed)
-			const effectiveFps = resolveEffectiveFps(path, serverFps, video, idx);
-			if (effectiveFps === null || effectiveFps <= 0) {
-				throw new Error(`cannot determine fps for ${path}`);
-			}
-
-			// Seek to frame with bounds check
-			let targetTime = idx / effectiveFps;
-			// Clamp to video duration (safety net)
-			if (targetTime > video.duration) {
-				console.warn(`seek target ${targetTime.toFixed(1)}s > duration ${video.duration.toFixed(1)}s, clamping`);
-				targetTime = Math.max(0, video.duration - 0.01);
-			}
-
-			if (Math.abs(video.currentTime - targetTime) > 0.001) {
-				video.currentTime = targetTime;
-				await new Promise<void>((resolve) => {
-					const onSeeked = () => {
-						video.removeEventListener("seeked", onSeeked);
-						resolve();
-					};
-					video.addEventListener("seeked", onSeeked);
-				});
-			}
-
-			if (gen !== seekGenRef.current) return;
-
-			// Frame is ready
-
-			setIsLoading(false);
-			setHasError(false);
-			setNaturalDimensions({
-				width: video.videoWidth,
-				height: video.videoHeight,
-			});
-
-			// Analytics
-			if (frameLoadStartTimeRef.current !== null) {
-				const loadTime = performance.now() - frameLoadStartTimeRef.current;
-				posthog.capture("timeline_frame_load_time", {
-					duration_ms: Math.round(loadTime),
-					frame_id: fid,
-					success: true,
-					mode: "video_seek",
-					fps_source: calibratedFpsCache.has(path) ? "calibrated" : "server",
-					effective_fps: effectiveFps,
-					frames_skipped: framesSkippedRef.current,
-					image_width: video.videoWidth,
-					image_height: video.videoHeight,
-				});
-				frameLoadStartTimeRef.current = null;
-				framesSkippedRef.current = 0;
-			}
-		};
-
-		doSeek().catch((err) => {
-			if (gen !== seekGenRef.current) return;
-			console.warn("Video seek failed, falling back to ffmpeg:", err);
-
-			markChunkFailed(path);
-			loadedChunkRef.current = null;
-			setUseVideoMode(false);
-		});
-	}, [debouncedFrame, useVideoMode, getVideoUrl, resolveEffectiveFps, isSnapshotFrame, searchNavFrame]);
-
-	// Snapshot frames: load directly via Tauri asset protocol (no HTTP/DB needed)
-	useEffect(() => {
-		if (!isSnapshotFrame || snapshotFailed || !debouncedFrame?.filePath) return;
-		let cancelled = false;
-		frameLoadStartTimeRef.current = performance.now();
-
-		getVideoUrl(debouncedFrame.filePath).then((url) => {
-			if (cancelled || !url) return;
-			// Preload before displaying to avoid flicker
-			const img = new Image();
-			img.onload = () => {
-				if (cancelled) return;
-				setSnapshotAssetUrl(url);
-				setIsLoading(false);
-				setHasError(false);
-				setNaturalDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-				if (frameLoadStartTimeRef.current !== null) {
-					const loadTime = performance.now() - frameLoadStartTimeRef.current;
-					posthog.capture("timeline_frame_load_time", {
-						duration_ms: Math.round(loadTime),
-						frame_id: debouncedFrame.frameId,
-						success: true,
-						mode: "snapshot_direct",
-						frames_skipped: framesSkippedRef.current,
-					});
-					frameLoadStartTimeRef.current = null;
-					framesSkippedRef.current = 0;
-				}
-			};
-			img.onerror = () => {
-				if (cancelled) return;
-				setSnapshotFailed(true); // fall through to HTTP fallback
-			};
-			img.src = url;
-		});
-
-		return () => { cancelled = true; };
-	}, [isSnapshotFrame, snapshotFailed, debouncedFrame?.filePath, debouncedFrame?.frameId, getVideoUrl]);
-
-	// Fallback: ffmpeg <img> mode (same as old behavior)
-	// Skipped for snapshot frames that loaded successfully via asset protocol
-	// Also used when searchNavFrame is true (instant JPEG for first frame after search nav)
-	const fallbackImageUrl = useMemo(() => {
-		if (!debouncedFrame) return null;
-		// Force HTTP JPEG for search navigation (skip slow video seek)
-		if (searchNavFrame) {
-			return `http://localhost:3030/frames/${debouncedFrame.frameId}`;
-		}
-		if (useVideoMode) return null;
-		if (isSnapshotFrame && !snapshotFailed) return null;
-		return `http://localhost:3030/frames/${debouncedFrame.frameId}`;
-	}, [useVideoMode, debouncedFrame, isSnapshotFrame, snapshotFailed, searchNavFrame]);
-
-	// Preload fallback image — only swap displayed URL when the new image loads successfully
-	useEffect(() => {
-		if (!fallbackImageUrl) return;
-		frameLoadStartTimeRef.current = performance.now();
-		const img = new Image();
-		img.onload = () => {
-
-			setDisplayedFallbackUrl(fallbackImageUrl);
-			setIsLoading(false);
-			setHasError(false);
-			setNaturalDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-			if (frameLoadStartTimeRef.current !== null) {
-				const loadTime = performance.now() - frameLoadStartTimeRef.current;
-				posthog.capture("timeline_frame_load_time", {
-					duration_ms: Math.round(loadTime),
-					frame_id: debouncedFrame?.frameId,
-					success: true,
-					mode: searchNavFrame ? "search_nav_fallback" : "ffmpeg_fallback",
-					frames_skipped: framesSkippedRef.current,
-				});
-				frameLoadStartTimeRef.current = null;
-				framesSkippedRef.current = 0;
-			}
-			// Clear search nav mode after first frame loads so subsequent scrolling uses video seek
-			if (searchNavFrame) {
-				onSearchNavComplete?.();
-			}
-		};
-		img.onerror = () => {
-			// Preload failed — keep showing previous image
-			setIsLoading(false);
-			// Still clear search nav mode on error to avoid getting stuck
-			if (searchNavFrame) {
-				onSearchNavComplete?.();
-			}
-		};
-		img.src = fallbackImageUrl;
-		return () => {
-			img.onload = null;
-			img.onerror = null;
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [fallbackImageUrl]);
 
 	// Frame context (accessibility text + URLs)
 	const { context: frameContext, isLoading: contextLoading } = useFrameContext(
@@ -554,77 +194,14 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 
 	useEffect(() => { onUrlsDetected?.(detectedUrls); }, [detectedUrls, onUrlsDetected]);
 
-	// Quick actions: copy image, OCR text, deep link, ask about frame
-	const copyImage = useCallback(async () => {
-		if (!debouncedFrame?.frameId) return;
-		try {
-			await invoke("copy_frame_to_clipboard", {
-				frameId: parseInt(debouncedFrame.frameId, 10),
-			});
-			toast({ title: "copied image", description: "frame copied to clipboard" });
-		} catch (err) {
-			console.warn("Copy image failed:", err);
-			toast({
-				title: "copy failed",
-				description: err instanceof Error ? err.message : "could not copy image",
-				variant: "destructive",
-			});
-		}
-	}, [debouncedFrame?.frameId]);
-
-	const copyFrameText = useCallback(async () => {
-		if (!debouncedFrame?.frameId) return;
-		// Prefer accessibility text, fall back to OCR text positions
-		let text = frameContext?.text;
-		if (!text?.trim() && textPositions.length > 0) {
-			text = textPositions.map((p) => p.text).join("\n");
-		}
-		if (!text?.trim()) {
-			toast({
-				title: "no text",
-				description: "no text available for this frame",
-				variant: "destructive",
-			});
-			return;
-		}
-		await navigator.clipboard.writeText(text);
-		toast({ title: "copied text", description: "text copied to clipboard" });
-	}, [debouncedFrame?.frameId, frameContext?.text, textPositions]);
-
-	const copyDeeplinkAction = useCallback(async () => {
-		if (!debouncedFrame?.frameId) return;
-		try {
-			await invoke("copy_deeplink_to_clipboard", {
-				frameId: parseInt(debouncedFrame.frameId, 10),
-			});
-			toast({ title: "copied deeplink", description: "frame link copied to clipboard" });
-		} catch (err) {
-			console.warn("Copy deeplink failed:", err);
-			toast({
-				title: "copy failed",
-				description: err instanceof Error ? err.message : "could not copy",
-				variant: "destructive",
-			});
-		}
-	}, [debouncedFrame?.frameId]);
-
-	const askAboutFrame = useCallback(async () => {
-		if (!debouncedFrame?.frameId || !device) return;
-		const rawText = frameContext?.text || textPositions.map((p) => p.text).join(" ");
-		const textSnippet = rawText.slice(0, 300);
-		const context = `Context from timeline frame:\n${device.metadata?.app_name || "?"} - ${device.metadata?.window_name || "?"}\nTime: ${currentFrame?.timestamp || "?"}\n\nText:\n${textSnippet}${textSnippet.length >= 300 ? "…" : ""}`;
-		await showChatWithPrefill({ context, frameId: parseInt(debouncedFrame.frameId, 10) });
-		toast({ title: "ask about this frame", description: "chat opened with frame context" });
-	}, [debouncedFrame, device, frameContext?.text, textPositions, currentFrame]);
-
-	const runPipeWithContext = useCallback(async (pipe: TemplatePipe) => {
-		if (!debouncedFrame?.frameId || !device) return;
-		const rawText = frameContext?.text || textPositions.map((p) => p.text).join(" ");
-		const textSnippet = rawText.slice(0, 300);
-		const context = `Context from timeline frame:\n${device.metadata?.app_name || "?"} - ${device.metadata?.window_name || "?"}\nTime: ${currentFrame?.timestamp || "?"}\n\nText:\n${textSnippet}${textSnippet.length >= 300 ? "…" : ""}`;
-		await showChatWithPrefill({ context, prompt: pipe.prompt, autoSend: true });
-		toast({ title: `${pipe.icon} ${pipe.title}`, description: "running pipe with frame context" });
-	}, [debouncedFrame, device, frameContext?.text, textPositions, currentFrame]);
+	// --- Frame actions hook (copy image, text, deeplink, ask, run pipe) ---
+	const { copyImage, copyFrameText, copyDeeplinkAction, askAboutFrame, runPipeWithContext } = useFrameActions({
+		debouncedFrame,
+		frameContext,
+		textPositions,
+		currentFrame,
+		templatePipes,
+	});
 
 	// Context menu: close on outside click
 	useEffect(() => {
@@ -668,69 +245,19 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		return () => el.removeEventListener("keydown", handleKeyDown);
 	}, [frameContext?.text, textPositions]);
 
-	// Update rendered dimensions on resize (needed for TextOverlay positioning)
-	useEffect(() => {
-		const updateDimensions = () => {
-			if (containerRef.current && naturalDimensions) {
-				const containerRect = containerRef.current.getBoundingClientRect();
-				const containerAspect = containerRect.width / containerRect.height;
-				const imageAspect = naturalDimensions.width / naturalDimensions.height;
-				let renderedWidth: number, renderedHeight: number;
-				if (containerAspect > imageAspect) {
-					renderedHeight = containerRect.height;
-					renderedWidth = containerRect.height * imageAspect;
-				} else {
-					renderedWidth = containerRect.width;
-					renderedHeight = containerRect.width / imageAspect;
-				}
-				setRenderedImageInfo({
-					width: renderedWidth,
-					height: renderedHeight,
-					offsetX: (containerRect.width - renderedWidth) / 2,
-					offsetY: (containerRect.height - renderedHeight) / 2,
-				});
-			}
-		};
-		updateDimensions();
-		const el = containerRef.current;
-		if (!el) return;
-		const observer = new ResizeObserver(updateDimensions);
-		observer.observe(el);
-		return () => observer.disconnect();
-	}, [naturalDimensions]);
-
-	// --- Native macOS Live Text (VisionKit ImageAnalysisOverlayView) ---
-	// Initialize Live Text overlay once on mount (macOS only)
-	useEffect(() => {
-		if (!isMac || liveTextInitRef.current) return;
-		let cancelled = false;
-		(async () => {
-			try {
-				const available = await invoke<boolean>("livetext_is_available");
-				console.log("[livetext] is_available:", available);
-				if (cancelled || !available) return;
-				// Use "main" panel label — the NSPanel the timeline renders in
-				await invoke("livetext_init", { windowLabel: "main" });
-				console.log("[livetext] init succeeded, native overlay active");
-				if (!cancelled) {
-					liveTextInitRef.current = true;
-					setNativeLiveTextActive(true);
-				}
-			} catch (e) {
-				console.warn("live text init failed:", e);
-			}
-		})();
-		return () => { cancelled = true; };
-	}, [isMac]);
-
-	// Analyze frame when frameId changes OR when renderedImageInfo first becomes available.
-	// Position is handled separately by the update_position effect below.
-	// We track whether we have image info via a boolean to avoid object-reference churn.
-	const renderedInfoRef = useRef(renderedImageInfo);
-	renderedInfoRef.current = renderedImageInfo;
-	const hasRenderedInfo = !!renderedImageInfo;
-
-	const analyzeFailCountRef = useRef(0);
+	// --- Live Text hook (native macOS VisionKit overlay) ---
+	const { nativeLiveTextActive } = useLiveText({
+		debouncedFrame,
+		renderedImageInfo,
+		isSnapshotFrame,
+		isSearchModalOpen,
+		highlightTerms,
+		highlightDismissed,
+		isMac,
+		containerRef,
+		useVideoMode,
+		videoRef,
+	});
 
 	// Hide overlay immediately when raw frameId changes (before debounce settles),
 	// so stale text selection doesn't linger while scrolling.
@@ -739,138 +266,6 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 			invoke("livetext_hide").catch(() => {});
 		}
 	}, [nativeLiveTextActive, frameId]);
-
-	useEffect(() => {
-		if (!nativeLiveTextActive) return;
-		if (!debouncedFrame?.frameId) return;
-		const info = renderedInfoRef.current;
-		if (!info) return;
-
-		// For snapshot frames, use the local file path directly (instant).
-		// For video-chunk frames, fall back to HTTP endpoint (requires ffmpeg extraction).
-		const imagePath = isSnapshotFrame && debouncedFrame.filePath
-			? debouncedFrame.filePath
-			: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
-
-		// Debounce: wait 300ms after last frame change before analyzing.
-		// This prevents hammering VisionKit during fast scroll.
-		let cancelled = false;
-		const timer = setTimeout(() => {
-			if (cancelled) return;
-			invoke("livetext_analyze", {
-				imagePath,
-				x: info.offsetX,
-				y: info.offsetY,
-				w: info.width,
-				h: info.height,
-			}).then(() => {
-				analyzeFailCountRef.current = 0;
-			}).catch((e: unknown) => {
-				if (cancelled) return;
-				const msg = String(e);
-				// If VisionKit XPC fails (e.g. ad-hoc signed binary), disable native mode
-				if (msg.includes("helper application") || msg.includes("XPC")) {
-					console.warn("[livetext] VisionKit unavailable (code signing?), falling back to web mode");
-					setNativeLiveTextActive(false);
-					return;
-				}
-				// After 3 consecutive failures, fall back to web mode
-				analyzeFailCountRef.current++;
-				if (analyzeFailCountRef.current >= 3) {
-					console.warn("[livetext] too many failures, falling back to web mode");
-					setNativeLiveTextActive(false);
-					return;
-				}
-				console.warn("live text analyze failed:", e);
-			});
-		}, 300);
-		return () => { cancelled = true; clearTimeout(timer); };
-	}, [nativeLiveTextActive, debouncedFrame?.frameId, isSnapshotFrame, hasRenderedInfo]);
-
-	// Update overlay position on resize (native Live Text)
-	useEffect(() => {
-		if (!nativeLiveTextActive || !renderedImageInfo) return;
-		invoke("livetext_update_position", {
-			x: renderedImageInfo.offsetX,
-			y: renderedImageInfo.offsetY,
-			w: renderedImageInfo.width,
-			h: renderedImageInfo.height,
-		}).catch(() => {});
-	}, [nativeLiveTextActive, renderedImageInfo?.offsetX, renderedImageInfo?.offsetY, renderedImageInfo?.width, renderedImageInfo?.height]);
-
-	// Highlight search terms (native Live Text, macOS 14+)
-	useEffect(() => {
-		if (!nativeLiveTextActive) return;
-		if (highlightTerms.length > 0 && !highlightDismissed) {
-			invoke("livetext_highlight", { terms: highlightTerms }).catch(() => {});
-		} else {
-			invoke("livetext_clear_highlights").catch(() => {});
-		}
-	}, [nativeLiveTextActive, highlightTerms, highlightDismissed]);
-
-	// Hide overlay when search modal opens, show when it closes
-	useEffect(() => {
-		if (!nativeLiveTextActive) return;
-		if (isSearchModalOpen) {
-			invoke("livetext_hide").catch(() => {});
-		} else if (debouncedFrame?.frameId && renderedInfoRef.current) {
-			// Re-analyze to show overlay again
-			const info = renderedInfoRef.current;
-			const imagePath = isSnapshotFrame && debouncedFrame.filePath
-				? debouncedFrame.filePath
-				: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
-			invoke("livetext_analyze", {
-				imagePath,
-				x: info.offsetX,
-				y: info.offsetY,
-				w: info.width,
-				h: info.height,
-			}).catch(() => {});
-		}
-	}, [nativeLiveTextActive, isSearchModalOpen]);
-
-	// Hide overlay on unmount
-	useEffect(() => {
-		return () => {
-			if (liveTextInitRef.current) {
-				invoke("livetext_hide").catch(() => {});
-			}
-		};
-	}, []);
-	// --- End Native macOS Live Text ---
-
-	// Re-enable video mode when navigating to a non-failed video chunk
-	useEffect(() => {
-		if (debouncedFrame?.filePath && !isChunkFailed(debouncedFrame.filePath) && !isSnapshotFrame) {
-			setUseVideoMode(true);
-		}
-	}, [debouncedFrame?.filePath, isSnapshotFrame]);
-
-	// Preload adjacent video chunks so crossing chunk boundaries feels instant
-	useEffect(() => {
-		if (!adjacentFrames?.length) return;
-		const seen = new Set<string>();
-		if (debouncedFrame?.filePath) seen.add(debouncedFrame.filePath);
-		for (const frame of adjacentFrames) {
-			const path = frame?.devices?.[0]?.metadata?.file_path;
-			if (!path || seen.has(path)) continue;
-			const lower = path.toLowerCase();
-			if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png')) continue;
-			seen.add(path);
-			// Preload video chunk: create a hidden video element to trigger browser cache
-			getVideoUrl(path).then((url) => {
-				if (!url) return;
-				const v = document.createElement("video");
-				v.preload = "auto";
-				v.muted = true;
-				v.src = url;
-				// Load just enough for metadata + first frame, then discard
-				v.addEventListener("loadeddata", () => { v.src = ""; }, { once: true });
-				v.addEventListener("error", () => { v.src = ""; }, { once: true });
-				v.load();
-			});
-		}
-	}, [adjacentFrames, debouncedFrame?.filePath, getVideoUrl]);
 
 	if (!frameId) {
 		return (
@@ -1045,11 +440,8 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 				onError={() => {
 					const err = videoRef.current?.error;
 					console.warn("Video error:", err?.code, err?.message);
-
-					if (debouncedFrame?.filePath) {
-						markChunkFailed(debouncedFrame.filePath);
-					}
-					loadedChunkRef.current = null;
+					// Chunk failure tracking is handled internally by useFrameLoading;
+					// falling back to ffmpeg image mode via setUseVideoMode.
 					setUseVideoMode(false);
 				}}
 			/>

@@ -414,6 +414,7 @@ function errorTypeBadge(errorType: string | null) {
 export function PipesSection() {
   const [pipes, setPipes] = useState<PipeStatus[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const expandedRef = useRef<string | null>(null);
   const [logs, setLogs] = useState<PipeRunLog[]>([]);
   const [executions, setExecutions] = useState<PipeExecution[]>([]);
   // Per-pipe recent executions (always fetched for all pipes)
@@ -487,7 +488,20 @@ export function PipesSection() {
         fetched.push(pipe);
         results[pipe.config.name] = recent_executions || [];
       }
-      setPipes(fetched);
+      // Preserve optimistic UI for pipes with in-flight config saves
+      const pendingNames = Object.keys(pendingConfigSaves.current);
+      if (pendingNames.length > 0) {
+        setPipes((prev) => {
+          const prevByName = new Map(prev.map((p) => [p.config.name, p]));
+          return fetched.map((p) =>
+            pendingNames.includes(p.config.name) && prevByName.has(p.config.name)
+              ? prevByName.get(p.config.name)!
+              : p
+          );
+        });
+      } else {
+        setPipes(fetched);
+      }
       setPipeExecutions(results);
       // Clear drafts that match the server content (already saved)
       setPromptDrafts((prev) => {
@@ -534,11 +548,39 @@ export function PipesSection() {
       const res = await fetch("http://localhost:3030/pipes?include_executions=true");
       const data = await res.json();
       const rawItems: Array<PipeStatus & { recent_executions?: PipeExecution[] }> = data.data || [];
+      const fetched: PipeStatus[] = [];
       const results: Record<string, PipeExecution[]> = {};
       for (const item of rawItems) {
-        results[item.config.name] = item.recent_executions || [];
+        const { recent_executions, ...pipe } = item;
+        fetched.push(pipe);
+        results[item.config.name] = recent_executions || [];
       }
       setPipeExecutions(results);
+      // Also sync pipe status (is_running) to keep summary consistent
+      const pendingNames = Object.keys(pendingConfigSaves.current);
+      if (pendingNames.length > 0) {
+        setPipes((prev) => {
+          const prevByName = new Map(prev.map((p) => [p.config.name, p]));
+          return fetched.map((p) =>
+            pendingNames.includes(p.config.name) && prevByName.has(p.config.name)
+              ? prevByName.get(p.config.name)!
+              : p
+          );
+        });
+      } else {
+        setPipes(fetched);
+      }
+      // Refresh execution history for the currently expanded pipe
+      const exp = expandedRef.current;
+      if (exp) {
+        try {
+          const execRes = await fetch(`http://localhost:3030/pipes/${exp}/executions?limit=20`);
+          const execData = await execRes.json();
+          setExecutions(execData.data || []);
+        } catch {
+          // non-fatal
+        }
+      }
     } catch {
       // ignore — next poll will retry
     }
@@ -662,8 +704,10 @@ export function PipesSection() {
   const toggleExpand = (name: string) => {
     if (expanded === name) {
       setExpanded(null);
+      expandedRef.current = null;
     } else {
       setExpanded(name);
+      expandedRef.current = name;
       fetchLogs(name);
       fetchExecutions(name);
     }
