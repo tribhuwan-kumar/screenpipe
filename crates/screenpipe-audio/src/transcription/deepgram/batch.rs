@@ -133,8 +133,64 @@ async fn handle_deepgram_response(
 ) -> Result<String> {
     match response {
         Ok(resp) => {
-            debug!("received response from deepgram api");
-            match resp.json::<Value>().await {
+            let status = resp.status();
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+
+            debug!(
+                "deepgram response: status={}, content-type={}",
+                status, content_type
+            );
+
+            // Read the body as text first so we can inspect it on failure
+            let body_text = resp.text().await.unwrap_or_default();
+
+            // Detect firewall/proxy/captive portal interference
+            if content_type.contains("text/html") || body_text.starts_with("<!") || body_text.starts_with("<html") {
+                error!(
+                    "device: {}, deepgram request blocked — received HTML instead of JSON (status {}). \
+                     this usually means a firewall, corporate proxy, or captive portal is intercepting \
+                     requests to api.screenpi.pe. body preview: {}",
+                    device,
+                    status,
+                    &body_text[..body_text.len().min(500)]
+                );
+                return Err(anyhow::anyhow!(
+                    "Audio transcription blocked by network (firewall/proxy). \
+                     Please check that api.screenpi.pe is accessible from your network."
+                ));
+            }
+
+            if !status.is_success() {
+                error!(
+                    "device: {}, deepgram API returned HTTP {} — body: {}",
+                    device,
+                    status,
+                    &body_text[..body_text.len().min(1000)]
+                );
+                return Err(anyhow::anyhow!(
+                    "Deepgram API error (HTTP {}): {}",
+                    status,
+                    &body_text[..body_text.len().min(500)]
+                ));
+            }
+
+            if body_text.is_empty() {
+                error!(
+                    "device: {}, deepgram returned empty response (status {}). \
+                     possible network issue or request timeout.",
+                    device, status
+                );
+                return Err(anyhow::anyhow!(
+                    "Deepgram returned empty response (HTTP {})", status
+                ));
+            }
+
+            match serde_json::from_str::<Value>(&body_text) {
                 Ok(result) => {
                     debug!("successfully parsed json response");
                     if let Some(err_code) = result.get("err_code") {
@@ -162,13 +218,53 @@ async fn handle_deepgram_response(
                     Ok(transcription.to_string())
                 }
                 Err(e) => {
-                    error!("Failed to parse JSON response: {:?}", e);
-                    Err(anyhow::anyhow!("Failed to parse JSON response: {:?}", e))
+                    error!(
+                        "device: {}, failed to parse deepgram JSON (status {}): {:?} — body: {}",
+                        device,
+                        status,
+                        e,
+                        &body_text[..body_text.len().min(500)]
+                    );
+                    Err(anyhow::anyhow!(
+                        "Failed to parse transcription response (HTTP {}): {:?}",
+                        status,
+                        e
+                    ))
                 }
             }
         }
         Err(e) => {
-            error!("Failed to send request to Deepgram API: {:?}", e);
+            // Detect common network/firewall errors
+            let err_str = format!("{:?}", e);
+            if err_str.contains("timed out") || err_str.contains("timeout") {
+                error!(
+                    "device: {}, deepgram request timed out — possible firewall blocking api.screenpi.pe: {:?}",
+                    device, e
+                );
+                return Err(anyhow::anyhow!(
+                    "Audio transcription request timed out. Check if api.screenpi.pe is accessible from your network."
+                ));
+            }
+            if err_str.contains("dns") || err_str.contains("resolve") {
+                error!(
+                    "device: {}, DNS resolution failed for deepgram endpoint — check network/firewall: {:?}",
+                    device, e
+                );
+                return Err(anyhow::anyhow!(
+                    "Cannot resolve audio transcription server. Check your DNS and network settings."
+                ));
+            }
+            if err_str.contains("connection refused") || err_str.contains("Connection refused") {
+                error!(
+                    "device: {}, connection refused to deepgram endpoint — possible firewall: {:?}",
+                    device, e
+                );
+                return Err(anyhow::anyhow!(
+                    "Connection refused to audio transcription server. A firewall may be blocking api.screenpi.pe."
+                ));
+            }
+
+            error!("device: {}, failed to send request to Deepgram API: {:?}", device, e);
             Err(anyhow::anyhow!(
                 "Failed to send request to Deepgram API: {:?}",
                 e
