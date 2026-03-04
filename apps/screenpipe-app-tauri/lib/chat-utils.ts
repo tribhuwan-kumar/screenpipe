@@ -163,7 +163,7 @@ export function parseMentions(input: string, options?: ParseMentionsOptions): Pa
   const now = new Date();
   const timeRanges: TimeRange[] = [];
   let cleanedInput = input;
-  let contentType: "all" | "ocr" | "audio" | "input" | "accessibility" | null = null;
+  let contentType: "all" | "ocr" | "audio" | "input" | "accessibility" | "screen" | null = null;
   let appName: string | null = null;
   let usedSelection = false;
   let speakerName: string | null = null;
