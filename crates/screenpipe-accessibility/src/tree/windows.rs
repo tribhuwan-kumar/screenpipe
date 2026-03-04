@@ -7,7 +7,9 @@
 //! Reuses the UIA CacheRequest-based capture from `platform::windows_uia` to walk
 //! the focused window's tree and extract all visible text — matching macOS behavior.
 
-use super::{AccessibilityTreeNode, TreeSnapshot, TreeWalkerConfig, TreeWalkerPlatform};
+use super::{
+    AccessibilityTreeNode, NodeBounds, TreeSnapshot, TreeWalkerConfig, TreeWalkerPlatform,
+};
 use crate::events::AccessibilityNode;
 use crate::platform::windows_uia::UiaContext;
 
@@ -17,7 +19,8 @@ use std::cell::UnsafeCell;
 use std::time::Instant;
 use tracing::debug;
 
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
@@ -229,6 +232,9 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
             None => return Ok(None),
         };
 
+        // Get monitor dimensions for normalizing element bounds to 0-1 coords
+        let monitor_rect = get_monitor_rect(hwnd);
+
         // Extract text from the tree (matching macOS text extraction behavior)
         let mut text_buffer = String::with_capacity(4096);
         let mut nodes = Vec::with_capacity(256);
@@ -240,6 +246,7 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
             &mut text_buffer,
             &mut nodes,
             &mut browser_url,
+            &monitor_rect,
         );
 
         // Don't bail on empty text — we still need the app_name and window_name
@@ -288,6 +295,67 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
     }
 }
 
+/// Monitor rectangle in screen coordinates (virtual desktop).
+struct MonitorRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+/// Get the monitor rectangle containing the given window.
+fn get_monitor_rect(hwnd: HWND) -> Option<MonitorRect> {
+    unsafe {
+        let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if hmon.is_invalid() {
+            return None;
+        }
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            rcMonitor: RECT::default(),
+            rcWork: RECT::default(),
+            dwFlags: 0,
+        };
+        if GetMonitorInfoW(hmon, &mut info).as_bool() {
+            let r = info.rcMonitor;
+            let w = (r.right - r.left) as f64;
+            let h = (r.bottom - r.top) as f64;
+            if w > 0.0 && h > 0.0 {
+                return Some(MonitorRect {
+                    x: r.left as f64,
+                    y: r.top as f64,
+                    width: w,
+                    height: h,
+                });
+            }
+        }
+        None
+    }
+}
+
+/// Normalize UIA screen-absolute bounds to 0-1 monitor-relative coordinates.
+fn normalize_bounds(
+    bounds: &crate::events::ElementBounds,
+    monitor: &MonitorRect,
+) -> Option<NodeBounds> {
+    let left = (bounds.x - monitor.x) / monitor.width;
+    let top = (bounds.y - monitor.y) / monitor.height;
+    let width = bounds.width / monitor.width;
+    let height = bounds.height / monitor.height;
+
+    // Skip if completely outside the monitor
+    if left + width < 0.0 || top + height < 0.0 || left > 1.0 || top > 1.0 {
+        return None;
+    }
+
+    Some(NodeBounds {
+        left: left as f32,
+        top: top as f32,
+        width: width as f32,
+        height: height as f32,
+    })
+}
+
 /// Recursively extract text from the accessibility tree.
 /// Mirrors the macOS walker's text extraction strategy.
 fn extract_text_from_tree(
@@ -297,6 +365,7 @@ fn extract_text_from_tree(
     buffer: &mut String,
     nodes: &mut Vec<AccessibilityTreeNode>,
     browser_url: &mut Option<String>,
+    monitor_rect: &Option<MonitorRect>,
 ) {
     if depth > max_depth {
         return;
@@ -308,6 +377,11 @@ fn extract_text_from_tree(
     if SKIP_TYPES.iter().any(|&s| ct.eq_ignore_ascii_case(s)) {
         return;
     }
+
+    // Normalize bounds from screen pixels to 0-1 monitor-relative coords
+    let norm_bounds = monitor_rect
+        .as_ref()
+        .and_then(|mr| node.bounds.as_ref().and_then(|b| normalize_bounds(b, mr)));
 
     // Extract text from text-bearing elements
     if TEXT_TYPES.iter().any(|&t| ct.eq_ignore_ascii_case(t)) {
@@ -322,7 +396,7 @@ fn extract_text_from_tree(
                         role: ct.to_string(),
                         text: val.trim().to_string(),
                         depth: depth.min(255) as u8,
-                        bounds: None,
+                        bounds: norm_bounds.clone(),
                     });
                     // Don't recurse into text controls — their children are sub-elements of the same text
                     return;
@@ -350,7 +424,7 @@ fn extract_text_from_tree(
                             role: ct.to_string(),
                             text: trimmed.to_string(),
                             depth: depth.min(255) as u8,
-                            bounds: None,
+                            bounds: norm_bounds.clone(),
                         });
                     }
                 }
@@ -365,7 +439,7 @@ fn extract_text_from_tree(
                         role: ct.to_string(),
                         text: name.trim().to_string(),
                         depth: depth.min(255) as u8,
-                        bounds: None,
+                        bounds: norm_bounds.clone(),
                     });
                 }
             }
@@ -383,7 +457,7 @@ fn extract_text_from_tree(
                     role: ct.to_string(),
                     text: val.trim().to_string(),
                     depth: depth.min(255) as u8,
-                    bounds: None,
+                    bounds: norm_bounds.clone(),
                 });
             }
         } else if ct.eq_ignore_ascii_case("Custom") {
@@ -395,7 +469,7 @@ fn extract_text_from_tree(
                         role: ct.to_string(),
                         text: name.trim().to_string(),
                         depth: depth.min(255) as u8,
-                        bounds: None,
+                        bounds: norm_bounds,
                     });
                 }
             }
@@ -404,7 +478,7 @@ fn extract_text_from_tree(
 
     // Recurse into children
     for child in &node.children {
-        extract_text_from_tree(child, depth + 1, max_depth, buffer, nodes, browser_url);
+        extract_text_from_tree(child, depth + 1, max_depth, buffer, nodes, browser_url, monitor_rect);
     }
 }
 
@@ -511,7 +585,7 @@ mod tests {
         let mut buf = String::new();
         let mut nodes = Vec::new();
         let mut url = None;
-        extract_text_from_tree(&tree, 0, 10, &mut buf, &mut nodes, &mut url);
+        extract_text_from_tree(&tree, 0, 10, &mut buf, &mut nodes, &mut url, &None);
 
         // Text node's name should be captured
         assert!(
@@ -603,7 +677,7 @@ mod tests {
         let mut buf = String::new();
         let mut nodes = Vec::new();
         let mut url = None;
-        extract_text_from_tree(&tree, 0, 30, &mut buf, &mut nodes, &mut url);
+        extract_text_from_tree(&tree, 0, 30, &mut buf, &mut nodes, &mut url, &None);
 
         // URL should be captured as browser_url, NOT as text
         assert_eq!(
