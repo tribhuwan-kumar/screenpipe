@@ -737,22 +737,23 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		const info = renderedInfoRef.current;
 		if (!info) return;
 
+		// Debounce: wait 300ms after last frame change before analyzing.
+		// This prevents hammering VisionKit during fast scroll.
 		let cancelled = false;
-		const frameUrl = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
-		(async () => {
-			try {
-				await invoke("livetext_analyze", {
-					imagePath: frameUrl,
-					x: info.offsetX,
-					y: info.offsetY,
-					w: info.width,
-					h: info.height,
-				});
-			} catch (e) {
+		const timer = setTimeout(() => {
+			if (cancelled) return;
+			const frameUrl = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+			invoke("livetext_analyze", {
+				imagePath: frameUrl,
+				x: info.offsetX,
+				y: info.offsetY,
+				w: info.width,
+				h: info.height,
+			}).catch((e: unknown) => {
 				if (!cancelled) console.warn("live text analyze failed:", e);
-			}
-		})();
-		return () => { cancelled = true; };
+			});
+		}, 300);
+		return () => { cancelled = true; clearTimeout(timer); };
 	}, [nativeLiveTextActive, debouncedFrame?.frameId]);
 
 	// Update overlay position on resize (native Live Text)

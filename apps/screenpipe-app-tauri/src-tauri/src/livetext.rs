@@ -25,6 +25,12 @@ unsafe fn extract_and_free(ptr: *mut std::os::raw::c_char) -> Option<String> {
     Some(s)
 }
 
+/// Generation counter — incremented on every analyze call.
+/// The spawned thread checks this before doing expensive work;
+/// if a newer request has arrived, it bails out early.
+#[cfg(target_os = "macos")]
+static ANALYZE_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 // ---------- Tauri commands ----------
 
 #[tauri::command]
@@ -88,20 +94,26 @@ pub async fn livetext_analyze(
 ) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        info!("livetext_analyze called for {}", image_path);
+        // Bump generation — any in-flight analysis with an older generation will bail out.
+        let gen = ANALYZE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
         // Run on a dedicated thread to avoid blocking tokio runtime
         // (the Swift semaphore.wait() inside lt_analyze_image would deadlock
         // if called from a tokio worker thread)
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let result = (|| -> Result<String, String> {
+                // Check if a newer request has already been issued
+                if ANALYZE_GENERATION.load(std::sync::atomic::Ordering::SeqCst) != gen {
+                    return Err("skipped: newer analyze request pending".to_string());
+                }
+
                 let path_c =
                     CString::new(image_path.clone()).map_err(|e| format!("invalid path: {}", e))?;
 
                 let mut out_text: *mut std::os::raw::c_char = std::ptr::null_mut();
                 let mut out_error: *mut std::os::raw::c_char = std::ptr::null_mut();
 
-                info!("calling lt_analyze_image FFI...");
                 let status = unsafe {
                     livetext_ffi::lt_analyze_image(
                         path_c.as_ptr(),
@@ -113,19 +125,16 @@ pub async fn livetext_analyze(
                         &mut out_error,
                     )
                 };
-                info!("lt_analyze_image returned status={}", status);
 
                 unsafe {
                     if status != 0 {
                         let err =
                             extract_and_free(out_error).unwrap_or_else(|| "unknown error".to_string());
                         extract_and_free(out_text);
-                        info!("live text analysis error: {}", err);
                         return Err(format!("live text analysis failed: {}", err));
                     }
                     let text = extract_and_free(out_text).unwrap_or_default();
                     extract_and_free(out_error);
-                    info!("live text recognized {} chars", text.len());
                     Ok(text)
                 }
             })();

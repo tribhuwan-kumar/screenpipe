@@ -515,6 +515,9 @@ export class GeminiProvider implements AIProvider {
 			contents,
 			generationConfig: {
 				temperature: body.temperature ?? 0.7,
+				// Disable thinking to avoid thought_signature requirements on tool calls
+				// (OpenAI format can't round-trip thought signatures)
+				thinkingConfig: { thinkingBudget: 0 },
 			},
 		};
 

@@ -284,6 +284,20 @@ export const TextOverlay = memo(function TextOverlay({
 
 			if (blockWidth <= 0 || blockHeight <= 0) continue;
 
+			// Skip if this highlight largely overlaps an existing one
+			// (OCR + accessibility can return near-identical bounding boxes)
+			const isDuplicate = result.some(existing => {
+				const overlapLeft = Math.max(existing.left, blockLeft);
+				const overlapTop = Math.max(existing.top, blockTop);
+				const overlapRight = Math.min(existing.left + existing.width, blockLeft + blockWidth);
+				const overlapBottom = Math.min(existing.top + existing.height, blockTop + blockHeight);
+				if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return false;
+				const overlapArea = (overlapRight - overlapLeft) * (overlapBottom - overlapTop);
+				const thisArea = blockWidth * blockHeight;
+				return overlapArea > thisArea * 0.5;
+			});
+			if (isDuplicate) continue;
+
 			result.push({
 				key: `hl-${result.length}`,
 				left: blockLeft,

@@ -906,7 +906,7 @@ const AISection = ({
           {piAvailable && (
             <AIProviderCard
               type="pi"
-              title="Pi Agent"
+              title="Screenpipe Cloud"
               description="AI coding agent powered by Screenpipe Cloud. Requires login."
               imageSrc="/images/screenpipe.png"
               selected={settingsPreset?.provider === "pi"}

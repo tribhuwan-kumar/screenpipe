@@ -87,6 +87,14 @@ public func ltInit(_ windowPtr: UInt64) -> Int32 {
         guard let contentView = window.contentView else { return -3 }
 
         let mgr = LiveTextManager.shared
+
+        // Clean up any existing overlay from a previous init call
+        // (component remounts, HMR, etc. can trigger multiple inits)
+        MainActor.assumeIsolated {
+            mgr.overlayView?.removeFromSuperview()
+        }
+        mgr.overlayView = nil
+        mgr.currentAnalysis = nil
         mgr.hostContentView = contentView
 
         // Create overlay — caller (lt_init) is invoked from main thread via
