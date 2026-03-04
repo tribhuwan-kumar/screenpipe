@@ -368,6 +368,7 @@ impl AudioManager {
                 (record_and_transcribe_handle.await, Ok(Ok(())))
             };
 
+            // Check for JoinError (task panic/cancel)
             if record_result.is_err() || realtime_result.is_err() {
                 let mut e = anyhow!("record_device failed");
 
@@ -386,12 +387,28 @@ impl AudioManager {
                 return Err(e);
             }
 
-            debug!(
-                "recording handle for device {} quit unexpectedly",
+            // Check for inner Result errors (record_and_transcribe returned Err)
+            if let Ok(Err(ref e)) = record_result {
+                warn!(
+                    "recording for device {} exited with error: {}",
+                    device_clone, e
+                );
+                return Err(anyhow!("record_device {} failed: {}", device_clone, e));
+            }
+            if let Ok(Err(ref e)) = realtime_result {
+                warn!(
+                    "realtime recording for device {} exited with error: {}",
+                    device_clone, e
+                );
+                return Err(anyhow!("realtime {} failed: {}", device_clone, e));
+            }
+
+            warn!(
+                "recording handle for device {} exited unexpectedly with Ok",
                 device_clone
             );
 
-            Ok(())
+            Err(anyhow!("recording handle for device {} exited unexpectedly", device_clone))
         });
 
         Ok(recording_handle)

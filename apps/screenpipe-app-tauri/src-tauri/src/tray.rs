@@ -283,19 +283,9 @@ fn create_dynamic_menu(
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_else(|| default_chat.to_string());
 
-    // --- Header: version ---
-    let is_beta = app.config().identifier.contains("beta");
-    let version_text = if is_beta {
-        format!("screenpipe v{} (Beta)", app.package_info().version)
-    } else {
-        format!("screenpipe v{}", app.package_info().version)
-    };
+    // --- Open screenpipe ---
     menu_builder = menu_builder
-        .item(
-            &MenuItemBuilder::with_id("version", version_text)
-                .enabled(false)
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("settings_top", "Open screenpipe").build(app)?)
         .item(&PredefinedMenuItem::separator(app)?);
 
     // --- Primary actions (most-used first) ---
@@ -392,6 +382,19 @@ fn create_dynamic_menu(
             .item(&PredefinedMenuItem::separator(app)?)
             .item(update_item);
     }
+
+    // --- Version (below update item) ---
+    let is_beta = app.config().identifier.contains("beta");
+    let version_text = if is_beta {
+        format!("screenpipe v{} (Beta)", app.package_info().version)
+    } else {
+        format!("screenpipe v{}", app.package_info().version)
+    };
+    menu_builder = menu_builder.item(
+        &MenuItemBuilder::with_id("version", version_text)
+            .enabled(false)
+            .build(app)?,
+    );
 
     // --- Recording controls ---
     let (default_start_rec, default_stop_rec) = if cfg!(target_os = "windows") {
@@ -558,7 +561,7 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
                 }
             });
         }
-        "settings" => {
+        "settings" | "settings_top" => {
             let app = app_handle.clone();
             let _ = app_handle.run_on_main_thread(move || {
                 let _ = ShowRewindWindow::Settings { page: None }.show(&app);
