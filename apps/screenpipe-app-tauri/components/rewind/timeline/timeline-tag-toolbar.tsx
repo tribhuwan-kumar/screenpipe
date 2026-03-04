@@ -4,7 +4,7 @@
 import { useTimelineSelection } from "@/lib/hooks/use-timeline-selection";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Tag, Plus, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { Tag, Plus, Trash2, RefreshCw, Loader2, X } from "lucide-react";
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "@/components/ui/use-toast";
@@ -280,9 +280,18 @@ export function TimelineTagToolbar({ anchorRect, onAskAI, onRunPipe, templatePip
 				transform: "translate(-50%, -100%) translateY(-12px)",
 			}}
 		>
-			<div className="bg-popover border border-border rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[280px] max-w-[380px]">
+			<div className="bg-popover border border-border rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[280px] max-w-[380px] relative">
+				{/* Close button */}
+				<button
+					onClick={() => setSelectionRange(null)}
+					className="absolute top-1.5 right-1.5 p-0.5 text-muted-foreground hover:text-foreground transition-colors"
+					title="close"
+				>
+					<X className="w-3 h-3" />
+				</button>
+
 				{/* Selection info + ask AI */}
-				<div className="flex items-center justify-between gap-2">
+				<div className="flex items-center justify-between gap-2 pr-4">
 					<div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
 						<Tag className="w-3 h-3 flex-shrink-0" />
 						<span className="truncate">
@@ -290,6 +299,13 @@ export function TimelineTagToolbar({ anchorRect, onAskAI, onRunPipe, templatePip
 						</span>
 					</div>
 					<div className="flex items-stretch gap-1 flex-shrink-0">
+					<button
+						onClick={() => setShowDeleteConfirm(true)}
+						className="flex items-center justify-center text-xs px-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
+						title="delete selected range"
+					>
+						<Trash2 className="w-3.5 h-3.5" />
+					</button>
 						{onAskAI && (
 							<div
 								className="relative"
@@ -447,13 +463,6 @@ export function TimelineTagToolbar({ anchorRect, onAskAI, onRunPipe, templatePip
 								<RefreshCw className="w-3 h-3" />
 							)}
 							re-transcribe
-						</button>
-						<button
-							onClick={() => setShowDeleteConfirm(true)}
-							className="flex items-center justify-center text-xs px-2 rounded-md text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors flex-shrink-0"
-							title="delete selected range"
-						>
-							<Trash2 className="w-3.5 h-3.5" />
 						</button>
 					</div>
 				</div>

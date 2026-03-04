@@ -1614,65 +1614,81 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
         </Card>
         )}
 
-        {/* Audio Devices */}
-        {!settings.disableAudio && !settings.useSystemDefaultAudio && (
-          <Card className="border-border bg-card">
-            <CardContent className="px-3 py-2.5">
-              <div className="flex items-center space-x-2.5 mb-2">
-                <Mic className="h-4 w-4 text-muted-foreground shrink-0" />
-                <h3 className="text-sm font-medium text-foreground">Audio devices</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {availableAudioDevices.map((device) => {
-                  const isSelected = settings.audioDevices.includes(device.name);
-                  const DeviceIcon = getAudioDeviceIcon(device.name);
-                  const deviceType = getAudioDeviceType(device.name);
-                  const displayName = getAudioDeviceDisplayName(device.name);
-                  return (
-                    <div
-                      key={device.name}
-                      className={cn(
-                        "relative rounded-lg border cursor-pointer transition-all overflow-hidden",
-                        isSelected
-                          ? "border-foreground bg-foreground/5"
-                          : "border-border opacity-70 hover:opacity-100 hover:bg-accent/50"
-                      )}
-                      onClick={() => handleAudioDeviceChange(device.name)}
-                    >
-                      <div className="px-2.5 py-2 flex items-start gap-2">
-                        <DeviceIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium truncate">{displayName}</p>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-[10px] text-muted-foreground capitalize">{deviceType}</span>
-                            {device.isDefault && (
-                              <Badge variant="secondary" className="text-[9px] h-3.5 px-1">Default</Badge>
-                            )}
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <Check className="h-3 w-3 text-foreground shrink-0 mt-0.5" />
-                        )}
-                      </div>
+        {/* Audio Devices — grouped by input (microphones) vs output (system audio) */}
+        {!settings.disableAudio && !settings.useSystemDefaultAudio && (() => {
+          const inputDevices = availableAudioDevices.filter((d) => getAudioDeviceType(d.name) === "input");
+          const outputDevices = availableAudioDevices.filter((d) => getAudioDeviceType(d.name) === "output");
 
-                      {/* Apple-style audio level meter */}
-                      {isSelected && (
-                        <div className="px-2.5 pb-2">
-                          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-foreground/60 transition-all duration-75"
-                              style={{ width: `${Math.min(100, Math.pow(overlayData.speechRatio, 3) * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+          const renderDevice = (device: typeof availableAudioDevices[number]) => {
+            const isSelected = settings.audioDevices.includes(device.name);
+            const DeviceIcon = getAudioDeviceIcon(device.name);
+            const displayName = getAudioDeviceDisplayName(device.name);
+            return (
+              <div
+                key={device.name}
+                className={cn(
+                  "relative rounded-lg border cursor-pointer transition-all overflow-hidden",
+                  isSelected
+                    ? "border-foreground bg-foreground/5"
+                    : "border-border opacity-70 hover:opacity-100 hover:bg-accent/50"
+                )}
+                onClick={() => handleAudioDeviceChange(device.name)}
+              >
+                <div className="px-2.5 py-2 flex items-start gap-2">
+                  <DeviceIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                    <p className="text-xs font-medium truncate">{displayName}</p>
+                    {device.isDefault && (
+                      <Badge variant="secondary" className="text-[9px] h-3.5 px-1 shrink-0">Default</Badge>
+                    )}
+                  </div>
+                  {isSelected && (
+                    <Check className="h-3 w-3 text-foreground shrink-0 mt-0.5" />
+                  )}
+                </div>
+
+                {/* Audio level meter — always rendered for consistent height, invisible when not selected */}
+                <div className={cn("px-2.5 pb-2", !isSelected && "invisible")}>
+                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-foreground/60 transition-all duration-75"
+                      style={{ width: `${Math.min(100, Math.pow(overlayData.speechRatio, 3) * 100)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            );
+          };
+
+          return (
+            <Card className="border-border bg-card">
+              <CardContent className="px-3 py-2.5">
+                {inputDevices.length > 0 && (
+                  <div className="mb-2.5">
+                    <div className="flex items-center space-x-2 mb-1.5">
+                      <Mic className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <h3 className="text-xs font-medium text-muted-foreground">Microphones (what you say)</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {inputDevices.map(renderDevice)}
+                    </div>
+                  </div>
+                )}
+                {outputDevices.length > 0 && (
+                  <div>
+                    <div className="flex items-center space-x-2 mb-1.5">
+                      <Volume2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <h3 className="text-xs font-medium text-muted-foreground">System audio (what you hear)</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {outputDevices.map(renderDevice)}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Languages */}
         {!settings.disableAudio && (

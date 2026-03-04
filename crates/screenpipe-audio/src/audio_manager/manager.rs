@@ -164,6 +164,7 @@ impl AudioManager {
             let on_insert_bg = self.on_transcription_insert.clone();
             let options_ref = self.options.clone();
             let seg_mgr = self.segmentation_manager.clone();
+            let output_path_bg = self.options.read().await.output_path.clone();
             tokio::spawn(async move {
                 // Wait for model to load + initial recordings
                 tokio::time::sleep(Duration::from_secs(120)).await;
@@ -181,6 +182,7 @@ impl AudioManager {
                         // Get whisper context from transcription engine
                         let whisper_ctx = transcription_engine.whisper_context();
 
+                        let data_dir = output_path_bg.as_deref();
                         let count = super::reconciliation::reconcile_untranscribed(
                             &db,
                             transcription_engine,
@@ -192,6 +194,7 @@ impl AudioManager {
                             langs,
                             &vocab,
                             Some(seg_mgr.clone()),
+                            data_dir,
                         )
                         .await;
                         if count > 0 {
@@ -517,6 +520,7 @@ impl AudioManager {
                                 "batch mode: audio session ended, transcribing accumulated audio"
                             );
                             let whisper_ctx = engine.whisper_context();
+                            let data_dir = output_path.as_deref();
                             let count = super::reconciliation::reconcile_untranscribed(
                                 &db,
                                 &engine,
@@ -528,6 +532,7 @@ impl AudioManager {
                                 languages.clone(),
                                 &vocabulary,
                                 Some(segmentation_manager.clone()),
+                                data_dir,
                             )
                             .await;
                             for _ in 0..count {
