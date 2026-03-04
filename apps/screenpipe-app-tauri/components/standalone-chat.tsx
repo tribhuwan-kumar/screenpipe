@@ -2080,7 +2080,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.15 }}
             onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-            className="absolute bottom-3 right-3 z-10 w-8 h-8 flex items-center justify-center border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shadow-sm"
+            className="absolute bottom-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full border border-border bg-muted hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shadow-md"
             title="Scroll to bottom"
           >
             <ArrowDown className="w-4 h-4" />

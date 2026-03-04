@@ -142,6 +142,10 @@ const BASE_TOOLS: Tool[] = [
           type: "string",
           description: "Filter audio by speaker name (case-insensitive partial match)",
         },
+        max_content_length: {
+          type: "integer",
+          description: "Truncate each result's text/transcription to this many characters using middle-truncation (keeps first half + last half). Useful for limiting token usage with small-context models.",
+        },
       },
     },
   },

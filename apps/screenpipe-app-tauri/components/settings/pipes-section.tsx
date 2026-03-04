@@ -169,7 +169,9 @@ interface PipeConfig {
   model: string;
   provider?: string;
   preset?: string;
-  config: Record<string, unknown>;
+  history?: boolean;
+  // serde(flatten) merges extra YAML fields into this level at runtime
+  [key: string]: unknown;
 }
 
 interface PipeStatus {
@@ -1174,13 +1176,13 @@ export function PipesSection() {
                         <HelpTooltip text="when enabled, the pipe remembers previous conversations across runs. useful for pipes that need context from past executions." />
                       </div>
                       <Switch
-                        checked={!!pipe.config.config?.history}
+                        checked={!!pipe.config.history}
                         onCheckedChange={(checked) => {
                           const pipeName = pipe.config.name;
                           setPipes((prev) =>
                             prev.map((p) =>
                               p.config.name === pipeName
-                                ? { ...p, config: { ...p.config, config: { ...p.config.config, history: checked } } }
+                                ? { ...p, config: { ...p.config, history: checked } }
                                 : p
                             )
                           );

@@ -95,10 +95,10 @@ impl ActivityFeed {
         let kb_idle = self.keyboard_idle_ms();
 
         if self.is_keyboard_burst() {
-            // Keyboard burst: maximum capture rate for typing
+            // Keyboard burst: high capture rate for typing (reduced from 10 FPS to cut CPU)
             CaptureParams {
-                interval: Duration::from_millis(100), // 10 FPS
-                skip_threshold: 0.005,                // 0.5%
+                interval: Duration::from_millis(200), // 5 FPS
+                skip_threshold: 0.02,                 // 2%
             }
         } else if kb_idle < 300 {
             // Active typing

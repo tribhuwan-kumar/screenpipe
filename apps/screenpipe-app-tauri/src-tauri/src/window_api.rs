@@ -1026,10 +1026,11 @@ impl ShowRewindWindow {
                 {
                     // NOTE: Accessory mode removed — it hides dock icon and tray on notched MacBooks
 
-                    let capturable = SettingsStore::get(app)
+                    let settings = SettingsStore::get(app)
                         .unwrap_or_default()
-                        .unwrap_or_default()
-                        .show_overlay_in_screen_recording;
+                        .unwrap_or_default();
+                    let capturable = settings.show_overlay_in_screen_recording;
+                    let chat_on_top = settings.chat_always_on_top;
                     let app_clone = app.clone();
                     run_on_main_thread_safe(app, move || {
                         use objc::{msg_send, sel, sel_impl};
@@ -1037,7 +1038,7 @@ impl ShowRewindWindow {
 
                         if let Ok(panel) = app_clone.get_webview_panel(RewindWindowId::Chat.label())
                         {
-                            panel.set_level(1001);
+                            panel.set_level(if chat_on_top { 1001 } else { 0 });
                             let _: () =
                                 unsafe { msg_send![&*panel, setMovableByWindowBackground: true] };
                             let sharing: u64 = if capturable { 1 } else { 0 };
@@ -1692,6 +1693,11 @@ impl ShowRewindWindow {
                 window
             }
             ShowRewindWindow::Chat => {
+                let chat_always_on_top = SettingsStore::get(app)
+                    .unwrap_or_default()
+                    .unwrap_or_default()
+                    .chat_always_on_top;
+
                 #[cfg(target_os = "macos")]
                 let window = {
                     // NOTE: Do NOT switch to Accessory mode here — it hides dock icon
@@ -1702,7 +1708,7 @@ impl ShowRewindWindow {
                         .min_inner_size(500.0, 600.0)
                         .focused(false)
                         .visible(false)
-                        .always_on_top(true)
+                        .always_on_top(chat_always_on_top)
                         .hidden_title(true);
                     let window = builder.build()?;
 
@@ -1721,8 +1727,12 @@ impl ShowRewindWindow {
                             use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
 
                             if let Ok(panel) = window_clone.to_panel() {
-                                // Same level as overlay (1001) to appear above fullscreen apps
-                                panel.set_level(1001);
+                                // Level 1001 to appear above fullscreen apps, or 0 for normal
+                                let chat_on_top = SettingsStore::get(window_clone.app_handle())
+                                    .unwrap_or_default()
+                                    .unwrap_or_default()
+                                    .chat_always_on_top;
+                                panel.set_level(if chat_on_top { 1001 } else { 0 });
 
                                 // NonActivatingPanel (128) so clicking the chat doesn't
                                 // activate the app (which would switch Spaces away from
@@ -1770,7 +1780,7 @@ impl ShowRewindWindow {
                         .inner_size(650.0, 800.0)
                         .min_inner_size(500.0, 600.0)
                         .focused(true)
-                        .always_on_top(true);
+                        .always_on_top(chat_always_on_top);
                     builder.build()?
                 };
 

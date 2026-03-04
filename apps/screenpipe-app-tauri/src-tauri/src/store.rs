@@ -231,6 +231,10 @@ pub struct SettingsStore {
     #[serde(rename = "videoQuality", default = "default_video_quality")]
     pub video_quality: String,
 
+    /// When true, the chat window stays above all other windows (default: true).
+    #[serde(rename = "chatAlwaysOnTop", default = "default_true")]
+    pub chat_always_on_top: bool,
+
     /// Catch-all for fields added by the frontend (e.g. chatHistory, deviceId)
     /// that the Rust struct doesn't know about. Without this, `save()` would
     /// serialize only known fields and silently wipe frontend-only data.
@@ -559,6 +563,7 @@ impl Default for SettingsStore {
             overlay_mode: "window".to_string(),
             show_overlay_in_screen_recording: false,
             video_quality: "balanced".to_string(),
+            chat_always_on_top: true,
             extra: std::collections::HashMap::new(),
         }
     }

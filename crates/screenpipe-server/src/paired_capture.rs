@@ -18,9 +18,17 @@ use screenpipe_accessibility::tree::{create_tree_walker, TreeSnapshot, TreeWalke
 use screenpipe_core::pii_removal::remove_pii;
 use screenpipe_db::DatabaseManager;
 use screenpipe_vision::snapshot_writer::SnapshotWriter;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
+use tokio::sync::Semaphore;
 use tracing::{debug, warn};
+
+/// Limits concurrent OCR tasks to avoid CPU spikes when multiple monitors
+/// trigger capture simultaneously.
+static OCR_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
+fn ocr_semaphore() -> &'static Semaphore {
+    OCR_SEMAPHORE.get_or_init(|| Semaphore::new(2))
+}
 
 /// Context for a paired capture operation — replaces positional arguments.
 pub struct CaptureContext<'a> {
@@ -128,9 +136,11 @@ pub async fn paired_capture(
                 }
             }
         }
-        // Apple and Tesseract OCR are sync, use spawn_blocking
+        // Apple and Tesseract OCR are sync, use spawn_blocking with semaphore
+        // to limit concurrent OCR and avoid CPU spikes on multi-monitor setups.
         #[cfg(not(target_os = "windows"))]
         {
+            let _permit = ocr_semaphore().acquire().await.unwrap();
             let image_for_ocr = ctx.image.clone();
             let ocr_result = tokio::task::spawn_blocking(move || {
                 #[cfg(target_os = "macos")]

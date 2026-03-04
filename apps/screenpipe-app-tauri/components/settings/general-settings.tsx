@@ -6,7 +6,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Rocket, Moon, Sun, Monitor, FlaskConical, Shield, ExternalLink, Layers, RefreshCw, Undo2 } from "lucide-react";
+import { Rocket, Moon, Sun, Monitor, FlaskConical, Shield, ExternalLink, Layers, RefreshCw, Undo2, MessageSquare } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -340,6 +340,27 @@ export default function GeneralSettings() {
                 Download
                 <ExternalLink className="h-3 w-3" />
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
+          <CardContent className="px-3 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">Chat always on top</h3>
+                  <p className="text-xs text-muted-foreground">Keep chat window above other windows</p>
+                </div>
+              </div>
+              <Switch
+                checked={settings?.chatAlwaysOnTop ?? true}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ chatAlwaysOnTop: checked })
+                }
+                className="ml-4"
+              />
             </div>
           </CardContent>
         </Card>

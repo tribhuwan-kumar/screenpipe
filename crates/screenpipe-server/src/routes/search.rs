@@ -78,6 +78,10 @@ pub(crate) struct SearchQuery {
     /// Include cloud-synced data in search results (requires cloud sync to be enabled)
     #[serde(default)]
     include_cloud: bool,
+    /// Truncate each result's text/transcription to this many characters using middle-truncation.
+    /// When set, long content is replaced with first half + "...(truncated N chars)..." + last half.
+    #[serde(default)]
+    max_content_length: Option<usize>,
 }
 
 #[derive(OaSchema, Deserialize)]
@@ -107,6 +111,22 @@ pub struct SearchResponse {
     pub cloud: Option<crate::cloud_search::CloudSearchMetadata>,
 }
 
+/// Middle-truncate a string to at most `max_chars` characters.
+/// Keeps the first half and last half, inserting a marker in between.
+/// Safe on UTF-8 char boundaries.
+fn truncate_middle(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= max_chars {
+        return text.to_string();
+    }
+    let removed = char_count - max_chars;
+    let keep_start = max_chars / 2;
+    let keep_end = max_chars - keep_start;
+    let start: String = text.chars().take(keep_start).collect();
+    let end: String = text.chars().skip(char_count - keep_end).collect();
+    format!("{}...(truncated {} chars)...{}", start, removed, end)
+}
+
 /// Compute a cache key for a search query by hashing its parameters
 pub(crate) fn compute_search_cache_key(query: &SearchQuery) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -126,6 +146,7 @@ pub(crate) fn compute_search_cache_key(query: &SearchQuery) -> u64 {
     query.browser_url.hash(&mut hasher);
     query.speaker_name.hash(&mut hasher);
     query.include_cloud.hash(&mut hasher);
+    query.max_content_length.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -235,62 +256,70 @@ pub(crate) async fn search(
                 .as_ref()
                 .is_none_or(|app| !is_screenpipe_app(app)),
         })
-        .map(|result| match result {
-            SearchResult::OCR(ocr) => ContentItem::OCR(OCRContent {
-                frame_id: ocr.frame_id,
-                text: ocr.ocr_text.clone(),
-                timestamp: ocr.timestamp,
-                file_path: ocr.file_path.clone(),
-                offset_index: ocr.offset_index,
-                app_name: ocr.app_name.clone(),
-                window_name: ocr.window_name.clone(),
-                tags: ocr.tags.clone(),
-                frame: None,
-                frame_name: Some(ocr.frame_name.clone()),
-                browser_url: ocr.browser_url.clone(),
-                focused: ocr.focused,
-                device_name: ocr.device_name.clone(),
-            }),
-            SearchResult::Audio(audio) => ContentItem::Audio(AudioContent {
-                chunk_id: audio.audio_chunk_id,
-                transcription: audio.transcription.clone(),
-                timestamp: audio.timestamp,
-                file_path: audio.file_path.clone(),
-                offset_index: audio.offset_index,
-                tags: audio.tags.clone(),
-                device_name: audio.device_name.clone(),
-                device_type: audio.device_type.clone().into(),
-                speaker: audio.speaker.clone(),
-                start_time: audio.start_time,
-                end_time: audio.end_time,
-            }),
-            SearchResult::UI(ui) => ContentItem::UI(UiContent {
-                id: ui.id,
-                text: ui.text.clone(),
-                timestamp: ui.timestamp,
-                app_name: ui.app_name.clone(),
-                window_name: ui.window_name.clone(),
-                initial_traversal_at: ui.initial_traversal_at,
-                file_path: ui.file_path.clone(),
-                offset_index: ui.offset_index,
-                frame_name: ui.frame_name.clone(),
-                browser_url: ui.browser_url.clone(),
-            }),
-            SearchResult::Input(input) => ContentItem::Input(InputContent {
-                id: input.id,
-                timestamp: input.timestamp,
-                event_type: input.event_type.to_string(),
-                app_name: input.app_name.clone(),
-                window_title: input.window_title.clone(),
-                browser_url: input.browser_url.clone(),
-                text_content: input.text_content.clone(),
-                x: input.x,
-                y: input.y,
-                key_code: input.key_code,
-                modifiers: input.modifiers,
-                element_role: input.element.as_ref().and_then(|e| e.role.clone()),
-                element_name: input.element.as_ref().and_then(|e| e.name.clone()),
-            }),
+        .map(|result| {
+            let truncate = |text: String| -> String {
+                match query.max_content_length {
+                    Some(max) => truncate_middle(&text, max),
+                    None => text,
+                }
+            };
+            match result {
+                SearchResult::OCR(ocr) => ContentItem::OCR(OCRContent {
+                    frame_id: ocr.frame_id,
+                    text: truncate(ocr.ocr_text.clone()),
+                    timestamp: ocr.timestamp,
+                    file_path: ocr.file_path.clone(),
+                    offset_index: ocr.offset_index,
+                    app_name: ocr.app_name.clone(),
+                    window_name: ocr.window_name.clone(),
+                    tags: ocr.tags.clone(),
+                    frame: None,
+                    frame_name: Some(ocr.frame_name.clone()),
+                    browser_url: ocr.browser_url.clone(),
+                    focused: ocr.focused,
+                    device_name: ocr.device_name.clone(),
+                }),
+                SearchResult::Audio(audio) => ContentItem::Audio(AudioContent {
+                    chunk_id: audio.audio_chunk_id,
+                    transcription: truncate(audio.transcription.clone()),
+                    timestamp: audio.timestamp,
+                    file_path: audio.file_path.clone(),
+                    offset_index: audio.offset_index,
+                    tags: audio.tags.clone(),
+                    device_name: audio.device_name.clone(),
+                    device_type: audio.device_type.clone().into(),
+                    speaker: audio.speaker.clone(),
+                    start_time: audio.start_time,
+                    end_time: audio.end_time,
+                }),
+                SearchResult::UI(ui) => ContentItem::UI(UiContent {
+                    id: ui.id,
+                    text: truncate(ui.text.clone()),
+                    timestamp: ui.timestamp,
+                    app_name: ui.app_name.clone(),
+                    window_name: ui.window_name.clone(),
+                    initial_traversal_at: ui.initial_traversal_at,
+                    file_path: ui.file_path.clone(),
+                    offset_index: ui.offset_index,
+                    frame_name: ui.frame_name.clone(),
+                    browser_url: ui.browser_url.clone(),
+                }),
+                SearchResult::Input(input) => ContentItem::Input(InputContent {
+                    id: input.id,
+                    timestamp: input.timestamp,
+                    event_type: input.event_type.to_string(),
+                    app_name: input.app_name.clone(),
+                    window_title: input.window_title.clone(),
+                    browser_url: input.browser_url.clone(),
+                    text_content: input.text_content.clone().map(truncate),
+                    x: input.x,
+                    y: input.y,
+                    key_code: input.key_code,
+                    modifiers: input.modifiers,
+                    element_role: input.element.as_ref().and_then(|e| e.role.clone()),
+                    element_name: input.element.as_ref().and_then(|e| e.name.clone()),
+                }),
+            }
         })
         .collect();
 
@@ -536,6 +565,7 @@ mod tests {
             browser_url: None,
             speaker_name: None,
             include_cloud: false,
+            max_content_length: None,
         };
 
         let query2 = SearchQuery {
@@ -558,6 +588,7 @@ mod tests {
             browser_url: None,
             speaker_name: None,
             include_cloud: false,
+            max_content_length: None,
         };
 
         let key1 = compute_search_cache_key(&query1);
@@ -588,6 +619,7 @@ mod tests {
             browser_url: None,
             speaker_name: None,
             include_cloud: false,
+            max_content_length: None,
         };
 
         let query2 = SearchQuery {
@@ -610,6 +642,7 @@ mod tests {
             browser_url: None,
             speaker_name: None,
             include_cloud: false,
+            max_content_length: None,
         };
 
         let key1 = compute_search_cache_key(&query1);
@@ -619,5 +652,28 @@ mod tests {
             key1, key2,
             "Different queries should produce different cache keys"
         );
+    }
+
+    #[test]
+    fn test_truncate_middle_short_text() {
+        assert_eq!(truncate_middle("hello", 10), "hello");
+        assert_eq!(truncate_middle("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_middle_long_text() {
+        let text = "abcdefghijklmnopqrstuvwxyz"; // 26 chars
+        let result = truncate_middle(text, 10);
+        assert!(result.starts_with("abcde"));
+        assert!(result.ends_with("vwxyz"));
+        assert!(result.contains("...(truncated 16 chars)..."));
+    }
+
+    #[test]
+    fn test_truncate_middle_unicode() {
+        let text = "hello 🌍 world 🎉 end";
+        let result = truncate_middle(text, 10);
+        assert!(result.chars().count() > 10); // marker adds chars, but original content is truncated
+        assert!(result.contains("...(truncated"));
     }
 }

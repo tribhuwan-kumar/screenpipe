@@ -45,7 +45,7 @@ pub async fn reconcile_untranscribed(
     segmentation_manager: Option<Arc<SegmentationManager>>,
 ) -> usize {
     let since = chrono::Utc::now() - chrono::Duration::hours(24);
-    let chunks = match db.get_untranscribed_chunks(since, 50).await {
+    let chunks = match db.get_untranscribed_chunks(since, 200).await {
         Ok(c) => c,
         Err(e) => {
             error!(
@@ -88,9 +88,15 @@ pub async fn reconcile_untranscribed(
             let path = Path::new(&chunk.file_path);
             if !path.exists() {
                 warn!(
-                    "reconciliation: audio file missing, skipping chunk {}",
+                    "reconciliation: audio file missing, deleting orphan chunk {}",
                     chunk.id
                 );
+                if let Err(e) = db.delete_audio_chunk(chunk.id).await {
+                    warn!(
+                        "reconciliation: failed to delete orphan chunk {}: {}",
+                        chunk.id, e
+                    );
+                }
                 continue;
             }
 
