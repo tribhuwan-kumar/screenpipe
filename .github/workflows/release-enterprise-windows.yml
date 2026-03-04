@@ -203,6 +203,68 @@ jobs:
           tauriScript: bunx tauri -v
           retryAttempts: 3
 
+      - name: Sign installer with SSL.com EV certificate
+        shell: powershell
+        env:
+          ESIGNER_USERNAME: ${{ secrets.ESIGNER_USERNAME }}
+          ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
+          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          # Install CodeSignTool
+          $cstDir = "$env:RUNNER_TEMP\CodeSignTool"
+          $cstUrl = "https://www.ssl.com/download/codesigntool-for-windows/"
+          Write-Host "Downloading CodeSignTool..."
+          Invoke-WebRequest -Uri "https://github.com/nicedoc/codesigntool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip" -OutFile "$env:RUNNER_TEMP\cst.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\cst.zip" -DestinationPath "$env:RUNNER_TEMP" -Force
+          # Find the extracted folder
+          $cstDir = Get-ChildItem "$env:RUNNER_TEMP\CodeSignTool*" -Directory | Select-Object -First 1
+          if (-not $cstDir) { throw "CodeSignTool extraction failed" }
+          Write-Host "CodeSignTool at: $($cstDir.FullName)"
+
+          # Find the installer exe
+          $nsisDir = "apps/screenpipe-app-tauri/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $exe = Get-ChildItem "$nsisDir/*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "No installer exe found in $nsisDir" }
+          Write-Host "Signing: $($exe.Name)"
+
+          # Sign with CodeSignTool
+          $javaPath = Join-Path $cstDir.FullName "jdk-11.0.2\bin\java.exe"
+          $jarPath = Join-Path $cstDir.FullName "jar\code_sign_tool-1.3.2.jar"
+          $signedDir = Join-Path $cstDir.FullName "signed"
+          if (Test-Path $signedDir) { Remove-Item $signedDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
+
+          & $javaPath -jar $jarPath sign `
+            "-username=$env:ESIGNER_USERNAME" `
+            "-password=$env:ESIGNER_PASSWORD" `
+            "-totp_secret=$env:ESIGNER_TOTP_SECRET" `
+            "-credential_id=$env:ESIGNER_CREDENTIAL_ID" `
+            "-input_file_path=$($exe.FullName)" `
+            "-output_dir_path=$signedDir"
+
+          if ($LASTEXITCODE -ne 0) { throw "Code signing failed with exit code $LASTEXITCODE" }
+
+          # Copy signed exe back
+          $signedExe = Join-Path $signedDir $exe.Name
+          if (-not (Test-Path $signedExe)) { throw "Signed file not found at $signedExe" }
+          Copy-Item $signedExe $exe.FullName -Force
+          Write-Host "✅ Installer signed: $($exe.Name)"
+
+          # Regenerate Tauri .sig file for the signed exe
+          $sigFile = "$($exe.FullName).sig"
+          if (Test-Path $sigFile) {
+            Remove-Item $sigFile
+            $keyFile = Join-Path $env:RUNNER_TEMP "tauri-key.txt"
+            Set-Content -Path $keyFile -Value $env:TAURI_SIGNING_PRIVATE_KEY -NoNewline
+            Push-Location apps/screenpipe-app-tauri
+            bunx tauri signer sign $exe.FullName --private-key-path $keyFile --password $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            Pop-Location
+            Write-Host "✅ Tauri signature regenerated"
+          }
+
       - name: Create .intunewin and upload to R2
         shell: powershell
         env:
