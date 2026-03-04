@@ -64,6 +64,30 @@ use tokio::{net::TcpListener, sync::Mutex};
 use tower_http::{cors::Any, trace::TraceLayer};
 use tower_http::{cors::CorsLayer, trace::DefaultMakeSpan};
 
+/// Bind a TcpListener with SO_REUSEADDR on Windows to avoid TIME_WAIT port conflicts.
+/// On non-Windows platforms, falls back to the standard tokio bind.
+pub async fn bind_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
+    #[cfg(target_os = "windows")]
+    {
+        use socket2::{Domain, Protocol, Socket, Type};
+        let domain = if addr.is_ipv4() {
+            Domain::IPV4
+        } else {
+            Domain::IPV6
+        };
+        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+        socket.set_reuse_address(true)?;
+        socket.set_nonblocking(true)?;
+        socket.bind(&addr.into())?;
+        socket.listen(1024)?;
+        TcpListener::from_std(socket.into())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        TcpListener::bind(addr).await
+    }
+}
+
 // Re-export types from route modules for backward compatibility
 pub use crate::routes::content::{ContentItem, PaginatedResponse};
 pub use crate::routes::health::{HealthCheckResponse, MonitorInfo};
@@ -192,8 +216,8 @@ impl SCServer {
         // Create the OpenAPI server
         let app = self.create_router().await;
 
-        // Create the listener
-        let listener = TcpListener::bind(&self.addr).await?;
+        // Create the listener (SO_REUSEADDR on Windows to avoid TIME_WAIT conflicts)
+        let listener = bind_listener(self.addr).await?;
         info!("Server listening on {}", self.addr);
 
         // Start serving

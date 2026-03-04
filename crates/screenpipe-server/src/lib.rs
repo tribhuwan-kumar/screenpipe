@@ -27,7 +27,7 @@ pub mod meeting_watcher;
 pub mod paired_capture;
 pub mod power;
 mod resource_monitor;
-mod server;
+pub mod server;
 pub mod sleep_monitor;
 mod sync_api;
 pub mod sync_provider;

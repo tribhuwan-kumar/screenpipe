@@ -8223,7 +8223,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.24"
+version = "2.2.25"
 dependencies = [
  "anyhow",
  "arboard",
@@ -8515,6 +8515,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket2 0.5.10",
  "sqlx",
  "sysinfo",
  "tempfile",
