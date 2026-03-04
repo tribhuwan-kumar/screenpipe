@@ -512,17 +512,18 @@ function ActiveSyncSettings({
                 )}
               </div>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
+                className="text-xs uppercase tracking-wide"
                 onClick={onTriggerSync}
                 disabled={isSyncing || status.isSyncing}
               >
                 <RefreshCw
-                  className={`h-4 w-4 mr-2 ${
+                  className={`h-3 w-3 mr-1.5 ${
                     isSyncing || status.isSyncing ? "animate-spin" : ""
                   }`}
                 />
-                Sync Now
+                sync now
               </Button>
             </div>
 

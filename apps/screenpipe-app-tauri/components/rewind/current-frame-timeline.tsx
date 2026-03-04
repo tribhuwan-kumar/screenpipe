@@ -259,12 +259,20 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		videoRef,
 	});
 
-	// Hide overlay immediately when raw frameId changes (before debounce settles),
+	// Hide overlay when raw frameId changes (before debounce settles),
 	// so stale text selection doesn't linger while scrolling.
+	// Throttled: only one IPC call per 150ms to avoid blocking JS during fast scroll.
+	const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const lastHideFrameRef = useRef<string | null>(null);
 	useEffect(() => {
-		if (nativeLiveTextActive) {
+		if (!nativeLiveTextActive) return;
+		if (lastHideFrameRef.current === frameId) return;
+		lastHideFrameRef.current = frameId;
+		if (hideTimerRef.current) return; // already scheduled
+		hideTimerRef.current = setTimeout(() => {
+			hideTimerRef.current = null;
 			invoke("livetext_hide").catch(() => {});
-		}
+		}, 150);
 	}, [nativeLiveTextActive, frameId]);
 
 	if (!frameId) {

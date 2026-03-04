@@ -1053,7 +1053,11 @@ showOverlayInScreenRecording?: boolean;
  * Affects H.265 CRF during recording and JPEG quality during frame extraction.
  * Values: "low", "balanced", "high", "max". Default: "balanced".
  */
-videoQuality?: string }
+videoQuality?: string; 
+/**
+ * When true, the chat window stays above all other windows (default: true).
+ */
+chatAlwaysOnTop?: boolean }
 export type ShowRewindWindow = "Main" | { Settings: { page: string | null } } | { Search: { query: string | null } } | "Onboarding" | "Chat" | "PermissionRecovery"
 export type Suggestion = { text: string }
 /**

@@ -1253,11 +1253,10 @@ export const TimelineSlider = ({
 											group.topDomains.slice(0, groupWidth > 60 ? 2 : 1).map((domain, idx) => (
 												<motion.div
 													key={`fav-${domain}-${idx}`}
-													className="w-5 h-5 rounded-md flex-shrink-0 overflow-hidden flex items-center justify-center"
+													className="w-5 h-5 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center ring-1 ring-white/20 shadow-sm shadow-black/30"
 													style={{
 														zIndex: 10 - idx,
 														position: 'relative',
-														backgroundColor: appNameToColor(group.appName, 0.3),
 													}}
 													variants={{
 														collapsed: {
@@ -1275,7 +1274,7 @@ export const TimelineSlider = ({
 														domain={domain}
 														fallbackAppName={group.appName}
 														size={20}
-														className="w-full h-full rounded-sm object-cover"
+														className="w-full h-full object-cover"
 													/>
 												</motion.div>
 											))

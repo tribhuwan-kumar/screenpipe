@@ -276,8 +276,9 @@ export function AccountSection() {
                 </div>
                 {settings.pipeSyncEnabled && (
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
+                    className="text-xs uppercase tracking-wide"
                     disabled={pipeSyncing}
                     onClick={async () => {
                       setPipeSyncing(true);

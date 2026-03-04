@@ -1038,7 +1038,22 @@ impl ShowRewindWindow {
 
                         if let Ok(panel) = app_clone.get_webview_panel(RewindWindowId::Chat.label())
                         {
-                            panel.set_level(if chat_on_top { 1001 } else { 0 });
+                            if chat_on_top {
+                                panel.set_level(1001);
+                                // NonActivatingPanel (128) so clicking doesn't activate app
+                                unsafe {
+                                    let current: i32 = msg_send![&*panel, styleMask];
+                                    panel.set_style_mask(current | 128);
+                                }
+                            } else {
+                                // Normal window level — allow it to go behind other windows
+                                panel.set_level(0);
+                                // Remove NonActivatingPanel bit (128) so it behaves normally
+                                unsafe {
+                                    let current: i32 = msg_send![&*panel, styleMask];
+                                    panel.set_style_mask(current & !128);
+                                }
+                            }
                             let _: () =
                                 unsafe { msg_send![&*panel, setMovableByWindowBackground: true] };
                             let sharing: u64 = if capturable { 1 } else { 0 };
@@ -1054,8 +1069,6 @@ impl ShowRewindWindow {
                                 make_webview_first_responder(&panel);
                             }
                             // Remove MoveToActiveSpace now that the panel is shown.
-                            // Keeps it pinned to THIS Space so it won't follow
-                            // three-finger swipes (same pattern as main overlay).
                             panel.set_collection_behaviour(
                                 NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                             );
@@ -1067,6 +1080,11 @@ impl ShowRewindWindow {
 
                 #[cfg(not(target_os = "macos"))]
                 {
+                    let chat_on_top = SettingsStore::get(app)
+                        .unwrap_or_default()
+                        .unwrap_or_default()
+                        .chat_always_on_top;
+                    window.set_always_on_top(chat_on_top).ok();
                     window.show().ok();
                     window.set_focus().ok();
                     return Ok(window);
@@ -1727,23 +1745,26 @@ impl ShowRewindWindow {
                             use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
 
                             if let Ok(panel) = window_clone.to_panel() {
-                                // Level 1001 to appear above fullscreen apps, or 0 for normal
                                 let chat_on_top = SettingsStore::get(window_clone.app_handle())
                                     .unwrap_or_default()
                                     .unwrap_or_default()
                                     .chat_always_on_top;
-                                panel.set_level(if chat_on_top { 1001 } else { 0 });
 
-                                // NonActivatingPanel (128) so clicking the chat doesn't
-                                // activate the app (which would switch Spaces away from
-                                // fullscreen apps). Preserve existing style bits.
-                                // WKWebView still receives keyboard input via makeKeyWindow.
-                                unsafe {
-                                    let current: i32 = msg_send![&*panel, styleMask];
-                                    panel.set_style_mask(current | 128);
+                                if chat_on_top {
+                                    // Level 1001 to appear above fullscreen apps
+                                    panel.set_level(1001);
+                                    // NonActivatingPanel (128) so clicking the chat doesn't
+                                    // activate the app (which would switch Spaces away from
+                                    // fullscreen apps). Preserve existing style bits.
+                                    unsafe {
+                                        let current: i32 = msg_send![&*panel, styleMask];
+                                        panel.set_style_mask(current | 128);
+                                    }
+                                } else {
+                                    panel.set_level(0);
                                 }
 
-                                // Don't hide when app deactivates (we never activate the app)
+                                // Don't hide when app deactivates
                                 panel.set_hides_on_deactivate(false);
 
                                 // Enable dragging by clicking anywhere on the window background

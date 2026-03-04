@@ -5,7 +5,7 @@
 use crate::commands::show_main_window;
 use crate::health::{get_recording_info, get_recording_status, DeviceKind, RecordingStatus};
 use crate::recording::RecordingState;
-use crate::store::{get_store, OnboardingStore};
+use crate::store::{get_store, OnboardingStore, SettingsStore};
 use crate::updates::{is_enterprise_build, is_source_build};
 use crate::window_api::ShowRewindWindow;
 use anyhow::Result;
@@ -283,49 +283,55 @@ fn create_dynamic_menu(
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_else(|| default_chat.to_string());
 
-    // Open screenpipe (settings window) at the top
+    // --- Header: version ---
+    let is_beta = app.config().identifier.contains("beta");
+    let version_text = if is_beta {
+        format!("screenpipe v{} (Beta)", app.package_info().version)
+    } else {
+        format!("screenpipe v{}", app.package_info().version)
+    };
     menu_builder = menu_builder
-        .item(&MenuItemBuilder::with_id("settings", "Open screenpipe").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("version", version_text)
+                .enabled(false)
+                .build(app)?,
+        )
         .item(&PredefinedMenuItem::separator(app)?);
 
-    // Show timeline, search, and chat items with shortcuts
+    // --- Primary actions (most-used first) ---
+    // Use native accelerators for right-aligned shortcut display (like Notion Calendar)
     menu_builder = menu_builder
         .item(
-            &MenuItemBuilder::with_id(
-                "show",
-                format!("Show timeline ({})", format_shortcut(&show_shortcut)),
-            )
-            .build(app)?,
+            &MenuItemBuilder::with_id("show_chat", "Chat")
+                .accelerator(&to_accelerator(&chat_shortcut))
+                .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(
-                "show_search",
-                format!("Show search ({})", format_shortcut(&search_shortcut)),
-            )
-            .build(app)?,
+            &MenuItemBuilder::with_id("show_search", "Search")
+                .accelerator(&to_accelerator(&search_shortcut))
+                .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id(
-                "show_chat",
-                format!("Show chat ({})", format_shortcut(&chat_shortcut)),
-            )
-            .build(app)?,
+            &MenuItemBuilder::with_id("show", "Timeline")
+                .accelerator(&to_accelerator(&show_shortcut))
+                .build(app)?,
         );
 
-    // Recording status indicator
+    // --- Recording status + devices ---
     let status_text = match get_recording_status() {
         RecordingStatus::Starting => "○ Starting…",
         RecordingStatus::Recording => "● Recording",
         RecordingStatus::Stopped => "○ Stopped",
         RecordingStatus::Error => "○ Error",
     };
-    menu_builder = menu_builder.item(
-        &MenuItemBuilder::with_id("recording_status", status_text)
-            .enabled(false)
-            .build(app)?,
-    );
+    menu_builder = menu_builder
+        .item(&PredefinedMenuItem::separator(app)?)
+        .item(
+            &MenuItemBuilder::with_id("recording_status", status_text)
+                .enabled(false)
+                .build(app)?,
+        );
 
-    // Show active devices under recording status
     if get_recording_status() == RecordingStatus::Recording
         || get_recording_status() == RecordingStatus::Starting
     {
@@ -346,7 +352,7 @@ fn create_dynamic_menu(
         }
     }
 
-    // Show "fix permissions" item when recording is in error state and permissions are denied
+    // Show "fix permissions" when recording is in error state
     if get_recording_status() == RecordingStatus::Error {
         let perms = crate::permissions::do_permissions_check(false);
         let has_permission_issue =
@@ -358,51 +364,78 @@ fn create_dynamic_menu(
         }
     }
 
-    // Version and update items
-    let is_beta = app.config().identifier.contains("beta");
-    let version_text = if is_beta {
-        format!("Version {} (Beta)", app.package_info().version)
-    } else {
-        format!("Version {}", app.package_info().version)
-    };
-    menu_builder = menu_builder
-        .item(&PredefinedMenuItem::separator(app)?)
-        .item(
-            &MenuItemBuilder::with_id("version", version_text)
+    // --- Plan / usage info ---
+    let settings = SettingsStore::get(app).unwrap_or_default().unwrap_or_default();
+    let is_pro = settings.user.cloud_subscribed == Some(true);
+    menu_builder = menu_builder.item(&PredefinedMenuItem::separator(app)?);
+    if is_pro {
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id("plan_info", "Pro plan")
                 .enabled(false)
                 .build(app)?,
         );
-    if let Some(update_item) = update_item {
-        menu_builder = menu_builder.item(update_item);
+    } else {
+        menu_builder = menu_builder
+            .item(
+                &MenuItemBuilder::with_id("plan_info", "Free plan")
+                    .enabled(false)
+                    .build(app)?,
+            )
+            .item(
+                &MenuItemBuilder::with_id("upgrade", "⚡ Upgrade to Pro").build(app)?,
+            );
     }
-    menu_builder =
-        menu_builder.item(&MenuItemBuilder::with_id("releases", "Changelog").build(app)?);
 
-    // Only show recording controls if not in dev mode
-    let dev_mode = store
-        .get("devMode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !dev_mode {
+    // --- Update item (if available) ---
+    if let Some(update_item) = update_item {
         menu_builder = menu_builder
             .item(&PredefinedMenuItem::separator(app)?)
-            .item(&MenuItemBuilder::with_id("start_recording", "Start recording").build(app)?)
-            .item(&MenuItemBuilder::with_id("stop_recording", "Stop recording").build(app)?);
+            .item(update_item);
     }
 
-    // Help and quit
-    menu_builder = menu_builder.item(&PredefinedMenuItem::separator(app)?);
-    #[cfg(target_os = "macos")]
-    {
-        menu_builder = menu_builder
-            .item(&MenuItemBuilder::with_id("check_permissions", "Check permissions").build(app)?);
-    }
+    // --- Recording controls ---
+    let (default_start_rec, default_stop_rec) = if cfg!(target_os = "windows") {
+        ("Alt+Shift+U", "Alt+Shift+X")
+    } else {
+        ("Super+Ctrl+U", "Super+Ctrl+X")
+    };
+    let start_rec_shortcut = store
+        .get("startRecordingShortcut")
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_else(|| default_start_rec.to_string());
+    let stop_rec_shortcut = store
+        .get("stopRecordingShortcut")
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_else(|| default_stop_rec.to_string());
+
     menu_builder = menu_builder
-        .item(&MenuItemBuilder::with_id("feedback", "Send feedback").build(app)?)
-        .item(&MenuItemBuilder::with_id("book_call", "Book a call with founder").build(app)?)
-        .item(&MenuItemBuilder::with_id("onboarding", "Onboarding").build(app)?)
+        .item(&PredefinedMenuItem::separator(app)?);
+
+    let mut start_builder = MenuItemBuilder::with_id("start_recording", "Start recording");
+    if !start_rec_shortcut.is_empty() {
+        start_builder = start_builder.accelerator(&to_accelerator(&start_rec_shortcut));
+    }
+    menu_builder = menu_builder.item(&start_builder.build(app)?);
+
+    let mut stop_builder = MenuItemBuilder::with_id("stop_recording", "Stop recording");
+    if !stop_rec_shortcut.is_empty() {
+        stop_builder = stop_builder.accelerator(&to_accelerator(&stop_rec_shortcut));
+    }
+    menu_builder = menu_builder.item(&stop_builder.build(app)?);
+
+    // --- Settings + Quit ---
+    menu_builder = menu_builder
         .item(&PredefinedMenuItem::separator(app)?)
-        .item(&MenuItemBuilder::with_id("quit", "Quit screenpipe").build(app)?);
+        .item(
+            &MenuItemBuilder::with_id("settings", "Settings...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("quit", "Quit screenpipe")
+                .accelerator("CmdOrCtrl+Q")
+                .build(app)?,
+        );
 
     menu_builder.build().map_err(Into::into)
 }
@@ -466,6 +499,14 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
             let app = app_handle.clone();
             let _ = app_handle.run_on_main_thread(move || {
                 let _ = ShowRewindWindow::PermissionRecovery.show(&app);
+            });
+        }
+        "upgrade" => {
+            let app = app_handle.clone();
+            let _ = app_handle.run_on_main_thread(move || {
+                let _ = app
+                    .opener()
+                    .open_url("https://screenpi.pe/pro", None::<&str>);
             });
         }
         "releases" => {
@@ -736,62 +777,11 @@ pub fn setup_tray_menu_updater(app: AppHandle, update_item: &tauri::menu::MenuIt
     });
 }
 
-fn format_shortcut(shortcut: &str) -> String {
-    // Format shortcut for display in tray menu
-    // macOS convention: ⌘ (Command) → ⌃ (Control) → ⌥ (Option) → ⇧ (Shift) → Key
-
-    let parts: Vec<&str> = shortcut.split('+').collect();
-
-    let mut has_cmd = false;
-    let mut has_ctrl = false;
-    let mut has_alt = false;
-    let mut has_shift = false;
-    let mut key = String::new();
-
-    for part in parts {
-        let lower = part.trim().to_lowercase();
-        match lower.as_str() {
-            "super" | "command" | "cmd" | "meta" => has_cmd = true,
-            "control" | "ctrl" | "commandorcontrol" => has_ctrl = true,
-            "alt" | "option" => has_alt = true,
-            "shift" => has_shift = true,
-            _ => key = part.trim().to_uppercase(),
-        }
-    }
-
-    if cfg!(target_os = "macos") {
-        // macOS: Use symbols in correct order (⌘⌃⌥⇧Key)
-        let mut result = String::new();
-        if has_cmd {
-            result.push_str("⌘");
-        }
-        if has_ctrl {
-            result.push_str("⌃");
-        }
-        if has_alt {
-            result.push_str("⌥");
-        }
-        if has_shift {
-            result.push_str("⇧");
-        }
-        result.push_str(&key);
-        result
-    } else {
-        // Windows/Linux: Use text with + separator
-        let mut parts_out = Vec::new();
-        if has_ctrl {
-            parts_out.push("Ctrl");
-        }
-        if has_cmd {
-            parts_out.push("Win");
-        }
-        if has_alt {
-            parts_out.push("Alt");
-        }
-        if has_shift {
-            parts_out.push("Shift");
-        }
-        parts_out.push(&key);
-        parts_out.join("+")
-    }
+/// Convert stored shortcut format (e.g. "Control+Super+L") to Tauri accelerator
+/// format (e.g. "Ctrl+Super+L") for native right-aligned display in menus.
+fn to_accelerator(shortcut: &str) -> String {
+    shortcut
+        .replace("Control", "Ctrl")
+        .replace("CommandOrControl", "CmdOrCtrl")
 }
+
