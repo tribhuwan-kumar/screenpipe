@@ -217,7 +217,7 @@ jobs:
           $cstDir = "$env:RUNNER_TEMP\CodeSignTool"
           $cstUrl = "https://www.ssl.com/download/codesigntool-for-windows/"
           Write-Host "Downloading CodeSignTool..."
-          Invoke-WebRequest -Uri "https://github.com/nicedoc/codesigntool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip" -OutFile "$env:RUNNER_TEMP\cst.zip"
+          Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip" -OutFile "$env:RUNNER_TEMP\cst.zip"
           Expand-Archive -Path "$env:RUNNER_TEMP\cst.zip" -DestinationPath "$env:RUNNER_TEMP" -Force
           # Find the extracted folder
           $cstDir = Get-ChildItem "$env:RUNNER_TEMP\CodeSignTool*" -Directory | Select-Object -First 1
