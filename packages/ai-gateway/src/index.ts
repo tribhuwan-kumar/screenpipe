@@ -3,7 +3,7 @@ import { Env, RequestBody, AuthResult } from './types';
 import { handleOptions, createSuccessResponse, createErrorResponse, addCorsHeaders } from './utils/cors';
 import { validateAuth } from './utils/auth';
 import { RateLimiter, checkRateLimit } from './utils/rate-limiter';
-import { trackUsage, getUsageStatus, isModelAllowed, TIER_CONFIG } from './services/usage-tracker';
+import { trackUsage, getUsageStatus, isModelAllowed, getTierConfig } from './services/usage-tracker';
 import { handleChatCompletions } from './handlers/chat';
 import { handleModelListing } from './handlers/models';
 import { handleFileTranscription, handleWebSocketUpgrade } from './handlers/transcription';
@@ -72,8 +72,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 			const body = (await request.json()) as RequestBody;
 
 			// Check if model is allowed for this tier
-			if (!isModelAllowed(body.model, authResult.tier)) {
-				const allowedModels = TIER_CONFIG[authResult.tier].allowedModels;
+			if (!isModelAllowed(body.model, authResult.tier, env)) {
+				const allowedModels = getTierConfig(env)[authResult.tier].allowedModels;
 				return addCorsHeaders(createErrorResponse(403, JSON.stringify({
 					error: 'model_not_allowed',
 					message: `Model "${body.model}" is not available for your tier (${authResult.tier}). Available models: ${allowedModels.join(', ')}`,
@@ -84,7 +84,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
 			// Track usage and check daily limit (includes IP-based abuse prevention)
 			const ipAddress = request.headers.get('cf-connecting-ip') || undefined;
-			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress);
+			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress, body.model);
 			if (!usage.allowed) {
 				const creditsExhausted = (usage.creditsRemaining ?? 0) <= 0;
 				return addCorsHeaders(createErrorResponse(429, JSON.stringify({
@@ -107,7 +107,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 						},
 						subscribe: {
 							url: 'https://screenpi.pe/onboarding',
-							benefit: '200 queries/day + 500 credits/mo + encrypted sync',
+							benefit: `${getTierConfig(env).subscribed.dailyQueries} queries/day + 500 credits/mo + encrypted sync`,
 							price: '$29/mo',
 						},
 					},
@@ -167,9 +167,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
 		// Web search endpoint - uses Gemini's Google Search grounding
 		if (path === '/v1/web-search' && request.method === 'POST') {
-			// Track usage (counts as 1 query)
+			// Track usage (counts as 1 query, web search uses gemini flash)
 			const ipAddress = request.headers.get('cf-connecting-ip') || undefined;
-			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress);
+			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress, 'gemini-2.5-flash');
 			if (!usage.allowed) {
 				return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 					error: (usage.creditsRemaining ?? 0) <= 0 ? 'credits_exhausted' : 'daily_limit_exceeded',
@@ -248,8 +248,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				const body = (await clonedRequest.json()) as { model?: string; stream?: boolean };
 				parsedModel = body.model || parsedModel;
 				parsedStream = body.stream === true;
-				if (!isModelAllowed(parsedModel, authResult.tier)) {
-					const allowedModels = TIER_CONFIG[authResult.tier].allowedModels;
+				if (!isModelAllowed(parsedModel, authResult.tier, env)) {
+					const allowedModels = getTierConfig(env)[authResult.tier].allowedModels;
 					return addCorsHeaders(createErrorResponse(403, JSON.stringify({
 						error: 'model_not_allowed',
 						message: `Model "${parsedModel}" is not available for your tier (${authResult.tier}). Available models: ${allowedModels.join(', ')}`,
@@ -261,9 +261,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				// If body parse fails, let the proxy handle the error downstream
 			}
 
-			// Track usage and check daily limit
+			// Track usage and check daily limit (weighted by model)
 			const ipAddress = request.headers.get('cf-connecting-ip') || undefined;
-			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress);
+			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress, parsedModel);
 			if (!usage.allowed) {
 				return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 					error: (usage.creditsRemaining ?? 0) <= 0 ? 'credits_exhausted' : 'daily_limit_exceeded',
@@ -344,9 +344,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				// body parse failure — proceed with defaults
 			}
 
-			// Track usage for OpenCode requests
+			// Track usage for OpenCode requests (weighted by model)
 			const ipAddress = request.headers.get('cf-connecting-ip') || undefined;
-			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress);
+			const usage = await trackUsage(env, authResult.deviceId, authResult.tier, authResult.userId, ipAddress, ocModel);
 			if (!usage.allowed) {
 				return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 					error: (usage.creditsRemaining ?? 0) <= 0 ? 'credits_exhausted' : 'daily_limit_exceeded',

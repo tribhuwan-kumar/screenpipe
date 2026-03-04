@@ -398,7 +398,7 @@ async fn kill_process_on_port(port: u16) {
         // lsof can hang indefinitely on macOS — always enforce a timeout
         // and kill the child if it exceeds it, to avoid zombie lsof processes.
         let child = match tokio::process::Command::new("lsof")
-            .args(["-ti", &format!(":{}", port)])
+            .args(["-nP", "-ti", &format!(":{}", port)])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()

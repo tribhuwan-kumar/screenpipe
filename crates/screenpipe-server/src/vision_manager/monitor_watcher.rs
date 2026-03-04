@@ -86,17 +86,27 @@ pub async fn start_monitor_watcher(vision_manager: Arc<VisionManager>) -> anyhow
             let active_ids: HashSet<u32> =
                 vision_manager.active_monitors().await.into_iter().collect();
 
-            // Detect newly connected monitors
-            for monitor_id in &current_ids {
-                if !active_ids.contains(monitor_id) {
-                    if known_monitors.contains(monitor_id) {
+            // Detect newly connected monitors (filtered by user selection)
+            for monitor in &current_monitors {
+                let monitor_id = monitor.id();
+                if !active_ids.contains(&monitor_id) {
+                    if !vision_manager.is_monitor_allowed(monitor) {
+                        debug!(
+                            "Skipping monitor {} ({}) — not in allowed list",
+                            monitor_id,
+                            monitor.stable_id()
+                        );
+                        continue;
+                    }
+
+                    if known_monitors.contains(&monitor_id) {
                         info!("Monitor {} reconnected, resuming recording", monitor_id);
                     } else {
                         info!("New monitor {} detected, starting recording", monitor_id);
-                        known_monitors.insert(*monitor_id);
+                        known_monitors.insert(monitor_id);
                     }
 
-                    if let Err(e) = vision_manager.start_monitor(*monitor_id).await {
+                    if let Err(e) = vision_manager.start_monitor(monitor_id).await {
                         warn!(
                             "Failed to start recording on monitor {}: {:?}",
                             monitor_id, e

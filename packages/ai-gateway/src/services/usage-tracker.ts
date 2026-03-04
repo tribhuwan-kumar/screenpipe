@@ -110,11 +110,37 @@ async function getCreditBalance(env: Env, userId: string): Promise<number> {
   }
 }
 
-// IP-based abuse prevention limits (on top of device limits)
-const IP_DAILY_LIMIT = 200; // Max queries per IP per day (catches device ID spoofing)
+// Per-model query weights — expensive models cost more daily queries
+const MODEL_WEIGHTS: Record<string, number> = {
+  'claude-opus': 5,
+  'claude-sonnet': 3,
+  'claude-haiku': 1,
+  'gemini-3-pro': 3,
+  'gemini-2.5-pro': 3,
+  'gemini-3-flash': 1,
+  'gemini-2.5-flash': 1,
+  'gpt-4o-mini': 1,
+  'gpt-4o': 3,
+  'gpt-4': 3,
+};
 
-// Tier configuration - models and limits per tier
-export const TIER_CONFIG: Record<UserTier, TierLimits> = {
+export function getModelWeight(model?: string): number {
+  if (!model) return 1;
+  const lower = model.toLowerCase();
+  // Try longest prefix match
+  let bestKey = '';
+  for (const key of Object.keys(MODEL_WEIGHTS)) {
+    if (lower.includes(key) && key.length > bestKey.length) {
+      bestKey = key;
+    }
+  }
+  return bestKey ? MODEL_WEIGHTS[bestKey] : 1;
+}
+
+// Default limits (overridable via env vars in CF dashboard — no redeploy needed)
+const DEFAULT_IP_DAILY_LIMIT = 1500;
+
+const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
   anonymous: {
     dailyQueries: 25,
     rpm: 15,
@@ -137,11 +163,40 @@ export const TIER_CONFIG: Record<UserTier, TierLimits> = {
     ],
   },
   subscribed: {
-    dailyQueries: 200,
+    dailyQueries: 1000,
     rpm: 60,
     allowedModels: ['*'], // all models
   },
 };
+
+/** Resolve tier config with env var overrides (LIMIT_SUBSCRIBED_DAILY, etc.) */
+export function getTierConfig(env?: Env): Record<UserTier, TierLimits> {
+  if (!env) return DEFAULT_TIER_CONFIG;
+  return {
+    anonymous: {
+      ...DEFAULT_TIER_CONFIG.anonymous,
+      dailyQueries: parseInt(env.LIMIT_ANONYMOUS_DAILY || '') || DEFAULT_TIER_CONFIG.anonymous.dailyQueries,
+      rpm: parseInt(env.LIMIT_ANONYMOUS_RPM || '') || DEFAULT_TIER_CONFIG.anonymous.rpm,
+    },
+    logged_in: {
+      ...DEFAULT_TIER_CONFIG.logged_in,
+      dailyQueries: parseInt(env.LIMIT_LOGGED_IN_DAILY || '') || DEFAULT_TIER_CONFIG.logged_in.dailyQueries,
+      rpm: parseInt(env.LIMIT_LOGGED_IN_RPM || '') || DEFAULT_TIER_CONFIG.logged_in.rpm,
+    },
+    subscribed: {
+      ...DEFAULT_TIER_CONFIG.subscribed,
+      dailyQueries: parseInt(env.LIMIT_SUBSCRIBED_DAILY || '') || DEFAULT_TIER_CONFIG.subscribed.dailyQueries,
+      rpm: parseInt(env.LIMIT_SUBSCRIBED_RPM || '') || DEFAULT_TIER_CONFIG.subscribed.rpm,
+    },
+  };
+}
+
+export function getIpDailyLimit(env?: Env): number {
+  return parseInt(env?.LIMIT_IP_DAILY || '') || DEFAULT_IP_DAILY_LIMIT;
+}
+
+// Keep static export for tests and backward compat
+export const TIER_CONFIG = DEFAULT_TIER_CONFIG;
 
 // Schema is defined in migrations/0001_create_usage_table.sql
 // Run: wrangler d1 execute screenpipe-usage --file=./migrations/0001_create_usage_table.sql
@@ -172,10 +227,14 @@ export async function trackUsage(
   deviceId: string,
   tier: UserTier,
   userId?: string,
-  ipAddress?: string
+  ipAddress?: string,
+  model?: string
 ): Promise<UsageResult> {
   const today = getTodayUTC();
-  const limits = TIER_CONFIG[tier];
+  const tierConfig = getTierConfig(env);
+  const limits = tierConfig[tier];
+  const ipDailyLimit = getIpDailyLimit(env);
+  const weight = getModelWeight(model);
 
   try {
     // IP-based abuse prevention (catches device ID spoofing)
@@ -187,11 +246,11 @@ export async function trackUsage(
 
       if (ipUsage) {
         const ipCount = ipUsage.last_reset < today ? 0 : ipUsage.daily_count;
-        if (ipCount >= IP_DAILY_LIMIT) {
+        if (ipCount >= ipDailyLimit) {
           console.warn(`IP abuse detected: ${ipAddress} has ${ipCount} queries today`);
           return {
             used: ipCount,
-            limit: IP_DAILY_LIMIT,
+            limit: ipDailyLimit,
             remaining: 0,
             allowed: false,
             resetsAt: getNextResetTime(),
@@ -221,9 +280,9 @@ export async function trackUsage(
       if (existing.last_reset < today) {
         // Reset count for new day
         await env.DB.prepare(
-          'UPDATE usage SET daily_count = 1, last_reset = ?, tier = ?, user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE device_id = ?'
-        ).bind(today, tier, userId || null, deviceId).run();
-        dailyCount = 1;
+          'UPDATE usage SET daily_count = ?, last_reset = ?, tier = ?, user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE device_id = ?'
+        ).bind(weight, today, tier, userId || null, deviceId).run();
+        dailyCount = weight;
       } else {
         // Check limit BEFORE incrementing — don't inflate counter on rejected requests
         if (existing.daily_count >= limits.dailyQueries) {
@@ -265,8 +324,8 @@ export async function trackUsage(
             creditsRemaining: balance,
           };
         }
-        // Increment count
-        dailyCount = existing.daily_count + 1;
+        // Increment count by model weight
+        dailyCount = existing.daily_count + weight;
         await env.DB.prepare(
           'UPDATE usage SET daily_count = ?, tier = ?, user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE device_id = ?'
         ).bind(dailyCount, tier, userId || null, deviceId).run();
@@ -274,9 +333,9 @@ export async function trackUsage(
     } else {
       // Create new record
       await env.DB.prepare(
-        'INSERT INTO usage (device_id, user_id, daily_count, last_reset, tier) VALUES (?, ?, 1, ?, ?)'
-      ).bind(deviceId, userId || null, today, tier).run();
-      dailyCount = 1;
+        'INSERT INTO usage (device_id, user_id, daily_count, last_reset, tier) VALUES (?, ?, ?, ?, ?)'
+      ).bind(deviceId, userId || null, weight, today, tier).run();
+      dailyCount = weight;
     }
 
     const allowed = dailyCount <= limits.dailyQueries;
@@ -311,7 +370,7 @@ export async function getUsageStatus(
   userId?: string
 ): Promise<UsageStatus> {
   const today = getTodayUTC();
-  const limits = TIER_CONFIG[tier];
+  const limits = getTierConfig(env)[tier];
 
   let usedToday = 0;
 
@@ -362,8 +421,8 @@ export async function getUsageStatus(
 /**
  * Check if a model is allowed for a given tier
  */
-export function isModelAllowed(model: string, tier: UserTier): boolean {
-  const allowedModels = TIER_CONFIG[tier].allowedModels;
+export function isModelAllowed(model: string, tier: UserTier, env?: Env): boolean {
+  const allowedModels = getTierConfig(env)[tier].allowedModels;
 
   // Subscribed users can use any model
   if (allowedModels.includes('*')) {

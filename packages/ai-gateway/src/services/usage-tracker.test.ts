@@ -15,7 +15,7 @@ describe('TIER_CONFIG', () => {
   });
 
   it('should have correct limits for subscribed tier', () => {
-    expect(TIER_CONFIG.subscribed.dailyQueries).toBe(200);
+    expect(TIER_CONFIG.subscribed.dailyQueries).toBe(1000);
     expect(TIER_CONFIG.subscribed.allowedModels).toContain('*');
   });
 
@@ -207,7 +207,7 @@ describe('429 error response shapes', () => {
       credits_remaining: 100,
       upgrade_options: {
         buy_credits: { url: 'https://screenpi.pe/onboarding', benefit: 'Credits extend your daily limit — use anytime' },
-        subscribe: { url: 'https://screenpi.pe/onboarding', benefit: '200 queries/day + 500 credits/mo + encrypted sync', price: '$29/mo' },
+        subscribe: { url: 'https://screenpi.pe/onboarding', benefit: '1000 queries/day + 500 credits/mo + encrypted sync', price: '$29/mo' },
       },
     };
     // Not credits_exhausted because user has 100 credits remaining
@@ -236,7 +236,7 @@ describe('429 error response shapes', () => {
       upgrade_options: {
         login: { benefit: '+25 daily queries, more models' },
         buy_credits: { url: 'https://screenpi.pe/onboarding', benefit: 'Credits extend your daily limit — use anytime' },
-        subscribe: { url: 'https://screenpi.pe/onboarding', benefit: '200 queries/day + 500 credits/mo + encrypted sync', price: '$29/mo' },
+        subscribe: { url: 'https://screenpi.pe/onboarding', benefit: '1000 queries/day + 500 credits/mo + encrypted sync', price: '$29/mo' },
       },
     };
     expect(body.upgrade_options.login).toBeDefined();
@@ -312,10 +312,9 @@ describe('cost control', () => {
   });
 
   it('subscribed tier daily limit should cap monthly cost', () => {
-    // 200 queries/day * 30 days * $0.01/query = $60/month
-    // Pro subscription is $29/mo — losing $31/mo if every query used
-    // But avg user uses maybe 20% of quota
-    const worstCaseMonthly = TIER_CONFIG.subscribed.dailyQueries * 30 * 0.01;
+    // 1000 queries/day * 30 days * $0.002/query = $60/month at actual avg cost
+    // Pro subscription is $29/mo — but avg user uses maybe 20% of quota
+    const worstCaseMonthly = TIER_CONFIG.subscribed.dailyQueries * 30 * 0.002;
     expect(worstCaseMonthly).toBeLessThan(200); // Must be under $200/mo worst case
   });
 });

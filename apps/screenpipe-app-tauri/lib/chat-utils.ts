@@ -118,7 +118,7 @@ interface TimeRange {
 export interface ParsedMentions {
   cleanedInput: string;
   timeRanges: TimeRange[];
-  contentType: "all" | "ocr" | "audio" | "input" | "accessibility" | null;
+  contentType: "all" | "ocr" | "audio" | "input" | "accessibility" | "screen" | null;
   appName: string | null;
   usedSelection: boolean;
   speakerName: string | null;
@@ -246,10 +246,11 @@ export function parseMentions(input: string, options?: ParseMentionsOptions): Pa
     cleanedInput = cleanedInput.replace(audioPattern, "").trim();
   }
 
-  // @screen or @ocr or @vision - screen text only
+  // @screen or @ocr or @vision - screen text only (accessibility + OCR)
+  // Maps to "screen" which the frontend translates into searching both modalities
   const screenPattern = /@(screen|ocr|vision)\b/gi;
   if (screenPattern.test(cleanedInput)) {
-    contentType = "ocr";
+    contentType = "screen";
     cleanedInput = cleanedInput.replace(screenPattern, "").trim();
   }
 

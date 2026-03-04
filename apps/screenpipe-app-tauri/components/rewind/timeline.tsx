@@ -192,29 +192,8 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	// Grace period after searchNavFrame clears: the image-load callback sets searchNavFrame=false
 	// in the same tick that may also bump currentIndex (snap/debounce), so we wait a short window
 	// before allowing dismiss — otherwise the highlight vanishes instantly after navigation.
-	const prevIndexRef = useRef(currentIndex);
-	const searchNavJustClearedRef = useRef(false);
-	const searchNavGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	useEffect(() => {
-		if (!searchNavFrame) {
-			// searchNavFrame just turned off — start grace period
-			searchNavJustClearedRef.current = true;
-			searchNavGraceRef.current = setTimeout(() => {
-				searchNavJustClearedRef.current = false;
-			}, 500);
-		}
-		return () => {
-			if (searchNavGraceRef.current) clearTimeout(searchNavGraceRef.current);
-		};
-	}, [searchNavFrame]);
-
-	useEffect(() => {
-		if (prevIndexRef.current !== currentIndex && !searchNavFrame && !searchNavJustClearedRef.current && hasSearchHighlight) {
-			dismissSearchHighlight();
-		}
-		prevIndexRef.current = currentIndex;
-	}, [currentIndex, searchNavFrame, hasSearchHighlight, dismissSearchHighlight]);
+	// Highlight dismiss is explicit — triggered only by scroll, arrow keys,
+	// escape, or new search. NOT by automatic currentIndex changes (debounce settling).
 
 	// Search-result navigation: find current position in result set
 	const searchResultIndex = useMemo(() => {
@@ -1069,6 +1048,9 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 				return;
 			}
 
+			// Dismiss search highlights on explicit arrow navigation
+			if (hasSearchHighlight) dismissSearchHighlight();
+
 			const isAlt = e.altKey;
 
 			// Signal arrow nav to skip debounce
@@ -1143,7 +1125,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 
 		window.addEventListener("keydown", handleArrowKeys);
 		return () => window.removeEventListener("keydown", handleArrowKeys);
-	}, [frames, setCurrentFrame, showSearchModal, isPlaying, seekPlayback, pausePlayback, inSearchReviewMode, searchResultIndex, searchResults]);
+	}, [frames, setCurrentFrame, showSearchModal, isPlaying, seekPlayback, pausePlayback, inSearchReviewMode, searchResultIndex, searchResults, hasSearchHighlight, dismissSearchHighlight]);
 
 	useEffect(() => {
 		const getStartDateAndSet = async () => {
@@ -1238,6 +1220,9 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 					// Pause playback on manual scroll
 					pausePlayback();
 
+					// Dismiss search highlights on explicit scroll
+					if (hasSearchHighlight) dismissSearchHighlight();
+
 					// Pinch gesture on trackpad sends ctrlKey=true
 					// Cmd+Scroll on mouse sends metaKey=true — handle as zoom
 					if (e.ctrlKey || e.metaKey) {
@@ -1313,7 +1298,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 				{ leading: true, trailing: false },
 			),
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-	[frames, zoomLevel, pausePlayback, matchingIndices], // Re-create when zoom/filter changes
+	[frames, zoomLevel, pausePlayback, matchingIndices, hasSearchHighlight, dismissSearchHighlight], // Re-create when zoom/filter changes
 	);
 
 	// Attach scroll/zoom handler so pinch-to-zoom and scroll-to-navigate work.

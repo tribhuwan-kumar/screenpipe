@@ -151,6 +151,14 @@ export interface Env {
 	AUTO_RELOAD_SECRET: string;
 	// Admin API auth
 	ADMIN_SECRET: string;
+	// Configurable tier limits (override defaults without redeploying)
+	LIMIT_ANONYMOUS_DAILY?: string;
+	LIMIT_ANONYMOUS_RPM?: string;
+	LIMIT_LOGGED_IN_DAILY?: string;
+	LIMIT_LOGGED_IN_RPM?: string;
+	LIMIT_SUBSCRIBED_DAILY?: string;
+	LIMIT_SUBSCRIBED_RPM?: string;
+	LIMIT_IP_DAILY?: string;
 }
 
 // User tier for rate limiting and model access

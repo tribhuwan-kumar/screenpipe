@@ -43,6 +43,8 @@ interface CurrentFrameTimelineProps {
 	isArrowNav?: boolean;
 	/** Adjacent frames for preloading (±PRELOAD_ADJACENT around current) */
 	adjacentFrames?: StreamTimeSeriesResponse[];
+	/** Whether the search modal is open — hides native Live Text overlay to avoid blocking input */
+	isSearchModalOpen?: boolean;
 }
 
 
@@ -105,6 +107,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 	onSearchNavComplete,
 	isArrowNav,
 	adjacentFrames,
+	isSearchModalOpen,
 }) => {
 	const { isMac } = usePlatform();
 	const { settings } = useSettings();
@@ -114,6 +117,9 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 	const [contextMenuOpen, setContextMenuOpen] = useState(false);
 	const contextMenuPositionRef = useRef<{ x: number; y: number } | null>(null);
 	const [hasError, setHasError] = useState(false);
+	// Native macOS Live Text overlay (VisionKit ImageAnalysisOverlayView)
+	const [nativeLiveTextActive, setNativeLiveTextActive] = useState(false);
+	const liveTextInitRef = useRef(false);
 	const [naturalDimensions, setNaturalDimensions] = useState<{
 		width: number;
 		height: number;
@@ -693,6 +699,112 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		return () => observer.disconnect();
 	}, [naturalDimensions]);
 
+	// --- Native macOS Live Text (VisionKit ImageAnalysisOverlayView) ---
+	// Initialize Live Text overlay once on mount (macOS only)
+	useEffect(() => {
+		if (!isMac || liveTextInitRef.current) return;
+		let cancelled = false;
+		(async () => {
+			try {
+				const available = await invoke<boolean>("livetext_is_available");
+				console.log("[livetext] is_available:", available);
+				if (cancelled || !available) return;
+				// Use "main" panel label — the NSPanel the timeline renders in
+				await invoke("livetext_init", { windowLabel: "main" });
+				console.log("[livetext] init succeeded, native overlay active");
+				if (!cancelled) {
+					liveTextInitRef.current = true;
+					setNativeLiveTextActive(true);
+				}
+			} catch (e) {
+				console.warn("live text init failed:", e);
+			}
+		})();
+		return () => { cancelled = true; };
+	}, [isMac]);
+
+	// Analyze frame when frameId changes (native Live Text)
+	// Position is handled separately by the update_position effect below.
+	const renderedInfoRef = useRef(renderedImageInfo);
+	renderedInfoRef.current = renderedImageInfo;
+
+	useEffect(() => {
+		if (!nativeLiveTextActive) return;
+		if (!debouncedFrame?.frameId) {
+			invoke("livetext_hide").catch(() => {});
+			return;
+		}
+		const info = renderedInfoRef.current;
+		if (!info) return;
+
+		let cancelled = false;
+		const frameUrl = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+		(async () => {
+			try {
+				await invoke("livetext_analyze", {
+					imagePath: frameUrl,
+					x: info.offsetX,
+					y: info.offsetY,
+					w: info.width,
+					h: info.height,
+				});
+			} catch (e) {
+				if (!cancelled) console.warn("live text analyze failed:", e);
+			}
+		})();
+		return () => { cancelled = true; };
+	}, [nativeLiveTextActive, debouncedFrame?.frameId]);
+
+	// Update overlay position on resize (native Live Text)
+	useEffect(() => {
+		if (!nativeLiveTextActive || !renderedImageInfo) return;
+		invoke("livetext_update_position", {
+			x: renderedImageInfo.offsetX,
+			y: renderedImageInfo.offsetY,
+			w: renderedImageInfo.width,
+			h: renderedImageInfo.height,
+		}).catch(() => {});
+	}, [nativeLiveTextActive, renderedImageInfo?.offsetX, renderedImageInfo?.offsetY, renderedImageInfo?.width, renderedImageInfo?.height]);
+
+	// Highlight search terms (native Live Text, macOS 14+)
+	useEffect(() => {
+		if (!nativeLiveTextActive) return;
+		if (highlightTerms.length > 0 && !highlightDismissed) {
+			invoke("livetext_highlight", { terms: highlightTerms }).catch(() => {});
+		} else {
+			invoke("livetext_clear_highlights").catch(() => {});
+		}
+	}, [nativeLiveTextActive, highlightTerms, highlightDismissed]);
+
+	// Hide overlay when search modal opens, show when it closes
+	useEffect(() => {
+		if (!nativeLiveTextActive) return;
+		if (isSearchModalOpen) {
+			invoke("livetext_hide").catch(() => {});
+		} else if (debouncedFrame?.frameId && renderedInfoRef.current) {
+			// Re-analyze to show overlay again
+			const info = renderedInfoRef.current;
+			const frameUrl = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+			invoke("livetext_analyze", {
+				imagePath: frameUrl,
+				x: info.offsetX,
+				y: info.offsetY,
+				w: info.width,
+				h: info.height,
+			}).catch(() => {});
+		}
+	}, [nativeLiveTextActive, isSearchModalOpen]);
+
+	// Hide overlay on unmount
+	useEffect(() => {
+		return () => {
+			if (liveTextInitRef.current) {
+				invoke("livetext_hide").catch(() => {});
+			}
+		};
+	}, []);
+	// --- End Native macOS Live Text ---
+
 	// Re-enable video mode when navigating to a non-failed video chunk
 	useEffect(() => {
 		if (debouncedFrame?.filePath && !isChunkFailed(debouncedFrame.filePath) && !isSnapshotFrame) {
@@ -934,7 +1046,9 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 
 			{/* Browser URL bar moved to parent timeline.tsx at z-[45] so it's clickable above controls */}
 
-			{/* Search highlights + URL links (pointer-events: none wrapper, links have auto) */}
+			{/* Search highlights + URL links (pointer-events: none wrapper, links have auto)
+			    When native Live Text is active, skip search highlight terms (native overlay handles them)
+			    but still show URL detection overlays. */}
 			{!isLoading && !hasError && !ocrLoading && naturalDimensions && renderedImageInfo && textPositions.length > 0 && (
 				<div className="absolute overflow-hidden" style={{ zIndex: 6, top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }}>
 					<div style={{
@@ -950,7 +1064,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 							originalHeight={naturalDimensions.height}
 							displayedWidth={renderedImageInfo.width}
 							displayedHeight={renderedImageInfo.height}
-							clickableUrls={true}
+							clickableUrls={false}
 							highlightTerms={highlightTerms.length > 0 ? highlightTerms : undefined}
 							highlightFading={highlightDismissed}
 						/>
@@ -958,12 +1072,8 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 				</div>
 			)}
 
-			{/* Selectable text layer — rendered as its own layer, NOT inside TextOverlay's
-			    pointer-events:none wrapper. This ensures WebKit allows text selection.
-			    NOTE: intentionally omit !ocrLoading — keep the layer mounted with previous
-			    positions while new OCR data loads, so text selection isn't interrupted.
-			    z-index 7 puts this ABOVE the TextOverlay (z-index 6) so clickable URL
-			    overlays don't intercept drag-to-select on URL-heavy pages (Intercom, etc). */}
+			{/* Selectable text layer for web-based text selection (copy, highlight).
+			    Always shown — native overlay is non-interactive (prevents focus stealing). */}
 			{!isLoading && !hasError && renderedImageInfo && textPositions.length > 0 && (
 				<div className="absolute" style={{ zIndex: 7, top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }}>
 					<div style={{
@@ -989,35 +1099,6 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 				naturalDimensions={naturalDimensions}
 				userToken={settings.user?.token ?? null}
 			/>
-
-			{/* URL chips — bottom of frame, always shown when URLs are detected.
-			    Previously gated on textPositions.length === 0 which hid chips whenever
-			    OCR was available — but the inline clickable URLs in TextOverlay are now
-			    below the SelectableTextLayer (z-index 7 vs 6), so chips are the only
-			    reliable way to surface URLs. */}
-			{!isLoading && !hasError && detectedUrls.length > 0 && (
-				<div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1.5 max-w-[90%] overflow-x-auto">
-					{detectedUrls.map((url) => (
-						<button
-							key={url.normalized}
-							type="button"
-							onClick={async () => {
-								try {
-									const { open } = await import("@tauri-apps/plugin-shell");
-									await open(url.normalized);
-								} catch {
-									window.open(url.normalized, "_blank");
-								}
-							}}
-							className="flex items-center gap-1 px-2 py-1 text-[11px] font-mono bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm whitespace-nowrap transition-colors max-w-[200px]"
-							title={url.normalized}
-						>
-							<ExternalLink className="w-3 h-3 shrink-0" />
-							<span className="truncate">{url.display}</span>
-						</button>
-					))}
-				</div>
-			)}
 
 		</div>
 	);

@@ -183,21 +183,25 @@ export class GeminiProvider implements AIProvider {
 		const method = streaming ? 'streamGenerateContent' : 'generateContent';
 		// Map model names to Vertex AI format
 		const vertexModel = this.mapModelToVertex(model);
+		// Gemini 3+ models require the global endpoint, older models use regional
+		const isGlobal = vertexModel.startsWith('gemini-3');
+		if (isGlobal) {
+			return `https://aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/global/publishers/google/models/${vertexModel}:${method}`;
+		}
 		return `https://${this.region}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${this.region}/publishers/google/models/${vertexModel}:${method}`;
 	}
 
 	private mapModelToVertex(model: string): string {
-		// Map common model names to Vertex AI format
+		// Map friendly model names to Vertex AI model IDs
 		const modelMap: Record<string, string> = {
-			'gemini-flash': 'gemini-2.0-flash',
-			'gemini-3-flash': 'gemini-2.0-flash',
-			'gemini-pro': 'gemini-2.0-pro-exp-02-05',
-			'gemini-3-pro': 'gemini-2.0-pro-exp-02-05',
-			'gemini-2.5-flash': 'gemini-2.0-flash',
-			'gemini-2.5-pro': 'gemini-2.0-pro-exp-02-05',
+			'gemini-flash': 'gemini-2.5-flash',
+			'gemini-pro': 'gemini-2.5-pro',
+			'gemini-3-flash': 'gemini-3-flash-preview',
+			'gemini-3-pro': 'gemini-3.1-pro-preview',
 		};
-		console.log('[Gemini Vertex] Model mapping:', model, '->', modelMap[model] || model);
-		return modelMap[model] || model;
+		const mapped = modelMap[model] || model;
+		console.log('[Gemini Vertex] Model mapping:', model, '->', mapped);
+		return mapped;
 	}
 
 	async createCompletion(body: RequestBody): Promise<Response> {
@@ -718,28 +722,42 @@ export class GeminiProvider implements AIProvider {
 	formatMessages(messages: Message[]): any[] {
 		const formatted: any[] = [];
 
+		// Collect consecutive tool responses to batch them into a single user message
+		// (Gemini requires all functionResponse parts in one message matching the functionCall turn)
+		let pendingToolResponses: any[] = [];
+
+		const flushToolResponses = () => {
+			if (pendingToolResponses.length > 0) {
+				formatted.push({
+					role: 'user',
+					parts: pendingToolResponses,
+				});
+				pendingToolResponses = [];
+			}
+		};
+
 		for (const msg of messages) {
 			if (msg.role === 'system') {
 				// System messages are handled via systemInstruction in buildRequestBody
 				continue;
 			}
 
-			// Handle tool results - convert to Gemini functionResponse format
+			// Handle tool results - collect consecutive ones into a single user message
 			if (msg.role === 'tool') {
 				const toolMsg = msg as any;
-				formatted.push({
-					role: 'user',
-					parts: [{
-						functionResponse: {
-							name: toolMsg.name || 'unknown_function',
-							response: {
-								result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-							},
+				pendingToolResponses.push({
+					functionResponse: {
+						name: toolMsg.name || 'unknown_function',
+						response: {
+							result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
 						},
-					}],
+					},
 				});
 				continue;
 			}
+
+			// Flush any pending tool responses before processing non-tool message
+			flushToolResponses();
 
 			const role = msg.role === 'assistant' ? 'model' : 'user';
 			const parts: any[] = [];
@@ -806,8 +824,8 @@ export class GeminiProvider implements AIProvider {
 			}
 		}
 
-		// Note: System message is now handled via systemInstruction in buildRequestBody
-		// No need to prepend to first user message anymore
+		// Flush any remaining tool responses at end of messages
+		flushToolResponses();
 
 		return formatted;
 	}

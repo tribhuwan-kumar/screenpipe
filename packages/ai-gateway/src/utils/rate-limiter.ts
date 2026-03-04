@@ -1,6 +1,6 @@
 import { createErrorResponse } from './cors';
 import { Env, UserTier, AuthResult } from '../types';
-import { TIER_CONFIG } from '../services/usage-tracker';
+import { getTierConfig } from '../services/usage-tracker';
 
 export class RateLimiter {
   private state: DurableObjectState;
@@ -24,8 +24,9 @@ export class RateLimiter {
     const identifier = url.searchParams.get('id') || 'unknown';
     const tier = (url.searchParams.get('tier') || 'anonymous') as UserTier;
 
-    // Get tier-specific RPM limit
-    const tierRpm = TIER_CONFIG[tier]?.rpm || 5;
+    // Get tier-specific RPM limit (prefer override from query param, fall back to defaults)
+    const rpmOverride = url.searchParams.get('rpm');
+    const tierRpm = rpmOverride ? parseInt(rpmOverride) : (getTierConfig()[tier]?.rpm || 5);
 
     // Endpoint-specific limits (as multipliers of base RPM)
     const endpointMultipliers: Record<string, number> = {
@@ -86,10 +87,11 @@ export async function checkRateLimit(
   const rateLimiterId = env.RATE_LIMITER.idFromName(identifier);
   const rateLimiter = env.RATE_LIMITER.get(rateLimiterId);
 
-  // Pass tier info to the rate limiter
+  // Pass tier info and resolved RPM to the rate limiter
   const url = new URL(request.url);
   url.searchParams.set('id', identifier);
   url.searchParams.set('tier', tier);
+  url.searchParams.set('rpm', String(getTierConfig(env)[tier]?.rpm || 5));
 
   const rateLimitResponse = await rateLimiter.fetch(url.toString());
   const rateLimitData = (await rateLimitResponse.json()) as {

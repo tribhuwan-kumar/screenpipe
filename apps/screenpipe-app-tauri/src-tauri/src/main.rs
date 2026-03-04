@@ -69,6 +69,9 @@ mod window_api;
 #[cfg(target_os = "windows")]
 mod windows_overlay;
 mod chatgpt_oauth;
+#[cfg(target_os = "macos")]
+mod livetext_ffi;
+mod livetext;
 
 pub use server::*;
 
@@ -1533,6 +1536,14 @@ async fn main() {
             commands::rollback_to_version,
             // OCR commands
             commands::perform_ocr_on_image,
+            // Live Text (native macOS ImageAnalysisOverlayView)
+            livetext::livetext_is_available,
+            livetext::livetext_init,
+            livetext::livetext_analyze,
+            livetext::livetext_update_position,
+            livetext::livetext_highlight,
+            livetext::livetext_clear_highlights,
+            livetext::livetext_hide,
             // Voice training
             voice_training::train_voice,
             // Suggestions

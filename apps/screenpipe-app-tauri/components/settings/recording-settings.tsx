@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -298,15 +300,15 @@ function TranscriptionDictionary({
           <Languages className="h-4 w-4 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
-              transcription dictionary
-              <HelpTooltip text="Add custom words to improve transcription accuracy. Whisper uses ~800 chars, Deepgram uses up to 100 keywords. All replacements apply as post-processing on every engine." />
+              custom vocabulary
+              <HelpTooltip text="Add custom words (names, brands, jargon) to improve transcription accuracy. You can also add replacements to auto-correct common mistranscriptions." />
               {vocabularyWords.length > 0 && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                   {vocabularyWords.length} / {VOCAB_LIMIT}
                 </Badge>
               )}
             </h3>
-            <p className="text-xs text-muted-foreground">bias transcription toward custom words</p>
+            <p className="text-xs text-muted-foreground">teach names, brands & jargon to your transcription</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button
@@ -338,8 +340,8 @@ function TranscriptionDictionary({
         {/* Engine limits info */}
         {vocabularyWords.length > 0 && (
           <div className="text-[10px] text-muted-foreground/60 font-mono mb-2 px-1 flex gap-3">
-            <span>whisper: {Math.min(vocabularyWords.reduce((n, e) => n + (e.replacement || e.word).length + 2, 0), WHISPER_CHAR_LIMIT)}/{WHISPER_CHAR_LIMIT} chars</span>
-            <span>deepgram: {Math.min(vocabularyWords.length, DEEPGRAM_LIMIT)}/{DEEPGRAM_LIMIT} keywords</span>
+            <span>offline: {Math.min(vocabularyWords.reduce((n, e) => n + (e.replacement || e.word).length + 2, 0), WHISPER_CHAR_LIMIT)}/{WHISPER_CHAR_LIMIT} chars</span>
+            <span>cloud: {Math.min(vocabularyWords.length, DEEPGRAM_LIMIT)}/{DEEPGRAM_LIMIT} keywords</span>
           </div>
         )}
 
@@ -1623,7 +1625,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                 <Mic className="h-4 w-4 text-muted-foreground shrink-0" />
                 <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
                   Transcription engine
-                  <HelpTooltip text="Deepgram: cloud-based, higher quality, requires API key or screenpipe cloud. Whisper: runs locally, no API key needed, may be slower. OpenAI Compatible: use any OpenAI-compatible API endpoint." />
+                  <HelpTooltip text="Cloud engines send audio to a server for fast, accurate transcription. Offline engines run on your device — fully private but use more CPU/RAM." />
                 </h3>
               </div>
               <Select
@@ -1634,19 +1636,26 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                   <SelectValue placeholder="Select engine" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="screenpipe-cloud" disabled={!settings.user?.cloud_subscribed}>
-                    Screenpipe Cloud {!settings.user?.cloud_subscribed && "(pro)"}{hwCapability?.recommendedEngine === "screenpipe-cloud" && " (recommended)"}
-                  </SelectItem>
-                  <SelectItem value="whisper-tiny">Whisper Tiny</SelectItem>
-                  <SelectItem value="whisper-tiny-quantized">Whisper Tiny Quantized</SelectItem>
-                  <SelectItem value="whisper-large">Whisper Large V3</SelectItem>
-                  <SelectItem value="whisper-large-quantized">Whisper Large V3 Quantized</SelectItem>
-                  <SelectItem value="whisper-large-v3-turbo">Whisper Large V3 Turbo</SelectItem>
-                  <SelectItem value="whisper-large-v3-turbo-quantized">Whisper Large V3 Turbo Quantized</SelectItem>
-                  <SelectItem value="openai-compatible">OpenAI Compatible</SelectItem>
-                  <SelectItem value="qwen3-asr">Qwen3-ASR (0.6B, ONNX)</SelectItem>
-                  <SelectItem value="deepgram">Deepgram</SelectItem>
-                  <SelectItem value="disabled">Disabled (capture only)</SelectItem>
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">cloud</SelectLabel>
+                    <SelectItem value="screenpipe-cloud" disabled={!settings.user?.cloud_subscribed}>
+                      Screenpipe Cloud {!settings.user?.cloud_subscribed && "(pro)"}{hwCapability?.recommendedEngine === "screenpipe-cloud" && " ★"}
+                    </SelectItem>
+                    <SelectItem value="deepgram">Deepgram</SelectItem>
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">offline</SelectLabel>
+                    <SelectItem value="whisper-large-v3-turbo">Whisper Turbo</SelectItem>
+                    <SelectItem value="whisper-large-v3-turbo-quantized">Whisper Turbo (fast)</SelectItem>
+                    <SelectItem value="whisper-tiny">Whisper Tiny</SelectItem>
+                    <SelectItem value="whisper-tiny-quantized">Whisper Tiny (fast)</SelectItem>
+                    <SelectItem value="qwen3-asr">Qwen3-ASR</SelectItem>
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">other</SelectLabel>
+                    <SelectItem value="openai-compatible">OpenAI Compatible</SelectItem>
+                    <SelectItem value="disabled">Disabled (capture only)</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
