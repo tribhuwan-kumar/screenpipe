@@ -703,81 +703,85 @@ fn run_app_observer(
     let mut last_window: Option<String> = None;
 
     while !stop.load(Ordering::Relaxed) {
-        let apps = workspace.running_apps();
-        let active_app = apps.iter().find(|app| app.is_active());
+        // Wrap each iteration in autorelease pool — running_apps() returns
+        // autoreleased NSRunningApplication objects that accumulate on Rust
+        // threads (no automatic drain), causing ~800MB+ leak over hours.
+        cidre::objc::ar_pool(|| {
+            let apps = workspace.running_apps();
+            let active_app = apps.iter().find(|app| app.is_active());
 
-        if let Some(app) = active_app {
-            let name = app
-                .localized_name()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "?".to_string());
-            let pid = app.pid();
+            if let Some(app) = active_app {
+                let name = app
+                    .localized_name()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                let pid = app.pid();
 
-            // Check exclusions
-            if !config.should_capture_app(&name) {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                continue;
-            }
-
-            let app_changed = last_app.as_ref() != Some(&name) || last_pid != pid;
-
-            if app_changed {
-                // Update shared state for event tap thread
-                *current_app.lock() = Some(name.clone());
-
-                if config.capture_app_switch {
-                    // Capture focused element's context (including text field values)
-                    let focused_element = get_focused_element_context(&config);
-
-                    let mut event = UiEvent::app_switch(
-                        Utc::now(),
-                        start.elapsed().as_millis() as u64,
-                        name.clone(),
-                        pid,
-                    );
-                    event.element = focused_element;
-                    let _ = tx.try_send(event);
+                // Check exclusions
+                if !config.should_capture_app(&name) {
+                    return;
                 }
-                last_app = Some(name.clone());
-                last_pid = pid;
-            }
 
-            // Check window change
-            let window_title = get_focused_window_title(pid);
+                let app_changed = last_app.as_ref() != Some(&name) || last_pid != pid;
 
-            // Check window exclusions
-            let should_capture = window_title
-                .as_ref()
-                .map(|w| config.should_capture_window(w))
-                .unwrap_or(true);
+                if app_changed {
+                    // Update shared state for event tap thread
+                    *current_app.lock() = Some(name.clone());
 
-            if should_capture && (window_title != last_window || app_changed) {
-                // Update shared state for event tap thread
-                *current_window.lock() = window_title.clone();
+                    if config.capture_app_switch {
+                        // Capture focused element's context (including text field values)
+                        let focused_element = get_focused_element_context(&config);
 
-                if config.capture_window_focus {
-                    // Capture focused element's context (including text field values)
-                    let focused_element = get_focused_element_context(&config);
-
-                    let event = UiEvent {
-                        id: None,
-                        timestamp: Utc::now(),
-                        relative_ms: start.elapsed().as_millis() as u64,
-                        data: EventData::WindowFocus {
-                            app: name,
-                            title: window_title.clone().map(|s| truncate(&s, 200)),
-                        },
-                        app_name: None,
-                        window_title: None,
-                        browser_url: None,
-                        element: focused_element,
-                        frame_id: None,
-                    };
-                    let _ = tx.try_send(event);
+                        let mut event = UiEvent::app_switch(
+                            Utc::now(),
+                            start.elapsed().as_millis() as u64,
+                            name.clone(),
+                            pid,
+                        );
+                        event.element = focused_element;
+                        let _ = tx.try_send(event);
+                    }
+                    last_app = Some(name.clone());
+                    last_pid = pid;
                 }
-                last_window = window_title;
+
+                // Check window change
+                let window_title = get_focused_window_title(pid);
+
+                // Check window exclusions
+                let should_capture = window_title
+                    .as_ref()
+                    .map(|w| config.should_capture_window(w))
+                    .unwrap_or(true);
+
+                if should_capture && (window_title != last_window || app_changed) {
+                    // Update shared state for event tap thread
+                    *current_window.lock() = window_title.clone();
+
+                    if config.capture_window_focus {
+                        // Capture focused element's context (including text field values)
+                        let focused_element = get_focused_element_context(&config);
+
+                        let event = UiEvent {
+                            id: None,
+                            timestamp: Utc::now(),
+                            relative_ms: start.elapsed().as_millis() as u64,
+                            data: EventData::WindowFocus {
+                                app: name,
+                                title: window_title.clone().map(|s| truncate(&s, 200)),
+                            },
+                            app_name: None,
+                            window_title: None,
+                            browser_url: None,
+                            element: focused_element,
+                            frame_id: None,
+                        };
+                        let _ = tx.try_send(event);
+                    }
+                    last_window = window_title;
+                }
             }
-        }
+        });
 
         std::thread::sleep(std::time::Duration::from_millis(100));
     }

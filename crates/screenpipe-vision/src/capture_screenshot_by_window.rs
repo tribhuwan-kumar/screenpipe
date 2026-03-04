@@ -390,14 +390,19 @@ struct WindowData {
 /// causing multiple apps to appear as "focused" simultaneously.
 #[cfg(target_os = "macos")]
 fn get_frontmost_pid() -> Option<i32> {
-    let workspace = cidre::ns::Workspace::shared();
-    let apps = workspace.running_apps();
-    for app in apps.iter() {
-        if app.is_active() {
-            return Some(app.pid());
+    // Wrap in autorelease pool — running_apps() returns autoreleased
+    // NSRunningApplication objects that accumulate on Rust threads
+    // (no automatic drain), causing ~800MB+ leak over hours.
+    cidre::objc::ar_pool(|| {
+        let workspace = cidre::ns::Workspace::shared();
+        let apps = workspace.running_apps();
+        for app in apps.iter() {
+            if app.is_active() {
+                return Some(app.pid());
+            }
         }
-    }
-    None
+        None
+    })
 }
 
 /// Rectangle bounds for overlap calculations
