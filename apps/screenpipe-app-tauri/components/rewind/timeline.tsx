@@ -1724,37 +1724,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 						/>
 					) : null}
 
-					{/* Search result navigation indicator */}
-					{inSearchReviewMode && (
-						<div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-full bg-black/70 backdrop-blur-sm border border-white/10 text-white text-sm shadow-lg">
-							<span className="text-white/60 truncate max-w-[120px]">&ldquo;{searchQuery}&rdquo;</span>
-							<button
-								className="px-1.5 hover:text-white/80 disabled:text-white/30"
-								disabled={searchResultIndex <= 0}
-								onClick={() => navigateToSearchResult(searchResultIndex - 1)}
-							>
-								&#9664;
-							</button>
-							<span className="tabular-nums font-medium">
-								{searchResultIndex + 1} / {searchResults.length}
-							</span>
-							<button
-								className="px-1.5 hover:text-white/80 disabled:text-white/30"
-								disabled={searchResultIndex >= searchResults.length - 1}
-								onClick={() => navigateToSearchResult(searchResultIndex + 1)}
-							>
-								&#9654;
-							</button>
-							<button
-								className="ml-1 text-white/50 hover:text-white/80"
-								onClick={() => clearSearchHighlight()}
-								title="Exit search review (Esc)"
-							>
-								<X className="w-3.5 h-3.5" />
-							</button>
-						</div>
-					)}
-
+	
 					{!currentFrame && !showBlockingLoader && !error && frames.length === 0 && !isLoading ? (
 						<div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-background via-background to-muted/20">
 							<div className="text-center p-8 max-w-md">
@@ -1980,6 +1950,38 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 								setCurrentFrame(frames[snapped]);
 							}}
 						/>
+					</div>
+				)}
+
+				{/* Search result navigation indicator — must be outside z-10 image container
+				    so it sits above the z-40 timeline slider and receives clicks */}
+				{inSearchReviewMode && (
+					<div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-3 px-4 py-2 rounded-full bg-black/70 backdrop-blur-sm border border-white/10 text-white text-sm shadow-lg">
+						<span className="text-white/60 truncate max-w-[120px]">&ldquo;{searchQuery}&rdquo;</span>
+						<button
+							className="px-1.5 hover:text-white/80 disabled:text-white/30"
+							disabled={searchResultIndex <= 0}
+							onClick={() => navigateToSearchResult(searchResultIndex - 1)}
+						>
+							&#9664;
+						</button>
+						<span className="tabular-nums font-medium">
+							{searchResultIndex + 1} / {searchResults.length}
+						</span>
+						<button
+							className="px-1.5 hover:text-white/80 disabled:text-white/30"
+							disabled={searchResultIndex >= searchResults.length - 1}
+							onClick={() => navigateToSearchResult(searchResultIndex + 1)}
+						>
+							&#9654;
+						</button>
+						<button
+							className="ml-1 text-white/50 hover:text-white/80"
+							onClick={() => clearSearchHighlight()}
+							title="Exit search review (Esc)"
+						>
+							<X className="w-3.5 h-3.5" />
+						</button>
 					</div>
 				)}
 

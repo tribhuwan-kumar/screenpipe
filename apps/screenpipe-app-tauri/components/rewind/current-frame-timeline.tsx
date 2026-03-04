@@ -732,12 +732,17 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 
 	const analyzeFailCountRef = useRef(0);
 
+	// Hide overlay immediately when raw frameId changes (before debounce settles),
+	// so stale text selection doesn't linger while scrolling.
+	useEffect(() => {
+		if (nativeLiveTextActive) {
+			invoke("livetext_hide").catch(() => {});
+		}
+	}, [nativeLiveTextActive, frameId]);
+
 	useEffect(() => {
 		if (!nativeLiveTextActive) return;
-		if (!debouncedFrame?.frameId) {
-			invoke("livetext_hide").catch(() => {});
-			return;
-		}
+		if (!debouncedFrame?.frameId) return;
 		const info = renderedInfoRef.current;
 		if (!info) return;
 
