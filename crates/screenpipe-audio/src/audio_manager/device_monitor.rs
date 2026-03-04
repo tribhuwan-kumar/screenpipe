@@ -349,7 +349,10 @@ pub async fn start_device_monitor(
 
                     match audio_manager.start_device(&device).await {
                         Ok(()) => {
-                            info!("[DEVICE_RECOVERY] successfully restarted device {}", device_name);
+                            info!(
+                                "[DEVICE_RECOVERY] successfully restarted device {}",
+                                device_name
+                            );
                             disconnected_devices.remove(&device_name);
                         }
                         Err(e) => {

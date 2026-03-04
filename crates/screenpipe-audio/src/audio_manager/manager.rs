@@ -408,7 +408,10 @@ impl AudioManager {
                 device_clone
             );
 
-            Err(anyhow!("recording handle for device {} exited unexpectedly", device_clone))
+            Err(anyhow!(
+                "recording handle for device {} exited unexpectedly",
+                device_clone
+            ))
         });
 
         Ok(recording_handle)
