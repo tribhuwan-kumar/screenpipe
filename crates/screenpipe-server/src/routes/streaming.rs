@@ -284,6 +284,13 @@ async fn handle_stream_frames_socket(
                         *live_sub_clone.lock().await = Some(is_today);
 
                         if is_today {
+                            // Wait for cache to warm before responding (max 30s).
+                            // Without this, early WS connections get empty results
+                            // and the frontend shows "Building Your Memory" permanently.
+                            cache_clone
+                                .wait_warm(std::time::Duration::from_secs(30))
+                                .await;
+
                             // Read from hot cache — pure in-memory, <1ms
                             let frames =
                                 cache_clone.get_frames_in_range(start_time, end_time).await;

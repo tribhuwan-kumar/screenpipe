@@ -21,11 +21,12 @@ let errorGraceTimer: ReturnType<typeof setTimeout> | null = null;
 const MAX_SILENT_RETRIES = 5; // Increased from 3 - retry more before showing error
 const RETRY_DELAY_MS = 2000; // Wait 2 seconds between retries
 
-// Request timeout logic - retry if no frames arrive
+// Request timeout logic - retry with exponential backoff (never give up)
 let requestTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let requestRetryCount = 0;
-const REQUEST_TIMEOUT_MS = 5000; // 5 seconds to receive frames
-const MAX_REQUEST_RETRIES = 3; // Retry request 3 times before giving up
+const REQUEST_TIMEOUT_BASE_MS = 5000; // Initial timeout: 5 seconds
+const REQUEST_TIMEOUT_MAX_MS = 60000; // Cap at 60 seconds
+// No MAX_REQUEST_RETRIES — keep retrying forever with backoff
 
 // Reconnect timeout - must be tracked to prevent cascade
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -622,34 +623,38 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 					sentRequests: new Set(state.sentRequests).add(requestKey),
 				}));
 
-				// Start timeout - if no frames arrive, retry
+				// Start timeout - if no frames arrive, retry with exponential backoff
 				if (requestTimeoutTimer) {
 					clearTimeout(requestTimeoutTimer);
 				}
+				const timeoutMs = Math.min(
+					REQUEST_TIMEOUT_BASE_MS * Math.pow(2, requestRetryCount),
+					REQUEST_TIMEOUT_MAX_MS
+				);
 				requestTimeoutTimer = setTimeout(() => {
 					requestTimeoutTimer = null;
 					const { frames: currentFrames, pendingDateSwap: stillSwapping } = get();
 
-					// Retry if no frames arrived (or still waiting for date swap to complete)
-					if ((currentFrames.length === 0 || stillSwapping) && requestRetryCount < MAX_REQUEST_RETRIES) {
+					// Retry forever with backoff if no frames arrived
+					if (currentFrames.length === 0 || stillSwapping) {
 						requestRetryCount++;
 
 						// Clear this date from sentRequests to allow retry
 						set((state) => {
 							const newSentRequests = new Set(state.sentRequests);
 							newSentRequests.delete(requestKey);
-							return { sentRequests: newSentRequests };
+							return {
+								sentRequests: newSentRequests,
+								message: requestRetryCount > 2
+									? "Loading history... server is warming up"
+									: null,
+							};
 						});
 
 						// Retry the request
 						get().fetchTimeRange(startTime, endTime);
-					} else if ((currentFrames.length === 0 || stillSwapping) && requestRetryCount >= MAX_REQUEST_RETRIES) {
-						set({
-							isLoading: false,
-							message: "No data available for this time range"
-						});
 					}
-				}, REQUEST_TIMEOUT_MS);
+				}, timeoutMs);
 			} else if (attempt < 5) {
 				// WebSocket not open — retry after a short delay instead of silently dropping.
 				// This happens during cross-date navigation when the WS may be reconnecting.

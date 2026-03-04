@@ -10,7 +10,7 @@
 
 use chrono::{DateTime, Datelike, Utc};
 use std::collections::BTreeMap;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, watch, RwLock};
 use tracing::{info, warn};
 
 use crate::video_cache::{AudioEntry, DeviceFrame, FrameMetadata, TimeSeriesFrame};
@@ -63,6 +63,10 @@ pub struct HotFrameCache {
     /// and extended by push_frame (live capture). The streaming handler uses
     /// this to skip the DB backfill when the cache already covers the range.
     cache_warm_start: RwLock<Option<DateTime<Utc>>>,
+    /// Signals when warm_from_db has completed. WS handlers wait on this
+    /// before responding to time-range requests so they don't return empty.
+    warm_ready_tx: watch::Sender<bool>,
+    warm_ready_rx: watch::Receiver<bool>,
 }
 
 impl Default for HotFrameCache {
@@ -76,6 +80,7 @@ impl HotFrameCache {
     pub fn new() -> Self {
         let (frame_tx, _) = broadcast::channel(256);
         let (audio_tx, _) = broadcast::channel(256);
+        let (warm_tx, warm_rx) = watch::channel(false);
         Self {
             frames: RwLock::new(BTreeMap::new()),
             audio: RwLock::new(BTreeMap::new()),
@@ -83,6 +88,8 @@ impl HotFrameCache {
             audio_notify: audio_tx,
             cache_day: RwLock::new(Utc::now().ordinal()),
             cache_warm_start: RwLock::new(None),
+            warm_ready_tx: warm_tx,
+            warm_ready_rx: warm_rx,
         }
     }
 
@@ -177,6 +184,23 @@ impl HotFrameCache {
         ts.ordinal() == *day && ts.year() == Utc::now().year()
     }
 
+    /// Wait until warm_from_db has completed (or timeout after `max_wait`).
+    /// Returns true if warm completed, false if timed out.
+    pub async fn wait_warm(&self, max_wait: std::time::Duration) -> bool {
+        if *self.warm_ready_rx.borrow() {
+            return true;
+        }
+        let mut rx = self.warm_ready_rx.clone();
+        let result = tokio::time::timeout(max_wait, rx.wait_for(|v| *v)).await;
+        match result {
+            Ok(Ok(_)) => true,
+            _ => {
+                warn!("hot_frame_cache: wait_warm timed out after {:?}", max_wait);
+                false
+            }
+        }
+    }
+
     /// Warm the cache from DB on cold start (load last N hours).
     pub async fn warm_from_db(&self, db: &screenpipe_db::DatabaseManager, hours: i64) {
         let end = Utc::now();
@@ -252,6 +276,9 @@ impl HotFrameCache {
                 warn!("hot_frame_cache: failed to warm from DB: {}", e);
             }
         }
+
+        // Signal that warm is complete (even on failure — callers should not block forever)
+        let _ = self.warm_ready_tx.send(true);
     }
 }
 
