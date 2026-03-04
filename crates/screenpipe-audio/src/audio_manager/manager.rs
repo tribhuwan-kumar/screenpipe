@@ -444,6 +444,13 @@ impl AudioManager {
             // (i.e. the 45s output-speech window expires between deliveries).
             let mut had_deferred_segments = false;
 
+            // Max deferral cap: force reconciliation after this duration even if the
+            // session is still active. Prevents infinite deferral during long calls
+            // or perpetual output-audio sessions (the meeting detector's 45s window
+            // can keep the session alive indefinitely).
+            const MAX_DEFERRAL_SECS: u64 = 600; // 10 minutes
+            let mut deferral_started: Option<std::time::Instant> = None;
+
             while let Ok(audio) = whisper_receiver.recv() {
                 metrics.record_chunk_received();
                 debug!("received audio from device: {:?}", audio.device.name);
@@ -513,12 +520,27 @@ impl AudioManager {
                         let session_just_ended = (was_in_session && !now_in_session)
                             || (!now_in_session && had_deferred_segments);
 
-                        if session_just_ended {
-                            // Audio session ended — trigger immediate reconciliation
+                        // Max deferral cap: force reconciliation if we've been
+                        // deferring longer than MAX_DEFERRAL_SECS, even during an
+                        // active session. Prevents infinite deferral during long
+                        // calls or perpetual output-audio activity.
+                        let deferral_cap_hit = now_in_session
+                            && deferral_started
+                                .is_some_and(|t| t.elapsed().as_secs() >= MAX_DEFERRAL_SECS);
+
+                        if session_just_ended || deferral_cap_hit {
+                            // Reconcile: session ended or deferral cap reached
                             had_deferred_segments = false;
-                            info!(
-                                "batch mode: audio session ended, transcribing accumulated audio"
-                            );
+                            deferral_started = None;
+                            if deferral_cap_hit {
+                                info!(
+                                    "batch mode: deferral cap ({MAX_DEFERRAL_SECS}s) reached during active session, force-transcribing"
+                                );
+                            } else {
+                                info!(
+                                    "batch mode: audio session ended, transcribing accumulated audio"
+                                );
+                            }
                             let whisper_ctx = engine.whisper_context();
                             let data_dir = output_path.as_deref();
                             let count = super::reconciliation::reconcile_untranscribed(
@@ -538,8 +560,11 @@ impl AudioManager {
                             for _ in 0..count {
                                 metrics.record_segment_batch_processed();
                             }
-                            info!("batch mode: transcribed {} chunks after session end", count);
+                            info!("batch mode: transcribed {} chunks", count);
                         } else if now_in_session {
+                            if deferral_started.is_none() {
+                                deferral_started = Some(std::time::Instant::now());
+                            }
                             had_deferred_segments = true;
                             metrics.record_segment_deferred();
                             debug!("batch mode: in audio session, deferring transcription");
