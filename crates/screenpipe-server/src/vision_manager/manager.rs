@@ -112,11 +112,14 @@ impl VisionManager {
             return true;
         }
         let stable_id = monitor.stable_id();
-        fn prefix(sid: &str) -> &str { sid.rsplitn(2, '_').last().unwrap_or(sid) }
+        fn prefix(sid: &str) -> &str {
+            sid.rsplitn(2, '_').last().unwrap_or(sid)
+        }
         let monitor_prefix = prefix(&stable_id);
-        self.config.monitor_ids.iter().any(|allowed| {
-            *allowed == stable_id || prefix(allowed) == monitor_prefix
-        })
+        self.config
+            .monitor_ids
+            .iter()
+            .any(|allowed| *allowed == stable_id || prefix(allowed) == monitor_prefix)
     }
 
     /// Start recording on all currently connected monitors

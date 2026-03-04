@@ -2901,5 +2901,4 @@ mod tests {
             .unwrap_or(false);
         assert!(!history, "history should default to false");
     }
-
 }
