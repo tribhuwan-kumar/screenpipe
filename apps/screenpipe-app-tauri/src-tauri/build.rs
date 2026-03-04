@@ -80,6 +80,12 @@ fn build_livetext_bridge() {
     // Compile Swift → static library targeting macOS 13.0
     // Use Swift 5 language mode to avoid strict concurrency isolation errors
     // (ImageAnalysisOverlayView properties are @MainActor in Swift 6)
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".to_string());
+    let swift_target = if target_arch == "x86_64" {
+        "x86_64-apple-macos13.0"
+    } else {
+        "arm64-apple-macos13.0"
+    };
     let output = Command::new("swiftc")
         .args([
             "-emit-library",
@@ -91,7 +97,7 @@ fn build_livetext_bridge() {
             "-sdk",
             &sdk_path,
             "-target",
-            "arm64-apple-macos13.0",
+            swift_target,
             "-O",
             "-whole-module-optimization",
             "-o",
@@ -158,8 +164,10 @@ void lt_free_string(char* ptr) { if (ptr) free(ptr); }
     )
     .expect("failed to write livetext stub");
 
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".to_string());
+    let cc_arch = if target_arch == "x86_64" { "x86_64" } else { "arm64" };
     let status = Command::new("cc")
-        .args(["-c", "-o"])
+        .args(["-c", "-arch", cc_arch, "-o"])
         .arg(out_dir.join("livetext_stub.o").to_str().unwrap())
         .arg(stub_src.to_str().unwrap())
         .status()
