@@ -108,7 +108,10 @@ impl VisionManager {
     /// Uses prefix matching (name + resolution) so that position changes after
     /// reconnect don't break the filter.
     pub fn is_monitor_allowed(&self, monitor: &screenpipe_vision::monitor::SafeMonitor) -> bool {
-        if self.config.use_all_monitors || self.config.monitor_ids.is_empty() {
+        if self.config.use_all_monitors
+            || self.config.monitor_ids.is_empty()
+            || self.config.monitor_ids == vec!["default"]
+        {
             return true;
         }
         let stable_id = monitor.stable_id();
