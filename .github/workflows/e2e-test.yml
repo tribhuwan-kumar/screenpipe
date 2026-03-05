@@ -82,11 +82,6 @@ jobs:
         target: x86_64-pc-windows-msvc
         rustflags: ""
 
-    - name: Install vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: "7adc2e4d49e8d0efc07a369079faa6bc3dbb90f3"
-
     - name: Install 7zip
       shell: powershell
       run: |
