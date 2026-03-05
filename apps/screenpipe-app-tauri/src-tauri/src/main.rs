@@ -1350,12 +1350,11 @@ async fn main() {
                 let _ = window.set_visible_on_all_workspaces(false);
                 #[cfg(target_os = "macos")]
                 crate::window_api::reset_to_regular_and_refresh_tray(window.app_handle());
-                // On Windows, minimize main windows so they stay visible in the
-                // taskbar instead of vanishing to the tray. Only hide non-main
-                // windows (e.g. notifications, settings).
+                // On Windows, minimize the main windowed window so it stays
+                // visible in the taskbar instead of vanishing to the tray.
                 #[cfg(target_os = "windows")]
                 {
-                    if window.label() == "main-window" || window.label() == "main" {
+                    if window.label() == "main-window" {
                         let _ = window.minimize();
                     } else {
                         let _ = window.hide();
