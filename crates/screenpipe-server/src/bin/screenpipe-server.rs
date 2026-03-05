@@ -805,6 +805,12 @@ async fn main() -> anyhow::Result<()> {
         pipe_store,
         config.port,
     );
+    // Wire pipe permission token registry (bridges PipeManager ↔ server middleware)
+    pipe_manager.set_token_registry(std::sync::Arc::new(
+        screenpipe_server::pipe_permissions_middleware::DashMapTokenRegistry::new(
+            server.pipe_permissions.clone(),
+        ),
+    ));
     pipe_manager.set_on_run_complete(std::sync::Arc::new(|pipe_name, success, duration_secs| {
         analytics::capture_event_nonblocking(
             "pipe_scheduled_run",
