@@ -14,7 +14,9 @@ import {
   Server,
   Eye,
   EyeOff,
-  ChevronDown,
+  Settings2,
+  Check,
+  X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -71,7 +73,6 @@ function saveConfig(config: SyncConfig) {
   } catch {}
 }
 
-// Convert frontend config to Rust SyncConfig format
 function toRustConfig(config: SyncConfig) {
   return {
     host: config.host,
@@ -92,8 +93,8 @@ export function OpenClawCard() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [discoveredHosts, setDiscoveredHosts] = useState<DiscoveredHost[]>([]);
-  const [showHostPicker, setShowHostPicker] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -105,7 +106,6 @@ export function OpenClawCard() {
       if (ts) setLastSync(ts);
     } catch {}
 
-    // Discover SSH hosts on mount
     invoke<DiscoveredHost[]>("remote_sync_discover_hosts")
       .then(setDiscoveredHosts)
       .catch(() => {});
@@ -118,6 +118,7 @@ export function OpenClawCard() {
       return next;
     });
     setTestResult(null);
+    setSyncError(null);
   }, []);
 
   const handleTest = async () => {
@@ -127,11 +128,12 @@ export function OpenClawCard() {
     try {
       await invoke("remote_sync_test", { config: toRustConfig(config) });
       setTestResult({ ok: true });
+      posthog.capture("openclaw_ssh_test", { success: true });
     } catch (e) {
       setTestResult({ ok: false, error: String(e) });
+      posthog.capture("openclaw_ssh_test", { success: false });
     }
     setIsTesting(false);
-    posthog.capture("openclaw_ssh_test", { success: testResult?.ok });
   };
 
   const handleSyncNow = async () => {
@@ -150,14 +152,14 @@ export function OpenClawCard() {
       } else {
         setSyncError(result.error || "sync failed");
       }
+      posthog.capture("openclaw_sync_manual", { success: result.ok });
     } catch (e) {
       setSyncError(String(e));
+      posthog.capture("openclaw_sync_manual", { success: false });
     }
     setIsSyncing(false);
-    posthog.capture("openclaw_sync_manual", { success: !syncError });
   };
 
-  // auto-sync interval
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -166,28 +168,15 @@ export function OpenClawCard() {
 
     if (config.enabled && config.host && config.user) {
       handleSyncNow();
-
-      intervalRef.current = setInterval(() => {
-        handleSyncNow();
-      }, config.intervalMinutes * 60 * 1000);
-
+      intervalRef.current = setInterval(handleSyncNow, config.intervalMinutes * 60 * 1000);
       posthog.capture("openclaw_sync_enabled", { interval: config.intervalMinutes });
     }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.enabled, config.host, config.user, config.intervalMinutes]);
-
-  const toggleEnabled = (val: boolean) => {
-    updateConfig({ enabled: val });
-    if (!val) {
-      posthog.capture("openclaw_sync_disabled");
-    }
-  };
 
   const selectHost = (host: DiscoveredHost) => {
     updateConfig({
@@ -196,7 +185,6 @@ export function OpenClawCard() {
       ...(host.user ? { user: host.user } : {}),
       ...(host.key_path ? { keyPath: host.key_path } : {}),
     });
-    setShowHostPicker(false);
   };
 
   const isConfigured = config.host && config.user;
@@ -205,208 +193,241 @@ export function OpenClawCard() {
     <Card className="border-border bg-card overflow-hidden">
       <CardContent className="p-0">
         <div className="flex items-start p-4 gap-4">
-          {/* OpenClaw icon */}
           <div className="flex-shrink-0">
-            <img
-              src="/openclaw-icon.svg"
-              alt="OpenClaw"
-              className="w-10 h-10 rounded-xl"
-            />
+            <img src="/openclaw-icon.svg" alt="OpenClaw" className="w-10 h-10 rounded-xl" />
           </div>
 
-          {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-sm font-semibold text-foreground">
-                OpenClaw Sync
-              </h3>
-              <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full inline-flex items-center gap-1">
-                <Server className="h-2.5 w-2.5" />
-                SSH
-              </span>
+              <h3 className="text-sm font-semibold text-foreground">OpenClaw Sync</h3>
               {config.enabled && isConfigured && (
                 <span className="px-2 py-0.5 text-xs font-medium bg-foreground text-background rounded-full">
                   syncing
                 </span>
               )}
+              {testResult?.ok && !config.enabled && (
+                <span className="px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-600 rounded-full">
+                  connected
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-              Sync your screenpipe data to a remote server over SSH.
-              Run OpenClaw or any AI agent on your VPS to query your data 24/7,
-              even when your machine is off.
+              sync your screenpipe data to a remote server.
+              run openclaw or any AI agent on your VPS 24/7.
             </p>
 
-            {/* SSH config form */}
-            <div className="space-y-2 mb-3">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    placeholder="host (e.g. 100.64.0.1 or my-vps.com)"
-                    value={config.host}
-                    onChange={(e) => updateConfig({ host: e.target.value })}
-                    className="text-xs h-7"
-                  />
-                  {discoveredHosts.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowHostPicker(!showHostPicker)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      title="Pick from discovered hosts"
-                    >
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                  )}
-                  {showHostPicker && discoveredHosts.length > 0 && (
-                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+            {/* If not configured yet, show discovered hosts or manual form */}
+            {!isConfigured ? (
+              <div className="space-y-2 mb-3">
+                {discoveredHosts.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground">pick a server:</p>
+                    <div className="flex flex-wrap gap-1.5">
                       {discoveredHosts.map((h, i) => (
                         <button
                           key={i}
                           onClick={() => selectHost(h)}
-                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex justify-between items-center"
+                          className="px-2.5 py-1 text-xs border border-border rounded-md hover:bg-muted transition-colors"
                         >
-                          <span>
-                            {h.user ? `${h.user}@` : ""}{h.host}
-                            {h.port !== 22 ? `:${h.port}` : ""}
-                          </span>
-                          <span className="text-muted-foreground ml-2">
-                            {h.source}
-                          </span>
+                          {h.user ? `${h.user}@` : ""}{h.host}
+                          {h.port !== 22 ? `:${h.port}` : ""}
+                          <span className="text-muted-foreground ml-1.5">({h.source})</span>
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
-                <Input
-                  placeholder="port"
-                  value={config.port}
-                  onChange={(e) => updateConfig({ port: e.target.value })}
-                  className="text-xs h-7 w-16"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="user (e.g. root)"
-                  value={config.user}
-                  onChange={(e) => updateConfig({ user: e.target.value })}
-                  className="text-xs h-7 w-32"
-                />
-                <div className="relative flex-1">
+                    <div className="flex items-center gap-2 pt-1">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-[10px] text-muted-foreground">or enter manually</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                  </>
+                )}
+                {/* Manual entry */}
+                <div className="flex gap-2">
                   <Input
-                    placeholder="SSH key path"
-                    type={showKey ? "text" : "password"}
-                    value={config.keyPath}
-                    onChange={(e) => updateConfig({ keyPath: e.target.value })}
-                    className="text-xs h-7 pr-8"
+                    placeholder="user@host"
+                    value={config.user && config.host ? `${config.user}@${config.host}` : ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const at = val.indexOf("@");
+                      if (at >= 0) {
+                        updateConfig({ user: val.slice(0, at), host: val.slice(at + 1) });
+                      } else {
+                        updateConfig({ host: val });
+                      }
+                    }}
+                    className="text-xs h-7 flex-1"
+                    spellCheck={false}
+                    autoCorrect="off"
+                    autoCapitalize="off"
                   />
+                </div>
+              </div>
+            ) : (
+              /* Configured — show compact summary + actions */
+              <div className="space-y-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">
+                    {config.user}@{config.host}{config.port !== "22" ? `:${config.port}` : ""}
+                  </span>
                   <button
-                    type="button"
-                    onClick={() => setShowKey(!showKey)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => updateConfig({ host: "", user: "" })}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="disconnect"
                   >
-                    {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    <X className="h-3 w-3" />
+                  </button>
+                  <button
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="advanced settings"
+                  >
+                    <Settings2 className="h-3 w-3" />
                   </button>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="remote path (e.g. ~/screenpipe-data)"
-                  value={config.remotePath}
-                  onChange={(e) => updateConfig({ remotePath: e.target.value })}
-                  className="text-xs h-7 flex-1"
-                />
-                <Input
-                  placeholder="min"
-                  type="number"
-                  min={1}
-                  value={config.intervalMinutes}
-                  onChange={(e) => updateConfig({ intervalMinutes: Math.max(1, parseInt(e.target.value) || 5) })}
-                  className="text-xs h-7 w-16"
-                  title="Sync interval in minutes"
-                />
-              </div>
 
-              {testResult && (
-                <p className={`text-xs ${testResult.ok ? "text-green-600" : "text-destructive"}`}>
-                  {testResult.ok ? "SSH connection successful" : `Error: ${testResult.error}`}
-                </p>
-              )}
-              {syncError && (
-                <p className="text-xs text-destructive">
-                  Sync error: {syncError}
-                </p>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={handleTest}
-                disabled={isTesting || !isConfigured}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-7 text-xs"
-              >
-                {isTesting ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Testing...
-                  </>
-                ) : (
-                  "Test SSH"
+                {/* Advanced settings (hidden by default) */}
+                {showAdvanced && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="host"
+                        value={config.host}
+                        onChange={(e) => updateConfig({ host: e.target.value })}
+                        className="text-xs h-7 flex-1"
+                        spellCheck={false}
+                        autoCorrect="off"
+                      />
+                      <Input
+                        placeholder="port"
+                        value={config.port}
+                        onChange={(e) => updateConfig({ port: e.target.value })}
+                        className="text-xs h-7 w-16"
+                        spellCheck={false}
+                        autoCorrect="off"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="user"
+                        value={config.user}
+                        onChange={(e) => updateConfig({ user: e.target.value })}
+                        className="text-xs h-7 w-32"
+                        spellCheck={false}
+                        autoCorrect="off"
+                      />
+                      <div className="relative flex-1">
+                        <Input
+                          placeholder="SSH key path"
+                          type={showKey ? "text" : "password"}
+                          value={config.keyPath}
+                          onChange={(e) => updateConfig({ keyPath: e.target.value })}
+                          className="text-xs h-7 pr-8"
+                          spellCheck={false}
+                          autoCorrect="off"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowKey(!showKey)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="remote path"
+                        value={config.remotePath}
+                        onChange={(e) => updateConfig({ remotePath: e.target.value })}
+                        className="text-xs h-7 flex-1"
+                        spellCheck={false}
+                        autoCorrect="off"
+                      />
+                      <Input
+                        placeholder="min"
+                        type="number"
+                        min={1}
+                        value={config.intervalMinutes}
+                        onChange={(e) => updateConfig({ intervalMinutes: Math.max(1, parseInt(e.target.value) || 5) })}
+                        className="text-xs h-7 w-16"
+                        title="sync interval in minutes"
+                      />
+                    </div>
+                  </div>
                 )}
-              </Button>
 
-              <Button
-                onClick={handleSyncNow}
-                disabled={isSyncing || !isConfigured}
-                size="sm"
-                className="gap-1.5 h-7 text-xs"
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-3 w-3" />
-                    Sync now
-                  </>
+                {testResult && (
+                  <p className={`text-xs ${testResult.ok ? "text-green-600" : "text-destructive"}`}>
+                    {testResult.ok ? "connected" : testResult.error}
+                  </p>
                 )}
-              </Button>
-
-              <div className="flex items-center gap-1.5 ml-auto">
-                <span className="text-xs text-muted-foreground">Auto-sync</span>
-                <Switch
-                  checked={config.enabled}
-                  onCheckedChange={toggleEnabled}
-                  disabled={!isConfigured}
-                  className="scale-75"
-                />
+                {syncError && (
+                  <p className="text-xs text-destructive">{syncError}</p>
+                )}
               </div>
-            </div>
+            )}
+
+            {/* Actions — only show when configured */}
+            {isConfigured && (
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleTest}
+                  disabled={isTesting}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs w-20"
+                >
+                  {isTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : "test"}
+                </Button>
+
+                <Button
+                  onClick={handleSyncNow}
+                  disabled={isSyncing}
+                  size="sm"
+                  className="h-7 text-xs w-24"
+                >
+                  {isSyncing ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      sync now
+                    </>
+                  )}
+                </Button>
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <span className="text-xs text-muted-foreground">auto</span>
+                  <Switch
+                    checked={config.enabled}
+                    onCheckedChange={(val) => {
+                      updateConfig({ enabled: val });
+                      if (!val) posthog.capture("openclaw_sync_disabled");
+                    }}
+                    className="scale-75"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Status bar */}
-        <div className="px-4 py-2 bg-muted/50 border-t border-border">
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>
-              {lastSync
-                ? `last sync: ${lastSync}`
-                : "not synced yet"}
-            </span>
-            {config.enabled && isConfigured && (
-              <span>every {config.intervalMinutes} min</span>
-            )}
-            <button
-              onClick={() => openUrl("https://github.com/openclaw/openclaw")}
-              className="ml-auto hover:text-foreground transition-colors"
-            >
-              openclaw.ai
-            </button>
+        {isConfigured && (
+          <div className="px-4 py-2 bg-muted/50 border-t border-border">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span>{lastSync ? `last sync: ${lastSync}` : "not synced yet"}</span>
+              {config.enabled && <span>every {config.intervalMinutes} min</span>}
+              <button
+                onClick={() => openUrl("https://github.com/openclaw/openclaw")}
+                className="ml-auto hover:text-foreground transition-colors"
+              >
+                openclaw.ai
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

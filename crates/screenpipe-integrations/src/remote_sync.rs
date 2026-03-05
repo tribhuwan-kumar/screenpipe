@@ -9,7 +9,7 @@
 
 use anyhow::{Context, Result};
 use russh::client;
-use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh_sftp::client::SftpSession;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -159,8 +159,11 @@ async fn connect_sftp(config: &SyncConfig) -> Result<(client::Handle<SshHandler>
             .await
             .with_context(|| format!("SSH connection to {}:{} failed", config.host, config.port))?;
 
+    // Use SHA-256 for RSA keys (servers reject SHA-1 "ssh-rsa" by default now).
+    // For non-RSA keys (ed25519, ecdsa) the hash_alg is ignored.
+    let key_with_alg = PrivateKeyWithHashAlg::new(key, Some(HashAlg::Sha256));
     let auth = session
-        .authenticate_publickey(&config.user, PrivateKeyWithHashAlg::new(key, None))
+        .authenticate_publickey(&config.user, key_with_alg)
         .await
         .context("SSH authentication failed")?;
     if !auth.success() {
@@ -405,7 +408,46 @@ pub async fn test_connection(config: &SyncConfig) -> Result<()> {
 
 // ── Host discovery ──────────────────────────────────────────────────────
 
+/// Scan ~/.ssh/ for available private keys (files named id_* without .pub extension).
+async fn discover_default_key() -> Option<String> {
+    let ssh_dir = dirs::home_dir()?.join(".ssh");
+    let mut entries = match tokio::fs::read_dir(&ssh_dir).await {
+        Ok(e) => e,
+        Err(_) => return None,
+    };
+
+    // Preference order for default keys
+    let preferred = ["id_ed25519", "id_ecdsa", "id_rsa"];
+    let mut found_keys: Vec<String> = Vec::new();
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("id_")
+            && !name.ends_with(".pub")
+            && entry.file_type().await.map(|ft| ft.is_file()).unwrap_or(false)
+        {
+            found_keys.push(name);
+        }
+    }
+
+    // Return the best key by preference order, fallback to first found
+    for pref in &preferred {
+        if found_keys.contains(&pref.to_string()) {
+            return Some(format!("~/.ssh/{}", pref));
+        }
+    }
+    found_keys.first().map(|k| format!("~/.ssh/{}", k))
+}
+
+/// Get the current system username.
+fn current_username() -> Option<String> {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .ok()
+}
+
 /// Discover SSH hosts from ~/.ssh/config, ~/.ssh/known_hosts, and Tailscale.
+/// Auto-fills missing user (defaults to system username) and key_path (best available key).
 pub async fn discover_ssh_hosts() -> Vec<DiscoveredHost> {
     let mut hosts = Vec::new();
 
@@ -429,6 +471,19 @@ pub async fn discover_ssh_hosts() -> Vec<DiscoveredHost> {
             && !h.host.contains("bitbucket.org")
             && !h.host.contains("gitpod")
     });
+
+    // Auto-fill missing user and key_path
+    let default_key = discover_default_key().await;
+    let default_user = current_username();
+
+    for host in &mut hosts {
+        if host.user.is_none() {
+            host.user = default_user.clone();
+        }
+        if host.key_path.is_none() {
+            host.key_path = default_key.clone();
+        }
+    }
 
     hosts
 }

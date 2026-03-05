@@ -527,7 +527,7 @@ export function PipesSection() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      await navigator.clipboard.writeText(data.url);
+      await commands.copyTextToClipboard(data.url);
       posthog.capture("pipe_shared_public", { pipe_name: pipe.config.name, pipe_id: data.id });
       toast({ title: "link copied!", description: data.url });
     } catch (err: any) {
