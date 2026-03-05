@@ -215,6 +215,23 @@ pub async fn reconcile_untranscribed(
             }
         };
 
+        // Silent audio: delete all chunks in this batch so they don't zombie-loop
+        if full_text.trim().is_empty() {
+            debug!(
+                "reconciliation: batch for {} produced empty transcription, deleting {} silent chunks",
+                device_name,
+                valid_chunks.len()
+            );
+            for chunk in &valid_chunks {
+                if let Err(e) = db.delete_audio_chunk(chunk.id).await {
+                    warn!("reconciliation: failed to delete silent chunk {}: {}", chunk.id, e);
+                }
+                let _ = std::fs::remove_file(&chunk.file_path);
+            }
+            success_count += valid_chunks.len();
+            continue;
+        }
+
         // Extract speaker embedding from the transcribed audio
         let speaker_id = if let Some(ref seg_mgr) = segmentation_manager {
             extract_speaker_id(db, &combined_samples, sample_rate, seg_mgr).await

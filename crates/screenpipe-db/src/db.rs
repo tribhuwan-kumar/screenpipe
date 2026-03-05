@@ -792,10 +792,11 @@ impl DatabaseManager {
         duration_secs: Option<f64>,
         speaker_id: Option<i64>,
     ) -> Result<(), sqlx::Error> {
-        // For empty/silent transcriptions, store a marker so the chunk is marked as
-        // "done" and won't be re-picked by reconciliation sweeps forever.
+        // Skip empty transcriptions
         let trimmed = transcription.trim();
-        let trimmed = if trimmed.is_empty() { "" } else { trimmed };
+        if trimmed.is_empty() {
+            return Ok(());
+        }
 
         let text_length = trimmed.len() as i64;
         let start_time: f64 = 0.0;
