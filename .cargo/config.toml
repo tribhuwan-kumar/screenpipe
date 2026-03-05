@@ -15,6 +15,8 @@ rustflags = [
 rustflags = "-lc++ -l framework=Accelerate"
 
 [env]
+# Use prebuilt NASM objects on Windows (no NASM install needed in CI): https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
+AWS_LC_SYS_PREBUILT_NASM = "1"
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"
 
 # Faster builds - use more threads for codegen
