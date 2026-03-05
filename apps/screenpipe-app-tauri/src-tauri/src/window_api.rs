@@ -1109,6 +1109,12 @@ impl ShowRewindWindow {
                 let settings = SettingsStore::get(app)
                     .unwrap_or_default()
                     .unwrap_or_default();
+                // On Windows, always use "window" mode so the app stays in the
+                // taskbar. The fullscreen transparent overlay doesn't make sense
+                // as a taskbar entry and hide() removes it from the taskbar entirely.
+                #[cfg(target_os = "windows")]
+                let overlay_mode = "window".to_string();
+                #[cfg(not(target_os = "windows"))]
                 let overlay_mode = settings.overlay_mode;
                 #[allow(unused_variables)] // used only on macOS
                 let show_in_recording = settings.show_overlay_in_screen_recording;
@@ -1902,12 +1908,11 @@ impl ShowRewindWindow {
             }
             #[cfg(target_os = "windows")]
             {
-                // Hide instead of close/destroy so the webview survives for reopen.
-                // Destroying the window causes re-creation with visible(false) and
-                // the overlay show path never makes it visible again.
+                // Minimize instead of hide so the app stays in the Windows taskbar.
+                // hide() removes the window from the taskbar entirely.
                 for label in &["main", "main-window"] {
                     if let Some(window) = app.get_webview_window(label) {
-                        window.hide().ok();
+                        window.minimize().ok();
                     }
                 }
             }
