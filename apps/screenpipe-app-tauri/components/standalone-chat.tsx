@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSettings, ChatMessage, ChatConversation } from "@/lib/hooks/use-settings";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip, RefreshCw, ArrowDown, Filter } from "lucide-react";
+import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip } from "lucide-react";
 import { SchedulePromptDialog } from "@/components/chat/schedule-prompt-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,18 +19,17 @@ import { MemoizedReactMarkdown } from "@/components/markdown";
 import { VideoComponent } from "@/components/rewind/video";
 import { MermaidDiagram } from "@/components/rewind/mermaid-diagram";
 import { AIPresetsSelector } from "@/components/rewind/ai-presets-selector";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AIPreset } from "@/lib/utils/tauri";
 import remarkGfm from "remark-gfm";
 // OpenAI SDK no longer used directly — all providers route through Pi agent
 import posthog from "posthog-js";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { save as saveDialog, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { writeTextFile, readFile } from "@tauri-apps/plugin-fs";
 import { commands } from "@/lib/utils/tauri";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { usePlatform } from "@/lib/hooks/use-platform";
 import { useSqlAutocomplete } from "@/lib/hooks/use-sql-autocomplete";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -38,20 +37,42 @@ import { useTimelineStore } from "@/lib/hooks/use-timeline-store";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import {
   parseMentions,
+  buildAppMentionSuggestions,
+  normalizeAppTag,
   formatShortcutDisplay,
 } from "@/lib/chat-utils";
 import { useAutoSuggestions } from "@/lib/hooks/use-auto-suggestions";
 import { SummaryCards } from "@/components/chat/summary-cards";
 import { type CustomTemplate } from "@/lib/summary-templates";
 import { usePipes } from "@/lib/hooks/use-pipes";
-import { useImageUpload } from "@/components/hooks/use-image-upload";
-import { useChatConversations } from "@/components/hooks/use-chat-conversations";
-import { useMentionSystem, STATIC_MENTION_SUGGESTIONS } from "@/components/hooks/use-mention-system";
-import { usePiEventHandler } from "@/components/hooks/use-pi-event-handler";
 
 const SCREENPIPE_API = "http://localhost:3030";
 const PI_CHAT_SESSION = "chat";
 
+interface MentionSuggestion {
+  tag: string;
+  description: string;
+  category: "time" | "content" | "app" | "speaker";
+  appName?: string;
+}
+
+const APP_SUGGESTION_LIMIT = 10;
+
+interface Speaker {
+  id: number;
+  name: string;
+  metadata?: string;
+}
+
+const STATIC_MENTION_SUGGESTIONS: MentionSuggestion[] = [
+  { tag: "@today", description: "today's activity", category: "time" },
+  { tag: "@yesterday", description: "yesterday", category: "time" },
+  { tag: "@last-week", description: "past 7 days", category: "time" },
+  { tag: "@last-hour", description: "past hour", category: "time" },
+  { tag: "@audio", description: "audio/meetings only", category: "content" },
+  { tag: "@screen", description: "screen text only", category: "content" },
+  { tag: "@input", description: "UI events (clicks, keys)", category: "content" },
+];
 
 // TOOLS definition removed — search is now handled by Pi's screenpipe-search skill
 
@@ -106,10 +127,6 @@ DEEP LINKS & MEDIA:
 - Timeline (audio only): [meeting at 3pm](screenpipe://timeline?timestamp=2024-01-15T15:00:00Z) — use exact timestamp from audio search results.
 - Video: show .mp4 paths in inline code: \`/path/to/video.mp4\`
 ALWAYS use screenpipe://frame/{frame_id} for OCR results. Only use screenpipe://timeline for audio results (no frame_id). Copy IDs/timestamps verbatim from search results — NEVER fabricate them.
-
-CHAT HISTORY:
-Previous chat conversations are stored as individual JSON files in ~/.screenpipe/chats/{conversation-id}.json
-Each file contains: id, title, messages[], createdAt, updatedAt. You can reference or search these files when the user asks about previous conversations.
 
 Current time: ${now.toISOString()}
 User's timezone: ${timezone} (UTC${offsetStr})
@@ -360,7 +377,7 @@ function ThinkingBlock({ text, isThinking, durationMs }: { text: string; isThink
 }
 
 // Markdown renderer for text blocks
-function MarkdownBlock({ text, isUser, onImageClick }: { text: string; isUser: boolean; onImageClick?: (src: string) => void }) {
+function MarkdownBlock({ text, isUser }: { text: string; isUser: boolean }) {
   return (
     <MemoizedReactMarkdown
       className={cn(
@@ -373,18 +390,6 @@ function MarkdownBlock({ text, isUser, onImageClick }: { text: string; isUser: b
       components={{
         p({ children }) {
           return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>;
-        },
-        img({ src, alt, ...props }) {
-          return (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={src}
-              alt={alt || ""}
-              className="max-w-full rounded border border-border/50 cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => src && onImageClick?.(src)}
-              {...props}
-            />
-          );
         },
         a({ href, children, ...props }) {
           const isMediaLink = href?.toLowerCase().match(/\.(mp4|mp3|wav|webm)$/);
@@ -578,7 +583,7 @@ function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
 }
 
 // Renders message content with interleaved text and tool call blocks
-function MessageContent({ message, onImageClick }: { message: Message; onImageClick?: (src: string) => void }) {
+function MessageContent({ message }: { message: Message }) {
   const isUser = message.role === "user";
 
   // If we have content blocks (Pi messages with tool calls), render them in order
@@ -589,7 +594,7 @@ function MessageContent({ message, onImageClick }: { message: Message; onImageCl
       <div className="space-y-2 min-w-0 w-full overflow-hidden">
         {grouped.map((group) => {
           if (group.type === "text") {
-            return <MarkdownBlock key={`text-${group.key}`} text={group.text} isUser={isUser} onImageClick={onImageClick} />;
+            return <MarkdownBlock key={`text-${group.key}`} text={group.text} isUser={isUser} />;
           }
           if (group.type === "thinking") {
             return <ThinkingBlock key={`thinking-${group.key}`} text={group.text} isThinking={group.isThinking} durationMs={group.durationMs} />;
@@ -608,13 +613,7 @@ function MessageContent({ message, onImageClick }: { message: Message; onImageCl
     <div className="flex gap-1.5 flex-wrap">
       {message.images.map((img, i) => (
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={i}
-          src={img}
-          alt={`Attached ${i + 1}`}
-          className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover cursor-pointer hover:opacity-80 transition-opacity"
-          onClick={() => onImageClick?.(img)}
-        />
+        <img key={i} src={img} alt={`Attached ${i + 1}`} className="max-w-[120px] max-h-[80px] rounded border border-background/20 object-cover" />
       ))}
     </div>
   ) : null;
@@ -632,7 +631,7 @@ function MessageContent({ message, onImageClick }: { message: Message; onImageCl
   return (
     <div className="space-y-2">
       {imageThumbs}
-      <MarkdownBlock text={message.content} isUser={isUser} onImageClick={onImageClick} />
+      <MarkdownBlock text={message.content} isUser={isUser} />
     </div>
   );
 }
@@ -664,11 +663,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const { settings, updateSettings, isSettingsLoaded, reloadStore } = useSettings();
   const { isMac } = usePlatform();
   const { items: appItems } = useSqlAutocomplete("app");
-  const {
-    suggestions: autoSuggestions,
-    refreshing: suggestionsRefreshing,
-    forceRefresh: refreshSuggestions,
-  } = useAutoSuggestions();
+  const { suggestions: autoSuggestions } = useAutoSuggestions();
   const { templatePipes, loading: pipesLoading } = usePipes();
 
   // Custom summary templates (persisted in settings)
@@ -704,13 +699,15 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activePreset, setActivePreset] = useState<AIPreset | undefined>();
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState("");
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+  const [speakerSuggestions, setSpeakerSuggestions] = useState<MentionSuggestion[]>([]);
+  const [isLoadingSpeakers, setIsLoadingSpeakers] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<"daily_limit" | "model_not_allowed" | "rate_limit">("daily_limit");
@@ -719,13 +716,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [prefillContext, setPrefillContext] = useState<string | null>(null);
   const [prefillSource, setPrefillSource] = useState<string>("search");
   const [prefillFrameId, setPrefillFrameId] = useState<number | null>(null);
+  const [pastedImages, setPastedImages] = useState<string[]>([]); // Base64 data URLs
+  const [isDragging, setIsDragging] = useState(false);
   const isEmbedded = !!className; // embedded in settings vs overlay panel
-
-  // --- Extracted hooks ---
-  const {
-    pastedImages, setPastedImages, isDragging, handlePaste,
-    loadImageFromPath, handleFilePicker, processImageFile,
-  } = useImageUpload({ isEmbedded });
 
   // Pi agent state
   const [piInfo, setPiInfo] = useState<{ running: boolean; projectDir: string | null; pid: number | null } | null>(null);
@@ -758,17 +751,404 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
   // Chat history state
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
 
-  const {
-    showHistory, setShowHistory, historySearch, setHistorySearch,
-    filteredConversations, groupedConversations,
-    saveConversation, loadConversation, deleteConversation, startNewConversation,
-  } = useChatConversations({
-    messages, setMessages, conversationId, setConversationId,
-    setInput, inputRef, isLoading, isStreaming,
-    piInfo, piStreamingTextRef, piMessageIdRef, piContentBlocksRef,
-    piSessionSyncedRef, setIsLoading, setIsStreaming, setPastedImages, settings,
-  });
+  // Process an image file to base64
+  // Resize image to max 1024px and compress as JPEG to keep base64 payload small
+  const resizeImage = useCallback((dataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1024;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          const scale = MAX / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = () => resolve(dataUrl); // fallback to original
+      img.src = dataUrl;
+    });
+  }, []);
+
+  const processImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      const resized = await resizeImage(base64);
+      setPastedImages(prev => [...prev, resized]);
+    };
+    reader.readAsDataURL(file);
+  }, [resizeImage]);
+
+  // Always start with a fresh conversation — history is accessible via the History button
+  // (No auto-load of last active conversation)
+
+  // Save conversation to settings.
+  // IMPORTANT: reads fresh from the store (not React state) to avoid
+  // race conditions where the main window overwrites chatHistory with
+  // stale data. See: multi-window store concurrency issue.
+  const saveConversation = async (msgs: Message[]) => {
+    if (msgs.length === 0) return;
+
+    // Read fresh settings from store to get latest conversations
+    const { getStore } = await import("@/lib/hooks/use-settings");
+    const store = await getStore();
+    const freshSettings = await store.get<any>("settings");
+    const history = freshSettings?.chatHistory || { conversations: [], activeConversationId: null, historyEnabled: true };
+
+    if (!history.historyEnabled) return;
+
+    const convId = conversationId || crypto.randomUUID();
+
+    const existingIndex = history.conversations.findIndex((c: any) => c.id === convId);
+    const firstUserMsg = msgs.find(m => m.role === "user");
+    const title = firstUserMsg?.content.slice(0, 50) || "New Chat";
+
+    const conversation: ChatConversation = {
+      id: convId,
+      title,
+      messages: msgs.slice(-100).map(m => {
+        // For tool-only responses, content may be empty but contentBlocks has the data.
+        // Generate a text fallback so the message isn't lost when reloaded.
+        let content = m.content;
+        if (!content && m.contentBlocks?.length) {
+          content = m.contentBlocks
+            .filter((b: any) => b.type === "text")
+            .map((b: any) => b.text)
+            .join("\n") || "(tool result)";
+        }
+        // Persist contentBlocks so tool calls/results survive reload.
+        // Strip isRunning (stale) and cap result length to keep store small.
+        const blocks = m.contentBlocks?.map((b: any) => {
+          if (b.type === "tool") {
+            const { isRunning, ...rest } = b.toolCall;
+            return {
+              type: "tool",
+              toolCall: {
+                ...rest,
+                isRunning: false,
+                result: rest.result?.slice(0, 4000),
+              },
+            };
+          }
+          if (b.type === "thinking") {
+            return { ...b, isThinking: false };
+          }
+          return b;
+        });
+        return {
+          id: m.id,
+          role: m.role,
+          content,
+          timestamp: m.timestamp,
+          ...(blocks?.length ? { contentBlocks: blocks } : {}),
+          ...(m.images?.length ? { images: m.images } : {}),
+        };
+      }),
+      createdAt: existingIndex >= 0 ? history.conversations[existingIndex].createdAt : Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    let newConversations = [...history.conversations];
+    if (existingIndex >= 0) {
+      newConversations[existingIndex] = conversation;
+    } else {
+      newConversations = [conversation, ...newConversations].slice(0, 50);
+    }
+
+    // Write only chatHistory — read-modify-write with fresh data
+    const currentFull = freshSettings || {};
+    await store.set("settings", {
+      ...currentFull,
+      chatHistory: {
+        ...history,
+        conversations: newConversations,
+        activeConversationId: convId,
+      }
+    });
+    await store.save();
+
+    if (!conversationId) {
+      setConversationId(convId);
+    }
+  };
+
+  // Auto-save conversation when a response completes (isLoading transitions from true to false)
+  // Skip saving pipe watch conversations — they're transient, not user-initiated chats
+  const prevIsLoadingRef = useRef(false);
+  useEffect(() => {
+    if (prevIsLoadingRef.current && !isLoading && messages.length > 0) {
+      const isPipeWatch = messages.some((m) => m.id?.startsWith("pipe-"));
+      if (!isPipeWatch) {
+        saveConversation(messages);
+      }
+    }
+    prevIsLoadingRef.current = isLoading;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, messages]);
+
+  // Delete a conversation
+  const deleteConversation = async (convId: string) => {
+    // Read fresh from store (same pattern as saveConversation)
+    const { getStore } = await import("@/lib/hooks/use-settings");
+    const store = await getStore();
+    const freshSettings = await store.get<any>("settings");
+    const history = freshSettings?.chatHistory;
+    if (!history) return;
+
+    const newConversations = history.conversations.filter((c: any) => c.id !== convId);
+    const newActiveId = history.activeConversationId === convId ? null : history.activeConversationId;
+
+    await store.set("settings", {
+      ...freshSettings,
+      chatHistory: {
+        ...history,
+        conversations: newConversations,
+        activeConversationId: newActiveId,
+      }
+    });
+    await store.save();
+
+    if (conversationId === convId) {
+      setMessages([]);
+      setConversationId(null);
+    }
+  };
+
+  // Load a specific conversation
+  const loadConversation = async (conv: ChatConversation) => {
+    // Abort any ongoing Pi processing before switching
+    if (isLoading || isStreaming) {
+      try {
+        await commands.piAbort(PI_CHAT_SESSION);
+      } catch (e) {
+        console.warn("[Pi] Failed to abort:", e);
+      }
+      piStreamingTextRef.current = "";
+      piMessageIdRef.current = null;
+      piContentBlocksRef.current = [];
+      setIsLoading(false);
+      setIsStreaming(false);
+    }
+    setMessages(conv.messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+      ...(m.contentBlocks?.length ? { contentBlocks: m.contentBlocks } : {}),
+      ...((m as any).images?.length ? { images: (m as any).images } : (m as any).image ? { images: [(m as any).image] } : {}),
+    })));
+    setConversationId(conv.id);
+    setShowHistory(false);
+    piSessionSyncedRef.current = false;
+
+    // Update activeConversationId directly in the store (read fresh to avoid
+    // overwriting conversations with stale React state)
+    try {
+      const { getStore } = await import("@/lib/hooks/use-settings");
+      const store = await getStore();
+      const freshSettings = await store.get<any>("settings");
+      if (freshSettings?.chatHistory) {
+        await store.set("settings", {
+          ...freshSettings,
+          chatHistory: {
+            ...freshSettings.chatHistory,
+            activeConversationId: conv.id,
+          }
+        });
+        await store.save();
+      }
+    } catch (e) {
+      console.warn("Failed to update active conversation:", e);
+    }
+  };
+
+  // Start a new conversation
+  const startNewConversation = async () => {
+    // Abort any ongoing Pi processing and start a fresh session
+    if (piInfo?.running) {
+      try {
+        if (isLoading || isStreaming) {
+          await commands.piAbort(PI_CHAT_SESSION);
+        }
+        await commands.piNewSession(PI_CHAT_SESSION);
+      } catch (e) {
+        console.warn("[Pi] Failed to reset session:", e);
+      }
+      piStreamingTextRef.current = "";
+      piMessageIdRef.current = null;
+      piContentBlocksRef.current = [];
+      setIsLoading(false);
+      setIsStreaming(false);
+    }
+    setMessages([]);
+    setConversationId(null);
+    setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
+    setShowHistory(false);
+    setPastedImages([]);
+    piSessionSyncedRef.current = true;
+  };
+
+  // Filter conversations by search
+  const filteredConversations = React.useMemo(() => {
+    const convs = settings.chatHistory?.conversations || [];
+    if (!historySearch.trim()) return convs;
+
+    const search = historySearch.toLowerCase();
+    return convs.filter(c =>
+      c.title.toLowerCase().includes(search) ||
+      c.messages.some(m => m.content.toLowerCase().includes(search))
+    );
+  }, [settings.chatHistory?.conversations, historySearch]);
+
+  // Group conversations by date
+  const groupedConversations = React.useMemo(() => {
+    const groups: { label: string; conversations: ChatConversation[] }[] = [];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const todayConvs: ChatConversation[] = [];
+    const yesterdayConvs: ChatConversation[] = [];
+    const lastWeekConvs: ChatConversation[] = [];
+    const olderConvs: ChatConversation[] = [];
+
+    for (const conv of filteredConversations) {
+      const convDate = new Date(conv.updatedAt);
+      if (convDate >= today) {
+        todayConvs.push(conv);
+      } else if (convDate >= yesterday) {
+        yesterdayConvs.push(conv);
+      } else if (convDate >= lastWeek) {
+        lastWeekConvs.push(conv);
+      } else {
+        olderConvs.push(conv);
+      }
+    }
+
+    if (todayConvs.length > 0) groups.push({ label: "Today", conversations: todayConvs });
+    if (yesterdayConvs.length > 0) groups.push({ label: "Yesterday", conversations: yesterdayConvs });
+    if (lastWeekConvs.length > 0) groups.push({ label: "Last 7 Days", conversations: lastWeekConvs });
+    if (olderConvs.length > 0) groups.push({ label: "Older", conversations: olderConvs });
+
+    return groups;
+  }, [filteredConversations]);
+
+  // Read an image file by path and append it to pastedImages (base64 data URL)
+  const loadImageFromPath = useCallback(async (filePath: string) => {
+    const ext = filePath.split(".").pop()?.toLowerCase() || "";
+    const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    if (!imageExts.includes(ext)) return;
+
+    try {
+      const bytes = await readFile(filePath);
+      const mimeMap: Record<string, string> = {
+        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+        gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml",
+      };
+      const mime = mimeMap[ext] || "image/png";
+
+      // Convert Uint8Array to base64
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const b64 = btoa(binary);
+      const dataUrl = `data:${mime};base64,${b64}`;
+      const resized = await resizeImage(dataUrl);
+      setPastedImages(prev => [...prev, resized]);
+    } catch (err) {
+      console.error("failed to read dropped image:", err);
+    }
+  }, [resizeImage]);
+
+  // Handle file picker
+  const handleFilePicker = useCallback(async () => {
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [{
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+        }],
+      });
+      if (selected) {
+        await loadImageFromPath(selected);
+      }
+    } catch (err) {
+      console.error("file picker error:", err);
+    }
+  }, [loadImageFromPath]);
+
+  // Drag-drop only works in the embedded (non-overlay) chat. The overlay is an
+  // NSPanel with NonActivatingPanel style which doesn't receive drag events.
+  useEffect(() => {
+    if (!isEmbedded) return;
+
+    const webview = getCurrentWebview();
+    const unlisten = webview.onDragDropEvent((event) => {
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        setIsDragging(true);
+      } else if (event.payload.type === "drop") {
+        setIsDragging(false);
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          loadImageFromPath(paths[0]);
+        }
+      } else if (event.payload.type === "leave") {
+        setIsDragging(false);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [isEmbedded, loadImageFromPath]);
+
+  // Handle paste events to capture images
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    const files = e.clipboardData?.files;
+
+    // Try items first (works in most browsers)
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            processImageFile(file);
+          }
+          return;
+        }
+      }
+    }
+
+    // Fallback: try files array (some browsers put images here)
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith("image/")) {
+          e.preventDefault();
+          processImageFile(file);
+          return;
+        }
+      }
+    }
+  }, [processImageFile]);
 
   // Signal that this chat window is ready to receive prefill events.
   // Other windows wait for "chat-ready" before emitting "chat-prefill"
@@ -882,15 +1262,171 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.chatHistory?.conversations]);
 
-  const {
-    showMentionDropdown, setShowMentionDropdown, mentionFilter,
-    selectedMentionIndex, setSelectedMentionIndex,
-    filteredMentions, activeFilters, hasActiveFilters,
-    handleInputChange, insertMention, removeFilter,
-    isLoadingSpeakers, appFilterOpen, setAppFilterOpen,
-    speakerSuggestions, recentSpeakers, setRecentSpeakers,
-    appMentionSuggestions, appTagMap,
-  } = useMentionSystem({ input, setInput, appItems, inputRef });
+  const appMentionSuggestions = React.useMemo(
+    () => buildAppMentionSuggestions(appItems, APP_SUGGESTION_LIMIT),
+    [appItems]
+  );
+
+  const appTagMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const suggestion of appMentionSuggestions) {
+      if (suggestion.appName) {
+        map[suggestion.tag.slice(1).toLowerCase()] = suggestion.appName;
+      }
+    }
+    return map;
+  }, [appMentionSuggestions]);
+
+  const baseMentionSuggestions = React.useMemo(
+    () => [...STATIC_MENTION_SUGGESTIONS, ...appMentionSuggestions],
+    [appMentionSuggestions]
+  );
+
+  // Parse current input to extract active filters for chip display
+  const activeFilters = React.useMemo(() => {
+    if (!input.trim()) return { timeRanges: [], contentType: null, appName: null, speakerName: null };
+    const parsed = parseMentions(input, { appTagMap });
+    return {
+      timeRanges: parsed.timeRanges,
+      contentType: parsed.contentType,
+      appName: parsed.appName,
+      speakerName: parsed.speakerName,
+    };
+  }, [input, appTagMap]);
+
+  // Check if any filters are active
+  const hasActiveFilters = activeFilters.timeRanges.length > 0 ||
+    activeFilters.contentType ||
+    activeFilters.appName ||
+    activeFilters.speakerName;
+
+  // Remove a specific @mention from input
+  const removeFilter = (filterType: "time" | "content" | "app" | "speaker", label?: string) => {
+    let newInput = input;
+    if (filterType === "time" && label) {
+      // Remove time mentions like @today, @yesterday, @last-hour, etc.
+      const timePatterns: Record<string, RegExp> = {
+        "today": /@today\b/gi,
+        "yesterday": /@yesterday\b/gi,
+        "last week": /@last[- ]?week\b/gi,
+        "last hour": /@last[- ]?hour\b/gi,
+        "this morning": /@this[- ]?morning\b/gi,
+      };
+      const pattern = timePatterns[label];
+      if (pattern) newInput = newInput.replace(pattern, "").trim();
+    } else if (filterType === "content") {
+      newInput = newInput.replace(/@(audio|screen)\b/gi, "").trim();
+    } else if (filterType === "app" && activeFilters.appName) {
+      // Remove app mention - need to find the pattern
+      const appPattern = new RegExp(`@${activeFilters.appName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "gi");
+      newInput = newInput.replace(appPattern, "").trim();
+      // Also try normalized versions
+      for (const [tag, name] of Object.entries(appTagMap)) {
+        if (name === activeFilters.appName) {
+          newInput = newInput.replace(new RegExp(`@${tag}\\b`, "gi"), "").trim();
+        }
+      }
+    } else if (filterType === "speaker" && activeFilters.speakerName) {
+      const speakerPattern = new RegExp(`@"?${activeFilters.speakerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"?\\b`, "gi");
+      newInput = newInput.replace(speakerPattern, "").trim();
+    }
+    // Clean up extra spaces
+    newInput = newInput.replace(/\s+/g, " ").trim();
+    setInput(newInput);
+  };
+
+  // Fetch speakers dynamically
+  useEffect(() => {
+    if (!mentionFilter || mentionFilter.length < 1) {
+      setSpeakerSuggestions([]);
+      return;
+    }
+
+    const matchesBase = baseMentionSuggestions.some(
+      s => s.tag.toLowerCase().includes(`@${mentionFilter.toLowerCase()}`)
+    );
+    if (matchesBase && mentionFilter.length < 3) {
+      setSpeakerSuggestions([]);
+      return;
+    }
+
+    const searchSpeakers = async () => {
+      setIsLoadingSpeakers(true);
+      try {
+        const response = await fetch(
+          `${SCREENPIPE_API}/speakers/search?name=${encodeURIComponent(mentionFilter)}`
+        );
+        if (response.ok) {
+          const speakers: Speaker[] = await response.json();
+          const suggestions: MentionSuggestion[] = speakers
+            .filter(s => s.name)
+            .slice(0, 5)
+            .map(s => ({
+              tag: s.name.includes(" ") ? `@"${s.name}"` : `@${s.name}`,
+              description: `speaker`,
+              category: "speaker" as const,
+            }));
+          setSpeakerSuggestions(suggestions);
+        }
+      } catch (error) {
+        console.error("Error searching speakers:", error);
+      } finally {
+        setIsLoadingSpeakers(false);
+      }
+    };
+
+    const debounceTimeout = setTimeout(searchSpeakers, 300);
+    return () => clearTimeout(debounceTimeout);
+  }, [mentionFilter, baseMentionSuggestions]);
+
+  const filteredMentions = React.useMemo(() => {
+    const suggestions = !mentionFilter
+      ? baseMentionSuggestions
+      : baseMentionSuggestions.filter(
+          s => s.tag.toLowerCase().includes(mentionFilter.toLowerCase()) ||
+               s.description.toLowerCase().includes(mentionFilter.toLowerCase())
+        );
+    return [...suggestions, ...speakerSuggestions];
+  }, [mentionFilter, speakerSuggestions, baseMentionSuggestions]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    // Auto-resize textarea
+    const textarea = e.target;
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(textarea.scrollHeight, 150) + "px";
+
+    const cursorPos = e.target.selectionStart || 0;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const atMatch = textBeforeCursor.match(/@(\w*)$/);
+
+    if (atMatch) {
+      setShowMentionDropdown(true);
+      setMentionFilter(atMatch[1]);
+      setSelectedMentionIndex(0);
+    } else {
+      setShowMentionDropdown(false);
+      setMentionFilter("");
+    }
+  };
+
+  const insertMention = (tag: string) => {
+    const cursorPos = inputRef.current?.selectionStart || input.length;
+    const textBeforeCursor = input.slice(0, cursorPos);
+    const textAfterCursor = input.slice(cursorPos);
+
+    const atIndex = textBeforeCursor.lastIndexOf("@");
+    if (atIndex !== -1) {
+      const newValue = textBeforeCursor.slice(0, atIndex) + tag + " " + textAfterCursor;
+      setInput(newValue);
+    }
+
+    setShowMentionDropdown(false);
+    setMentionFilter("");
+    inputRef.current?.focus();
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Prevent '/' from triggering app shortcuts while typing
@@ -978,18 +1514,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Scroll-to-bottom detection
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    const onScroll = () => {
-      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      setShowScrollButton(distanceFromBottom > 100);
-    };
-    container.addEventListener("scroll", onScroll, { passive: true });
-    return () => container.removeEventListener("scroll", onScroll);
-  }, []);
-
   // Pi project dir is managed Rust-side at boot
 
   // Build Pi provider config from active preset
@@ -1034,7 +1558,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const piRunningConfigRef = useRef<{ provider?: string; model?: string; token?: string | null }>({});
   const piRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Restart Pi when user switches preset or account so the new model/token takes effect.
+  // Restart Pi when user switches preset so the new model takes effect immediately.
   // Pi uses CLI args from startup, so config-only updates don't change the running model.
   // Debounced to collapse rapid settings saves into a single restart.
   useEffect(() => {
@@ -1043,26 +1567,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     const currentToken = settings.user?.token ?? null;
     const configChanged = running.provider !== undefined &&
       (running.provider !== activePreset.provider || running.model !== activePreset.model);
-    // Always detect token changes — even on first mount. If Pi is already running
-    // with a stale/null token (e.g. user logged out then into a different account),
-    // we must restart it. Without this, switching accounts leaves Pi sending
-    // requests as anonymous, hitting the free tier rate limit.
     const tokenChanged = running.token !== undefined && running.token !== currentToken;
 
     if (!configChanged && !tokenChanged) {
-      // First mount — record what we expect Pi to be running, but also check
-      // if Pi is already alive with a potentially stale token and restart it.
+      // First mount or same config — just record what we expect Pi to be running
       if (running.provider === undefined) {
         piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
-        // If Pi is running, proactively push the current token/config so it
-        // picks up any account change that happened while chat was unmounted.
-        if (piInfo?.running) {
-          const providerConfig = buildProviderConfig();
-          console.log("[Pi] First mount with running Pi — syncing config/token");
-          commands.piUpdateConfig(currentToken, providerConfig).catch((e) => {
-            console.error("[Pi] First-mount config sync failed:", e);
-          });
-        }
       }
       return;
     }
@@ -1085,16 +1595,563 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePreset?.provider, activePreset?.model, settings.user?.token]);
 
-  // Pi event handler (extracted to hook)
-  usePiEventHandler({
-    messages, setMessages, setIsLoading, setIsStreaming,
-    setShowUpgradeDialog, setUpgradeReason: setUpgradeReason as any,
-    setUpgradeResetsAt, setActivePipeExecution, setPiInfo,
-    activePreset, piStreamingTextRef, piMessageIdRef, piContentBlocksRef,
-    piThinkingStartRef, piStoppedIntentionallyRef, piStartInFlightRef,
-    piRunningConfigRef, piSessionSyncedRef, followUpFiredRef, lastUserMessageRef,
-    buildProviderConfig, generateFollowUps, settingsUserToken: settings.user?.token ?? null,
-  });
+  // Listen for Pi events (all providers route through Pi) and pipe events
+  useEffect(() => {
+    let unlistenEvent: UnlistenFn | null = null;
+    let unlistenPipeEvent: UnlistenFn | null = null;
+    let unlistenTerminated: UnlistenFn | null = null;
+    let unlistenLog: UnlistenFn | null = null;
+    let mounted = true;
+
+    // Shared handler for Pi event data — used by both pi_event and pipe_event
+    const handlePiEventData = (data: any) => {
+
+        if (data.type === "message_update" && data.assistantMessageEvent) {
+          const evt = data.assistantMessageEvent;
+          if (evt.type === "text_delta" && evt.delta) {
+            piStreamingTextRef.current += evt.delta;
+
+            // Append to last text block or create new one
+            const blocks = piContentBlocksRef.current;
+            const lastBlock = blocks[blocks.length - 1];
+            if (lastBlock && lastBlock.type === "text") {
+              lastBlock.text += evt.delta;
+            } else {
+              blocks.push({ type: "text", text: evt.delta });
+            }
+
+            if (piMessageIdRef.current) {
+              const msgId = piMessageIdRef.current;
+              const content = piStreamingTextRef.current;
+              const contentBlocks = [...blocks];
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content, contentBlocks } : m)
+              );
+            }
+
+            // Trigger follow-up generation after enough content
+            if (
+              piStreamingTextRef.current.length > 500 &&
+              !followUpFiredRef.current
+            ) {
+              followUpFiredRef.current = true;
+              generateFollowUps(
+                lastUserMessageRef.current,
+                piStreamingTextRef.current
+              );
+            }
+          } else if (evt.type === "thinking_start") {
+            piThinkingStartRef.current = Date.now();
+            const blocks = piContentBlocksRef.current;
+            blocks.push({ type: "thinking", text: "", isThinking: true });
+            if (piMessageIdRef.current) {
+              const msgId = piMessageIdRef.current;
+              const contentBlocks = [...blocks];
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: m.content === "Processing..." ? "" : m.content, contentBlocks } : m)
+              );
+            }
+          } else if (evt.type === "thinking_delta" && evt.delta) {
+            const blocks = piContentBlocksRef.current;
+            const thinkingBlock = blocks[blocks.length - 1];
+            if (thinkingBlock && thinkingBlock.type === "thinking") {
+              thinkingBlock.text += evt.delta;
+            }
+            if (piMessageIdRef.current) {
+              const msgId = piMessageIdRef.current;
+              const contentBlocks = [...blocks];
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: m.content === "Processing..." ? "" : m.content, contentBlocks } : m)
+              );
+            }
+          } else if (evt.type === "thinking_end") {
+            const blocks = piContentBlocksRef.current;
+            const thinkingBlock = blocks[blocks.length - 1];
+            if (thinkingBlock && thinkingBlock.type === "thinking") {
+              thinkingBlock.isThinking = false;
+              thinkingBlock.durationMs = piThinkingStartRef.current ? Date.now() - piThinkingStartRef.current : undefined;
+              if (evt.content) thinkingBlock.text = evt.content;
+            }
+            piThinkingStartRef.current = null;
+            if (piMessageIdRef.current) {
+              const msgId = piMessageIdRef.current;
+              const contentBlocks = [...blocks];
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, contentBlocks } : m)
+              );
+            }
+          }
+        } else if (data.type === "tool_execution_start") {
+          if (piMessageIdRef.current) {
+            const msgId = piMessageIdRef.current;
+            const toolCall: ToolCall = {
+              id: data.toolCallId || Date.now().toString(),
+              toolName: data.toolName || "unknown",
+              args: data.args || {},
+              isRunning: true,
+            };
+            // Add tool block (text before it is already its own block)
+            piContentBlocksRef.current.push({ type: "tool", toolCall });
+            const contentBlocks = [...piContentBlocksRef.current];
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, contentBlocks } : m)
+            );
+          }
+        } else if (data.type === "tool_execution_end") {
+          if (piMessageIdRef.current) {
+            const msgId = piMessageIdRef.current;
+            const toolCallId = data.toolCallId;
+            const resultText = data.result?.content
+              ?.map((c: any) => c.text || "")
+              .join("\n") || "";
+            const truncated = resultText.length > 2000
+              ? resultText.slice(0, 2000) + "\n... (truncated)"
+              : resultText;
+            // Update the tool block in-place
+            for (const block of piContentBlocksRef.current) {
+              if (block.type === "tool" && block.toolCall.id === toolCallId) {
+                block.toolCall.isRunning = false;
+                block.toolCall.result = truncated;
+                block.toolCall.isError = data.isError;
+              }
+            }
+            const contentBlocks = [...piContentBlocksRef.current];
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, contentBlocks } : m)
+            );
+          }
+        } else if (data.type === "auto_retry_end" && data.success === false) {
+          // Pi exhausted retries on a transient error (rate limit, overloaded, etc.)
+          const errorStr = data.finalError || "Request failed after retries";
+          console.error("[Pi] Auto-retry failed:", errorStr);
+
+          // Detect rate limit or daily limit from the error
+          if (errorStr.includes("daily_limit_exceeded") || errorStr.includes("429") || errorStr.includes("rate limit")) {
+            // Distinguish between daily limit and per-minute rate limit
+            const isDailyLimit = errorStr.includes("daily_limit_exceeded");
+            const isPerMinuteRate = errorStr.includes("rate limit exceeded") || errorStr.includes("requests per minute");
+
+            // Extract reset time if available
+            try {
+              const resetMatch = errorStr.match(/"reset_in":\s*(\d+)/);
+              const resetsAtMatch = errorStr.match(/"resets_at":\s*"([^"]+)"/);
+              if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
+              else if (resetMatch) setUpgradeResetsAt(`${resetMatch[1]} seconds`);
+            } catch {}
+
+            if (isDailyLimit) {
+              setUpgradeReason("daily_limit");
+              posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
+            } else {
+              setUpgradeReason("rate_limit");
+            }
+
+            if (piMessageIdRef.current) {
+              const msgId = piMessageIdRef.current;
+              let content: string;
+              if (isDailyLimit) {
+                content = "You've used all your free queries for today.";
+              } else if (isPerMinuteRate) {
+                // Extract wait time from error
+                const waitMatch = errorStr.match(/wait (\d+) seconds/i);
+                const waitTime = waitMatch ? waitMatch[1] : "a moment";
+                content = `Rate limited — please wait ${waitTime} seconds and try again.`;
+              } else {
+                content = "Rate limited — try again in a moment or switch to a different model.";
+              }
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content } : m)
+              );
+            }
+            // Don't clear refs yet — agent_end will follow
+          } else if (errorStr.includes("model_not_allowed")) {
+            setUpgradeReason("model_not_allowed");
+            if (piMessageIdRef.current) {
+              const msgId = piMessageIdRef.current;
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade." } : m)
+              );
+            }
+          }
+        } else if (data.type === "message_update" && data.assistantMessageEvent?.type === "error") {
+          // Pi's LLM returned an error (e.g. rate limit, overloaded)
+          const reason = data.assistantMessageEvent.reason || "";
+          const errorDetail = data.assistantMessageEvent.error || "";
+          console.error("[Pi] Message error:", reason, errorDetail);
+
+          if (piMessageIdRef.current) {
+            const msgId = piMessageIdRef.current;
+            const fullError = `${reason} ${errorDetail}`.trim();
+
+            if (fullError.includes("daily_limit_exceeded") || fullError.includes("429") || fullError.includes("rate limit")) {
+              const isDailyLimit = fullError.includes("daily_limit_exceeded");
+              const isPerMinuteRate = fullError.includes("rate limit exceeded") || fullError.includes("requests per minute");
+              if (isDailyLimit) {
+                try {
+                  const match = fullError.match(/"resets_at":\s*"([^"]+)"/);
+                  if (match) setUpgradeResetsAt(match[1]);
+                } catch {}
+                setUpgradeReason("daily_limit");
+                setMessages((prev) =>
+                  prev.map((m) => m.id === msgId ? { ...m, content: "You've used all your free queries for today." } : m)
+                );
+              } else {
+                setUpgradeReason("rate_limit");
+                const waitMatch = fullError.match(/wait (\d+) seconds/i);
+                const waitTime = waitMatch ? waitMatch[1] : "a moment";
+                const content = isPerMinuteRate
+                  ? `Rate limited — please wait ${waitTime} seconds and try again.`
+                  : "Rate limited — try again in a moment or switch to a different model.";
+                setMessages((prev) =>
+                  prev.map((m) => m.id === msgId ? { ...m, content } : m)
+                );
+              }
+            } else if (fullError.includes("model_not_allowed")) {
+              setUpgradeReason("model_not_allowed");
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade." } : m)
+              );
+            } else if (fullError.includes("already processing")) {
+              // Transient error — Pi was still busy when the prompt arrived.
+              // Don't show it; Pi will process the message once it's free.
+              console.warn("[Pi] Agent busy, waiting for it to finish:", fullError);
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: `Error: ${fullError || "Something went wrong"}` } : m)
+              );
+            }
+          }
+        } else if ((data.type === "message_start" || data.type === "message_end") &&
+                   data.message?.role === "assistant" && data.message?.stopReason === "error") {
+          // LLM returned an error (credits_exhausted, rate limit, provider error, etc.)
+          const errMsg = data.message.errorMessage || data.message.error || "Unknown error";
+          console.error("[Pi] LLM error via", data.type, ":", errMsg);
+
+          if (piMessageIdRef.current) {
+            const msgId = piMessageIdRef.current;
+
+            if (errMsg.includes("credits_exhausted") || errMsg.includes("daily_limit_exceeded") || errMsg.includes("429")) {
+              try {
+                const resetsAtMatch = errMsg.match(/"resets_at":\s*"([^"]+)"/);
+                if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
+              } catch {}
+              setUpgradeReason("daily_limit");
+              posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: "You've used all your free queries for today." } : m)
+              );
+            } else if (errMsg.includes("rate limit") || errMsg.includes("rate_limit")) {
+              setUpgradeReason("rate_limit");
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: "Rate limited — try again in a moment." } : m)
+              );
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: `Error: ${errMsg}` } : m)
+              );
+            }
+          }
+        } else if (data.type === "agent_end") {
+          // When watching a pipe, agent_end fires before pipe_done — don't
+          // clear pipe refs here, let pipe_done handle cleanup instead.
+          const isPipeWatch = piMessageIdRef.current?.startsWith("pipe-");
+          if (piMessageIdRef.current && !isPipeWatch) {
+            const msgId = piMessageIdRef.current;
+            // Use streamed text if available, otherwise extract from agent_end messages
+            let content = piStreamingTextRef.current;
+
+            // Check for LLM errors in agent_end messages (e.g. credits_exhausted mid-conversation)
+            let agentEndError: string | null = null;
+            if (data.messages && Array.isArray(data.messages)) {
+              for (const m of data.messages) {
+                if (m.role === "assistant" && m.stopReason === "error") {
+                  agentEndError = m.errorMessage || m.error || null;
+                  break;
+                }
+              }
+              if (!content) {
+                // Extract text from all assistant messages in the agent_end payload
+                content = data.messages
+                  .filter((m: any) => m.role === "assistant")
+                  .flatMap((m: any) => (m.content || [])
+                    .filter((c: any) => c.type === "text")
+                    .map((c: any) => c.text))
+                  .join("\n\n");
+              }
+            }
+
+            // Surface credits_exhausted / rate limit errors from agent_end
+            if (agentEndError && !content) {
+              const errStr = agentEndError;
+              if (errStr.includes("credits_exhausted") || errStr.includes("daily_limit_exceeded") || errStr.includes("429")) {
+                try {
+                  const resetsAtMatch = errStr.match(/"resets_at":\s*"([^"]+)"/);
+                  if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
+                } catch {}
+                setUpgradeReason("daily_limit");
+                content = "You've used all your free queries for today.";
+              } else if (errStr.includes("rate limit")) {
+                setUpgradeReason("rate_limit");
+                content = "Rate limited — try again in a moment.";
+              } else {
+                content = `Error: ${errStr}`;
+              }
+            }
+
+            // Snapshot refs BEFORE setMessages — React's batching may defer the
+            // functional updater until after the refs are cleared below.
+            const blocksSnapshot = [...piContentBlocksRef.current];
+            const streamedText = piStreamingTextRef.current;
+
+            // Check if content was already set by error handlers above
+            setMessages((prev) => {
+              const existing = prev.find((m) => m.id === msgId);
+              // Don't overwrite error messages with "Done" or empty content
+              const isErrorMessage = existing?.content?.includes("used all your free queries") ||
+                existing?.content?.includes("requires an upgrade") ||
+                existing?.content?.includes("Rate limited") ||
+                existing?.content?.includes("rate limit") ||
+                existing?.content?.startsWith("Error:");
+              if (isErrorMessage) {
+                return prev;
+              }
+              // Don't overwrite if we have no new content and existing isn't "Processing..."
+              if (existing && existing.content !== "Processing..." && !content) {
+                return prev;
+              }
+              const contentBlocks = [...blocksSnapshot];
+              // If no text content but we have tool/thinking blocks, don't show "no response"
+              const hasNonTextBlocks = contentBlocks.some((b) => b.type === "tool" || b.type === "thinking");
+              if (!content && hasNonTextBlocks) {
+                content = ""; // empty — tool/thinking blocks will render
+              } else if (!content) {
+                const provider = activePreset?.provider;
+                if (provider === "native-ollama") {
+                  content = "No response — is Ollama running? Start it with `ollama serve` and make sure the model is pulled.";
+                } else {
+                  content = "No response from model — try again or check your AI preset in settings.";
+                }
+              }
+              // Add text as a content block if no text block exists yet
+              const hasTextBlock = contentBlocks.some((b) => b.type === "text");
+              if (!streamedText && content && !hasTextBlock) {
+                contentBlocks.push({ type: "text", text: content });
+              }
+              return prev.map((m) => m.id === msgId ? { ...m, content, contentBlocks } : m);
+            });
+          }
+          if (!isPipeWatch) {
+            piStreamingTextRef.current = "";
+            piMessageIdRef.current = null;
+            piContentBlocksRef.current = [];
+            piThinkingStartRef.current = null;
+            followUpFiredRef.current = false;
+            setIsLoading(false);
+            setIsStreaming(false);
+          }
+        } else if (data.type === "response" && data.success === false) {
+          const errorStr = data.error || "Unknown error";
+          if (piMessageIdRef.current) {
+            const msgId = piMessageIdRef.current;
+
+            if (errorStr.includes("daily_limit_exceeded") || errorStr.includes("429") || errorStr.includes("rate limit")) {
+              const isDailyLimit = errorStr.includes("daily_limit_exceeded");
+              const isPerMinuteRate = errorStr.includes("rate limit exceeded") || errorStr.includes("requests per minute");
+              if (isDailyLimit) {
+                try {
+                  const match = errorStr.match(/"resets_at":\s*"([^"]+)"/);
+                  if (match) setUpgradeResetsAt(match[1]);
+                } catch {}
+                setUpgradeReason("daily_limit");
+                setMessages((prev) =>
+                  prev.map((m) => m.id === msgId ? { ...m, content: "You've used all your free queries for today." } : m)
+                );
+              } else {
+                setUpgradeReason("rate_limit");
+                const waitMatch = errorStr.match(/wait (\d+) seconds/i);
+                const waitTime = waitMatch ? waitMatch[1] : "a moment";
+                const content = isPerMinuteRate
+                  ? `Rate limited — please wait ${waitTime} seconds and try again.`
+                  : "Rate limited — try again in a moment or switch to a different model.";
+                setMessages((prev) =>
+                  prev.map((m) => m.id === msgId ? { ...m, content } : m)
+                );
+              }
+            } else if (errorStr.includes("model_not_allowed")) {
+              setUpgradeReason("model_not_allowed");
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade." } : m)
+              );
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => m.id === msgId ? { ...m, content: `Error: ${errorStr}` } : m)
+              );
+            }
+          }
+          piStreamingTextRef.current = "";
+          if (piMessageIdRef.current?.startsWith("pipe-")) setActivePipeExecution(null);
+          piMessageIdRef.current = null;
+          piContentBlocksRef.current = [];
+          setIsLoading(false);
+          setIsStreaming(false);
+        } else if (data.type === "pipe_done") {
+          // Pipe execution finished — clean up streaming state
+          if (piMessageIdRef.current?.startsWith("pipe-")) {
+            const msgId = piMessageIdRef.current;
+            const content = piStreamingTextRef.current || "Pipe completed with no output.";
+            const blocksSnapshot = [...piContentBlocksRef.current];
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, content, contentBlocks: blocksSnapshot } : m)
+            );
+            piStreamingTextRef.current = "";
+            piMessageIdRef.current = null;
+            piContentBlocksRef.current = [];
+            piThinkingStartRef.current = null;
+            setActivePipeExecution(null);
+            setIsLoading(false);
+            setIsStreaming(false);
+          }
+        }
+      };
+
+    const setup = async () => {
+      unlistenEvent = await listen<any>("pi_event", (event) => {
+        if (!mounted) return;
+        const { sessionId, event: piEvent } = event.payload;
+        if (sessionId !== PI_CHAT_SESSION) return;
+        handlePiEventData(piEvent);
+      });
+
+      // Listen for pipe execution events (only when actively watching a pipe)
+      unlistenPipeEvent = await listen<any>("pipe_event", (event) => {
+        if (!mounted) return;
+        // Only process events for the pipe we're actively watching
+        if (!piMessageIdRef.current?.startsWith("pipe-")) return;
+        const payload = event.payload;
+        const piEvent = payload?.event;
+        if (!piEvent) return;
+
+        handlePiEventData(piEvent);
+      });
+
+      unlistenTerminated = await listen<any>("pi_terminated", (event) => {
+        if (!mounted) return;
+        const { sessionId, pid: terminatedPid } = event.payload;
+        if (sessionId !== PI_CHAT_SESSION) return;
+        if (piStoppedIntentionallyRef.current) {
+          piStoppedIntentionallyRef.current = false;
+          return;
+        }
+        console.log("[Pi] Process terminated, pid:", terminatedPid);
+
+        // If a message was in flight, mark it as errored so the UI doesn't stay stuck
+        if (piMessageIdRef.current) {
+          const msgId = piMessageIdRef.current;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === msgId && (m.content === "Processing..." || !m.content)
+                ? { ...m, content: "AI agent crashed — restarting automatically..." }
+                : m
+            )
+          );
+          piStreamingTextRef.current = "";
+          piMessageIdRef.current = null;
+          piContentBlocksRef.current = [];
+          setIsLoading(false);
+          setIsStreaming(false);
+        }
+
+        // Always auto-restart — Pi is a singleton, keep it alive
+        const delay = 1500;
+        setTimeout(async () => {
+          if (!mounted) return;
+          // Check if a newer Pi process is already running (race: stop → start → terminated)
+          try {
+            const result = await commands.piInfo(PI_CHAT_SESSION);
+            if (result.status === "ok" && result.data.running && result.data.pid !== terminatedPid) {
+              console.log("[Pi] Stale termination for pid", terminatedPid, "— newer pid", result.data.pid, "is running");
+              setPiInfo(result.data);
+              return;
+            }
+          } catch {}
+
+          if (!piStartInFlightRef.current) {
+            console.log("[Pi] Auto-restarting after crash");
+            try {
+              const providerConfig = buildProviderConfig();
+              const home = await homeDir();
+              const dir = await join(home, ".screenpipe", "pi-chat");
+              const result = await commands.piStart(PI_CHAT_SESSION, dir, settings.user?.token ?? null, providerConfig);
+              if (result.status === "ok") {
+                setPiInfo(result.data);
+                piSessionSyncedRef.current = false;
+                // Keep running-config ref in sync so preset watcher doesn't re-trigger
+                if (providerConfig) {
+                  piRunningConfigRef.current = { provider: providerConfig.provider, model: providerConfig.model, token: settings.user?.token ?? null };
+                }
+              } else {
+                console.error("[Pi] Auto-restart failed:", result.error);
+                // Don't give up — user can still trigger restart on next message
+                setPiInfo(null);
+              }
+            } catch (e) {
+              console.error("[Pi] Auto-restart exception:", e);
+              setPiInfo(null);
+            }
+          }
+        }, delay);
+      });
+      // Listen for Pi stderr — only surface errors when user is actively waiting for a response
+      unlistenLog = await listen<string>("pi_log", (event) => {
+        if (!mounted) return;
+        // Only show errors if user sent a message and is waiting — not during background startup/restart
+        if (!piMessageIdRef.current) return;
+        const line = event.payload;
+        if (line.includes("model_not_allowed") || line.includes("403")) {
+          const msgId = piMessageIdRef.current;
+          setUpgradeReason("model_not_allowed");
+          if (msgId) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade — try a different model in your AI preset." } : m)
+            );
+          }
+        } else if (line.includes("429") || line.includes("rate") || line.includes("daily_limit")) {
+          const msgId = piMessageIdRef.current;
+          if (msgId) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, content: "Rate limited — try again in a moment or switch to a different model." } : m)
+            );
+          }
+        } else if (line.includes("content must be a string") || line.includes("does not support images") || line.includes("image_url is not supported")) {
+          const msgId = piMessageIdRef.current;
+          if (msgId) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === msgId ? { ...m, content: "This model doesn't support images — try a vision-capable model (e.g. llama-4-scout on Groq, gpt-4o on OpenAI)." } : m)
+            );
+          }
+        } else if (line.includes("not found") || line.includes("ECONNREFUSED") || line.includes("connection refused")) {
+          let hint = line;
+          if (line.includes("not found")) {
+            hint = `Model not found: ${line}. Check your AI preset in settings.`;
+          } else if (line.includes("ECONNREFUSED") || line.includes("connection refused")) {
+            hint = "Cannot connect to Ollama — is it running? Start with: ollama serve";
+          }
+          toast({ title: "Pi agent error", description: hint, variant: "destructive" });
+        }
+      });
+    };
+
+    setup();
+
+    return () => {
+      mounted = false;
+      unlistenEvent?.();
+      unlistenPipeEvent?.();
+      unlistenTerminated?.();
+      unlistenLog?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Watch pipe: set up tracking from either Tauri event or sessionStorage (for cross-page navigation)
   useEffect(() => {
@@ -1175,23 +2232,25 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       piContentBlocksRef.current = [];
       piThinkingStartRef.current = null;
       piMessageIdRef.current = msgId;
-      // Clear previous messages and reset conversation so pipe history doesn't bleed across pipes
-      setConversationId(null);
-      setMessages([
-        {
-          id: `pipe-user-${executionId}`,
-          role: "user" as const,
-          content: `Watching pipe: ${pipeName}`,
-          timestamp: Date.now(),
-        },
-        {
-          id: msgId,
-          role: "assistant" as const,
-          content: "",
-          timestamp: Date.now(),
-          contentBlocks: [],
-        },
-      ]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msgId)) return prev;
+        return [
+          ...prev,
+          {
+            id: `pipe-user-${executionId}`,
+            role: "user" as const,
+            content: `Watching pipe: ${pipeName}`,
+            timestamp: Date.now(),
+          },
+          {
+            id: msgId,
+            role: "assistant" as const,
+            content: "",
+            timestamp: Date.now(),
+            contentBlocks: [],
+          },
+        ];
+      });
       setIsStreaming(true);
 
       // Poll immediately in case execution already finished before we started listening
@@ -1454,39 +2513,14 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         { id: assistantMessageId, role: "assistant", content: "Processing...", timestamp: Date.now() },
       ]);
 
-      // Parse @mention filters from the user message to scope Pi's search
-      const mentionFilters = parseMentions(userMessage, { appTagMap });
-      const filterInstructions: string[] = [];
-      if (mentionFilters.appName) {
-        filterInstructions.push(`- app_name="${mentionFilters.appName}" — ONLY search this app`);
-      }
-      if (mentionFilters.contentType) {
-        if (mentionFilters.contentType === "screen") {
-          filterInstructions.push(`- content_type: use "ocr" and "accessibility" (try both) — user wants screen text only, NO audio`);
-        } else if (mentionFilters.contentType === "audio") {
-          filterInstructions.push(`- content_type="audio" — user wants voice/meeting transcriptions only, NO screen text`);
-        } else {
-          filterInstructions.push(`- content_type="${mentionFilters.contentType}"`);
-        }
-      }
-      if (mentionFilters.speakerName) {
-        filterInstructions.push(`- speaker_name="${mentionFilters.speakerName}" — filter to this speaker`);
-      }
-      const filterPrefix = filterInstructions.length > 0
-        ? `<MANDATORY_SEARCH_FILTERS>\nThe user has set explicit search filters. You MUST include these parameters in EVERY screenpipe_search call. Never omit them:\n${filterInstructions.join("\n")}\n</MANDATORY_SEARCH_FILTERS>\n\n`
-        : "";
-
       // If Pi's session is out of sync (restart, conversation load), inject history
-      let promptMessage = filterPrefix + (mentionFilters.cleanedInput || userMessage);
-      if (!promptMessage.trim() && piImages.length > 0) {
-        promptMessage = "Please analyze this image.";
-      }
+      let promptMessage = userMessage;
       if (!piSessionSyncedRef.current && messages.length > 0) {
         const historyLines = messages
           .slice(-40)
           .map(m => `${m.role}: ${m.content}`)
           .join("\n");
-        promptMessage = `<conversation_history>\n${historyLines}\n</conversation_history>\n\n${promptMessage}`;
+        promptMessage = `<conversation_history>\n${historyLines}\n</conversation_history>\n\n${userMessage}`;
         piSessionSyncedRef.current = true;
       } else {
         piSessionSyncedRef.current = true;
@@ -1852,7 +2886,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
         {/* Messages */}
         <div
-          ref={messagesContainerRef}
           className="relative flex-1 overflow-y-auto overflow-x-hidden"
           onContextMenu={(e) => {
             if (messages.length === 0) return;
@@ -1936,8 +2969,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           <SummaryCards
             onSendMessage={sendMessage}
             autoSuggestions={autoSuggestions}
-            suggestionsRefreshing={suggestionsRefreshing}
-            onRefreshSuggestions={refreshSuggestions}
             customTemplates={customTemplates}
             onSaveCustomTemplate={saveCustomTemplate}
             onDeleteCustomTemplate={deleteCustomTemplate}
@@ -1991,7 +3022,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                     : "bg-muted/30 border-border/50"
                 )}
               >
-                <MessageContent message={message} onImageClick={setLightboxSrc} />
+                <MessageContent message={message} />
                 {/* Upgrade button for daily limit errors */}
                 {message.role === "assistant" &&
                  (message.content.includes("used all your free queries") ||
@@ -2091,198 +3122,22 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div> {/* End of max-w-4xl wrapper */}
-
-      {/* Scroll to bottom button */}
-      <AnimatePresence>
-        {showScrollButton && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-            className="absolute bottom-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full border border-border bg-muted hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shadow-md"
-            title="Scroll to bottom"
-          >
-            <ArrowDown className="w-4 h-4" />
-          </motion.button>
-        )}
-      </AnimatePresence>
       </div>
       </div> {/* End of main content area with history sidebar */}
 
       {/* Input */}
       <div className="relative border-t border-border/50 bg-gradient-to-t from-muted/20 to-transparent">
         <div className="max-w-4xl mx-auto w-full">
-        <div className="p-2 border-b border-border/30 flex items-center gap-2">
-          <Popover open={appFilterOpen} onOpenChange={setAppFilterOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "shrink-0 flex items-center gap-1 px-2 h-10 text-[11px] font-mono border rounded-md transition-colors",
-                  hasActiveFilters
-                    ? "border-foreground text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground"
-                )}
-                title="Search filters"
-              >
-                <Filter className="w-3 h-3" />
-                <span>filter</span>
-                {hasActiveFilters && (
-                  <span className="text-[10px] text-muted-foreground">
-                    ({(activeFilters.timeRanges.length > 0 ? 1 : 0) +
-                      (activeFilters.contentType ? 1 : 0) +
-                      (activeFilters.appName ? 1 : 0) +
-                      (activeFilters.speakerName ? 1 : 0)})
-                  </span>
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-0 max-h-[360px] overflow-y-auto" align="start">
-              {/* Time filters */}
-              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50">
-                time
-              </div>
-              {STATIC_MENTION_SUGGESTIONS.filter((s) => s.category === "time").map((s) => {
-                const isActive = activeFilters.timeRanges.some((r) => r.label === s.description);
-                return (
-                  <button
-                    key={s.tag}
-                    type="button"
-                    onClick={() => {
-                      if (isActive) {
-                        removeFilter("time", s.description);
-                      } else {
-                        setInput((prev) => `${s.tag} ${prev.trim()}`.trim() + " ");
-                      }
-                      setAppFilterOpen(false);
-                    }}
-                    className={cn(
-                      "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
-                      isActive && "bg-muted"
-                    )}
-                  >
-                    <span>{s.tag}</span>
-                    <span className="text-[10px] text-muted-foreground">{s.description}</span>
-                  </button>
-                );
-              })}
-
-              {/* Content type filters */}
-              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50 border-t">
-                content type
-              </div>
-              {STATIC_MENTION_SUGGESTIONS.filter((s) => s.category === "content").map((s) => {
-                // @screen maps to "ocr", @audio to "audio", @input to "input"
-                const contentTypeMap: Record<string, string> = { screen: "screen", audio: "audio", input: "input" };
-                const tagName = s.tag.slice(1);
-                const isActive = activeFilters.contentType === (contentTypeMap[tagName] || tagName);
-                return (
-                  <button
-                    key={s.tag}
-                    type="button"
-                    onClick={() => {
-                      if (isActive) {
-                        removeFilter("content");
-                      } else {
-                        if (activeFilters.contentType) removeFilter("content");
-                        setInput((prev) => `${s.tag} ${prev.trim()}`.trim() + " ");
-                      }
-                      setAppFilterOpen(false);
-                    }}
-                    className={cn(
-                      "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
-                      isActive && "bg-muted"
-                    )}
-                  >
-                    <span>{s.tag}</span>
-                    <span className="text-[10px] text-muted-foreground">{s.description}</span>
-                  </button>
-                );
-              })}
-
-              {/* App filters (sorted by most used) */}
-              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50 border-t">
-                apps
-              </div>
-              {appMentionSuggestions.length === 0 ? (
-                <div className="px-3 py-2 text-[10px] text-muted-foreground">no apps detected yet</div>
-              ) : (
-                appMentionSuggestions.map((suggestion) => {
-                  const isActive = activeFilters.appName === suggestion.appName;
-                  return (
-                    <button
-                      key={suggestion.tag}
-                      type="button"
-                      onClick={() => {
-                        if (isActive) {
-                          removeFilter("app");
-                        } else {
-                          if (activeFilters.appName) removeFilter("app");
-                          setInput((prev) => `${suggestion.tag} ${prev.trim()}`.trim() + " ");
-                        }
-                        setAppFilterOpen(false);
-                      }}
-                      className={cn(
-                        "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
-                        isActive && "bg-muted"
-                      )}
-                    >
-                      <span>{suggestion.tag}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">{suggestion.description}</span>
-                    </button>
-                  );
-                })
-              )}
-
-              {/* Speakers */}
-              {recentSpeakers.length > 0 && (
-                <>
-                  <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50 border-t">
-                    speakers
-                  </div>
-                  {recentSpeakers.map((s) => {
-                    const speakerName = s.tag.startsWith('@"') ? s.tag.slice(2, -1) : s.tag.slice(1);
-                    const isActive = activeFilters.speakerName === speakerName;
-                    return (
-                      <button
-                        key={s.tag}
-                        type="button"
-                        onClick={() => {
-                          if (isActive) {
-                            removeFilter("speaker");
-                          } else {
-                            if (activeFilters.speakerName) removeFilter("speaker");
-                            setInput((prev) => `${s.tag} ${prev.trim()}`.trim() + " ");
-                          }
-                          setAppFilterOpen(false);
-                        }}
-                        className={cn(
-                          "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
-                          isActive && "bg-muted"
-                        )}
-                      >
-                        <span>{s.tag}</span>
-                        <span className="text-[10px] text-muted-foreground">speaker</span>
-                      </button>
-                    );
-                  })}
-                </>
-              )}
-            </PopoverContent>
-          </Popover>
-          <div className="flex-1 min-w-0">
-            <AIPresetsSelector
-              onPresetChange={setActivePreset}
-              controlledPresetId={activePipeExecution ? activePreset?.id : undefined}
-              onControlledSelect={activePipeExecution ? (id) => {
-                const match = settings.aiPresets?.find((p) => p.id === id);
-                if (match) setActivePreset(match);
-              } : undefined}
-              showLoginCta={false}
-            />
-          </div>
+        <div className="p-2 border-b border-border/30">
+          <AIPresetsSelector
+            onPresetChange={setActivePreset}
+            controlledPresetId={activePipeExecution ? activePreset?.id : undefined}
+            onControlledSelect={activePipeExecution ? (id) => {
+              const match = settings.aiPresets?.find((p) => p.id === id);
+              if (match) setActivePreset(match);
+            } : undefined}
+            showLoginCta={false}
+          />
         </div>
 
         {/* Prefill context indicator from search */}
@@ -2340,40 +3195,44 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 key={`time-${idx}`}
                 type="button"
                 onClick={() => removeFilter("time", range.label)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-medium text-foreground border border-border hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-full hover:bg-blue-500/20 transition-colors"
               >
+                <span>🕐</span>
                 <span>{range.label}</span>
-                <X className="w-2.5 h-2.5 ml-0.5 text-muted-foreground" />
+                <X className="w-2.5 h-2.5 ml-0.5" />
               </button>
             ))}
             {activeFilters.contentType && (
               <button
                 type="button"
                 onClick={() => removeFilter("content")}
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-medium text-foreground border border-border hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-full hover:bg-purple-500/20 transition-colors"
               >
-                <span>{activeFilters.contentType === "audio" ? "voice & meetings" : activeFilters.contentType === "input" ? "clicks & keystrokes" : "what's on screen"}</span>
-                <X className="w-2.5 h-2.5 ml-0.5 text-muted-foreground" />
+                <span>{activeFilters.contentType === "audio" ? "🎤" : "🖥️"}</span>
+                <span>{activeFilters.contentType}</span>
+                <X className="w-2.5 h-2.5 ml-0.5" />
               </button>
             )}
             {activeFilters.appName && (
               <button
                 type="button"
                 onClick={() => removeFilter("app")}
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-medium text-foreground border border-border hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 rounded-full hover:bg-green-500/20 transition-colors"
               >
+                <span>📱</span>
                 <span>{activeFilters.appName}</span>
-                <X className="w-2.5 h-2.5 ml-0.5 text-muted-foreground" />
+                <X className="w-2.5 h-2.5 ml-0.5" />
               </button>
             )}
             {activeFilters.speakerName && (
               <button
                 type="button"
                 onClick={() => removeFilter("speaker")}
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-medium text-foreground border border-border hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-full hover:bg-orange-500/20 transition-colors"
               >
+                <span>👤</span>
                 <span>{activeFilters.speakerName}</span>
-                <X className="w-2.5 h-2.5 ml-0.5 text-muted-foreground" />
+                <X className="w-2.5 h-2.5 ml-0.5" />
               </button>
             )}
           </div>
@@ -2407,33 +3266,18 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         </AnimatePresence>
 
         {/* Auto-suggestions above input */}
-        {!isLoading && messages.length > 0 && autoSuggestions.length > 0 && (
-          <div className="px-3 pt-2 flex flex-wrap items-center gap-1.5">
-            <AnimatePresence mode="popLayout">
-              {autoSuggestions.slice(0, 3).map((s, i) => (
-                <motion.button
-                  key={s.text}
-                  layout
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.15, delay: i * 0.03 }}
-                  type="button"
-                  onClick={() => sendMessage(s.text)}
-                  className="px-2.5 py-1 font-mono text-[11px] bg-muted/20 hover:bg-foreground hover:text-background border border-border/20 hover:border-foreground text-muted-foreground transition-all duration-150 cursor-pointer"
-                >
-                  {s.text}
-                </motion.button>
-              ))}
-            </AnimatePresence>
-            <button
-              onClick={refreshSuggestions}
-              disabled={suggestionsRefreshing}
-              className="p-1 text-muted-foreground/30 hover:text-foreground transition-colors duration-150 disabled:opacity-30 cursor-pointer"
-              title="refresh suggestions"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${suggestionsRefreshing ? "animate-spin" : ""}`} strokeWidth={1.5} />
-            </button>
+        {messages.length > 0 && !isLoading && autoSuggestions.length > 0 && (
+          <div className="px-3 pt-2 flex flex-wrap gap-1.5">
+            {autoSuggestions.slice(0, 3).map((s, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => sendMessage(s.text)}
+                className="px-2.5 py-1 text-[11px] bg-muted/20 hover:bg-muted/50 rounded-full border border-border/20 hover:border-border/50 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                {s.text}
+              </button>
+            ))}
           </div>
         )}
 
@@ -2613,20 +3457,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           responsePreview={scheduleDialogMessage.response}
         />
       )}
-
-      {/* Image lightbox */}
-      <Dialog open={!!lightboxSrc} onOpenChange={(open) => !open && setLightboxSrc(null)}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 border-none bg-transparent shadow-none [&>button]:text-white [&>button]:bg-black/50 [&>button]:rounded-full">
-          {lightboxSrc && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={lightboxSrc}
-              alt="Full size preview"
-              className="max-w-[90vw] max-h-[90vh] object-contain"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
