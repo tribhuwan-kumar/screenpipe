@@ -30,6 +30,7 @@ pub struct HotFrame {
     pub capture_trigger: String,
     pub offset_index: i64,
     pub fps: f64,
+    pub machine_id: Option<String>,
 }
 
 /// Cached audio entry from audio transcription pipeline.
@@ -232,6 +233,7 @@ impl HotFrameCache {
                             capture_trigger: String::new(),
                             offset_index: frame_data.offset_index,
                             fps: frame_data.fps,
+                            machine_id: frame_data.machine_id.clone(),
                         };
                         frames.insert((hot.timestamp, hot.frame_id), hot);
                         frame_count += 1;
@@ -338,6 +340,7 @@ fn hot_frame_to_timeseries(hot: &HotFrame, audio_entries: Vec<AudioEntry>) -> Ti
             browser_url: hot.browser_url.clone(),
         },
         audio_entries,
+        machine_id: hot.machine_id.clone(),
     };
 
     TimeSeriesFrame {
@@ -370,6 +373,7 @@ mod tests {
             capture_trigger: "click".to_string(),
             offset_index: 0,
             fps: 0.033,
+            machine_id: None,
         };
 
         cache.push_frame(frame).await;
@@ -402,6 +406,7 @@ mod tests {
                 capture_trigger: "idle".to_string(),
                 offset_index: 0,
                 fps: 0.033,
+                machine_id: None,
             })
             .await;
 
@@ -451,6 +456,7 @@ mod tests {
             capture_trigger: "click".to_string(),
             offset_index: 0,
             fps: 0.033,
+            machine_id: None,
         };
 
         cache.push_frame(frame).await;

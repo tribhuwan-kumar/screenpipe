@@ -57,6 +57,7 @@ pub struct DeviceFrameResponse {
     pub fps: f64,
     pub metadata: DeviceMetadata,
     pub audio: Vec<AudioData>,
+    pub machine_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -119,6 +120,7 @@ impl From<TimeSeriesFrame> for StreamTimeSeriesResponse {
                                 speaker_name: audio.speaker_name,
                             })
                             .collect(),
+                        machine_id: device_frame.machine_id,
                     }
                 })
                 .collect(),
@@ -174,6 +176,7 @@ pub(crate) fn create_time_series_frame(chunk: FrameData) -> TimeSeriesFrame {
             // FIX: Don't duplicate audio entries for each OCR entry
             // Audio will be added only to the first DeviceFrame
             audio_entries: vec![],
+            machine_id: chunk.machine_id.clone(),
         })
         .collect();
 
@@ -199,6 +202,7 @@ pub(crate) fn create_time_series_frame(chunk: FrameData) -> TimeSeriesFrame {
                 browser_url: None,
             },
             audio_entries,
+            machine_id: chunk.machine_id.clone(),
         });
     }
 
@@ -513,6 +517,7 @@ async fn handle_stream_frames_socket(
                                             speaker_name: a.speaker_name,
                                         })
                                         .collect(),
+                                    machine_id: hot_frame.machine_id.clone(),
                                 }],
                             };
 
@@ -656,8 +661,9 @@ async fn send_batch(
         return Ok(());
     }
 
-    // Serialize the batch
+    // Serialize the batch and convert timestamps to local time
     let json = serde_json::to_string(&buffer)?;
+    let json = super::timezone::localize_json_string(&json);
     sender.send(Message::Text(json)).await?;
     buffer.clear();
     Ok(())

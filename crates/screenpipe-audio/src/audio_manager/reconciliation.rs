@@ -477,7 +477,7 @@ async fn extract_speaker_id(
 }
 
 /// Group chunks into batches of consecutive chunks from the same device.
-/// Chunks are already ordered by timestamp ASC from the DB query.
+/// Chunks are already ordered by timestamp DESC from the DB query (newest first).
 fn group_chunks_by_device(chunks: &[UntranscribedChunk]) -> Vec<Vec<&UntranscribedChunk>> {
     let mut batches: Vec<Vec<&UntranscribedChunk>> = Vec::new();
 

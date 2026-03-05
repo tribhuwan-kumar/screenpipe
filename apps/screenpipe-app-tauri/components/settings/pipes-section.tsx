@@ -23,6 +23,7 @@ import {
   Users,
   MoreHorizontal,
   Plus,
+  Search,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -438,26 +439,56 @@ export function PipesSection() {
   const isTeamAdmin = !!team.team && team.role === "admin";
   const [sharingPipe, setSharingPipe] = useState<string | null>(null);
   const [pipeFilter, setPipeFilter] = useState<"all" | "personal" | "team">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "running" | "enabled" | "failed" | "scheduled" | "manual">("all");
   const sharedPipeNames = new Set(
     team.configs
       .filter((c) => c.config_type === "pipe" && c.scope === "team")
       .map((c) => c.key)
   );
 
+  const isManualPipe = (p: PipeStatus) =>
+    !p.config.schedule || p.config.schedule === "manual";
+  const isScheduledPipe = (p: PipeStatus) =>
+    !!p.config.schedule && p.config.schedule !== "manual";
+
   const filteredPipes = pipes
     .filter((p) => {
-      if (pipeFilter === "all") return true;
-      if (pipeFilter === "team") return sharedPipeNames.has(p.config.name);
-      return !sharedPipeNames.has(p.config.name); // personal
+      // Team/personal filter
+      if (pipeFilter === "team" && !sharedPipeNames.has(p.config.name)) return false;
+      if (pipeFilter === "personal" && sharedPipeNames.has(p.config.name)) return false;
+
+      // Search filter
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!p.config.name.toLowerCase().includes(q)) return false;
+      }
+
+      // Status filter
+      if (statusFilter === "running" && !p.is_running) return false;
+      if (statusFilter === "enabled" && !p.config.enabled) return false;
+      if (statusFilter === "failed" && p.last_success !== false) return false;
+      if (statusFilter === "scheduled" && !isScheduledPipe(p)) return false;
+      if (statusFilter === "manual" && !isManualPipe(p)) return false;
+
+      return true;
     })
     .sort((a, b) => {
-      // Enabled first
+      // Running first, then enabled, then rest
+      if (a.is_running !== b.is_running) return a.is_running ? -1 : 1;
       if (a.config.enabled !== b.config.enabled) return a.config.enabled ? -1 : 1;
       // Then by last run time (most recent first)
       const aTime = a.last_run ? new Date(a.last_run).getTime() : 0;
       const bTime = b.last_run ? new Date(b.last_run).getTime() : 0;
       return bTime - aTime;
     });
+
+  // Counts for filter chips
+  const runningCount = pipes.filter((p) => p.is_running).length;
+  const enabledCount = pipes.filter((p) => p.config.enabled).length;
+  const failedCount = pipes.filter((p) => p.last_success === false).length;
+  const scheduledCount = pipes.filter((p) => isScheduledPipe(p)).length;
+  const manualCount = pipes.filter((p) => isManualPipe(p)).length;
 
   const sharePipeToTeam = async (pipe: PipeStatus) => {
     setSharingPipe(pipe.config.name);
@@ -855,6 +886,42 @@ export function PipesSection() {
         </div>
       </div>
 
+      {/* Search + filter chips */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="search pipes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-8 text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {([
+            { key: "all", label: "All", count: pipes.length },
+            { key: "running", label: "Running", count: runningCount },
+            { key: "enabled", label: "Enabled", count: enabledCount },
+            { key: "failed", label: "Failed", count: failedCount },
+            { key: "scheduled", label: "Scheduled", count: scheduledCount },
+            { key: "manual", label: "Manual", count: manualCount },
+          ] as const).map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setStatusFilter(key)}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-xs transition-colors",
+                statusFilter === key
+                  ? "bg-foreground text-background font-medium"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {label} {count > 0 && <span className="ml-0.5">{count}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* All | Personal | Shared with team tabs */}
       {team.team && (
         <div className="flex items-center gap-4 border-b border-border">
@@ -884,7 +951,9 @@ export function PipesSection() {
       {filteredPipes.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            {pipeFilter === "all" ? (
+            {searchQuery || statusFilter !== "all" ? (
+              <p>no pipes match your filters</p>
+            ) : pipeFilter === "all" ? (
               <>
                 <p>no pipes installed</p>
                 <p className="text-sm mt-2">

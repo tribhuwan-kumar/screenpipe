@@ -535,7 +535,7 @@ impl DatabaseManager {
              FROM audio_chunks ac
              LEFT JOIN audio_transcriptions at ON ac.id = at.audio_chunk_id
              WHERE at.id IS NULL AND ac.timestamp >= ?1
-             ORDER BY ac.timestamp ASC
+             ORDER BY ac.timestamp DESC
              LIMIT ?2",
         )
         .bind(since)
@@ -792,11 +792,10 @@ impl DatabaseManager {
         duration_secs: Option<f64>,
         speaker_id: Option<i64>,
     ) -> Result<(), sqlx::Error> {
-        // Skip empty transcriptions
+        // For empty/silent transcriptions, store a marker so the chunk is marked as
+        // "done" and won't be re-picked by reconciliation sweeps forever.
         let trimmed = transcription.trim();
-        if trimmed.is_empty() {
-            return Ok(());
-        }
+        let trimmed = if trimmed.is_empty() { "" } else { trimmed };
 
         let text_length = trimmed.len() as i64;
         let start_time: f64 = 0.0;
@@ -3175,7 +3174,8 @@ impl DatabaseManager {
             COALESCE(vc.device_name, f.device_name) as screen_device,
             COALESCE(vc.file_path, f.snapshot_path) as video_path,
             COALESCE(vc.fps, 0.033) as chunk_fps,
-            f.browser_url
+            f.browser_url,
+            f.machine_id
         FROM frames f
         LEFT JOIN video_chunks vc ON f.video_chunk_id = vc.id
         WHERE f.timestamp >= ?1 AND f.timestamp <= ?2
@@ -3234,6 +3234,7 @@ impl DatabaseManager {
                 timestamp,
                 offset_index,
                 fps: chunk_fps,
+                machine_id: row.try_get("machine_id").ok(),
                 ocr_entries: Vec::new(),
                 audio_entries: Vec::new(),
             });

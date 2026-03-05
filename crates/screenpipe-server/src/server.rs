@@ -603,6 +603,9 @@ impl SCServer {
                     }
                 },
             ))
+            .layer(axum::middleware::from_fn(
+                crate::routes::timezone::timestamp_middleware,
+            ))
             .layer(cors)
             .layer(TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::default()))
     }

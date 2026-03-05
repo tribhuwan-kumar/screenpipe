@@ -20,6 +20,7 @@ export function useTimelineFilters(opts: {
 	const [selectedDomain, setSelectedDomain] = useState<string>("all");
 	const [selectedSpeaker, setSelectedSpeaker] = useState<string>("all");
 	const [selectedTag, setSelectedTag] = useState<string>("all");
+	const [selectedMachineId, setSelectedMachineId] = useState<string>("all");
 
 	const resetFilters = useCallback(() => {
 		setSelectedDeviceId("all");
@@ -27,6 +28,7 @@ export function useTimelineFilters(opts: {
 		setSelectedDomain("all");
 		setSelectedSpeaker("all");
 		setSelectedTag("all");
+		setSelectedMachineId("all");
 	}, []);
 
 	// Track filter state in refs so event listeners can read fresh values
@@ -46,6 +48,27 @@ export function useTimelineFilters(opts: {
 		return [...ids].sort();
 	}, [frames]);
 
+	// collect unique machine ids across all frames (for machine filter)
+	// Local frames (machine_id absent) are represented as "__local__"
+	const LOCAL_MACHINE = "__local__";
+	const allMachineIds = useMemo(() => {
+		const ids = new Set<string>();
+		let hasLocal = false;
+		for (const frame of frames) {
+			for (const d of frame.devices) {
+				if (d.machine_id) {
+					ids.add(d.machine_id);
+				} else {
+					hasLocal = true;
+				}
+			}
+		}
+		const sorted = [...ids].sort();
+		// Put local machine first so it's the most prominent dot
+		if (hasLocal) sorted.unshift(LOCAL_MACHINE);
+		return sorted;
+	}, [frames]);
+
 	// Navigation helpers for monitor filter — skip non-matching frames
 	const frameMatchesDevice = useCallback((frame: StreamTimeSeriesResponse) => {
 		if (selectedDeviceId === "all" || allDeviceIds.length <= 1) return true;
@@ -60,7 +83,8 @@ export function useTimelineFilters(opts: {
 		const filterDomain = selectedDomain !== "all";
 		const filterSpeaker = selectedSpeaker !== "all";
 		const filterTag = selectedTag !== "all";
-		if (!filterDevice && !filterApp && !filterDomain && !filterSpeaker && !filterTag) return null;
+		const filterMachine = selectedMachineId !== "all" && allMachineIds.length > 1;
+		if (!filterDevice && !filterApp && !filterDomain && !filterSpeaker && !filterTag && !filterMachine) return null;
 		const indices: number[] = [];
 		for (let i = 0; i < frames.length; i++) {
 			const f = frames[i];
@@ -76,12 +100,15 @@ export function useTimelineFilters(opts: {
 				const frameTags = frameId ? (tags[frameId] || []) : [];
 				return frameTags.includes(selectedTag);
 			})();
-			if (matchesDevice && matchesApp && matchesDomain && matchesSpeaker && matchesTag) {
+			const matchesMachine = !filterMachine || f.devices.some((d) =>
+				selectedMachineId === LOCAL_MACHINE ? !d.machine_id : d.machine_id === selectedMachineId
+			);
+			if (matchesDevice && matchesApp && matchesDomain && matchesSpeaker && matchesTag && matchesMachine) {
 				indices.push(i);
 			}
 		}
 		return indices.length > 0 ? indices : null;
-	}, [frames, selectedDeviceId, allDeviceIds.length, selectedAppName, selectedDomain, selectedSpeaker, selectedTag, tags]);
+	}, [frames, selectedDeviceId, allDeviceIds.length, selectedAppName, selectedDomain, selectedSpeaker, selectedTag, tags, selectedMachineId, allMachineIds.length]);
 
 	// Find next frame index matching active filters in a given direction
 	const findNextDevice = useCallback((fromIndex: number, dir: 1 | -1): number => {
@@ -191,6 +218,15 @@ export function useTimelineFilters(opts: {
 		if (snapped !== currentIndex) { setCurrentIndex(snapped); setCurrentFrame(frames[snapped]); }
 	}, [currentIndex, frames, snapToMatch, setCurrentFrame]);
 
+	const handleMachineChange = useCallback((machineId: string) => {
+		setSelectedMachineId(machineId);
+		if (machineId === "all") return;
+		const snapped = snapToMatch(currentIndex, (f) =>
+			f.devices.some((d) => machineId === LOCAL_MACHINE ? !d.machine_id : d.machine_id === machineId)
+		);
+		if (snapped !== currentIndex) { setCurrentIndex(snapped); setCurrentFrame(frames[snapped]); }
+	}, [currentIndex, frames, snapToMatch, setCurrentFrame]);
+
 	const handleTagChange = useCallback((tag: string) => {
 		setSelectedTag(tag);
 		if (tag === "all") return;
@@ -208,15 +244,18 @@ export function useTimelineFilters(opts: {
 		selectedDomain,
 		selectedSpeaker,
 		selectedTag,
+		selectedMachineId,
 		matchingIndices,
 		resetFilters,
 		allDeviceIds,
+		allMachineIds,
 		frameMatchesDevice,
 		handleDeviceChange,
 		handleAppChange,
 		handleDomainChange,
 		handleSpeakerChange,
 		handleTagChange,
+		handleMachineChange,
 		findNextDevice,
 		selectedDeviceIdRef,
 		selectedAppNameRef,
