@@ -201,6 +201,7 @@ export function SubtitleBar({ frames, currentIndex, isPlaying, onClick, transcri
 /** Render a single subtitle line */
 function SubtitleLine({
 	entry,
+	currentTime,
 	opacity,
 	isHovered,
 	isLookahead,
@@ -223,7 +224,11 @@ function SubtitleLine({
 	});
 
 	const text = entry.transcription.trim();
-	const isPending = !text;
+	// Only show "transcribing..." for recent chunks (< 2 min old).
+	// Older empty chunks are just silence — hide them entirely.
+	const ageMs = currentTime - entry.timestamp.getTime();
+	const isPending = !text && ageMs < 120_000;
+	if (!text && ageMs >= 120_000) return null;
 
 	return (
 		<div
