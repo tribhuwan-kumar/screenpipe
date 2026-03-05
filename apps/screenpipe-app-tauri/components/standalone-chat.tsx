@@ -1460,6 +1460,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
       // If Pi's session is out of sync (restart, conversation load), inject history
       let promptMessage = filterPrefix + (mentionFilters.cleanedInput || userMessage);
+      if (!promptMessage.trim() && piImages.length > 0) {
+        promptMessage = "Please analyze this image.";
+      }
       if (!piSessionSyncedRef.current && messages.length > 0) {
         const historyLines = messages
           .slice(-40)
