@@ -197,6 +197,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		selectedAppNameRef,
 		snapToDevice,
 		snapToApp,
+		snapToFiltered,
 	} = useTimelineFilters({
 		frames,
 		currentIndex,
@@ -548,7 +549,8 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 			return;
 		}
 		if (!currentFrame && frames.length > 0) {
-			const first = snapToDevice(0);
+			let first = snapToDevice(0);
+			first = snapToFiltered(first);
 			setCurrentFrame(frames[first]);
 			setCurrentIndex(first);
 		}
@@ -1175,7 +1177,8 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 										bestIdx = i;
 									}
 								}
-								const snapped = snapToDevice(bestIdx);
+								let snapped = snapToDevice(bestIdx);
+								snapped = snapToFiltered(snapped);
 								setCurrentIndex(snapped);
 								setCurrentFrame(frames[snapped]);
 							}}
@@ -1227,6 +1230,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 								pausePlayback();
 								let snapped = snapToDevice(index);
 								snapped = snapToApp(snapped);
+								snapped = snapToFiltered(snapped);
 								setCurrentIndex(snapped);
 								if (frames[snapped]) {
 									setCurrentFrame(frames[snapped]);
