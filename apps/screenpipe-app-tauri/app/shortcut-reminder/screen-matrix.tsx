@@ -57,11 +57,7 @@ export function ScreenMatrix({
     canvas.height = CANVAS_H * dpr;
     ctx.scale(dpr, dpr);
 
-    let stopped = false;
-
     const draw = () => {
-      if (stopped) return;
-
       ctx.clearRect(0, 0, canvasW, CANVAS_H);
 
       const isActive = activeRef.current;
@@ -105,24 +101,10 @@ export function ScreenMatrix({
       rafRef.current = requestAnimationFrame(draw);
     };
 
-    // Only run RAF when the tab is visible
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        cancelAnimationFrame(rafRef.current);
-      } else if (!stopped) {
-        rafRef.current = requestAnimationFrame(draw);
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    if (!document.hidden) {
-      rafRef.current = requestAnimationFrame(draw);
-    }
+    rafRef.current = requestAnimationFrame(draw);
 
     return () => {
-      stopped = true;
       cancelAnimationFrame(rafRef.current);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 

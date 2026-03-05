@@ -12,7 +12,7 @@ import { saveFramesToCache, loadCachedFrames } from "./use-timeline-cache";
 let frameBuffer: StreamTimeSeriesResponse[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let progressUpdateTimer: ReturnType<typeof setTimeout> | null = null;
-const FLUSH_INTERVAL_MS = 500; // Flush every 500ms to reduce CPU usage
+const FLUSH_INTERVAL_MS = 150; // Flush every 150ms for smooth progressive loading
 const PROGRESS_UPDATE_INTERVAL_MS = 500; // Only update progress indicator every 500ms to prevent flickering
 
 // Connection retry logic - don't show error immediately, server might be starting
