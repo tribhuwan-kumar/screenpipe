@@ -24,6 +24,8 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Share2,
+  Link,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -438,6 +440,7 @@ export function PipesSection() {
   const { toast } = useToast();
   const isTeamAdmin = !!team.team && team.role === "admin";
   const [sharingPipe, setSharingPipe] = useState<string | null>(null);
+  const [sharingPublic, setSharingPublic] = useState<string | null>(null);
   const [pipeFilter, setPipeFilter] = useState<"all" | "personal" | "team">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "enabled" | "failed" | "scheduled" | "manual">("all");
@@ -506,6 +509,31 @@ export function PipesSection() {
       toast({ title: "failed to share to team", description: err.message, variant: "destructive" });
     } finally {
       setSharingPipe(null);
+    }
+  };
+
+  const sharePipePublic = async (pipe: PipeStatus) => {
+    setSharingPublic(pipe.config.name);
+    try {
+      const res = await fetch("https://screenpi.pe/api/pipes/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw_content: pipe.raw_content,
+          name: pipe.config.name,
+          author_id: settings.user?.id || null,
+          author_email: settings.user?.email || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      await navigator.clipboard.writeText(data.url);
+      posthog.capture("pipe_shared_public", { pipe_name: pipe.config.name, pipe_id: data.id });
+      toast({ title: "link copied!", description: data.url });
+    } catch (err: any) {
+      toast({ title: "failed to share pipe", description: err.message, variant: "destructive" });
+    } finally {
+      setSharingPublic(null);
     }
   };
 
@@ -1072,6 +1100,17 @@ export function PipesSection() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={sharingPublic === pipe.config.name}
+                        onClick={() => sharePipePublic(pipe)}
+                      >
+                        {sharingPublic === pipe.config.name ? (
+                          <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                        ) : (
+                          <Link className="h-3.5 w-3.5 mr-2" />
+                        )}
+                        copy share link
+                      </DropdownMenuItem>
                       {isTeamAdmin && (
                         <>
                           <DropdownMenuItem
@@ -1085,9 +1124,9 @@ export function PipesSection() {
                             )}
                             {sharedPipeNames.has(pipe.config.name) ? "update team copy" : "share to team"}
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
                         </>
                       )}
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
                         onClick={() => deletePipe(pipe.config.name)}

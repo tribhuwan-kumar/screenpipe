@@ -124,6 +124,17 @@ export function DeeplinkHandler() {
         }
       }
 
+      // Handle pipe install deep links: screenpipe://install-pipe?url=<encoded-url>
+      if (
+        parsedUrl.host === "install-pipe" ||
+        parsedUrl.pathname === "install-pipe"
+      ) {
+        const pipeUrl = parsedUrl.searchParams.get("url");
+        if (pipeUrl) {
+          await emit("install-pipe", { url: pipeUrl, name: parsedUrl.searchParams.get("name") || undefined });
+        }
+      }
+
       // Handle frame deep links: screenpipe://frame/12345
       if (parsedUrl.pathname?.startsWith("/frame/") || parsedUrl.host === "frame") {
         const frameId = url.split("frame/")[1]?.replace(/^\//, "");
