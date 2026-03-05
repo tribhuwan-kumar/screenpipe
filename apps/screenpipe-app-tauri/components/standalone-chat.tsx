@@ -1619,7 +1619,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   }
 
   async function sendMessage(userMessage: string, displayLabel?: string) {
-    if ((!canChat && !autoSendBypassRef.current) || !activePreset) return;
+    if ((!canChat && !autoSendBypassRef.current) || (!activePreset && !autoSendBypassRef.current)) return;
 
     // All providers route through Pi agent
     return sendPiMessage(userMessage, displayLabel);
