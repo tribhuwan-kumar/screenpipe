@@ -574,10 +574,6 @@ async fn main() -> anyhow::Result<()> {
     // This helps track users who may have screen capture issues due to old macOS
     analytics::check_macos_version();
 
-    // Start sleep/wake monitor for telemetry (macOS only)
-    // This tracks sleep/wake events and checks if recording is degraded after wake
-    start_sleep_monitor();
-
     let db = Arc::new(
         DatabaseManager::new(&format!("{}/db.sqlite", local_data_dir.to_string_lossy()))
             .await
@@ -586,6 +582,13 @@ async fn main() -> anyhow::Result<()> {
                 e
             })?,
     );
+
+    // Start sleep/wake monitor for telemetry (macOS only)
+    // This tracks sleep/wake events and checks if recording is degraded after wake
+    // NOTE: must be started AFTER database init — the monitor spawns background
+    // threads with ObjC run loops that segfault during process teardown if an
+    // earlier init step (like DB) fails and the process exits.
+    start_sleep_monitor();
 
     // Start cloud sync service if enabled
     let sync_service_handle = if cli.enable_sync {

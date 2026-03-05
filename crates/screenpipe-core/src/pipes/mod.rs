@@ -958,12 +958,13 @@ impl PipeManager {
                     } else {
                         "failed"
                     };
+                    let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                     if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {
                         let _ = store
                             .finish_execution(
                                 id,
                                 status,
-                                &truncate_string(&output.stdout, 50_000),
+                                &truncate_string(&filtered_stdout, 50_000),
                                 &truncate_string(&output.stderr, 10_000),
                                 None,
                                 error_type.as_deref(),
@@ -981,7 +982,7 @@ impl PipeManager {
                         started_at,
                         finished_at,
                         success: output.success,
-                        stdout: truncate_string(&output.stdout, 10_000),
+                        stdout: truncate_string(&filtered_stdout, 10_000),
                         stderr: truncate_string(&output.stderr, 5_000),
                     }
                 }
@@ -2420,6 +2421,37 @@ fn parse_duration_str(s: &str) -> Option<std::time::Duration> {
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
+
+/// Filter NDJSON stdout to remove bulky streaming events before storage.
+/// `toolcall_delta` and `thinking_delta` events are only useful for live
+/// streaming — they dominate the output and push useful `text_delta` /
+/// `message_end` / `agent_end` events past the truncation limit.
+fn filter_ndjson_stdout(s: &str) -> String {
+    // Quick check: if it doesn't look like NDJSON, return as-is
+    if !s.starts_with('{') {
+        return s.to_string();
+    }
+
+    let mut out = String::with_capacity(s.len() / 2);
+    for line in s.split('\n') {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Only filter JSON lines that are complete objects
+        if trimmed.starts_with('{') && trimmed.ends_with('}') {
+            // Fast substring check before paying for a full JSON parse
+            if trimmed.contains("\"toolcall_delta\"") || trimmed.contains("\"thinking_delta\"") {
+                continue;
+            }
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(line);
+    }
+    out
+}
 
 fn truncate_string(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
