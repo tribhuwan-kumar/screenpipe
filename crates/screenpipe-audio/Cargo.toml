@@ -78,7 +78,7 @@ realfft = "3.4.0"
 ndarray = "0.16"
 ort = "=2.0.0-rc.6"
 ort-sys = "=2.0.0-rc.6"
-knf-rs = { git = "https://github.com/Neptune650/knf-rs.git" }
+knf-rs = "0.3.2"
 futures = "0.3.31"
 deepgram = "0.6.4"
 audiopipe = { git = "https://github.com/screenpipe/audiopipe.git", rev = "c92760e", default-features = false, features = ["qwen3-asr-ggml"], optional = true }

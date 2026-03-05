@@ -4728,8 +4728,9 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "knf-rs"
-version = "0.2.4"
-source = "git+https://github.com/Neptune650/knf-rs.git#b782e6bb02db495ce767f0094c0aa6bca5dba61c"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15ebe7cf9eae245a44ab76cabdd06c0b3769972fd06050ed9aea6a22ff0d682f"
 dependencies = [
  "eyre",
  "knf-rs-sys",
@@ -4738,8 +4739,9 @@ dependencies = [
 
 [[package]]
 name = "knf-rs-sys"
-version = "0.2.4"
-source = "git+https://github.com/Neptune650/knf-rs.git#b782e6bb02db495ce767f0094c0aa6bca5dba61c"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9aa7679fdc0ecdaab1f4e7c9603413f303765f33c8e34e6ca4f26e7d61d6023"
 dependencies = [
  "bindgen 0.69.5",
  "cmake",
@@ -8223,7 +8225,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.36"
+version = "2.2.37"
 dependencies = [
  "anyhow",
  "arboard",
