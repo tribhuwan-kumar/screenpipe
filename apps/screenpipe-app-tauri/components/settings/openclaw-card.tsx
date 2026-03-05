@@ -10,16 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   Loader2,
-  Play,
-  Square,
   RefreshCw,
-  Trash2,
   Server,
   Eye,
   EyeOff,
+  ChevronDown,
 } from "lucide-react";
-import { Command } from "@tauri-apps/plugin-shell";
-import { platform } from "@tauri-apps/plugin-os";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import posthog from "posthog-js";
 
@@ -31,6 +28,21 @@ interface SyncConfig {
   remotePath: string;
   intervalMinutes: number;
   enabled: boolean;
+}
+
+interface DiscoveredHost {
+  host: string;
+  port: number;
+  user: string | null;
+  key_path: string | null;
+  source: string;
+}
+
+interface SyncResult {
+  ok: boolean;
+  files_transferred: number;
+  bytes_transferred: number;
+  error: string | null;
 }
 
 const DEFAULT_CONFIG: SyncConfig = {
@@ -59,74 +71,17 @@ function saveConfig(config: SyncConfig) {
   } catch {}
 }
 
-async function getScreenpipeDataDir(): Promise<string> {
-  const os = platform();
-  if (os === "macos") {
-    return "$HOME/.screenpipe";
-  } else if (os === "windows") {
-    return "%USERPROFILE%\\.screenpipe";
-  }
-  return "$HOME/.screenpipe";
-}
-
-async function testSshConnection(config: SyncConfig): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const sshArgs = [
-      "-o", "BatchMode=yes",
-      "-o", "ConnectTimeout=10",
-      "-o", "StrictHostKeyChecking=accept-new",
-      "-p", config.port,
-      "-i", config.keyPath,
-      `${config.user}@${config.host}`,
-      "echo ok",
-    ];
-
-    const cmd = Command.create("ssh", sshArgs);
-    const result = await cmd.execute();
-
-    if (result.code === 0) {
-      return { ok: true };
-    }
-    return { ok: false, error: result.stderr || "connection failed" };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-async function runRsync(config: SyncConfig): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const dataDir = await getScreenpipeDataDir();
-
-    const rsyncArgs = [
-      "-avz",
-      "--partial",
-      "--compress",
-      "--exclude", "*.lock",
-      "--exclude", "*.wal",
-      "--exclude", "*.shm",
-      "-e", `ssh -p ${config.port} -i ${config.keyPath} -o StrictHostKeyChecking=accept-new`,
-      `${dataDir}/`,
-      `${config.user}@${config.host}:${config.remotePath}/`,
-    ];
-
-    const os = platform();
-    let cmd;
-    if (os === "windows") {
-      // on windows, use wsl rsync or bundled rsync
-      cmd = Command.create("wsl", ["rsync", ...rsyncArgs]);
-    } else {
-      cmd = Command.create("rsync", rsyncArgs);
-    }
-
-    const result = await cmd.execute();
-
-    if (result.code === 0) {
-      return { ok: true };
-    }
-    return { ok: false, error: result.stderr || `rsync exited with code ${result.code}` };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
+// Convert frontend config to Rust SyncConfig format
+function toRustConfig(config: SyncConfig) {
+  return {
+    host: config.host,
+    port: parseInt(config.port) || 22,
+    user: config.user,
+    key_path: config.keyPath,
+    remote_path: config.remotePath,
+    interval_minutes: config.intervalMinutes,
+    enabled: config.enabled,
+  };
 }
 
 export function OpenClawCard() {
@@ -137,6 +92,8 @@ export function OpenClawCard() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [discoveredHosts, setDiscoveredHosts] = useState<DiscoveredHost[]>([]);
+  const [showHostPicker, setShowHostPicker] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -147,6 +104,11 @@ export function OpenClawCard() {
       const ts = localStorage?.getItem("openclaw-last-sync");
       if (ts) setLastSync(ts);
     } catch {}
+
+    // Discover SSH hosts on mount
+    invoke<DiscoveredHost[]>("remote_sync_discover_hosts")
+      .then(setDiscoveredHosts)
+      .catch(() => {});
   }, []);
 
   const updateConfig = useCallback((patch: Partial<SyncConfig>) => {
@@ -162,27 +124,37 @@ export function OpenClawCard() {
     if (!config.host || !config.user) return;
     setIsTesting(true);
     setTestResult(null);
-    const result = await testSshConnection(config);
-    setTestResult(result);
+    try {
+      await invoke("remote_sync_test", { config: toRustConfig(config) });
+      setTestResult({ ok: true });
+    } catch (e) {
+      setTestResult({ ok: false, error: String(e) });
+    }
     setIsTesting(false);
-    posthog.capture("openclaw_ssh_test", { success: result.ok });
+    posthog.capture("openclaw_ssh_test", { success: testResult?.ok });
   };
 
   const handleSyncNow = async () => {
     if (!config.host || !config.user) return;
     setIsSyncing(true);
     setSyncError(null);
-    const result = await runRsync(config);
-    if (result.ok) {
-      const now = new Date().toLocaleString();
-      setLastSync(now);
-      try { localStorage?.setItem("openclaw-last-sync", now); } catch {}
-      setSyncError(null);
-    } else {
-      setSyncError(result.error || "sync failed");
+    try {
+      const result = await invoke<SyncResult>("remote_sync_now", {
+        config: toRustConfig(config),
+      });
+      if (result.ok) {
+        const now = new Date().toLocaleString();
+        setLastSync(now);
+        try { localStorage?.setItem("openclaw-last-sync", now); } catch {}
+        setSyncError(null);
+      } else {
+        setSyncError(result.error || "sync failed");
+      }
+    } catch (e) {
+      setSyncError(String(e));
     }
     setIsSyncing(false);
-    posthog.capture("openclaw_sync_manual", { success: result.ok });
+    posthog.capture("openclaw_sync_manual", { success: !syncError });
   };
 
   // auto-sync interval
@@ -193,7 +165,6 @@ export function OpenClawCard() {
     }
 
     if (config.enabled && config.host && config.user) {
-      // run immediately on enable
       handleSyncNow();
 
       intervalRef.current = setInterval(() => {
@@ -216,6 +187,16 @@ export function OpenClawCard() {
     if (!val) {
       posthog.capture("openclaw_sync_disabled");
     }
+  };
+
+  const selectHost = (host: DiscoveredHost) => {
+    updateConfig({
+      host: host.host,
+      port: String(host.port),
+      ...(host.user ? { user: host.user } : {}),
+      ...(host.key_path ? { keyPath: host.key_path } : {}),
+    });
+    setShowHostPicker(false);
   };
 
   const isConfigured = config.host && config.user;
@@ -250,7 +231,7 @@ export function OpenClawCard() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-              Sync your screenpipe data to a remote server via rsync over SSH.
+              Sync your screenpipe data to a remote server over SSH.
               Run OpenClaw or any AI agent on your VPS to query your data 24/7,
               even when your machine is off.
             </p>
@@ -258,12 +239,43 @@ export function OpenClawCard() {
             {/* SSH config form */}
             <div className="space-y-2 mb-3">
               <div className="flex gap-2">
-                <Input
-                  placeholder="host (e.g. 100.64.0.1 or my-vps.com)"
-                  value={config.host}
-                  onChange={(e) => updateConfig({ host: e.target.value })}
-                  className="text-xs h-7 flex-1"
-                />
+                <div className="relative flex-1">
+                  <Input
+                    placeholder="host (e.g. 100.64.0.1 or my-vps.com)"
+                    value={config.host}
+                    onChange={(e) => updateConfig({ host: e.target.value })}
+                    className="text-xs h-7"
+                  />
+                  {discoveredHosts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHostPicker(!showHostPicker)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      title="Pick from discovered hosts"
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  )}
+                  {showHostPicker && discoveredHosts.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                      {discoveredHosts.map((h, i) => (
+                        <button
+                          key={i}
+                          onClick={() => selectHost(h)}
+                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex justify-between items-center"
+                        >
+                          <span>
+                            {h.user ? `${h.user}@` : ""}{h.host}
+                            {h.port !== 22 ? `:${h.port}` : ""}
+                          </span>
+                          <span className="text-muted-foreground ml-2">
+                            {h.source}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Input
                   placeholder="port"
                   value={config.port}
