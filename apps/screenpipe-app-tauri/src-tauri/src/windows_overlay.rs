@@ -48,9 +48,21 @@ pub fn get_hwnd(window: &WebviewWindow) -> Option<HWND> {
 ///
 /// This sets up the window with:
 /// - WS_EX_LAYERED: Required for transparency and click-through
-/// - WS_EX_TOOLWINDOW: Prevents showing in taskbar/alt-tab
+/// - WS_EX_TOOLWINDOW: Prevents showing in taskbar/alt-tab (unless show_in_taskbar is true)
 /// - HWND_TOPMOST: Always on top of other windows
+///
+/// Set `show_in_taskbar` to true for the main overlay window so the app
+/// remains visible in the Windows taskbar.
 pub fn setup_overlay(window: &WebviewWindow, click_through: bool) -> Result<(), String> {
+    setup_overlay_ex(window, click_through, false)
+}
+
+/// Like `setup_overlay` but with explicit taskbar visibility control.
+pub fn setup_overlay_ex(
+    window: &WebviewWindow,
+    click_through: bool,
+    show_in_taskbar: bool,
+) -> Result<(), String> {
     let hwnd = get_hwnd(window).ok_or("Failed to get HWND")?;
 
     unsafe {
@@ -59,6 +71,11 @@ pub fn setup_overlay(window: &WebviewWindow, click_through: bool) -> Result<(), 
 
         // Build new style with overlay flags
         let mut new_style = current_style | OVERLAY_EX_STYLE;
+
+        // Remove WS_EX_TOOLWINDOW if the window should appear in the taskbar
+        if show_in_taskbar {
+            new_style &= !(WS_EX_TOOLWINDOW.0 as i32);
+        }
 
         if click_through {
             new_style |= CLICK_THROUGH_STYLE;
