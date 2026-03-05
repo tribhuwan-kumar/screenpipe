@@ -42,7 +42,7 @@ use crate::{
     },
     utils::{
         audio::resample,
-        ffmpeg::{get_new_file_path, write_audio_to_file},
+        ffmpeg::{get_new_file_path_with_timestamp, write_audio_to_file},
     },
     vad::{silero::SileroVad, webrtc::WebRtcVad, VadEngine, VadEngineEnum},
     AudioInput, TranscriptionResult,
@@ -506,7 +506,15 @@ impl AudioManager {
                     } else {
                         audio.data.as_ref().to_vec()
                     };
-                    let path = get_new_file_path(&audio.device.to_string(), out);
+                    let capture_dt = chrono::DateTime::from_timestamp(
+                        audio.capture_timestamp as i64,
+                        0,
+                    );
+                    let path = get_new_file_path_with_timestamp(
+                        &audio.device.to_string(),
+                        out,
+                        capture_dt,
+                    );
                     if let Err(e) =
                         write_audio_to_file(&resampled, SAMPLE_RATE, &PathBuf::from(&path), false)
                     {
@@ -516,7 +524,9 @@ impl AudioManager {
                         debug!("audio persisted to disk: {}", path);
                         // Insert into DB immediately so retranscribe can find this audio
                         // even if transcription is deferred. No transcription yet — just the chunk.
-                        if let Err(e) = db.insert_audio_chunk(&path, None).await {
+                        // Use the original capture timestamp so audio appears at the correct
+                        // position on the timeline, not when processing happened.
+                        if let Err(e) = db.insert_audio_chunk(&path, capture_dt).await {
                             error!("failed to insert audio chunk into db: {:?}", e);
                         }
                         Some(path)
