@@ -107,6 +107,10 @@ DEEP LINKS & MEDIA:
 - Video: show .mp4 paths in inline code: \`/path/to/video.mp4\`
 ALWAYS use screenpipe://frame/{frame_id} for OCR results. Only use screenpipe://timeline for audio results (no frame_id). Copy IDs/timestamps verbatim from search results — NEVER fabricate them.
 
+CHAT HISTORY:
+Previous chat conversations are stored as individual JSON files in ~/.screenpipe/chats/{conversation-id}.json
+Each file contains: id, title, messages[], createdAt, updatedAt. You can reference or search these files when the user asks about previous conversations.
+
 Current time: ${now.toISOString()}
 User's timezone: ${timezone} (UTC${offsetStr})
 User's local time: ${now.toLocaleString()}`;
