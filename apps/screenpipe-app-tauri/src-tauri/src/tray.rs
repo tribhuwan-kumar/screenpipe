@@ -507,9 +507,11 @@ fn handle_menu_event(app_handle: &AppHandle, event: tauri::menu::MenuEvent) {
         "upgrade" => {
             let app = app_handle.clone();
             let _ = app_handle.run_on_main_thread(move || {
-                let _ = app
-                    .opener()
-                    .open_url("https://screenpi.pe/pro", None::<&str>);
+                let _ = ShowRewindWindow::Settings {
+                    page: Some("account".to_string()),
+                }
+                .show(&app);
+                let _ = app.emit("tray-upgrade", ());
             });
         }
         "releases" => {
