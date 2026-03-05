@@ -79,7 +79,7 @@ export function AppleIntelligenceCard() {
       if (platform() === "macos") {
         import("@/lib/utils/tauri").then(({ commands }) => {
           commands.getHardwareCapability().then((hw) => {
-            const meetsRequirements = hw.totalMemoryGb >= 32;
+            const meetsRequirements = hw.totalMemoryGb >= 16;
             setEnabled(meetsRequirements);
           }).catch(() => {});
         });
