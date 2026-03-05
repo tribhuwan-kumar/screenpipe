@@ -260,10 +260,9 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 			}
 			requestRetryCount = 0; // Reset retry count on success
 
-			// Add new timestamps to the Set
-			const updatedTimestamps = new Set(state.frameTimestamps);
+			// Add new timestamps to the existing Set in-place (avoid cloning 40k+ entries)
 			newUniqueFrames.forEach((frame) => {
-				updatedTimestamps.add(frame.timestamp);
+				state.frameTimestamps.add(frame.timestamp);
 			});
 
 			// Single sort per flush instead of per-message
@@ -300,7 +299,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
 			return {
 				frames: mergedFrames,
-				frameTimestamps: updatedTimestamps,
+				frameTimestamps: state.frameTimestamps,
 				isLoading: false,
 				loadingProgress: {
 					loaded: mergedFrames.length,
@@ -431,30 +430,31 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
 				// Handle audio updates from batch/reconciliation — merge
 				// transcription into existing frames near the audio timestamp.
+				// Mutates frames in-place to avoid cloning the entire 40k+ array
+				// on every audio update (major GC pressure on WebKitGTK/Linux).
 				if (data.type === "audio_update" && data.audio) {
-					set((state) => {
-						const audioTs = new Date(data.timestamp).getTime();
-						const pad = 60_000; // ±60s window matching server
-						let updated = false;
-						const updatedFrames = state.frames.map((frame) => {
-							const frameTs = new Date(frame.timestamp).getTime();
-							if (Math.abs(frameTs - audioTs) > pad) return frame;
-							// Check if this audio is already attached
-							const isDuplicate = frame.devices?.some((d: any) =>
-								d.audio?.some((a: any) => a.audio_chunk_id === data.audio.audio_chunk_id)
-							);
-							if (isDuplicate) return frame;
-							updated = true;
-							return {
-								...frame,
-								devices: frame.devices?.map((d: any) => ({
-									...d,
-									audio: [...(d.audio || []), data.audio],
-								})),
-							};
-						});
-						return updated ? { frames: updatedFrames } : {};
-					});
+					const { frames } = get();
+					const audioTs = new Date(data.timestamp).getTime();
+					const pad = 60_000; // ±60s window matching server
+					let updated = false;
+					for (let i = 0; i < frames.length; i++) {
+						const frame = frames[i];
+						const frameTs = new Date(frame.timestamp).getTime();
+						if (Math.abs(frameTs - audioTs) > pad) continue;
+						const isDuplicate = frame.devices?.some((d: any) =>
+							d.audio?.some((a: any) => a.audio_chunk_id === data.audio.audio_chunk_id)
+						);
+						if (isDuplicate) continue;
+						// Mutate in-place — push audio onto each device's audio array
+						for (const d of (frame.devices || [])) {
+							(d as any).audio = [...((d as any).audio || []), data.audio];
+						}
+						updated = true;
+					}
+					// Trigger re-render with a new timestamp (no array clone needed)
+					if (updated) {
+						set({ lastFlushTimestamp: Date.now() });
+					}
 					return;
 				}
 
