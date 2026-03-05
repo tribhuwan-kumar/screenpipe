@@ -3180,6 +3180,7 @@ impl DatabaseManager {
         FROM frames f
         LEFT JOIN video_chunks vc ON f.video_chunk_id = vc.id
         WHERE f.timestamp >= ?1 AND f.timestamp <= ?2
+          AND COALESCE(vc.file_path, f.snapshot_path, '') NOT LIKE 'cloud://%'
         ORDER BY f.timestamp DESC, f.offset_index DESC
         LIMIT 10000
     "#;

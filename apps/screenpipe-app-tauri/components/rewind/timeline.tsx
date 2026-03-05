@@ -189,9 +189,6 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		handleDomainChange,
 		handleSpeakerChange,
 		handleTagChange,
-		selectedMachineId,
-		allMachineIds,
-		handleMachineChange,
 		findNextDevice,
 		selectedDeviceIdRef,
 		selectedAppNameRef,
@@ -1259,9 +1256,6 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 							onSpeakerChange={handleSpeakerChange}
 							selectedTag={selectedTag}
 							onTagChange={handleTagChange}
-							selectedMachineId={selectedMachineId}
-							allMachineIds={allMachineIds}
-							onMachineChange={handleMachineChange}
 						/>
 					) : (
 						<div className="bg-card/80 backdrop-blur-sm p-4 border-t border-border">

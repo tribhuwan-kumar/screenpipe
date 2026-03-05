@@ -6,7 +6,7 @@ import { useTimelineSelection } from "@/lib/hooks/use-timeline-selection";
 import { getStore, type ChatConversation } from "@/lib/hooks/use-settings";
 import { isAfter, subDays, format } from "date-fns";
 import { motion } from "framer-motion";
-import { ZoomIn, ZoomOut, Mic, Monitor, AppWindow, Globe, Hash, Laptop } from "lucide-react";
+import { ZoomIn, ZoomOut, Mic, Monitor, AppWindow, Globe, Hash } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import posthog from "posthog-js";
@@ -132,9 +132,6 @@ interface TimelineSliderProps {
 	onSpeakerChange?: (speaker: string) => void;
 	selectedTag?: string; // "all" or a tag name
 	onTagChange?: (tag: string) => void;
-	selectedMachineId?: string; // "all" or a specific machine_id
-	allMachineIds?: string[]; // All unique machine IDs for machine filter
-	onMachineChange?: (machineId: string) => void;
 }
 
 interface AppGroup {
@@ -285,9 +282,6 @@ export const TimelineSlider = ({
 	onSpeakerChange,
 	selectedTag = "all",
 	onTagChange,
-	selectedMachineId = "all",
-	allMachineIds = [],
-	onMachineChange,
 }: TimelineSliderProps) => {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const observerTargetRef = useRef<HTMLDivElement>(null);
@@ -1098,57 +1092,6 @@ export const TimelineSlider = ({
 						</div>
 					</div>
 				)}
-				{/* Machine row */}
-				{allMachineIds.length > 1 && onMachineChange && (
-					<div
-						className="flex items-center gap-0 group/filter"
-						onMouseEnter={() => setExpandedFilterSection("machine")}
-					>
-						<button
-							className={cn(
-								"p-1.5 rounded-l-md transition-colors shrink-0",
-								"bg-background/80 backdrop-blur-sm border border-border border-r-0",
-								expandedFilterSection === "machine" && "bg-foreground/10",
-								selectedMachineId !== "all" && "ring-1 ring-primary/50",
-							)}
-							title="Machines"
-						>
-							<Laptop className="w-3.5 h-3.5 text-foreground/70" />
-						</button>
-						<div
-							className={cn(
-								"flex items-center gap-1.5 overflow-hidden transition-all duration-200 ease-out",
-								"bg-background/80 backdrop-blur-sm border border-border border-l-0 rounded-r-md",
-								expandedFilterSection === "machine" ? "max-w-[300px] px-2 py-1.5 opacity-100" : "max-w-0 px-0 py-1.5 opacity-0 border-transparent",
-							)}
-						>
-							{allMachineIds.map((id) => {
-								const label = id === "__local__" ? "This Mac" : id.slice(0, 8) + "…";
-								return (
-									<button
-										key={id}
-										onClick={() => onMachineChange(selectedMachineId === id ? "all" : id)}
-										className="rounded-full transition-all duration-200 hover:scale-125 shrink-0"
-										style={{
-											width: selectedMachineId === id ? 8 : 6,
-											height: selectedMachineId === id ? 8 : 6,
-											backgroundColor: selectedMachineId === id
-												? appNameToColor(id)
-												: selectedMachineId === "all"
-													? appNameToColor(id, 0.6)
-													: "hsl(var(--foreground) / 0.15)",
-										}}
-										onMouseEnter={(e) => {
-											const rect = e.currentTarget.getBoundingClientRect();
-											setHoveredFilterDot({ name: label, x: rect.right + 8, y: rect.top + rect.height / 2 });
-										}}
-										onMouseLeave={() => setHoveredFilterDot(null)}
-									/>
-								);
-							})}
-						</div>
-					</div>
-				)}
 				{/* Tag row */}
 				{viewportTags.length > 0 && onTagChange && (
 					<div
@@ -1426,10 +1369,7 @@ export const TimelineSlider = ({
 									const frameIdForTag = frame.devices?.[0]?.frame_id || '';
 									const frameTagsForFilter = frameIdForTag ? (tags[frameIdForTag] || []) : [];
 									const matchesTag = selectedTag === "all" || frameTagsForFilter.includes(selectedTag);
-									const matchesMachine = selectedMachineId === "all" || frame.devices.some((d) =>
-										selectedMachineId === "__local__" ? !d.machine_id : d.machine_id === selectedMachineId
-									);
-									const matchesFilter = matchesDevice && matchesApp && matchesDomain && matchesSpeaker && matchesTag && matchesMachine;
+									const matchesFilter = matchesDevice && matchesApp && matchesDomain && matchesSpeaker && matchesTag;
 
 									// Show time marker on first frame of each hour
 									const showTimeMarker = timeMarkers.some(
