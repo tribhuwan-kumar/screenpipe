@@ -1030,7 +1030,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const piRunningConfigRef = useRef<{ provider?: string; model?: string; token?: string | null }>({});
   const piRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Restart Pi when user switches preset so the new model takes effect immediately.
+  // Restart Pi when user switches preset or account so the new model/token takes effect.
   // Pi uses CLI args from startup, so config-only updates don't change the running model.
   // Debounced to collapse rapid settings saves into a single restart.
   useEffect(() => {
@@ -1039,12 +1039,26 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     const currentToken = settings.user?.token ?? null;
     const configChanged = running.provider !== undefined &&
       (running.provider !== activePreset.provider || running.model !== activePreset.model);
+    // Always detect token changes — even on first mount. If Pi is already running
+    // with a stale/null token (e.g. user logged out then into a different account),
+    // we must restart it. Without this, switching accounts leaves Pi sending
+    // requests as anonymous, hitting the free tier rate limit.
     const tokenChanged = running.token !== undefined && running.token !== currentToken;
 
     if (!configChanged && !tokenChanged) {
-      // First mount or same config — just record what we expect Pi to be running
+      // First mount — record what we expect Pi to be running, but also check
+      // if Pi is already alive with a potentially stale token and restart it.
       if (running.provider === undefined) {
         piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
+        // If Pi is running, proactively push the current token/config so it
+        // picks up any account change that happened while chat was unmounted.
+        if (piInfo?.running) {
+          const providerConfig = buildProviderConfig();
+          console.log("[Pi] First mount with running Pi — syncing config/token");
+          commands.piUpdateConfig(currentToken, providerConfig).catch((e) => {
+            console.error("[Pi] First-mount config sync failed:", e);
+          });
+        }
       }
       return;
     }

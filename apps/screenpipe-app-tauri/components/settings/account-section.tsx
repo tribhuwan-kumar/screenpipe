@@ -201,8 +201,13 @@ export function AccountSection() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
+                onClick={async () => {
                   updateSettings({ user: undefined });
+                  // Restart Pi with null token so it stops using the old
+                  // account's quota. Next message will auto-start as anonymous.
+                  try {
+                    await commands.piUpdateConfig(null, null);
+                  } catch {}
                   toast({ title: "logged out" });
                 }}
               >
