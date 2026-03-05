@@ -661,9 +661,7 @@ async fn send_batch(
         return Ok(());
     }
 
-    // Serialize the batch and convert timestamps to local time
     let json = serde_json::to_string(&buffer)?;
-    let json = super::timezone::localize_json_string(&json);
     sender.send(Message::Text(json)).await?;
     buffer.clear();
     Ok(())
