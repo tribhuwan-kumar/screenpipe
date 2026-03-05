@@ -1451,8 +1451,10 @@ impl ShowRewindWindow {
                     let win = builder.build()?;
 
                     // Setup Win32 overlay with click-through disabled so user can interact.
-                    // show_in_taskbar=true so the app remains visible in the Windows taskbar.
-                    if let Err(e) = crate::windows_overlay::setup_overlay_ex(&win, false, true) {
+                    // Fullscreen overlay uses WS_EX_TOOLWINDOW (hidden from taskbar) —
+                    // this is intentional since it's a transparent fullscreen panel.
+                    // The "window" mode path keeps the app in the taskbar instead.
+                    if let Err(e) = crate::windows_overlay::setup_overlay(&win, false) {
                         error!("Failed to setup Windows overlay: {}", e);
                     }
 
@@ -1903,13 +1905,14 @@ impl ShowRewindWindow {
             }
             #[cfg(target_os = "windows")]
             {
-                // Minimize instead of hide so the window stays in the taskbar.
-                // hide() removes the window from the taskbar entirely on Windows.
-                // The webview survives a minimize just as it survives a hide.
-                for label in &["main", "main-window"] {
-                    if let Some(window) = app.get_webview_window(label) {
-                        window.minimize().ok();
-                    }
+                // "main-window" (window mode): minimize so it stays in the taskbar.
+                // "main" (fullscreen overlay): hide — it's a transparent fullscreen
+                // panel that doesn't belong in the taskbar.
+                if let Some(window) = app.get_webview_window("main-window") {
+                    window.minimize().ok();
+                }
+                if let Some(window) = app.get_webview_window("main") {
+                    window.hide().ok();
                 }
             }
 
