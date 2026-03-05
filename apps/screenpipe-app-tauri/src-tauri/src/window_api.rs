@@ -1109,12 +1109,6 @@ impl ShowRewindWindow {
                 let settings = SettingsStore::get(app)
                     .unwrap_or_default()
                     .unwrap_or_default();
-                // On Windows, always use "window" mode so the app stays in the
-                // taskbar. The fullscreen transparent overlay doesn't make sense
-                // as a taskbar entry and hide() removes it from the taskbar entirely.
-                #[cfg(target_os = "windows")]
-                let overlay_mode = "window".to_string();
-                #[cfg(not(target_os = "windows"))]
                 let overlay_mode = settings.overlay_mode;
                 #[allow(unused_variables)] // used only on macOS
                 let show_in_recording = settings.show_overlay_in_screen_recording;
