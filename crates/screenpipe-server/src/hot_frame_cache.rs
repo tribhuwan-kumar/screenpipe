@@ -264,10 +264,13 @@ impl HotFrameCache {
                     }
                 }
 
-                // Set cache coverage — use the query start time (not earliest
-                // frame) so we know the DB was scanned from `start` even if
-                // there were no frames in the early portion of the range.
-                *self.cache_warm_start.write().await = Some(start);
+                // Only set cache coverage if we actually found frames. When the
+                // cache is empty (e.g. vision disabled, fresh install), we must
+                // NOT claim coverage — otherwise the streaming handler skips
+                // the DB backfill and the timeline stays permanently empty.
+                if frame_count > 0 {
+                    *self.cache_warm_start.write().await = Some(start);
+                }
 
                 info!(
                     "hot_frame_cache: warmed with {} frame entries, coverage from {}",
