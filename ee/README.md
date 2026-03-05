@@ -17,4 +17,4 @@ The code in this directory is licensed under the [Screenpipe Enterprise License]
 
 ## Getting a license
 
-Contact [louis@screenpi.pe](mailto:louis@screenpi.pe) or visit [screenpi.pe/teams](https://screenpi.pe/teams).
+Contact [louis@screenpi.pe](mailto:louis@screenpi.pe) or visit [screenpi.pe/team](https://screenpi.pe/team).
