@@ -111,11 +111,6 @@ jobs:
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "10.0"
-
       - name: Install 7zip
         shell: powershell
         run: |

@@ -56,11 +56,6 @@ jobs:
     - name: Setup MSVC Dev Cmd
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v2
-      with:
-        version: "10.0"
-
     - name: Sign and Install Scream Driver on Windows
       shell: powershell
       run: |
