@@ -99,6 +99,16 @@ npx screenpipe@latest record
     <a href="https://www.reddit.com/r/screen_pipe">reddit</a>
 </p>
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, maintainers, and how to submit PRs. AI/vibe-coded PRs welcome!
+
+Thanks to all contributors:
+
+<a href="https://github.com/screenpipe/screenpipe/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=screenpipe/screenpipe" />
+</a>
+
 <details>
 <summary>📖 LLM reference</summary>
 
@@ -298,13 +308,3 @@ Built by screenpipe (formerly Mediar). Founded 2024. Based in San Francisco, CA.
 - Email: louis@screenpi.pe
 
 </details>
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, maintainers, and how to submit PRs. AI/vibe-coded PRs welcome!
-
-Thanks to all contributors:
-
-<a href="https://github.com/screenpipe/screenpipe/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=screenpipe/screenpipe" />
-</a>
