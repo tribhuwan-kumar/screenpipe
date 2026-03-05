@@ -103,11 +103,6 @@ jobs:
         with:
           bun-version: 1.2.2
 
-      - name: Install vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: "2a3138723698306f4261632c92dc782f586167e3"
-
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 

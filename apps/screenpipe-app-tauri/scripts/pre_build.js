@@ -26,7 +26,6 @@ const config = {
 	windows: {
 		ffmpegName: 'ffmpeg-8.0.1-full_build-shared',
 		ffmpegUrl: 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.0.1-full_build-shared.7z',
-		vcpkgPackages: ['opencl', 'onnxruntime-gpu'],
 	},
 	linux: {
 		aptPackages: [
@@ -334,12 +333,8 @@ if (platform == 'windows') {
 				await copyVcredistDlls();
 			} catch (err) {
 				console.warn('Skipping VC redist DLL copy (optional outside CI):', err.message);
-			}
 		}
-
-	// Setup vcpkg packages with environment variables set inline
-	// TODO is this even used? dont we use build.rs for this?
-	// await $`SystemDrive=${process.env.SYSTEMDRIVE} SystemRoot=${process.env.SYSTEMROOT} windir=${process.env.WINDIR} ${process.env.VCPKG_ROOT}\\vcpkg.exe install ${config.windows.vcpkgPackages}`.quiet()
+	}
 }
 
 /* ########## macOS ########## */

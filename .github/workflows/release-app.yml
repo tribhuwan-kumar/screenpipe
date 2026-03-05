@@ -499,12 +499,6 @@ jobs:
         working-directory: ${{ github.workspace }}/apps/screenpipe-app-tauri
         run: bun install
 
-      - name: Install vcpkg
-        if: matrix.os_type == 'windows'
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: "7adc2e4d49e8d0efc07a369079faa6bc3dbb90f3"
-
       - name: Set up MSVC
         if: matrix.os_type == 'windows'
         uses: ilammy/msvc-dev-cmd@v1
