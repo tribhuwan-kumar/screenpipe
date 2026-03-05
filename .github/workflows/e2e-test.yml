@@ -113,6 +113,8 @@ jobs:
         RUSTFLAGS: "-C link-arg=/LTCG"
         ORT_STRATEGY: system
         ORT_LIB_LOCATION: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/onnxruntime-win-x64-1.19.2
+        # Use prebuilt NASM objects on Windows: https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
+        AWS_LC_SYS_PREBUILT_NASM: "1"
       run: cargo build --release -p screenpipe-server --target x86_64-pc-windows-msvc
 
     - name: Install frontend dependencies

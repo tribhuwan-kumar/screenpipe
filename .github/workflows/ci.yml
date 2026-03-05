@@ -143,6 +143,8 @@ jobs:
           RUSTFLAGS: "-C link-arg=/LTCG"
           ORT_STRATEGY: system
           ORT_LIB_LOCATION: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/onnxruntime-win-x64-1.19.2
+          # Use prebuilt NASM objects on Windows: https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
+          AWS_LC_SYS_PREBUILT_NASM: "1"
         run: cargo test test_process_ocr_task_windows --release --target x86_64-pc-windows-msvc
 
       - name: Run PII removal tests
@@ -150,6 +152,8 @@ jobs:
           RUSTFLAGS: "-C link-arg=/LTCG"
           ORT_STRATEGY: system
           ORT_LIB_LOCATION: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/onnxruntime-win-x64-1.19.2
+          # Use prebuilt NASM objects on Windows: https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
+          AWS_LC_SYS_PREBUILT_NASM: "1"
         run: cargo test -p screenpipe-core pii_removal --release --target x86_64-pc-windows-msvc
 
       - name: Run PII redaction tests
@@ -157,6 +161,8 @@ jobs:
           RUSTFLAGS: "-C link-arg=/LTCG"
           ORT_STRATEGY: system
           ORT_LIB_LOCATION: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/onnxruntime-win-x64-1.19.2
+          # Use prebuilt NASM objects on Windows: https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
+          AWS_LC_SYS_PREBUILT_NASM: "1"
         run: cargo test -p screenpipe-server --lib pii_redaction_tests --release --target x86_64-pc-windows-msvc
 
       # pipes_test removed — pipe manager system deleted in #2212
