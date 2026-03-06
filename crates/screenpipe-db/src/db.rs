@@ -759,14 +759,19 @@ impl DatabaseManager {
         audio_chunk_id: i64,
         transcription: &str,
     ) -> Result<i64, sqlx::Error> {
-        let text_length = transcription.len() as i64;
+        // Never overwrite a transcription with empty text (overlap cleanup can produce "")
+        let trimmed = transcription.trim();
+        if trimmed.is_empty() {
+            return Ok(0);
+        }
+        let text_length = trimmed.len() as i64;
         let mut tx = self.begin_immediate_with_retry().await?;
 
         // Insert the full transcription
         let affected = sqlx::query(
             "UPDATE audio_transcriptions SET transcription = ?1, text_length = ?2 WHERE audio_chunk_id = ?3",
         )
-        .bind(transcription)
+        .bind(trimmed)
         .bind(text_length)
         .bind(audio_chunk_id)
         .execute(&mut **tx.conn())
