@@ -163,6 +163,10 @@ pub async fn get_sync_status(
 #[tauri::command]
 #[specta::specta]
 pub async fn set_sync_enabled(state: State<'_, SyncState>, enabled: bool) -> Result<(), String> {
+    // Cloud sync is experimental and disabled for all users until ready
+    if enabled {
+        return Err("cloud sync is currently disabled (experimental feature)".to_string());
+    }
     *state.enabled.write().await = enabled;
 
     if !enabled {
@@ -441,6 +445,9 @@ pub async fn lock_sync(app: AppHandle, state: State<'_, SyncState>) -> Result<()
 /// Auto-start cloud sync on app launch if previously enabled.
 /// Called from main.rs during startup.
 pub async fn auto_start_sync(app: &AppHandle, state: &SyncState) {
+    // Cloud sync is experimental and disabled for all users until ready
+    info!("cloud sync: disabled (experimental feature)");
+    return;
     // Get user settings first — needed for both stored-password and auto-derive paths
     let fresh_settings = match SettingsStore::get(app) {
         Ok(Some(s)) => s,
