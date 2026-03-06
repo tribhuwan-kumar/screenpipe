@@ -28,6 +28,7 @@ import { save as saveDialog, open as openFileDialog } from "@tauri-apps/plugin-d
 import { writeTextFile, readFile } from "@tauri-apps/plugin-fs";
 import { commands } from "@/lib/utils/tauri";
 import { emit } from "@tauri-apps/api/event";
+import { useChatConversations } from "@/components/hooks/use-chat-conversations";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { usePlatform } from "@/lib/hooks/use-platform";
@@ -751,8 +752,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
   // Chat history state
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const [historySearch, setHistorySearch] = useState("");
 
   // Process an image file to base64
   // Resize image to max 1024px and compress as JPEG to keep base64 payload small
@@ -790,261 +789,37 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     reader.readAsDataURL(file);
   }, [resizeImage]);
 
-  // Always start with a fresh conversation — history is accessible via the History button
-  // (No auto-load of last active conversation)
-
-  // Save conversation to settings.
-  // IMPORTANT: reads fresh from the store (not React state) to avoid
-  // race conditions where the main window overwrites chatHistory with
-  // stale data. See: multi-window store concurrency issue.
-  const saveConversation = async (msgs: Message[]) => {
-    if (msgs.length === 0) return;
-
-    // Read fresh settings from store to get latest conversations
-    const { getStore } = await import("@/lib/hooks/use-settings");
-    const store = await getStore();
-    const freshSettings = await store.get<any>("settings");
-    const history = freshSettings?.chatHistory || { conversations: [], activeConversationId: null, historyEnabled: true };
-
-    if (!history.historyEnabled) return;
-
-    const convId = conversationId || crypto.randomUUID();
-
-    const existingIndex = history.conversations.findIndex((c: any) => c.id === convId);
-    const firstUserMsg = msgs.find(m => m.role === "user");
-    const title = firstUserMsg?.content.slice(0, 50) || "New Chat";
-
-    const conversation: ChatConversation = {
-      id: convId,
-      title,
-      messages: msgs.slice(-100).map(m => {
-        // For tool-only responses, content may be empty but contentBlocks has the data.
-        // Generate a text fallback so the message isn't lost when reloaded.
-        let content = m.content;
-        if (!content && m.contentBlocks?.length) {
-          content = m.contentBlocks
-            .filter((b: any) => b.type === "text")
-            .map((b: any) => b.text)
-            .join("\n") || "(tool result)";
-        }
-        // Persist contentBlocks so tool calls/results survive reload.
-        // Strip isRunning (stale) and cap result length to keep store small.
-        const blocks = m.contentBlocks?.map((b: any) => {
-          if (b.type === "tool") {
-            const { isRunning, ...rest } = b.toolCall;
-            return {
-              type: "tool",
-              toolCall: {
-                ...rest,
-                isRunning: false,
-                result: rest.result?.slice(0, 4000),
-              },
-            };
-          }
-          if (b.type === "thinking") {
-            return { ...b, isThinking: false };
-          }
-          return b;
-        });
-        return {
-          id: m.id,
-          role: m.role,
-          content,
-          timestamp: m.timestamp,
-          ...(blocks?.length ? { contentBlocks: blocks } : {}),
-          ...(m.images?.length ? { images: m.images } : {}),
-        };
-      }),
-      createdAt: existingIndex >= 0 ? history.conversations[existingIndex].createdAt : Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    let newConversations = [...history.conversations];
-    if (existingIndex >= 0) {
-      newConversations[existingIndex] = conversation;
-    } else {
-      newConversations = [conversation, ...newConversations].slice(0, 50);
-    }
-
-    // Write only chatHistory — read-modify-write with fresh data
-    const currentFull = freshSettings || {};
-    await store.set("settings", {
-      ...currentFull,
-      chatHistory: {
-        ...history,
-        conversations: newConversations,
-        activeConversationId: convId,
-      }
-    });
-    await store.save();
-
-    if (!conversationId) {
-      setConversationId(convId);
-    }
-  };
-
-  // Auto-save conversation when a response completes (isLoading transitions from true to false)
-  // Skip saving pipe watch conversations — they're transient, not user-initiated chats
-  const prevIsLoadingRef = useRef(false);
-  useEffect(() => {
-    if (prevIsLoadingRef.current && !isLoading && messages.length > 0) {
-      const isPipeWatch = messages.some((m) => m.id?.startsWith("pipe-"));
-      if (!isPipeWatch) {
-        saveConversation(messages);
-      }
-    }
-    prevIsLoadingRef.current = isLoading;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, messages]);
-
-  // Delete a conversation
-  const deleteConversation = async (convId: string) => {
-    // Read fresh from store (same pattern as saveConversation)
-    const { getStore } = await import("@/lib/hooks/use-settings");
-    const store = await getStore();
-    const freshSettings = await store.get<any>("settings");
-    const history = freshSettings?.chatHistory;
-    if (!history) return;
-
-    const newConversations = history.conversations.filter((c: any) => c.id !== convId);
-    const newActiveId = history.activeConversationId === convId ? null : history.activeConversationId;
-
-    await store.set("settings", {
-      ...freshSettings,
-      chatHistory: {
-        ...history,
-        conversations: newConversations,
-        activeConversationId: newActiveId,
-      }
-    });
-    await store.save();
-
-    if (conversationId === convId) {
-      setMessages([]);
-      setConversationId(null);
-    }
-  };
-
-  // Load a specific conversation
-  const loadConversation = async (conv: ChatConversation) => {
-    // Abort any ongoing Pi processing before switching
-    if (isLoading || isStreaming) {
-      try {
-        await commands.piAbort(PI_CHAT_SESSION);
-      } catch (e) {
-        console.warn("[Pi] Failed to abort:", e);
-      }
-      piStreamingTextRef.current = "";
-      piMessageIdRef.current = null;
-      piContentBlocksRef.current = [];
-      setIsLoading(false);
-      setIsStreaming(false);
-    }
-    setMessages(conv.messages.map(m => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      timestamp: m.timestamp,
-      ...(m.contentBlocks?.length ? { contentBlocks: m.contentBlocks } : {}),
-      ...((m as any).images?.length ? { images: (m as any).images } : (m as any).image ? { images: [(m as any).image] } : {}),
-    })));
-    setConversationId(conv.id);
-    setShowHistory(false);
-    piSessionSyncedRef.current = false;
-
-    // Update activeConversationId directly in the store (read fresh to avoid
-    // overwriting conversations with stale React state)
-    try {
-      const { getStore } = await import("@/lib/hooks/use-settings");
-      const store = await getStore();
-      const freshSettings = await store.get<any>("settings");
-      if (freshSettings?.chatHistory) {
-        await store.set("settings", {
-          ...freshSettings,
-          chatHistory: {
-            ...freshSettings.chatHistory,
-            activeConversationId: conv.id,
-          }
-        });
-        await store.save();
-      }
-    } catch (e) {
-      console.warn("Failed to update active conversation:", e);
-    }
-  };
-
-  // Start a new conversation
-  const startNewConversation = async () => {
-    // Abort any ongoing Pi processing and start a fresh session
-    if (piInfo?.running) {
-      try {
-        if (isLoading || isStreaming) {
-          await commands.piAbort(PI_CHAT_SESSION);
-        }
-        await commands.piNewSession(PI_CHAT_SESSION);
-      } catch (e) {
-        console.warn("[Pi] Failed to reset session:", e);
-      }
-      piStreamingTextRef.current = "";
-      piMessageIdRef.current = null;
-      piContentBlocksRef.current = [];
-      setIsLoading(false);
-      setIsStreaming(false);
-    }
-    setMessages([]);
-    setConversationId(null);
-    setInput("");
-    if (inputRef.current) inputRef.current.style.height = "auto";
-    setShowHistory(false);
-    setPastedImages([]);
-    piSessionSyncedRef.current = true;
-  };
-
-  // Filter conversations by search
-  const filteredConversations = React.useMemo(() => {
-    const convs = settings.chatHistory?.conversations || [];
-    if (!historySearch.trim()) return convs;
-
-    const search = historySearch.toLowerCase();
-    return convs.filter(c =>
-      c.title.toLowerCase().includes(search) ||
-      c.messages.some(m => m.content.toLowerCase().includes(search))
-    );
-  }, [settings.chatHistory?.conversations, historySearch]);
-
-  // Group conversations by date
-  const groupedConversations = React.useMemo(() => {
-    const groups: { label: string; conversations: ChatConversation[] }[] = [];
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const todayConvs: ChatConversation[] = [];
-    const yesterdayConvs: ChatConversation[] = [];
-    const lastWeekConvs: ChatConversation[] = [];
-    const olderConvs: ChatConversation[] = [];
-
-    for (const conv of filteredConversations) {
-      const convDate = new Date(conv.updatedAt);
-      if (convDate >= today) {
-        todayConvs.push(conv);
-      } else if (convDate >= yesterday) {
-        yesterdayConvs.push(conv);
-      } else if (convDate >= lastWeek) {
-        lastWeekConvs.push(conv);
-      } else {
-        olderConvs.push(conv);
-      }
-    }
-
-    if (todayConvs.length > 0) groups.push({ label: "Today", conversations: todayConvs });
-    if (yesterdayConvs.length > 0) groups.push({ label: "Yesterday", conversations: yesterdayConvs });
-    if (lastWeekConvs.length > 0) groups.push({ label: "Last 7 Days", conversations: lastWeekConvs });
-    if (olderConvs.length > 0) groups.push({ label: "Older", conversations: olderConvs });
-
-    return groups;
-  }, [filteredConversations]);
+  // Chat conversations — stored as individual JSON files in ~/.screenpipe/chats/
+  const {
+    showHistory,
+    setShowHistory,
+    historySearch,
+    setHistorySearch,
+    filteredConversations,
+    groupedConversations,
+    saveConversation,
+    loadConversation,
+    deleteConversation,
+    startNewConversation,
+  } = useChatConversations({
+    messages,
+    setMessages,
+    conversationId,
+    setConversationId,
+    setInput,
+    inputRef,
+    isLoading,
+    isStreaming,
+    piInfo,
+    piStreamingTextRef,
+    piMessageIdRef,
+    piContentBlocksRef,
+    piSessionSyncedRef,
+    setIsLoading,
+    setIsStreaming,
+    setPastedImages,
+    settings,
+  });
 
   // Read an image file by path and append it to pastedImages (base64 data URL)
   const loadImageFromPath = useCallback(async (filePath: string) => {
@@ -1250,17 +1025,18 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
   // Listen for chat-load-conversation events from timeline
   useEffect(() => {
-    const unlisten = listen<{ conversationId: string }>("chat-load-conversation", (event) => {
-      const { conversationId } = event.payload;
-      const convs = settings.chatHistory?.conversations || [];
-      const conv = convs.find((c: any) => c.id === conversationId);
+    const unlisten = listen<{ conversationId: string }>("chat-load-conversation", async (event) => {
+      const { conversationId: convId } = event.payload;
+      // Load from file-based storage
+      const { loadConversationFile } = await import("@/lib/chat-storage");
+      const conv = await loadConversationFile(convId);
       if (conv) {
         loadConversation(conv);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.chatHistory?.conversations]);
+  }, []);
 
   const appMentionSuggestions = React.useMemo(
     () => buildAppMentionSuggestions(appItems, APP_SUGGESTION_LIMIT),
