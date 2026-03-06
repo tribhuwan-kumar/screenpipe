@@ -334,10 +334,9 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   const [facetTimeRanges, setFacetTimeRanges] = useState<{ label: string; dateKey: string; timestamp: string; count: number }[]>([]);
 
   // Build time range labels from raw rows
-  const buildTimeRanges = useCallback((rows: { timestamp: string; count: number }[]) => {
+  const buildTimeRanges = useCallback((rows: { dateKey: string; timestamp: string; count: number }[]) => {
     return rows.map(r => {
       const d = new Date(r.timestamp);
-      const dateKey = format(d, "yyyy-MM-dd");
       let label: string;
       if (isToday(d)) {
         label = format(d, "h a");
@@ -346,7 +345,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       } else {
         label = format(d, "MMM d");
       }
-      return { label, dateKey, timestamp: r.timestamp, count: r.count };
+      return { label, dateKey: r.dateKey, timestamp: r.timestamp, count: r.count };
     }).slice(0, 10);
   }, []);
 
@@ -440,7 +439,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
        ) GROUP BY d ORDER BY d DESC LIMIT 30`
     ).then((rows: { d: string; ts: string; cnt: number }[]) => {
       if (cancelled) return;
-      setFacetTimeRanges(buildTimeRanges(rows.map(r => ({ timestamp: r.ts, count: r.cnt }))));
+      setFacetTimeRanges(buildTimeRanges(rows.map(r => ({ dateKey: r.d, timestamp: r.ts, count: r.cnt }))));
     }).catch(() => {});
 
     return () => { cancelled = true; };
