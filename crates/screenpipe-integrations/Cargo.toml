@@ -17,7 +17,7 @@ log = "0.4"
 anyhow = "1.0"
 screenpipe-core = { path = "../screenpipe-core" }
 tracing = { workspace = true }
-russh = "0.57"
+russh = { version = "0.57", default-features = false, features = ["ring", "flate2", "rsa"] }
 russh-sftp = "2.1"
 dirs = "6"
 
