@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Search, X, Loader2, Clock, MessageSquare, User, ArrowLeft, Mic, Volume2, Hash, Tag, Monitor, Keyboard, ClipboardCopy, AppWindow } from "lucide-react";
 import { useKeywordSearchStore, SearchMatch, UiEventResult } from "@/lib/hooks/use-keyword-search-store";
 import { useSearchHighlight } from "@/lib/hooks/use-search-highlight";
+import { useSearchFocus } from "./hooks/use-search-focus";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { format, isToday, isYesterday } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -271,7 +272,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const { inputRef, focusInput } = useSearchFocus(isOpen);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Speaker search state
@@ -519,6 +520,12 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     return results;
   }, [searchResults, appFilter, domainFilter, timeFilter, matchesTimeFilter]);
 
+  // Keep a ref so keyboard handler reads current value without re-mounting the effect
+  const filteredResultsRef = useRef(filteredResults);
+  filteredResultsRef.current = filteredResults;
+  const filteredSpeakerTranscriptionsRef = useRef(filteredSpeakerTranscriptions);
+  filteredSpeakerTranscriptionsRef.current = filteredSpeakerTranscriptions;
+
   const filteredGroups = useMemo(() => {
     let groups = searchGroups;
     if (appFilter) groups = groups.filter(g => g.representative.app_name === appFilter);
@@ -537,7 +544,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
 
   const { setHighlight, clear: clearHighlight } = useSearchHighlight();
 
-  // Focus input when modal opens
+  // Reset state when modal opens (focus is handled by useSearchFocus)
   useEffect(() => {
     if (isOpen) {
       setSelectedIndex(0);
@@ -558,22 +565,6 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       setHasMoreOcr(true);
       setTranscriptionOffset(0);
       setHasMoreTranscriptions(true);
-
-      // Focus after next frame. The panel is made key window on show,
-      // but the global shortcut path also calls show_main_window first.
-      // A small delay handles the case where make_key_window is still
-      // propagating through the window server.
-      const rafId = requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 80);
-
-      return () => {
-        cancelAnimationFrame(rafId);
-        clearTimeout(timer);
-      };
     }
   }, [isOpen, resetSearch]);
 
@@ -832,9 +823,8 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     setSelectedTranscriptionIndex(0);
     setTranscriptionOffset(0);
     setHasMoreTranscriptions(true);
-    // Re-focus the input
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+    requestAnimationFrame(() => focusInput());
+  }, [focusInput]);
 
   // Load more OCR results
   const loadMoreOcr = useCallback(() => {
@@ -919,7 +909,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     onClose();
   }, [onNavigateToTimestamp, onClose, queryTokens, setHighlight, searchResults, setCurrentResultIndex]);
 
-  // Keyboard navigation — skip arrow key capture when input is focused (let cursor move)
+  // Keyboard navigation — uses refs for data arrays to avoid re-mounting when results change
   useEffect(() => {
     if (!isOpen) return;
 
@@ -928,6 +918,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
 
       // Speaker drill-down mode
       if (selectedSpeaker) {
+        const transcriptions = filteredSpeakerTranscriptionsRef.current;
         switch (e.key) {
           case "Escape":
             e.preventDefault();
@@ -935,7 +926,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             break;
           case "ArrowDown":
             e.preventDefault();
-            setSelectedTranscriptionIndex(i => Math.min(i + 1, filteredSpeakerTranscriptions.length - 1));
+            setSelectedTranscriptionIndex(i => Math.min(i + 1, transcriptions.length - 1));
             break;
           case "ArrowUp":
             e.preventDefault();
@@ -943,10 +934,13 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             break;
           case "Enter":
             e.preventDefault();
-            if (filteredSpeakerTranscriptions[selectedTranscriptionIndex]?.timestamp) {
-              onNavigateToTimestamp(filteredSpeakerTranscriptions[selectedTranscriptionIndex].timestamp);
-              onClose();
-            }
+            setSelectedTranscriptionIndex(i => {
+              if (transcriptions[i]?.timestamp) {
+                onNavigateToTimestamp(transcriptions[i].timestamp);
+                onClose();
+              }
+              return i;
+            });
             break;
         }
         return;
@@ -954,10 +948,11 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
 
       // When input is focused, let left/right arrows move the cursor
       if (inputFocused && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-        return; // Don't capture — let the input handle it
+        return;
       }
 
-      const cols = 3; // Grid columns
+      const cols = 3;
+      const results = filteredResultsRef.current;
 
       switch (e.key) {
         case "Escape":
@@ -965,7 +960,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
           break;
         case "ArrowRight":
           e.preventDefault();
-          setSelectedIndex(i => Math.min(i + 1, filteredResults.length - 1));
+          setSelectedIndex(i => Math.min(i + 1, results.length - 1));
           break;
         case "ArrowLeft":
           e.preventDefault();
@@ -973,7 +968,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
           break;
         case "ArrowDown":
           e.preventDefault();
-          setSelectedIndex(i => Math.min(i + cols, filteredResults.length - 1));
+          setSelectedIndex(i => Math.min(i + cols, results.length - 1));
           break;
         case "ArrowUp":
           e.preventDefault();
@@ -982,31 +977,28 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
         case "Enter":
           e.preventDefault();
           if (e.metaKey || e.ctrlKey) {
-            // Cmd+Enter = send to AI
             handleSendToAI();
-          } else if (filteredResults[selectedIndex]) {
-            // Enter = navigate to timestamp
-            handleSelectResult(filteredResults[selectedIndex]);
+          } else {
+            setSelectedIndex(i => {
+              const r = filteredResultsRef.current[i];
+              if (r) handleSelectResult(r);
+              return i;
+            });
           }
           break;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    // Also listen on document capture phase as safety net —
-    // if a focus trap or overlay swallows the window-level event,
-    // this still fires and prevents the modal from getting stuck
     const captureEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
+      if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", captureEscape, true);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keydown", captureEscape, true);
     };
-  }, [isOpen, filteredResults, selectedIndex, selectedSpeaker, speakerTranscriptions, filteredSpeakerTranscriptions, selectedTranscriptionIndex, onClose, onNavigateToTimestamp, handleSelectResult, handleSendToAI, handleBackFromSpeaker]);
+  }, [isOpen, selectedSpeaker, onClose, onNavigateToTimestamp, handleSelectResult, handleSendToAI, handleBackFromSpeaker]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -1679,7 +1671,6 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}
-            autoFocus
           />
           {(isSearching || isSearchingTags) && <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />}
           {query && (
@@ -1775,7 +1766,6 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}
-            autoFocus
           />
           {(isSearching || isSearchingTags) && <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />}
           {query && (
