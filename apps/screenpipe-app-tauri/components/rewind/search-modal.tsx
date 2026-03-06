@@ -315,7 +315,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   const OCR_PAGE_SIZE = 24;
   const TRANSCRIPTION_PAGE_SIZE = 30;
 
-  const debouncedQuery = useDebounce(query, 200);
+  const debouncedQuery = useDebounce(query, 400);
   const { suggestions, isLoading: suggestionsLoading } = useSuggestions(isOpen);
 
   const {
@@ -333,6 +333,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   const [facetApps, setFacetApps] = useState<[string, number][]>([]);
   const [facetDomains, setFacetDomains] = useState<[string, number][]>([]);
   const [facetTimeRanges, setFacetTimeRanges] = useState<{ label: string; dateKey: string; timestamp: string; count: number }[]>([]);
+  const [facetsLoading, setFacetsLoading] = useState(false);
 
   // Build time range labels from raw rows
   const buildTimeRanges = useCallback((rows: { dateKey: string; timestamp: string; count: number }[]) => {
@@ -357,10 +358,14 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       setFacetApps([]);
       setFacetDomains([]);
       setFacetTimeRanges([]);
+      setFacetsLoading(false);
       return;
     }
 
     let cancelled = false;
+    setFacetsLoading(true);
+    let pending = 3;
+    const onFacetDone = () => { pending--; if (pending === 0 && !cancelled) setFacetsLoading(false); };
     const escaped = q.replace(/"/g, '""');
     const ftsQuery = q.split(/\s+/).map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ");
 
@@ -393,7 +398,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
        ) GROUP BY app ORDER BY cnt DESC LIMIT 15`
     ).then((rows: { app: string; cnt: number }[]) => {
       if (!cancelled) setFacetApps(rows.map(r => [r.app, r.cnt]));
-    }).catch(() => {});
+    }).catch(() => {}).finally(onFacetDone);
 
     // Domain facet (accessibility + OCR)
     fetchFacet(
@@ -422,7 +427,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
         } catch { /* skip */ }
       }
       setFacetDomains([...domainMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8));
-    }).catch(() => {});
+    }).catch(() => {}).finally(onFacetDone);
 
     // Time facet — bucket by date (accessibility + OCR)
     fetchFacet(
@@ -441,9 +446,9 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     ).then((rows: { d: string; ts: string; cnt: number }[]) => {
       if (cancelled) return;
       setFacetTimeRanges(buildTimeRanges(rows.map(r => ({ dateKey: r.d, timestamp: r.ts, count: r.cnt }))));
-    }).catch(() => {});
+    }).catch(() => {}).finally(onFacetDone);
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; setFacetsLoading(false); };
   }, [debouncedQuery, buildTimeRanges]);
 
   // Speaker time ranges (from loaded transcriptions — these are small enough)
@@ -1295,19 +1300,33 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             </div>
           )}
 
-          {/* Loading skeleton */}
-          {!isTagSearch && !isPeopleSearch && (isSearching || isSearchingUiEvents) && searchResults.length === 0 && uiEventResults.length === 0 && speakerResults.length === 0 && (
-            <div className="grid grid-cols-3 gap-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="bg-muted animate-pulse rounded overflow-hidden">
-                  <div className="aspect-video" />
-                  <div className="p-2 space-y-1">
-                    <div className="h-3 bg-muted-foreground/20 rounded w-16" />
-                    <div className="h-2 bg-muted-foreground/20 rounded w-24" />
+          {/* Loading skeleton — filter chips + thumbnail grid */}
+          {!isTagSearch && !isPeopleSearch && (isSearching || facetsLoading) && searchResults.length === 0 && uiEventResults.length === 0 && speakerResults.length === 0 && (
+            <>
+              {/* Skeleton filter chips */}
+              <div className="flex gap-1.5 mb-2 overflow-hidden">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-6 bg-muted animate-pulse rounded-full shrink-0" style={{ width: `${60 + i * 12}px` }} />
+                ))}
+              </div>
+              <div className="flex gap-1.5 mb-3 overflow-hidden">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-6 bg-muted animate-pulse rounded-full shrink-0" style={{ width: `${50 + i * 15}px` }} />
+                ))}
+              </div>
+              {/* Skeleton thumbnail grid */}
+              <div className="grid grid-cols-3 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-muted animate-pulse rounded overflow-hidden">
+                    <div className="aspect-video" />
+                    <div className="p-2 space-y-1">
+                      <div className="h-3 bg-muted-foreground/20 rounded w-16" />
+                      <div className="h-2 bg-muted-foreground/20 rounded w-24" />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
 
           {/* People section */}
