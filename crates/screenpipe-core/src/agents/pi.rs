@@ -333,7 +333,7 @@ impl PiExecutor {
                     ),
                     "openai-chatgpt" => (
                         "openai-chatgpt",
-                        "https://api.openai.com/v1",
+                        "https://chatgpt.com/backend-api",
                         "OPENAI_CHATGPT_TOKEN",
                     ),
                     other => (other, provider_url.unwrap_or(""), "CUSTOM_API_KEY"),

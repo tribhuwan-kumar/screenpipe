@@ -272,7 +272,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const { inputRef, focusInput } = useSearchFocus(isOpen);
+  const { inputRef, inputElRef, focusInput } = useSearchFocus(isOpen);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Speaker search state
@@ -919,7 +919,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const inputFocused = document.activeElement === inputRef.current;
+      const inputFocused = document.activeElement === inputElRef.current;
 
       // Speaker drill-down mode
       if (selectedSpeaker) {

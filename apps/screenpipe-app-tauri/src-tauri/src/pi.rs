@@ -638,7 +638,7 @@ fn ensure_pi_config(
             let base_url = if config.provider == "native-ollama" && config.url.is_empty() {
                 "http://localhost:11434/v1".to_string()
             } else if config.provider == "openai-chatgpt" {
-                "https://api.openai.com/v1".to_string()
+                "https://chatgpt.com/backend-api".to_string()
             } else {
                 config.url.clone()
             };
@@ -1026,7 +1026,7 @@ pub async fn pi_start_inner(
         if let Some(bun_dir) = std::path::Path::new(&bun_path).parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
             let sep = if cfg!(windows) { ";" } else { ":" };
-            let mut new_path = format!("{}{}{}", bun_dir.display(), sep, current_path);
+            let new_path = format!("{}{}{}", bun_dir.display(), sep, current_path);
 
             // On Windows, ensure bash is available for Pi's bash tool.
             // Downloads PortableGit on first use if no bash is found (~50MB, one-time).
