@@ -5,7 +5,6 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use screenpipe_core::sync::{SyncClientConfig, SyncManager};
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tokio::sync::RwLock;
@@ -477,32 +476,9 @@ pub async fn auto_start_sync(app: &AppHandle, state: &SyncState) {
             }
         }
         _ => {
-            // No stored password — auto-derive from user ID if Pro subscriber
-            let is_pro = fresh_settings.user.cloud_subscribed == Some(true);
-            let user_id = fresh_settings.user.id.as_ref().filter(|id| !id.is_empty());
-
-            match (is_pro, user_id) {
-                (true, Some(uid)) => {
-                    info!("cloud sync auto-start: no stored password, deriving from user ID");
-                    let input = format!("{}screenpipe-cloud-sync-v1", uid);
-                    let derived = format!("{:x}", sha2::Sha256::digest(input.as_bytes()));
-
-                    // Save so next restart uses stored password path
-                    let encoded = BASE64.encode(derived.as_bytes());
-                    let store = CloudSyncSettingsStore {
-                        enabled: true,
-                        encrypted_password: encoded,
-                    };
-                    if let Err(e) = store.save(app) {
-                        warn!("cloud sync auto-start: failed to save derived password: {}", e);
-                    }
-
-                    derived
-                }
-                _ => {
-                    return;
-                }
-            }
+            // Cloud sync requires explicit opt-in — user must enable it and set a password
+            info!("cloud sync: not explicitly enabled, skipping auto-start");
+            return;
         }
     };
 
