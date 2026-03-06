@@ -300,7 +300,10 @@ async fn compact_chunk(
     for (_, snapshot_path, _) in frames {
         match tokio::fs::remove_file(snapshot_path).await {
             Ok(_) => deleted += 1,
-            Err(e) => debug!("failed to delete compacted snapshot {}: {}", snapshot_path, e),
+            Err(e) => debug!(
+                "failed to delete compacted snapshot {}: {}",
+                snapshot_path, e
+            ),
         }
     }
 
@@ -332,8 +335,8 @@ async fn start_ffmpeg_lowpri(
     width: u32,
     height: u32,
 ) -> Result<tokio::process::Child> {
-    let ffmpeg_path = screenpipe_core::find_ffmpeg_path()
-        .ok_or_else(|| anyhow::anyhow!("ffmpeg not found"))?;
+    let ffmpeg_path =
+        screenpipe_core::find_ffmpeg_path().ok_or_else(|| anyhow::anyhow!("ffmpeg not found"))?;
 
     let fps_str = fps.to_string();
     let crf = video_quality_to_crf(video_quality);
@@ -355,20 +358,33 @@ async fn start_ffmpeg_lowpri(
 
     command
         .args([
-            "-f", "rawvideo",
-            "-pixel_format", "rgb24",
-            "-video_size", &size_str,
-            "-r", &fps_str,
-            "-i", "-",
-            "-vcodec", "libx265",
-            "-tag:v", "hvc1",
-            "-preset", "ultrafast",
-            "-crf", crf,
+            "-f",
+            "rawvideo",
+            "-pixel_format",
+            "rgb24",
+            "-video_size",
+            &size_str,
+            "-r",
+            &fps_str,
+            "-i",
+            "-",
+            "-vcodec",
+            "libx265",
+            "-tag:v",
+            "hvc1",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            crf,
             // Limit x265 internal threading to 1 pool with 1 thread
-            "-x265-params", "pools=1:frame-threads=1:bframes=0",
-            "-threads", "1",
-            "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-            "-pix_fmt", "yuv420p",
+            "-x265-params",
+            "pools=1:frame-threads=1:bframes=0",
+            "-threads",
+            "1",
+            "-movflags",
+            "frag_keyframe+empty_moov+default_base_moof",
+            "-pix_fmt",
+            "yuv420p",
             output_file,
         ])
         .stdin(std::process::Stdio::piped())
