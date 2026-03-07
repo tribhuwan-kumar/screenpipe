@@ -276,6 +276,10 @@ async fn main() -> anyhow::Result<()> {
             handle_sync_command(subcommand).await?;
             return Ok(());
         }
+        Command::Connection { ref subcommand } => {
+            screenpipe_server::cli::connection::handle_connection_command(subcommand).await?;
+            return Ok(());
+        }
         Command::Record(args) => args,
     };
 
