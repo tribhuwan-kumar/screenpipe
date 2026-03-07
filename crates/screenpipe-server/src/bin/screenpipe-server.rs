@@ -9,22 +9,22 @@ use dirs::home_dir;
 use futures::pin_mut;
 use port_check::is_local_ipv4_port_free;
 use screenpipe_audio::{
-    core::device::{
-        default_input_device, default_output_device, parse_audio_device,
-    },
+    core::device::{default_input_device, default_output_device, parse_audio_device},
     meeting_detector::MeetingDetector,
 };
 use screenpipe_core::agents::AgentExecutor;
 use screenpipe_core::find_ffmpeg_path;
 use screenpipe_db::DatabaseManager;
-use screenpipe_vision::monitor::list_monitors;
 use screenpipe_server::{
     analytics,
     cli::{
-        audio::handle_audio_command, mcp::handle_mcp_command, pipe::handle_pipe_command,
+        audio::handle_audio_command,
+        mcp::handle_mcp_command,
+        pipe::handle_pipe_command,
         status::handle_status_command,
         sync::{handle_sync_command, start_sync_service},
-        vision::handle_vision_command, Cli, CliAudioTranscriptionEngine, Command,
+        vision::handle_vision_command,
+        Cli, CliAudioTranscriptionEngine, Command,
     },
     hot_frame_cache::HotFrameCache,
     start_meeting_persister, start_meeting_watcher, start_power_manager, start_sleep_monitor,
@@ -32,6 +32,7 @@ use screenpipe_server::{
     vision_manager::{start_monitor_watcher, stop_monitor_watcher, VisionManager},
     watch_pid, ResourceMonitor, SCServer,
 };
+use screenpipe_vision::monitor::list_monitors;
 use serde_json::json;
 use std::{
     env, fs,
@@ -136,7 +137,11 @@ fn get_base_dir(custom_path: &Option<String>) -> anyhow::Result<PathBuf> {
     Ok(base_dir)
 }
 
-fn setup_logging(local_data_dir: &PathBuf, debug: bool, disable_telemetry: bool) -> anyhow::Result<WorkerGuard> {
+fn setup_logging(
+    local_data_dir: &PathBuf,
+    debug: bool,
+    disable_telemetry: bool,
+) -> anyhow::Result<WorkerGuard> {
     let file_appender = screenpipe_server::logging::SizedRollingWriter::builder()
         .directory(local_data_dir)
         .prefix("screenpipe")
@@ -335,7 +340,10 @@ async fn main() -> anyhow::Result<()> {
                         json!(format!("{:?}", record_args.audio_transcription_engine)),
                     );
                     map.insert("monitor_ids".into(), json!(record_args.monitor_id));
-                    map.insert("use_all_monitors".into(), json!(record_args.use_all_monitors));
+                    map.insert(
+                        "use_all_monitors".into(),
+                        json!(record_args.use_all_monitors),
+                    );
                     map.insert(
                         "languages".into(),
                         json!(record_args
@@ -346,7 +354,10 @@ async fn main() -> anyhow::Result<()> {
                     );
                     map.insert("use_pii_removal".into(), json!(record_args.use_pii_removal));
                     map.insert("disable_vision".into(), json!(record_args.disable_vision));
-                    map.insert("vad_engine".into(), json!(format!("{:?}", record_args.vad_engine)));
+                    map.insert(
+                        "vad_engine".into(),
+                        json!(format!("{:?}", record_args.vad_engine)),
+                    );
                     map.insert(
                         "enable_input_capture".into(),
                         json!(record_args.enable_input_capture),
@@ -356,10 +367,16 @@ async fn main() -> anyhow::Result<()> {
                         json!(record_args.enable_accessibility),
                     );
                     map.insert("enable_sync".into(), json!(record_args.enable_sync));
-                    map.insert("sync_interval_secs".into(), json!(record_args.sync_interval_secs));
+                    map.insert(
+                        "sync_interval_secs".into(),
+                        json!(record_args.sync_interval_secs),
+                    );
                     map.insert("debug".into(), json!(record_args.debug));
                     // Only send counts for privacy-sensitive lists (not actual values)
-                    map.insert("audio_device_count".into(), json!(record_args.audio_device.len()));
+                    map.insert(
+                        "audio_device_count".into(),
+                        json!(record_args.audio_device.len()),
+                    );
                     map.insert(
                         "ignored_windows_count".into(),
                         json!(record_args.ignored_windows.len()),
@@ -368,7 +385,10 @@ async fn main() -> anyhow::Result<()> {
                         "included_windows_count".into(),
                         json!(record_args.included_windows.len()),
                     );
-                    map.insert("ignored_urls_count".into(), json!(record_args.ignored_urls.len()));
+                    map.insert(
+                        "ignored_urls_count".into(),
+                        json!(record_args.ignored_urls.len()),
+                    );
                     map
                 }),
             );
@@ -383,10 +403,16 @@ async fn main() -> anyhow::Result<()> {
     let local_data_dir_clone = local_data_dir.clone();
 
     // Store the guard in a variable that lives for the entire main function
-    let _log_guard = Some(setup_logging(&local_data_dir, record_args.debug, record_args.disable_telemetry)?);
+    let _log_guard = Some(setup_logging(
+        &local_data_dir,
+        record_args.debug,
+        record_args.disable_telemetry,
+    )?);
 
     // Build unified RecordingConfig from CLI args
-    let config = record_args.clone().into_recording_config(local_data_dir.clone());
+    let config = record_args
+        .clone()
+        .into_recording_config(local_data_dir.clone());
 
     // Replace the current conditional check with:
     let ffmpeg_path = find_ffmpeg_path();
@@ -746,8 +772,14 @@ async fn main() -> anyhow::Result<()> {
         format!("{} seconds", record_args.audio_chunk_duration)
     );
     println!("│ port                   │ {:<34} │", record_args.port);
-    println!("│ audio disabled         │ {:<34} │", record_args.disable_audio);
-    println!("│ vision disabled        │ {:<34} │", record_args.disable_vision);
+    println!(
+        "│ audio disabled         │ {:<34} │",
+        record_args.disable_audio
+    );
+    println!(
+        "│ vision disabled        │ {:<34} │",
+        record_args.disable_vision
+    );
     println!(
         "│ audio engine           │ {:<34} │",
         format!("{:?}", warning_audio_transcription_engine_clone)
@@ -765,8 +797,14 @@ async fn main() -> anyhow::Result<()> {
         "│ telemetry              │ {:<34} │",
         !record_args.disable_telemetry
     );
-    println!("│ use pii removal        │ {:<34} │", record_args.use_pii_removal);
-    println!("│ use all monitors       │ {:<34} │", record_args.use_all_monitors);
+    println!(
+        "│ use pii removal        │ {:<34} │",
+        record_args.use_pii_removal
+    );
+    println!(
+        "│ use all monitors       │ {:<34} │",
+        record_args.use_all_monitors
+    );
     println!(
         "│ ignored windows        │ {:<34} │",
         format_cell(&format!("{:?}", &ignored_windows_clone), VALUE_WIDTH)
@@ -1043,4 +1081,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
