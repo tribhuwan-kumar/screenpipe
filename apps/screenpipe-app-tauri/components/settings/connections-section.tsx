@@ -197,14 +197,7 @@ function IntegrationIcon({ icon }: { icon: string }) {
     ),
     "google-calendar": (
       <svg viewBox="0 0 24 24" className="w-5 h-5">
-        <path fill="#4285F4" d="M6.27 21.73h10.42l3.58-3.58V5.85L16.69 2.27H6.27L2.69 5.85v12.3z" opacity=".15"/>
-        <path fill="#EA4335" d="M16.69 2.27v3.58h3.58z"/>
-        <path fill="#34A853" d="M2.69 18.15l3.58 3.58V18.15z"/>
-        <path fill="#FBBC04" d="M6.27 2.27L2.69 5.85h3.58z"/>
-        <path fill="#4285F4" d="M20.27 18.15h-3.58v3.58z"/>
-        <rect fill="none" stroke="#4285F4" strokeWidth="1.5" x="5" y="5" width="14" height="14" rx="1"/>
-        <path fill="#4285F4" d="M8 10h8v1.5H8zm0 3h5v1.5H8z"/>
-        <path fill="#EA4335" d="M5 8h14v1.5H5z"/>
+        <path fill="#4285F4" d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.345-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.254-3.138C18.189 1.186 15.479 0 12.24 0c-6.635 0-12 5.365-12 12s5.365 12 12 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z"/>
       </svg>
     ),
     "ics-calendar": <CalendarIcon className="h-5 w-5 text-muted-foreground" />,
