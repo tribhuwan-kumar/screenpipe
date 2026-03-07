@@ -748,8 +748,11 @@ impl AgentExecutor for PiExecutor {
 
         Self::ensure_web_search_extension(working_dir, Some(&resolved_provider))?;
 
-        let pi_path = find_pi_executable()
-            .ok_or_else(|| anyhow!("pi not found. try restarting the app or delete ~/.screenpipe/pi-agent and restart"))?;
+        let pi_path = find_pi_executable().ok_or_else(|| {
+            anyhow!(
+                "pi not found. try restarting the app or delete ~/.screenpipe/pi-agent and restart"
+            )
+        })?;
         let resolved_model = Self::resolve_model(model, &resolved_provider);
 
         info!(
@@ -830,8 +833,11 @@ impl AgentExecutor for PiExecutor {
         Self::ensure_screenpipe_skill_auto(working_dir)?;
         Self::ensure_web_search_extension(working_dir, Some(&resolved_provider))?;
 
-        let pi_path = find_pi_executable()
-            .ok_or_else(|| anyhow!("pi not found. try restarting the app or delete ~/.screenpipe/pi-agent and restart"))?;
+        let pi_path = find_pi_executable().ok_or_else(|| {
+            anyhow!(
+                "pi not found. try restarting the app or delete ~/.screenpipe/pi-agent and restart"
+            )
+        })?;
 
         info!(
             "pipe streaming using provider: {}, model: {}",
@@ -911,8 +917,7 @@ impl AgentExecutor for PiExecutor {
         info!("installing pi into {} via bun …", install_dir.display());
 
         let mut cmd = std::process::Command::new(&bun);
-        cmd.current_dir(&install_dir)
-            .args(["add", PI_PACKAGE]);
+        cmd.current_dir(&install_dir).args(["add", PI_PACKAGE]);
 
         #[cfg(windows)]
         {
