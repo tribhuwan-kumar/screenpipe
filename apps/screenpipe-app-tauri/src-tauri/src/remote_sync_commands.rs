@@ -7,7 +7,7 @@ use screenpipe_integrations::remote_sync::{
 };
 use std::path::PathBuf;
 
-fn screenpipe_data_dir() -> PathBuf {
+fn default_screenpipe_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".screenpipe")
@@ -21,9 +21,12 @@ pub async fn remote_sync_test(config: SyncConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn remote_sync_now(config: SyncConfig) -> Result<SyncResult, String> {
-    let data_dir = screenpipe_data_dir();
-    Ok(remote_sync::sync_to_remote(&config, &data_dir).await)
+pub async fn remote_sync_now(config: SyncConfig, data_dir: Option<String>) -> Result<SyncResult, String> {
+    let dir = match data_dir {
+        Some(d) if !d.is_empty() && d != "default" => PathBuf::from(d),
+        _ => default_screenpipe_dir(),
+    };
+    Ok(remote_sync::sync_to_remote(&config, &dir).await)
 }
 
 #[tauri::command]

@@ -47,6 +47,10 @@ pub struct DiscoveredHost {
     pub user: Option<String>,
     pub key_path: Option<String>,
     pub source: String,
+    /// Human-friendly alias from SSH config `Host` directive (e.g. "my-server").
+    /// Only set when `HostName` resolves to an IP different from the alias.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
 }
 
 /// Skip files and directories that should never be synced.
@@ -566,12 +570,18 @@ fn parse_ssh_config(content: &str) -> Vec<DiscoveredHost> {
     let flush = |hosts: &mut Vec<DiscoveredHost>, entry: Option<Entry>| {
         if let Some(e) = entry {
             if !e.host.contains('*') && !e.host.contains('?') {
+                let alias = if e.hostname.is_some() && e.hostname.as_deref() != Some(&e.host) {
+                    Some(e.host.clone())
+                } else {
+                    None
+                };
                 hosts.push(DiscoveredHost {
                     host: e.hostname.unwrap_or(e.host),
                     port: e.port.unwrap_or(22),
                     user: e.user,
                     key_path: e.key,
                     source: "ssh_config".into(),
+                    alias,
                 });
             }
         }
@@ -663,6 +673,7 @@ fn parse_known_hosts(content: &str) -> Vec<DiscoveredHost> {
                 user: None,
                 key_path: None,
                 source: "known_hosts".into(),
+                alias: None,
             });
         }
     }
@@ -709,6 +720,7 @@ async fn discover_tailscale() -> Vec<DiscoveredHost> {
                     user: None,
                     key_path: None,
                     source: format!("tailscale ({})", label),
+                    alias: Some(label.to_string()),
                 });
             }
         }

@@ -340,12 +340,14 @@ pub async fn open_pipe_window(
 pub async fn get_disk_usage(
     _app_handle: tauri::AppHandle,
     force_refresh: Option<bool>,
+    data_dir: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    // Always use ~/.screenpipe as the primary data directory
-    // This is where the sidecar/CLI stores data, which is the main data source
-    let screenpipe_dir_path = dirs::home_dir()
-        .ok_or_else(|| "Could not get home directory".to_string())?
-        .join(".screenpipe");
+    let screenpipe_dir_path = match data_dir {
+        Some(d) if !d.is_empty() && d != "default" => std::path::PathBuf::from(d),
+        _ => dirs::home_dir()
+            .ok_or_else(|| "Could not get home directory".to_string())?
+            .join(".screenpipe"),
+    };
 
     match crate::disk_usage::disk_usage(&screenpipe_dir_path, force_refresh.unwrap_or(false)).await
     {

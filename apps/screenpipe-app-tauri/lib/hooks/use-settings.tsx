@@ -125,6 +125,10 @@ export type Settings = SettingsStore & {
 	openaiCompatibleModel?: string;
 	/** Filter music-dominant audio before transcription (reduces Spotify/YouTube music noise) */
 	filterMusic?: boolean;
+	/** Show periodic notifications suggesting pipe ideas based on user's data (default: true) */
+	pipeSuggestionsEnabled?: boolean;
+	/** Hours between pipe suggestion notifications (default: 24) */
+	pipeSuggestionFrequencyHours?: number;
 }
 
 export function getEffectiveFilters(settings: Settings) {
