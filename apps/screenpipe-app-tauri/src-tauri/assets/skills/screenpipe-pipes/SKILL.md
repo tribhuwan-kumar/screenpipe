@@ -14,12 +14,12 @@ Pipes are markdown-based automations that run on schedule or on-demand. Each pip
 
 ## CLI Commands
 
-The `screenpipe pipe` CLI is the preferred way to manage pipes. It outputs compact, human-readable tables.
+Use `bunx screenpipe@latest` to run CLI commands. Users don't install the CLI separately — `bunx` fetches it on-the-fly.
 
 ### List all pipes
 
 ```bash
-screenpipe pipe list
+bunx screenpipe@latest pipe list
 ```
 
 Output:
@@ -33,20 +33,20 @@ daily-logs           no                      never
 
 For full JSON (large output — avoid unless you need specific fields):
 ```bash
-screenpipe pipe list --json
+bunx screenpipe@latest pipe list --json
 ```
 
 ### Enable / Disable a pipe
 
 ```bash
-screenpipe pipe enable <name>
-screenpipe pipe disable <name>
+bunx screenpipe@latest pipe enable <name>
+bunx screenpipe@latest pipe disable <name>
 ```
 
 ### Run a pipe once immediately
 
 ```bash
-screenpipe pipe run <name>
+bunx screenpipe@latest pipe run <name>
 ```
 
 Returns stdout/stderr and success status.
@@ -54,7 +54,7 @@ Returns stdout/stderr and success status.
 ### View pipe logs
 
 ```bash
-screenpipe pipe logs <name>
+bunx screenpipe@latest pipe logs <name>
 ```
 
 Output:
@@ -68,23 +68,23 @@ Output:
 
 ```bash
 # From URL (GitHub raw or pipe store)
-screenpipe pipe install https://github.com/user/repo/blob/main/pipe.md
+bunx screenpipe@latest pipe install https://github.com/user/repo/blob/main/pipe.md
 
 # From local path
-screenpipe pipe install /path/to/pipe.md
-screenpipe pipe install ./my-pipe/
+bunx screenpipe@latest pipe install /path/to/pipe.md
+bunx screenpipe@latest pipe install ./my-pipe/
 ```
 
 ### Delete a pipe
 
 ```bash
-screenpipe pipe delete <name>
+bunx screenpipe@latest pipe delete <name>
 ```
 
 ### View AI model presets
 
 ```bash
-screenpipe pipe models list
+bunx screenpipe@latest pipe models list
 ```
 
 ## Editing Pipe Config
@@ -152,13 +152,13 @@ PIPE
 
 Then enable it:
 ```bash
-screenpipe pipe enable my-pipe
+bunx screenpipe@latest pipe enable my-pipe
 ```
 
 ## Rules
 
-1. **Always use `screenpipe pipe list` (not `--json`)** to check pipe status — the table output is compact and sufficient.
+1. **Always use `bunx screenpipe@latest pipe list` (not `--json`)** to check pipe status — the table output is compact and sufficient.
 2. **Never dump full pipe JSON** to the conversation — it can be 15MB+ and will exceed model limits.
 3. **Edit pipe.md frontmatter** for config changes rather than using the API when possible — it's simpler and the file is the source of truth.
-4. **Check logs first** when debugging a pipe: `screenpipe pipe logs <name>`.
-5. **Use `screenpipe pipe run <name>`** to test changes immediately instead of waiting for the schedule.
+4. **Check logs first** when debugging a pipe: `bunx screenpipe@latest pipe logs <name>`.
+5. **Use `bunx screenpipe@latest pipe run <name>`** to test changes immediately instead of waiting for the schedule.
