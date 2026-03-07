@@ -1743,7 +1743,7 @@ fn download_portable_git() -> Result<String, String> {
 
     {
         let mut cmd = std::process::Command::new(&temp_file);
-        cmd.args([&format!("-o{}", extract_temp.to_string_lossy()), "-y"]);
+        cmd.args([&format!("-o{}", extract_temp.to_string_lossy()), "-y", "-gm2"]);
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
