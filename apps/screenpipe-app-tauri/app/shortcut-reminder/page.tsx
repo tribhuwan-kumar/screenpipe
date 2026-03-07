@@ -136,11 +136,10 @@ export default function ShortcutReminderPage() {
         style={{ cursor: "grab" }}
       >
         <div
-          className="grid border border-white/20"
+          className="inline-grid border border-white/20"
           style={{
             background: "rgba(0, 0, 0, 0.75)",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            maxWidth: 180,
+            gridTemplateColumns: "auto auto auto",
           }}
         >
           {/* Row 1, Col 1: Timeline shortcut */}
@@ -151,7 +150,7 @@ export default function ShortcutReminderPage() {
               posthog.capture("shortcut_reminder_timeline_clicked");
             }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title="Open timeline"
           >
@@ -159,7 +158,7 @@ export default function ShortcutReminderPage() {
               <rect x="3" y="3" width="18" height="18" />
               <line x1="3" y1="9" x2="21" y2="9" />
             </svg>
-            <span className="font-mono text-[8px] font-medium text-white/80 tracking-wider">
+            <span className="font-mono text-[8px] font-medium text-white/80">
               {overlayShortcut ?? "..."}
             </span>
           </button>
@@ -172,14 +171,14 @@ export default function ShortcutReminderPage() {
               posthog.capture("shortcut_reminder_chat_clicked");
             }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title="Open chat"
           >
             <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
             </svg>
-            <span className="font-mono text-[8px] font-medium text-white/80 tracking-wider">
+            <span className="font-mono text-[8px] font-medium text-white/80">
               {chatShortcut ?? "..."}
             </span>
           </button>
@@ -193,7 +192,7 @@ export default function ShortcutReminderPage() {
               posthog.capture("shortcut_reminder_search_clicked");
             }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title="Open search"
           >
@@ -201,13 +200,13 @@ export default function ShortcutReminderPage() {
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <span className="font-mono text-[8px] font-medium text-white/80 tracking-wider">
+            <span className="font-mono text-[8px] font-medium text-white/80">
               {searchShortcut ?? "..."}
             </span>
           </button>
 
           {/* Row 2, Col 1: Audio animation */}
-          <div className="border-t border-white/10 px-1 py-0.5 min-w-0 overflow-hidden">
+          <div className="border-t border-white/10 px-1.5 py-0.5 min-w-0 overflow-hidden">
             <AudioEqualizer
               active={overlayData.audioActive}
               speechRatio={overlayData.speechRatio}
@@ -215,7 +214,7 @@ export default function ShortcutReminderPage() {
           </div>
 
           {/* Row 2, Col 2: Screen animation */}
-          <div className="border-t border-r border-white/20 border-l border-white/20 px-1 py-0.5 min-w-0 overflow-hidden">
+          <div className="border-t border-white/10 border-x border-white/20 px-1.5 py-0.5 min-w-0 overflow-hidden">
             <ScreenMatrix
               active={overlayData.screenActive}
               captureFps={overlayData.captureFps}
@@ -230,7 +229,7 @@ export default function ShortcutReminderPage() {
               e.preventDefault();
               e.stopPropagation();
             }}
-            className="flex items-center justify-center border-t border-white/10 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex items-center justify-center border-t border-white/10 px-1.5 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
             title="Hide shortcut reminder"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
