@@ -735,6 +735,12 @@ async fn main() -> anyhow::Result<()> {
             analytics::capture_event_nonblocking("pipe_scheduled_run", props);
         },
     ));
+    // Inject connected integrations context into pipe prompts
+    let connections_ctx = screenpipe_integrations::connections::render_context(
+        &local_data_dir,
+        config.port,
+    );
+    pipe_manager.set_extra_context(connections_ctx);
     pipe_manager.install_builtin_pipes().ok();
     if let Err(e) = pipe_manager.load_pipes().await {
         tracing::warn!("failed to load pipes: {}", e);
