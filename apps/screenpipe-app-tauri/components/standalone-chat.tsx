@@ -1643,6 +1643,11 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 prev.map((m) => m.id === msgId ? { ...m, content: `Error: ${errMsg}` } : m)
               );
             }
+            piStreamingTextRef.current = "";
+            piMessageIdRef.current = null;
+            piContentBlocksRef.current = [];
+            setIsLoading(false);
+            setIsStreaming(false);
           }
         } else if (data.type === "agent_end") {
           // When watching a pipe, agent_end fires before pipe_done — don't
@@ -1732,14 +1737,17 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               }
               return prev.map((m) => m.id === msgId ? { ...m, content, contentBlocks } : m);
             });
+
+            if (!isPipeWatch) {
+              posthog.capture("chat_response_received", {
+                provider: activePreset?.provider,
+                model: activePreset?.model,
+                has_tool_use: blocksSnapshot.some((b) => b.type === "tool"),
+                response_length: streamedText?.length ?? 0,
+              });
+            }
           }
           if (!isPipeWatch) {
-            posthog.capture("chat_response_received", {
-              provider: activePreset?.provider,
-              model: activePreset?.model,
-              has_tool_use: blocksSnapshot.some((b) => b.type === "tool"),
-              response_length: streamedText?.length ?? 0,
-            });
             piStreamingTextRef.current = "";
             piMessageIdRef.current = null;
             piContentBlocksRef.current = [];
