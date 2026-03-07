@@ -46,7 +46,7 @@ We build the layer that gives AI full context of human work so it can act autono
 
 ## North star metrics
 
-- **Daily active users** (intentional retrieval: shortcut, search, timeline scrub) — not app launches.
+- **Daily active users** intentional retrieval, pipe retention.
 - **Activation rate** — % of app openers who perform an intentional action.
 - **D7 retention** — do they come back?
 
@@ -54,7 +54,7 @@ We build the layer that gives AI full context of human work so it can act autono
 
 - Humans spend 8+ hours/day on screens. Digital work is bottlenecked by human attention. AI needs full context to truly automate.
 - Vision is the universal interface — it's the most powerful sense of most animals.
-- We believe humans should be augmented by AI to focus on more profound exploration instead of repetitive digital labor.
+- We believe humans should be augmented by AI, and buy ourselves time to expand our consciousness and explore the universe.
 - Positive sum games. Give first. Optimize for the long term.
 - Radical transparency. No ego. Idea meritocracy. Constructive disagreement.
 - Truth over comfort. Bold over safe. Ship over plan.
