@@ -4,6 +4,7 @@
 pub mod connections;
 pub mod remote_sync;
 pub mod unstructured_ocr;
+pub mod whatsapp;
 
 #[cfg(target_os = "macos")]
 pub mod reminders;

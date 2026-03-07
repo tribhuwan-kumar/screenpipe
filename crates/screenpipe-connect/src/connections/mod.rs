@@ -9,10 +9,14 @@
 
 pub mod discord;
 pub mod email;
+pub mod linear;
+pub mod notion;
+pub mod perplexity;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
 pub mod todoist;
+pub mod whatsapp;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -80,6 +84,9 @@ pub fn all_integrations() -> Vec<Box<dyn Integration>> {
         Box::new(email::Email),
         Box::new(todoist::Todoist),
         Box::new(teams::Teams),
+        Box::new(notion::Notion),
+        Box::new(linear::Linear),
+        Box::new(perplexity::Perplexity),
     ]
 }
 

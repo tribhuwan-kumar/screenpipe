@@ -9130,7 +9130,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "screenpipe-accessibility"
+name = "screenpipe-a11y"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -9153,7 +9153,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.69"
+version = "2.2.71"
 dependencies = [
  "anyhow",
  "arboard",
@@ -9191,14 +9191,14 @@ dependencies = [
  "regex",
  "reqwest 0.12.12",
  "resvg",
- "screenpipe-accessibility",
+ "screenpipe-a11y",
  "screenpipe-audio",
+ "screenpipe-connect",
  "screenpipe-core",
  "screenpipe-db",
+ "screenpipe-engine",
  "screenpipe-events",
- "screenpipe-integrations",
- "screenpipe-server",
- "screenpipe-vision",
+ "screenpipe-screen",
  "sentry 0.42.0",
  "serde",
  "serde_json",
@@ -9304,6 +9304,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "screenpipe-connect"
+version = "0.3.175"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dirs 6.0.0",
+ "eventkit-rs",
+ "image 0.25.9",
+ "lettre",
+ "log",
+ "objc2 0.6.3",
+ "objc2-event-kit",
+ "objc2-foundation 0.3.2",
+ "reqwest 0.12.12",
+ "russh",
+ "russh-sftp",
+ "screenpipe-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "windows 0.58.0",
+]
+
+[[package]]
 name = "screenpipe-core"
 version = "0.3.175"
 dependencies = [
@@ -9371,49 +9397,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "screenpipe-events"
-version = "0.3.175"
-dependencies = [
- "anyhow",
- "chrono",
- "futures",
- "once_cell",
- "parking_lot",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tracing",
-]
-
-[[package]]
-name = "screenpipe-integrations"
-version = "0.3.175"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dirs 6.0.0",
- "eventkit-rs",
- "image 0.25.9",
- "lettre",
- "log",
- "objc2 0.6.3",
- "objc2-event-kit",
- "objc2-foundation 0.3.2",
- "reqwest 0.12.12",
- "russh",
- "russh-sftp",
- "screenpipe-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "windows 0.58.0",
-]
-
-[[package]]
-name = "screenpipe-server"
+name = "screenpipe-engine"
 version = "0.3.175"
 dependencies = [
  "anyhow",
@@ -9444,14 +9428,14 @@ dependencies = [
  "port_check",
  "regex",
  "reqwest 0.12.12",
- "screenpipe-accessibility",
+ "screenpipe-a11y",
  "screenpipe-apple-intelligence",
  "screenpipe-audio",
+ "screenpipe-connect",
  "screenpipe-core",
  "screenpipe-db",
  "screenpipe-events",
- "screenpipe-integrations",
- "screenpipe-vision",
+ "screenpipe-screen",
  "sentry 0.36.0",
  "serde",
  "serde_json",
@@ -9473,7 +9457,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "screenpipe-vision"
+name = "screenpipe-events"
+version = "0.3.175"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "once_cell",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "screenpipe-screen"
 version = "0.3.175"
 dependencies = [
  "accessibility-sys",
@@ -9493,10 +9493,10 @@ dependencies = [
  "reqwest 0.12.12",
  "rusty-tesseract",
  "sck-rs",
- "screenpipe-accessibility",
+ "screenpipe-a11y",
+ "screenpipe-connect",
  "screenpipe-core",
  "screenpipe-db",
- "screenpipe-integrations",
  "serde",
  "serde_json",
  "tokio",

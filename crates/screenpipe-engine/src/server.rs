@@ -584,7 +584,12 @@ impl SCServer {
                 self.screenpipe_dir.clone(),
             ),
         ));
-        let router = router.nest("/connections", crate::connections_api::router(cm));
+        let wa: crate::connections_api::SharedWhatsAppGateway = Arc::new(Mutex::new(
+            screenpipe_connect::whatsapp::WhatsAppGateway::new(
+                self.screenpipe_dir.clone(),
+            ),
+        ));
+        let router = router.nest("/connections", crate::connections_api::router(cm, wa));
 
         // Power management routes (if power manager is available)
         let router = if let Some(ref pm) = self.power_manager {

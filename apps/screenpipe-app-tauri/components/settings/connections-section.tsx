@@ -204,6 +204,13 @@ function IntegrationIcon({ icon }: { icon: string }) {
         <path fill="#7B83EB" d="M15 12v5a4 4 0 01-4 4H7a4 4 0 01-4-4v-5a1 1 0 011-1h10a1 1 0 011 1z"/>
       </svg>
     ),
+    anythingllm: <img src="/images/anythingllm.png" alt="AnythingLLM" className="w-5 h-5 rounded" />,
+    ollama: <img src="/images/ollama.png" alt="Ollama" className="w-5 h-5 rounded" />,
+    lmstudio: <img src="/images/lmstudio.png" alt="LM Studio" className="w-5 h-5 rounded" />,
+    whatsapp: <img src="/images/whatsapp.svg" alt="WhatsApp" className="w-5 h-5" />,
+    notion: <img src="/images/notion.svg" alt="Notion" className="w-5 h-5 dark:invert" />,
+    linear: <img src="/images/linear.svg" alt="Linear" className="w-5 h-5" />,
+    perplexity: <img src="/images/perplexity.svg" alt="Perplexity" className="w-5 h-5" />,
   };
   return (
     <div className="w-10 h-10 bg-muted rounded-xl flex items-center justify-center">
@@ -240,7 +247,7 @@ function Tile({ tile, selected, onClick }: {
       `}
     >
       {tile.connected && (
-        <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-green-500" />
+        <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-foreground" />
       )}
       <IntegrationIcon icon={tile.icon} />
       <span className="text-xs font-medium text-foreground leading-tight">{tile.name}</span>
@@ -392,6 +399,283 @@ function ClaudeCodePanel() {
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function AnythingLLMPanel() {
+  const [copied, setCopied] = useState(false);
+  const config = JSON.stringify({
+    mcpServers: {
+      screenpipe: {
+        command: "npx",
+        args: ["-y", "screenpipe-mcp"],
+      },
+    },
+  }, null, 2);
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(config);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  }, [config]);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Give AnythingLLM access to your screen &amp; audio history via MCP.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        1. In AnythingLLM, go to <strong>Agent Skills</strong> &gt; <strong>MCP Servers</strong>
+      </p>
+      <p className="text-xs text-muted-foreground">
+        2. Add this config to your <code className="bg-muted px-1 rounded">anythingllm_mcp_servers.json</code>:
+      </p>
+      <div className="relative group">
+        <pre className="bg-muted border border-border rounded-lg p-3 pr-10 text-xs font-mono text-foreground overflow-x-auto whitespace-pre-wrap">{config}</pre>
+        <Button variant="ghost" size="sm" onClick={handleCopy} className="absolute top-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        3. Click <strong>Refresh</strong> in Agent Skills to load the server.
+      </p>
+    </div>
+  );
+}
+
+function OllamaPanel() {
+  const [status, setStatus] = useState<"idle" | "checking" | "connected" | "error">("idle");
+  const [models, setModels] = useState<string[]>([]);
+
+  const handleCheck = async () => {
+    setStatus("checking");
+    setModels([]);
+    try {
+      const res = await fetch("http://localhost:11434/api/tags");
+      if (!res.ok) throw new Error("not reachable");
+      const data = await res.json();
+      const names = (data.models || []).map((m: any) => m.name as string);
+      setModels(names);
+      setStatus("connected");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Use Ollama as a local AI provider for screenpipe.
+      </p>
+      <Button onClick={handleCheck} disabled={status === "checking"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+        {status === "checking" ? (<><Loader2 className="h-3 w-3 animate-spin" />checking...</>) : "check connection"}
+      </Button>
+      {status === "connected" && (
+        <div className="p-3 bg-muted border border-border rounded-lg space-y-1">
+          <p className="text-xs font-medium text-foreground">ollama detected</p>
+          {models.length > 0 ? (
+            <ul className="text-xs text-muted-foreground list-disc list-inside">
+              {models.map(m => <li key={m}>{m}</li>)}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">no models found. run &quot;ollama pull &lt;model&gt;&quot; to get started.</p>
+          )}
+        </div>
+      )}
+      {status === "error" && (
+        <p className="text-xs text-destructive">ollama not detected. make sure it&apos;s running on localhost:11434.</p>
+      )}
+    </div>
+  );
+}
+
+function LMStudioPanel() {
+  const [status, setStatus] = useState<"idle" | "checking" | "connected" | "error">("idle");
+  const [models, setModels] = useState<string[]>([]);
+  const deeplink = "lmstudio://add_mcp?name=screenpipe&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNjcmVlbnBpcGUtbWNwIl19";
+
+  const handleCheck = async () => {
+    setStatus("checking");
+    setModels([]);
+    try {
+      const res = await fetch("http://localhost:1234/v1/models");
+      if (!res.ok) throw new Error("not reachable");
+      const data = await res.json();
+      const names = (data.data || []).map((m: any) => m.id as string);
+      setModels(names);
+      setStatus("connected");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Connect LM Studio to screenpipe&apos;s screen &amp; audio data, or use it as a local AI provider.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => openUrl(deeplink)} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          <Download className="h-3 w-3" /> add screenpipe MCP to LM Studio
+        </Button>
+        <Button onClick={handleCheck} variant="outline" disabled={status === "checking"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          {status === "checking" ? (<><Loader2 className="h-3 w-3 animate-spin" />checking...</>) : "check connection"}
+        </Button>
+      </div>
+      {status === "connected" && (
+        <div className="p-3 bg-muted border border-border rounded-lg space-y-1">
+          <p className="text-xs font-medium text-foreground">lm studio detected</p>
+          {models.length > 0 ? (
+            <ul className="text-xs text-muted-foreground list-disc list-inside">
+              {models.map(m => <li key={m}>{m}</li>)}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">no models loaded. load a model in lm studio to get started.</p>
+          )}
+        </div>
+      )}
+      {status === "error" && (
+        <p className="text-xs text-destructive">lm studio not detected. make sure it&apos;s running on localhost:1234.</p>
+      )}
+    </div>
+  );
+}
+
+function WhatsAppPanel() {
+  const [status, setStatus] = useState<"idle" | "pairing" | "connected" | "error">("idle");
+  const [qr, setQr] = useState<string | null>(null);
+  const [info, setInfo] = useState<{ name: string; phone: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const pollStatus = useCallback(() => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch("http://localhost:3030/connections/whatsapp/status");
+        const data = await res.json();
+        const s = data.status;
+        if (s?.qr_ready) {
+          setQr(s.qr_ready.qr);
+          setStatus("pairing");
+        } else if (s?.connected) {
+          setInfo({ name: s.connected.name, phone: s.connected.phone });
+          setStatus("connected");
+          stopPolling();
+        } else if (s?.error) {
+          setError(s.error.message);
+          setStatus("error");
+          stopPolling();
+        }
+      } catch {}
+    }, 2000);
+  }, []);
+
+  // Check status on mount and keep polling if pairing is in progress
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch("http://localhost:3030/connections/whatsapp/status");
+        const data = await res.json();
+        const s = data.status;
+        if (s?.connected) {
+          setInfo({ name: s.connected.name, phone: s.connected.phone });
+          setStatus("connected");
+        } else if (s?.qr_ready) {
+          setQr(s.qr_ready.qr);
+          setStatus("pairing");
+          pollStatus();
+        } else if (s === "waiting_for_qr") {
+          setStatus("pairing");
+          pollStatus();
+        }
+      } catch {}
+    };
+    checkStatus();
+    return stopPolling;
+  }, [pollStatus]);
+
+  const handlePair = async () => {
+    setStatus("pairing");
+    setQr(null);
+    setError(null);
+    try {
+      const res = await fetch("http://localhost:3030/connections/whatsapp/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bun_path: "bun" }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "failed to start pairing");
+      }
+      pollStatus();
+    } catch (e: any) {
+      setError(e.message);
+      setStatus("error");
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await fetch("http://localhost:3030/connections/whatsapp/disconnect", { method: "POST" });
+    setStatus("idle");
+    setQr(null);
+    setInfo(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Connect your personal WhatsApp by scanning a QR code, just like WhatsApp Web. Requires <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="underline">Node.js</a> installed.
+      </p>
+      {status === "idle" && (
+        <Button onClick={handlePair} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          pair with QR code
+        </Button>
+      )}
+      {status === "pairing" && !qr && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" /> waiting for QR code...
+        </div>
+      )}
+      {status === "pairing" && qr && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">scan this QR code with your WhatsApp app:</p>
+          <div className="bg-white p-3 rounded-lg inline-block">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`}
+              alt="WhatsApp QR Code"
+              className="w-[200px] h-[200px]"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">open WhatsApp &gt; linked devices &gt; link a device</p>
+        </div>
+      )}
+      {status === "connected" && info && (
+        <div className="space-y-2">
+          <div className="p-3 bg-muted border border-border rounded-lg">
+            <p className="text-xs font-medium text-foreground">connected</p>
+            <p className="text-xs text-muted-foreground">{info.name} ({info.phone})</p>
+          </div>
+          <Button onClick={handleDisconnect} variant="outline" size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+            <LogOut className="h-3 w-3" /> disconnect
+          </Button>
+        </div>
+      )}
+      {status === "error" && (
+        <div className="space-y-2">
+          <p className="text-xs text-destructive">{error}</p>
+          <Button onClick={handlePair} variant="outline" size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+            retry
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -611,10 +895,24 @@ export function ConnectionsSection() {
       { id: "google-calendar", name: "Google Calendar", icon: "google-calendar", connected: false },
       { id: "ics-calendar", name: "ICS Calendar", icon: "ics-calendar", connected: false },
       { id: "openclaw", name: "OpenClaw", icon: "openclaw", connected: false },
+      { id: "whatsapp", name: "WhatsApp", icon: "whatsapp", connected: false },
+      { id: "anythingllm", name: "AnythingLLM", icon: "anythingllm", connected: false },
+      { id: "ollama", name: "Ollama", icon: "ollama", connected: false },
+      { id: "lmstudio", name: "LM Studio", icon: "lmstudio", connected: false },
+      { id: "notion", name: "Notion", icon: "notion", connected: false },
+      { id: "linear", name: "Linear", icon: "linear", connected: false },
+      { id: "perplexity", name: "Perplexity", icon: "perplexity", connected: false },
     ];
-    const apiTiles: ConnectionTile[] = integrations.map(i => ({
-      id: i.id, name: i.name, icon: i.icon, connected: i.connected,
-    }));
+    // Merge API tiles, skipping duplicates already in hardcoded
+    const hardcodedIds = new Set(hardcoded.map(h => h.id));
+    const apiTiles: ConnectionTile[] = integrations
+      .filter(i => !hardcodedIds.has(i.id))
+      .map(i => ({ id: i.id, name: i.name, icon: i.icon, connected: i.connected }));
+    // Update connected status from API for hardcoded tiles that also exist in API
+    for (const h of hardcoded) {
+      const api = integrations.find(i => i.id === h.id);
+      if (api) h.connected = api.connected;
+    }
     return [...hardcoded, ...apiTiles];
   }, [claudeInstalled, cursorInstalled, chatgptConnected, integrations]);
 
@@ -638,6 +936,10 @@ export function ConnectionsSection() {
       case "google-calendar": return <GoogleCalendarCard />;
       case "ics-calendar": return <IcsCalendarCard />;
       case "openclaw": return <OpenClawCard />;
+      case "whatsapp": return <WhatsAppPanel />;
+      case "anythingllm": return <AnythingLLMPanel />;
+      case "ollama": return <OllamaPanel />;
+      case "lmstudio": return <LMStudioPanel />;
       default:
         if (selectedIntegration) {
           return <ApiIntegrationPanel integration={selectedIntegration} onRefresh={fetchIntegrations} />;
@@ -652,7 +954,7 @@ export function ConnectionsSection() {
     <div className="space-y-5">
       <div className="space-y-1">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Connections</h1>
-        <p className="text-muted-foreground text-sm">Connect screenpipe to your tools</p>
+        <p className="text-muted-foreground text-sm">Give AI access to your memory, and connect to the apps you use every day</p>
       </div>
 
       {/* Search */}
@@ -693,7 +995,7 @@ export function ConnectionsSection() {
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">{selectedTile.name}</h3>
                   {selectedTile.connected && (
-                    <span className="text-xs text-green-600">connected</span>
+                    <span className="text-xs text-foreground">connected</span>
                   )}
                 </div>
                 <button onClick={() => setSelected(null)} className="ml-auto text-muted-foreground hover:text-foreground">
