@@ -279,6 +279,11 @@ async fn main() -> anyhow::Result<()> {
         Command::Record(args) => args,
     };
 
+    // Non-blocking update check — runs in background, prints banner if outdated
+    tokio::spawn(async {
+        check_for_updates().await;
+    });
+
     // Initialize Sentry only if telemetry is enabled
     let _sentry_guard = if !record_args.disable_telemetry {
         let sentry_release_name_append = env::var("SENTRY_RELEASE_NAME_APPEND").unwrap_or_default();
@@ -1089,4 +1094,57 @@ async fn main() -> anyhow::Result<()> {
     info!("shutdown complete");
 
     Ok(())
+}
+
+/// Non-blocking update check. Fetches the latest version from npm registry
+/// and prints a one-line banner if the current version is outdated.
+async fn check_for_updates() {
+    // Skip if user opted out
+    if env::var("SCREENPIPE_NO_UPDATE_CHECK").is_ok() {
+        return;
+    }
+
+    let current = env!("CARGO_PKG_VERSION");
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let resp = match client
+        .get("https://registry.npmjs.org/screenpipe/latest")
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r,
+        _ => return,
+    };
+
+    let json: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let latest = match json.get("version").and_then(|v| v.as_str()) {
+        Some(v) => v,
+        None => return,
+    };
+
+    if latest != current {
+        eprintln!(
+            "\n  {} screenpipe {} available (you have {})",
+            "update:".yellow().bold(),
+            latest.green(),
+            current,
+        );
+        eprintln!(
+            "  run: {}",
+            "npx screenpipe@latest record".cyan()
+        );
+        eprintln!();
+    }
 }
