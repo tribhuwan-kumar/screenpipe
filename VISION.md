@@ -52,6 +52,7 @@ We build the layer that gives AI full context of human work so it can act autono
 
 ## What we believe
 
+- Sending prompts is obsolete, AI should just watch and work.
 - Humans spend 8+ hours/day on screens. Digital work is bottlenecked by human attention. AI needs full context to truly automate.
 - Vision is the universal interface — it's the most powerful sense of most animals.
 - We believe humans should be augmented by AI, and buy ourselves time to expand our consciousness and explore the universe.
