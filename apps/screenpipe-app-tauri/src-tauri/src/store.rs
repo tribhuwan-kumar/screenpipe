@@ -645,12 +645,12 @@ impl SettingsStore {
     pub fn to_recording_config(
         &self,
         data_dir: std::path::PathBuf,
-    ) -> screenpipe_server::RecordingConfig {
+    ) -> screenpipe_engine::RecordingConfig {
         use screenpipe_audio::audio_manager::builder::TranscriptionMode;
         use screenpipe_audio::core::engine::AudioTranscriptionEngine;
         let audio_engine_str = self.resolve_audio_engine();
 
-        screenpipe_server::RecordingConfig {
+        screenpipe_engine::RecordingConfig {
             audio_chunk_duration: self.audio_chunk_duration as u64,
             port: self.port,
             data_dir,

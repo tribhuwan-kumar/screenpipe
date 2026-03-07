@@ -204,7 +204,7 @@ pub struct SchedulerState {
 }
 
 /// Trait for persisting pipe execution data.
-/// Implemented in `screenpipe-server` using SQLite.
+/// Implemented in `screenpipe-engine` using SQLite.
 /// `PipeManager` works without a store (CLI mode) — all methods are guarded
 /// by `Option<Arc<dyn PipeStore>>`.
 #[async_trait::async_trait]
