@@ -20,7 +20,7 @@ We build the layer that gives AI full context of human work so it can act autono
 
 1. **Now: Memory.** Make desktop memory work so well people can't live without it. Record, Rewind, Ask — three verbs, nothing else.
 2. **Next: Context layer for AI agents.** Open API so any AI agent can query your screen history. Every AI agent needs to know what the user is doing, act on that context, and trigger without prompts.
-3. **Later: Every sensor.** Screen is sensor #1. Then cameras, rooms, spatial memory. Local-first makes it viable — "no internet required" level clear.
+3. **Later: Everything.** We are going to record everything you do, 24/7, safely, encrypted locally and connected to AI.
 
 ## Product principles
 
