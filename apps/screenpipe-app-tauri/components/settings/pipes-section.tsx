@@ -430,6 +430,7 @@ export function PipesSection() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [promptDrafts, setPromptDrafts] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(false);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingSaves = useRef<Record<string, string>>({});
@@ -776,6 +777,7 @@ export function PipesSection() {
 
   const savePipeContent = useCallback(async (name: string, content: string) => {
     setSaveStatus((prev) => ({ ...prev, [name]: "saving" }));
+    setSaveErrors((prev) => { const next = { ...prev }; delete next[name]; return next; });
     try {
       const res = await fetch(`http://localhost:3030/pipes/${name}/config`, {
         method: "POST",
@@ -788,8 +790,9 @@ export function PipesSection() {
       setSaveStatus((prev) => ({ ...prev, [name]: "saved" }));
       // Don't clear draft or refetch — the 10s poll will sync.
       setTimeout(() => setSaveStatus((prev) => { const next = { ...prev }; delete next[name]; return next; }), 2000);
-    } catch (e) {
+    } catch (e: any) {
       console.error("pipe save failed:", e);
+      setSaveErrors((prev) => ({ ...prev, [name]: e?.message || "unknown error" }));
       setSaveStatus((prev) => ({ ...prev, [name]: "error" }));
     }
   }, []);
@@ -1326,7 +1329,9 @@ export function PipesSection() {
                           </span>
                         )}
                         {saveStatus[pipe.config.name] === "error" && (
-                          <span className="text-[11px] text-destructive">save failed</span>
+                          <span className="text-[11px] text-destructive" title={saveErrors[pipe.config.name]}>
+                            save failed: {saveErrors[pipe.config.name] || "unknown error"}
+                          </span>
                         )}
                         {promptDrafts[pipe.config.name] !== undefined && !saveStatus[pipe.config.name] && (
                           <span className="text-[11px] text-muted-foreground">unsaved</span>
