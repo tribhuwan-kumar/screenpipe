@@ -136,106 +136,106 @@ export default function ShortcutReminderPage() {
         style={{ cursor: "grab" }}
       >
         <div
-          className="grid border border-white/20"
+          className="border border-white/20"
           style={{
             background: "rgba(0, 0, 0, 0.75)",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            width: 168,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {/* Row 1, Col 1: Timeline shortcut */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              commands.showWindow("Main");
-              posthog.capture("shortcut_reminder_timeline_clicked");
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title="Open timeline"
-          >
-            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
-              <rect x="3" y="3" width="18" height="18" />
-              <line x1="3" y1="9" x2="21" y2="9" />
-            </svg>
-            <span className="font-mono text-[8px] font-medium text-white/80">
-              {overlayShortcut ?? "..."}
-            </span>
-          </button>
+          {/* Row 1: Shortcuts */}
+          <div className="flex">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                commands.showWindow("Main");
+                posthog.capture("shortcut_reminder_timeline_clicked");
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="Open timeline"
+            >
+              <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
+                <rect x="3" y="3" width="18" height="18" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+              </svg>
+              <span className="font-mono text-[8px] font-medium text-white/80 whitespace-nowrap">
+                {overlayShortcut ?? "..."}
+              </span>
+            </button>
 
-          {/* Row 1, Col 2: Chat shortcut */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              commands.showWindow("Chat");
-              posthog.capture("shortcut_reminder_chat_clicked");
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title="Open chat"
-          >
-            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-            <span className="font-mono text-[8px] font-medium text-white/80">
-              {chatShortcut ?? "..."}
-            </span>
-          </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                commands.showWindow("Chat");
+                posthog.capture("shortcut_reminder_chat_clicked");
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="Open chat"
+            >
+              <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+              <span className="font-mono text-[8px] font-medium text-white/80 whitespace-nowrap">
+                {chatShortcut ?? "..."}
+              </span>
+            </button>
 
-          {/* Row 1, Col 3: Search shortcut */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              commands.showWindow("Main");
-              emit("open-search");
-              posthog.capture("shortcut_reminder_search_clicked");
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="flex items-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title="Open search"
-          >
-            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <span className="font-mono text-[8px] font-medium text-white/80">
-              {searchShortcut ?? "..."}
-            </span>
-          </button>
-
-          {/* Row 2, Col 1: Audio animation */}
-          <div className="border-t border-white/10 px-1 py-0.5 min-w-0 overflow-hidden">
-            <AudioEqualizer
-              active={overlayData.audioActive}
-              speechRatio={overlayData.speechRatio}
-            />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                commands.showWindow("Main");
+                emit("open-search");
+                posthog.capture("shortcut_reminder_search_clicked");
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex items-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="Open search"
+            >
+              <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50 shrink-0">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span className="font-mono text-[8px] font-medium text-white/80 whitespace-nowrap">
+                {searchShortcut ?? "..."}
+              </span>
+            </button>
           </div>
 
-          {/* Row 2, Col 2: Screen animation */}
-          <div className="border-t border-white/10 border-x border-white/20 px-1 py-0.5 min-w-0 overflow-hidden">
-            <ScreenMatrix
-              active={overlayData.screenActive}
-              captureFps={overlayData.captureFps}
-              ocrPulseTimestamp={overlayData.ocrPulseTimestamp}
-            />
-          </div>
+          {/* Row 2: Status + close */}
+          <div className="flex border-t border-white/10">
+            <div className="flex-1 px-1 py-0.5 min-w-0 overflow-hidden">
+              <AudioEqualizer
+                active={overlayData.audioActive}
+                speechRatio={overlayData.speechRatio}
+              />
+            </div>
 
-          {/* Row 2, Col 3: Close button */}
-          <button
-            onClick={handleClose}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            className="flex items-center justify-center border-t border-white/10 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
-            title="Hide shortcut reminder"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <X className="h-2 w-2 text-white/40 hover:text-white" />
-          </button>
+            <div className="flex-1 border-x border-white/20 px-1 py-0.5 min-w-0 overflow-hidden">
+              <ScreenMatrix
+                active={overlayData.screenActive}
+                captureFps={overlayData.captureFps}
+                ocrPulseTimestamp={overlayData.ocrPulseTimestamp}
+              />
+            </div>
+
+            <button
+              onClick={handleClose}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              className="flex items-center justify-center px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+              title="Hide shortcut reminder"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              <X className="h-2 w-2 text-white/40 hover:text-white" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
