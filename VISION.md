@@ -31,7 +31,7 @@ We build the layer that gives AI full context of human work so it can act autono
 ## Engineering principles
 
 - **Ship daily.** Small, focused changes. Every commit should be deployable.
-- **Fix the funnel before adding features.** Permission loss, onboarding drops, version fragmentation — these kill growth silently.
+- **Simple yet powerful abstractions.** Use your own brain to write the spec, then use AI to execute.
 - **Local-first always.** Data never leaves the device unless the user explicitly opts in (cloud sync, cloud archive). Encryption is zero-knowledge.
 - **Cross-platform.** If it doesn't work on macOS, Windows, and Linux, it's not done.
 - **Open source by default.** Trust is earned through transparency.
