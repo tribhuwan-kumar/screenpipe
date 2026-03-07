@@ -222,10 +222,19 @@ function useSuggestions(isOpen: boolean) {
   return { suggestions, isLoading };
 }
 
-// Frame thumbnail component with loading state
+// Frame thumbnail component with loading state and retry logic
 const FrameThumbnail = ({ frameId, alt }: { frameId: number; alt: string }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [src, setSrc] = useState(`http://localhost:3030/frames/${frameId}`);
+  const retryCount = useRef(0);
+
+  useEffect(() => {
+    setSrc(`http://localhost:3030/frames/${frameId}`);
+    setIsLoading(true);
+    setHasError(false);
+    retryCount.current = 0;
+  }, [frameId]);
 
   return (
     <div className="aspect-video bg-muted relative overflow-hidden">
@@ -241,7 +250,7 @@ const FrameThumbnail = ({ frameId, alt }: { frameId: number; alt: string }) => {
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`http://localhost:3030/frames/${frameId}`}
+          src={src}
           alt={alt}
           className={cn(
             "w-full h-full object-cover transition-opacity",
@@ -250,8 +259,15 @@ const FrameThumbnail = ({ frameId, alt }: { frameId: number; alt: string }) => {
           loading="lazy"
           onLoad={() => setIsLoading(false)}
           onError={() => {
-            setIsLoading(false);
-            setHasError(true);
+            if (retryCount.current < 3) {
+              retryCount.current += 1;
+              setTimeout(() => {
+                setSrc(`http://localhost:3030/frames/${frameId}?retry=${retryCount.current}`);
+              }, 1000 * retryCount.current);
+            } else {
+              setIsLoading(false);
+              setHasError(true);
+            }
           }}
         />
       )}
