@@ -1382,6 +1382,16 @@ async fn main() {
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.set_always_on_top(false);
                 let _ = window.set_visible_on_all_workspaces(false);
+
+                // Settings window on macOS: prevent close but do NOT hide.
+                // macOS sends spurious CloseRequested during workspace swipes
+                // and hiding the window makes it disappear when swiping back.
+                #[cfg(target_os = "macos")]
+                if window.label() == "settings" {
+                    api.prevent_close();
+                    return;
+                }
+
                 #[cfg(target_os = "macos")]
                 crate::window_api::reset_to_regular_and_refresh_tray(window.app_handle());
                 // On Windows, let the settings window close normally when user
