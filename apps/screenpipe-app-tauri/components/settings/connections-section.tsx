@@ -520,24 +520,20 @@ interface IntegrationInfo {
   connected: boolean;
 }
 
-const INTEGRATION_ICONS: Record<string, string> = {
-  telegram: "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
-  slack: "https://upload.wikimedia.org/wikipedia/commons/d/d5/Slack_icon_2019.svg",
-  discord: "https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a69f118df70ad7828d4_icon_clyde_blurple_RGB.svg",
-  email: "",
-  todoist: "https://upload.wikimedia.org/wikipedia/commons/2/2e/Todoist_logo.svg",
-  teams: "https://upload.wikimedia.org/wikipedia/commons/c/c9/Microsoft_Office_Teams_%282018%E2%80%93present%29.svg",
+const INTEGRATION_EMOJI: Record<string, string> = {
+  telegram: "✈️",
+  slack: "#",
+  discord: "🎮",
+  email: "✉️",
+  todoist: "✅",
+  teams: "👥",
 };
 
 function IntegrationIcon({ icon }: { icon: string }) {
-  const url = INTEGRATION_ICONS[icon];
-  if (url) {
-    return <img src={url} alt={icon} className="w-10 h-10 rounded-2xl" />;
-  }
-  // Email fallback
+  const emoji = INTEGRATION_EMOJI[icon];
   return (
-    <div className="w-10 h-10 bg-muted rounded-2xl flex items-center justify-center">
-      <Send className="h-5 w-5 text-muted-foreground" />
+    <div className="w-10 h-10 bg-muted rounded-2xl flex items-center justify-center text-lg">
+      {emoji || <Send className="h-5 w-5 text-muted-foreground" />}
     </div>
   );
 }
@@ -599,18 +595,12 @@ function PipeIntegrationCard({ integration, onRefresh }: {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-sm font-semibold text-foreground">{integration.name}</h3>
-              <span className="px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground rounded-full">
-                {integration.category}
-              </span>
               {integration.connected && (
                 <span className="px-2 py-0.5 text-xs font-medium bg-foreground text-background rounded-full">
                   connected
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              {integration.description}
-            </p>
 
             {!editing ? (
               <div className="flex flex-wrap gap-2">
@@ -720,14 +710,6 @@ function PipeIntegrationsSection() {
 
   return (
     <>
-      <div className="space-y-1 mt-6">
-        <h2 className="text-sm font-semibold text-foreground">
-          Pipe Integrations
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Connect notification channels so your pipes can send you messages
-        </p>
-      </div>
       {integrations.map((integration) => (
         <PipeIntegrationCard
           key={integration.id}
