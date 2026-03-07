@@ -274,6 +274,8 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const { inputRef, inputElRef, focusInput } = useSearchFocus(isOpen);
   const gridRef = useRef<HTMLDivElement>(null);
+  // Bump to force search effect re-run (fixes stale debouncedQuery after modal reopen)
+  const [searchEpoch, setSearchEpoch] = useState(0);
 
   // Speaker search state
   const [speakerResults, setSpeakerResults] = useState<SpeakerResult[]>([]);
@@ -354,7 +356,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   // Async facet loading — fires a lightweight SQL aggregation query
   useEffect(() => {
     const q = debouncedQuery.trim();
-    if (!q || q.startsWith("#") || q.startsWith("@")) {
+    if (!q || q.length < 3 || q.startsWith("#") || q.startsWith("@")) {
       setFacetApps([]);
       setFacetDomains([]);
       setFacetTimeRanges([]);
@@ -449,7 +451,8 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     }).catch(() => {}).finally(onFacetDone);
 
     return () => { cancelled = true; setFacetsLoading(false); };
-  }, [debouncedQuery, buildTimeRanges]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, buildTimeRanges, searchEpoch]);
 
   // Speaker time ranges (from loaded transcriptions — these are small enough)
   const speakerTimeRanges = useMemo(() => {
@@ -555,6 +558,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       setSelectedIndex(0);
       setQuery("");
       resetSearch();
+      setSearchEpoch(e => e + 1);
       clearHighlight();
       setAppFilter(null);
       setDomainFilter(null);
@@ -575,7 +579,8 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
 
   // Perform search when query changes
   useEffect(() => {
-    if (!debouncedQuery.trim()) {
+    const q = debouncedQuery.trim();
+    if (!q || q.startsWith("#") || q.startsWith("@")) {
       resetSearch();
       setSpeakerResults([]);
       setTagResults([]);
@@ -585,12 +590,8 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       return;
     }
 
-    // Skip keyword search for # and @ queries (handled by dedicated effects)
-    if (debouncedQuery.startsWith("#") || debouncedQuery.startsWith("@")) {
-      resetSearch();
-      setSpeakerResults([]);
-      return;
-    }
+    // Require at least 3 chars to avoid wasteful FTS queries while typing
+    if (q.length < 3) return;
 
     setAppFilter(null);
     setDomainFilter(null);
@@ -603,7 +604,8 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       limit: OCR_PAGE_SIZE,
       offset: 0,
     });
-  }, [debouncedQuery, searchKeywords, resetSearch]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, searchKeywords, resetSearch, searchEpoch]);
 
   // Search tags when query starts with #
   useEffect(() => {
@@ -1016,7 +1018,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   if (!isOpen) return null;
 
   const hasResults = searchResults.length > 0 || speakerResults.length > 0 || tagResults.length > 0 || uiEventResults.length > 0;
-  const showEmpty = !isSearching && !isSearchingSpeakers && !isSearchingTags && !isSearchingUiEvents && debouncedQuery && !hasResults && !selectedSpeaker && !isTagSearch && !isPeopleSearch;
+  const showEmpty = !isSearching && !isSearchingSpeakers && !isSearchingTags && !isSearchingUiEvents && debouncedQuery && debouncedQuery.trim().length >= 3 && !hasResults && !selectedSpeaker && !isTagSearch && !isPeopleSearch;
   const activeIndex = hoveredIndex ?? selectedIndex;
 
   const renderResults = () => (
