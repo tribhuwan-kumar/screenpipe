@@ -117,6 +117,10 @@ impl PiExecutor {
                 "screenpipe-elements",
                 include_str!("../../assets/skills/screenpipe-elements/SKILL.md"),
             ),
+            (
+                "screenpipe-pipes",
+                include_str!("../../assets/skills/screenpipe-pipes/SKILL.md"),
+            ),
         ];
 
         for (name, content) in skills {
@@ -192,6 +196,11 @@ impl PiExecutor {
                 "screenpipe-elements",
                 include_str!("../../assets/skills/screenpipe-elements/SKILL.md"),
                 Box::new(|p: &PipePermissions| p.is_content_type_allowed("accessibility")),
+            ),
+            (
+                "screenpipe-pipes",
+                include_str!("../../assets/skills/screenpipe-pipes/SKILL.md"),
+                Box::new(|_| true), // always installed — pipe management is always available
             ),
         ];
 

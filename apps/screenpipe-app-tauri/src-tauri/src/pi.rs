@@ -499,6 +499,10 @@ fn ensure_screenpipe_skill(project_dir: &str) -> Result<(), String> {
             "screenpipe-elements",
             include_str!("../assets/skills/screenpipe-elements/SKILL.md"),
         ),
+        (
+            "screenpipe-pipes",
+            include_str!("../assets/skills/screenpipe-pipes/SKILL.md"),
+        ),
     ];
 
     for (name, content) in skills {
