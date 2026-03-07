@@ -1734,6 +1734,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             });
           }
           if (!isPipeWatch) {
+            posthog.capture("chat_response_received", {
+              provider: activePreset?.provider,
+              model: activePreset?.model,
+              has_tool_use: blocksSnapshot.some((b) => b.type === "tool"),
+              response_length: streamedText?.length ?? 0,
+            });
             piStreamingTextRef.current = "";
             piMessageIdRef.current = null;
             piContentBlocksRef.current = [];
@@ -1781,6 +1787,15 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               );
             }
           }
+          const errorCategory = errorStr.includes("daily_limit") ? "daily_limit"
+            : errorStr.includes("rate limit") || errorStr.includes("429") ? "rate_limit"
+            : errorStr.includes("model_not_allowed") ? "model_not_allowed"
+            : "other";
+          posthog.capture("chat_response_error", {
+            provider: activePreset?.provider,
+            model: activePreset?.model,
+            error_type: errorCategory,
+          });
           piStreamingTextRef.current = "";
           if (piMessageIdRef.current?.startsWith("pipe-")) setActivePipeExecution(null);
           piMessageIdRef.current = null;
@@ -2258,6 +2273,14 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     if (inputRef.current) inputRef.current.style.height = "auto";
     setIsLoading(true);
     setIsStreaming(true);
+
+    posthog.capture("chat_message_sent", {
+      provider: activePreset?.provider,
+      model: activePreset?.model,
+      has_images: pastedImages.length > 0 || !!prefillFrameId,
+      has_context: !!prefillContext,
+      message_index: messages.filter((m) => m.role === "user").length,
+    });
 
     const timeoutId = setTimeout(() => {
       if (piMessageIdRef.current === assistantMessageId) {
