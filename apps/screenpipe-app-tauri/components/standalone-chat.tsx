@@ -2621,8 +2621,31 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         <Button
           variant="default"
           size="sm"
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation();
+            // Kill Pi process if busy, then restart fresh
+            if (piInfo?.running && (isLoading || isStreaming)) {
+              piStoppedIntentionallyRef.current = true;
+              try { await commands.piStop(PI_CHAT_SESSION); } catch {}
+              piStreamingTextRef.current = "";
+              piMessageIdRef.current = null;
+              piContentBlocksRef.current = [];
+              setIsLoading(false);
+              setIsStreaming(false);
+              // Restart Pi fresh
+              try {
+                const providerConfig = buildProviderConfig();
+                const home = await homeDir();
+                const dir = await join(home, ".screenpipe", "pi-chat");
+                const result = await commands.piStart(PI_CHAT_SESSION, dir, settings.user?.token ?? null, providerConfig);
+                if (result.status === "ok") {
+                  setPiInfo(result.data);
+                  piSessionSyncedRef.current = true;
+                }
+              } catch (err) {
+                console.warn("[Pi] Failed to restart after new chat:", err);
+              }
+            }
             startNewConversation();
           }}
           className="h-7 px-3 gap-1.5 text-xs bg-foreground text-background hover:bg-background hover:text-foreground transition-colors duration-150"
