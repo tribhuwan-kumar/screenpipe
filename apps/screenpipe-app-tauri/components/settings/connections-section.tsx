@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search } from "lucide-react";
+import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Sparkles, Calendar as CalendarIcon, Rss, Cloud } from "lucide-react";
 import { commands } from "@/lib/utils/tauri";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -185,6 +185,20 @@ function IntegrationIcon({ icon }: { icon: string }) {
         <path d="M20.32 4.37a19.8 19.8 0 00-4.89-1.52.07.07 0 00-.08.04c-.21.38-.44.87-.6 1.25a18.27 18.27 0 00-5.49 0 12.64 12.64 0 00-.62-1.25.08.08 0 00-.08-.04 19.74 19.74 0 00-4.89 1.52.07.07 0 00-.03.03C1.11 8.39.34 12.27.74 16.1a.08.08 0 00.03.06 19.9 19.9 0 005.99 3.03.08.08 0 00.08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 00-.04-.11 13.1 13.1 0 01-1.87-.9.08.08 0 01-.01-.13c.13-.09.25-.19.37-.29a.08.08 0 01.08-.01c3.93 1.79 8.18 1.79 12.07 0a.08.08 0 01.08.01c.12.1.25.2.37.29a.08.08 0 01 0 .13c-.6.35-1.22.65-1.87.9a.08.08 0 00-.04.1c.36.7.77 1.37 1.22 2a.08.08 0 00.08.03 19.83 19.83 0 006-3.03.08.08 0 00.04-.05c.46-4.54-.78-8.38-3.36-11.77a.06.06 0 00-.03-.03zM8.02 13.72c-1.02 0-1.86-.93-1.86-2.08s.82-2.08 1.86-2.08c1.05 0 1.88.94 1.86 2.08 0 1.15-.82 2.08-1.86 2.08zm6.88 0c-1.02 0-1.86-.93-1.86-2.08s.82-2.08 1.86-2.08c1.05 0 1.88.94 1.86 2.08 0 1.15-.81 2.08-1.86 2.08z"/>
       </svg>
     ),
+    "apple-intelligence": <Sparkles className="h-5 w-5 text-muted-foreground" />,
+    "apple-calendar": <CalendarIcon className="h-5 w-5 text-muted-foreground" />,
+    "google-calendar": (
+      <svg viewBox="0 0 24 24" className="w-5 h-5">
+        <path fill="#4285F4" d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12s4.48 10 10 10 10-4.48 10-10z" opacity=".1"/>
+        <path fill="#4285F4" d="M17 12h-4V8h-2v4H7v2h4v4h2v-4h4z" opacity=".6"/>
+        <path fill="#EA4335" d="M12 2C6.48 2 2 6.48 2 12h2a8 8 0 018-8V2z"/>
+        <path fill="#FBBC04" d="M22 12c0-5.52-4.48-10-10-10v2a8 8 0 018 8h2z"/>
+        <path fill="#34A853" d="M12 22c5.52 0 10-4.48 10-10h-2a8 8 0 01-8 8v2z"/>
+        <path fill="#4285F4" d="M2 12c0 5.52 4.48 10 10 10v-2a8 8 0 01-8-8H2z"/>
+      </svg>
+    ),
+    "ics-calendar": <Rss className="h-5 w-5 text-muted-foreground" />,
+    openclaw: <Cloud className="h-5 w-5 text-muted-foreground" />,
     email: <Send className="h-5 w-5 text-muted-foreground" />,
     todoist: (
       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#E44332">
@@ -561,6 +575,11 @@ export function ConnectionsSection() {
       { id: "cursor", name: "Cursor", icon: "cursor", connected: cursorInstalled },
       { id: "claude-code", name: "Claude Code", icon: "claude-code", connected: false },
       { id: "chatgpt", name: "ChatGPT", icon: "chatgpt", connected: chatgptConnected },
+      { id: "apple-intelligence", name: "Apple Intelligence", icon: "apple-intelligence", connected: false },
+      { id: "apple-calendar", name: "Apple Calendar", icon: "apple-calendar", connected: false },
+      { id: "google-calendar", name: "Google Calendar", icon: "google-calendar", connected: false },
+      { id: "ics-calendar", name: "ICS Calendar", icon: "ics-calendar", connected: false },
+      { id: "openclaw", name: "OpenClaw", icon: "openclaw", connected: false },
     ];
     const apiTiles: ConnectionTile[] = integrations.map(i => ({
       id: i.id, name: i.name, icon: i.icon, connected: i.connected,
@@ -583,6 +602,11 @@ export function ConnectionsSection() {
       case "cursor": return <CursorPanel />;
       case "claude-code": return <ClaudeCodePanel />;
       case "chatgpt": return <ChatGptPanel />;
+      case "apple-intelligence": return <AppleIntelligenceCard />;
+      case "apple-calendar": return <CalendarCard />;
+      case "google-calendar": return <GoogleCalendarCard />;
+      case "ics-calendar": return <IcsCalendarCard />;
+      case "openclaw": return <OpenClawCard />;
       default:
         if (selectedIntegration) {
           return <ApiIntegrationPanel integration={selectedIntegration} onRefresh={fetchIntegrations} />;
@@ -624,39 +648,33 @@ export function ConnectionsSection() {
       </div>
 
       {/* Expanded panel */}
-      {selected && selectedTile && (
-        <Card className="border-border bg-card">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3 mb-4">
-              <IntegrationIcon icon={selectedTile.icon} />
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{selectedTile.name}</h3>
-                {selectedTile.connected && (
-                  <span className="text-xs text-green-600">connected</span>
-                )}
+      {selected && selectedTile && (() => {
+        const standaloneIds = ["apple-intelligence", "apple-calendar", "google-calendar", "ics-calendar", "openclaw"];
+        if (standaloneIds.includes(selected)) {
+          // These components render their own Card
+          return renderPanel();
+        }
+        return (
+          <Card className="border-border bg-card">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <IntegrationIcon icon={selectedTile.icon} />
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">{selectedTile.name}</h3>
+                  {selectedTile.connected && (
+                    <span className="text-xs text-green-600">connected</span>
+                  )}
+                </div>
+                <button onClick={() => setSelected(null)} className="ml-auto text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <button onClick={() => setSelected(null)} className="ml-auto text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            {renderPanel()}
-          </CardContent>
-        </Card>
-      )}
+              {renderPanel()}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
-      {/* Standalone cards (Apple Intelligence, Calendars, OpenClaw) */}
-      <AppleIntelligenceCard />
-      <CalendarCard />
-      <GoogleCalendarCard />
-      <IcsCalendarCard />
-      <OpenClawCard />
-
-      <button
-        onClick={() => openUrl("https://docs.screenpi.pe")}
-        className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors text-center py-2"
-      >
-        docs.screenpi.pe
-      </button>
     </div>
   );
 }
