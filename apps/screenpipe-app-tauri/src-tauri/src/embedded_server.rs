@@ -420,16 +420,19 @@ pub async fn start_embedded_server(
         pipe_store,
         config.port,
     );
-    pipe_manager.set_on_run_complete(std::sync::Arc::new(|pipe_name, success, duration_secs| {
-        analytics::capture_event_nonblocking(
-            "pipe_scheduled_run",
-            serde_json::json!({
+    pipe_manager.set_on_run_complete(std::sync::Arc::new(
+        |pipe_name, success, duration_secs, error_type| {
+            let mut props = serde_json::json!({
                 "pipe": pipe_name,
                 "success": success,
                 "duration_secs": duration_secs,
-            }),
-        );
-    }));
+            });
+            if let Some(et) = error_type {
+                props["error_type"] = serde_json::Value::String(et.to_string());
+            }
+            analytics::capture_event_nonblocking("pipe_scheduled_run", props);
+        },
+    ));
     if let Some(cb) = on_pipe_output {
         pipe_manager.set_on_output_line(cb);
     }
