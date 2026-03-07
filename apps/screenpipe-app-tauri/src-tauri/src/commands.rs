@@ -700,10 +700,10 @@ pub async fn show_shortcut_reminder(
 
     info!("show_shortcut_reminder called");
 
-    // Window dimensions: 2-row layout (shortcuts + activity visualization)
-    // Keep tight — content is ~150px wide; extra space causes visible gap on some displays.
-    let window_width = 170.0;
-    let window_height = 40.0;
+    // Window dimensions: 2-row grid (3 shortcuts + activity viz)
+    // 3 columns: timeline, chat, search — tight padding to stay compact.
+    let window_width = 190.0;
+    let window_height = 36.0;
 
     // Position at top center of the screen where the cursor is
     let (x, y) = {
