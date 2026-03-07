@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { readTextFile } from "@tauri-apps/plugin-fs";
@@ -188,7 +188,8 @@ export default function ShortcutReminderPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              commands.openSearchWindow(null);
+              commands.showWindow("Main");
+              emit("open-search");
               posthog.capture("shortcut_reminder_search_clicked");
             }}
             onMouseDown={(e) => e.stopPropagation()}
@@ -206,7 +207,7 @@ export default function ShortcutReminderPage() {
           </button>
 
           {/* Row 2, Col 1: Audio animation */}
-          <div className="border-t border-white/10 py-0.5 min-w-0 overflow-hidden">
+          <div className="border-t border-white/10 px-1 py-0.5 min-w-0 overflow-hidden">
             <AudioEqualizer
               active={overlayData.audioActive}
               speechRatio={overlayData.speechRatio}
@@ -214,7 +215,7 @@ export default function ShortcutReminderPage() {
           </div>
 
           {/* Row 2, Col 2: Screen animation */}
-          <div className="border-t border-l border-white/10 py-0.5 min-w-0 overflow-hidden">
+          <div className="border-t border-r border-white/20 border-l border-white/20 px-1 py-0.5 min-w-0 overflow-hidden">
             <ScreenMatrix
               active={overlayData.screenActive}
               captureFps={overlayData.captureFps}
@@ -229,7 +230,7 @@ export default function ShortcutReminderPage() {
               e.preventDefault();
               e.stopPropagation();
             }}
-            className="flex items-center justify-center border-t border-white/10 border-l border-white/20 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex items-center justify-center border-t border-white/10 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
             title="Hide shortcut reminder"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
