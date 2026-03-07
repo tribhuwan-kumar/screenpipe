@@ -384,7 +384,7 @@ pub async fn start_embedded_server(
     let mut server = SCServer::new(
         db.clone(),
         SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.port),
-        local_data_dir,
+        local_data_dir.clone(),
         config.disable_vision,
         config.disable_audio,
         audio_manager.clone(),
