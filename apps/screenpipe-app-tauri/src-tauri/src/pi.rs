@@ -476,36 +476,12 @@ fn find_pi_executable() -> Option<String> {
 fn ensure_screenpipe_skill(project_dir: &str) -> Result<(), String> {
     let skills: &[(&str, &str)] = &[
         (
-            "screenpipe-search",
-            include_str!("../assets/skills/screenpipe-search/SKILL.md"),
+            "screenpipe-api",
+            include_str!("../assets/skills/screenpipe-api/SKILL.md"),
         ),
         (
-            "screenpipe-pipe-creator",
-            include_str!("../assets/skills/screenpipe-pipe-creator/SKILL.md"),
-        ),
-        (
-            "screenpipe-media",
-            include_str!("../assets/skills/screenpipe-media/SKILL.md"),
-        ),
-        (
-            "screenpipe-retranscribe",
-            include_str!("../assets/skills/screenpipe-retranscribe/SKILL.md"),
-        ),
-        (
-            "screenpipe-analytics",
-            include_str!("../assets/skills/screenpipe-analytics/SKILL.md"),
-        ),
-        (
-            "screenpipe-elements",
-            include_str!("../assets/skills/screenpipe-elements/SKILL.md"),
-        ),
-        (
-            "screenpipe-pipes",
-            include_str!("../assets/skills/screenpipe-pipes/SKILL.md"),
-        ),
-        (
-            "screenpipe-connections",
-            include_str!("../assets/skills/screenpipe-connections/SKILL.md"),
+            "screenpipe-cli",
+            include_str!("../assets/skills/screenpipe-cli/SKILL.md"),
         ),
     ];
 
@@ -912,7 +888,7 @@ pub async fn pi_start_inner(
     std::fs::create_dir_all(&project_dir)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
 
-    // Ensure screenpipe-search skill exists in project
+    // Ensure screenpipe skills exist in project
     ensure_screenpipe_skill(&project_dir)?;
 
     // Install web-search extension only for screenpipe-cloud presets
