@@ -207,29 +207,27 @@ export default function ShortcutReminderPage() {
           </div>
 
           {/* Row 2: Status + close */}
-          <div className="flex border-t border-white/10">
-            <div className="flex-1 px-1 py-0.5 min-w-0 overflow-hidden">
+          <div className="flex items-center border-t border-white/10 px-1 py-0.5 gap-1">
+            <div className="min-w-0 overflow-hidden">
               <AudioEqualizer
                 active={overlayData.audioActive}
                 speechRatio={overlayData.speechRatio}
               />
             </div>
-
-            <div className="flex-1 border-x border-white/20 px-1 py-0.5 min-w-0 overflow-hidden">
+            <div className="min-w-0 overflow-hidden">
               <ScreenMatrix
                 active={overlayData.screenActive}
                 captureFps={overlayData.captureFps}
                 ocrPulseTimestamp={overlayData.ocrPulseTimestamp}
               />
             </div>
-
             <button
               onClick={handleClose}
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
               }}
-              className="flex items-center justify-center px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+              className="flex items-center justify-center ml-auto hover:bg-white/10 transition-colors cursor-pointer"
               title="Hide shortcut reminder"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
