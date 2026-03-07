@@ -3654,7 +3654,7 @@ dependencies = [
  "percent-encoding",
  "quoted_printable",
  "rustls",
- "socket2 0.6.2",
+ "socket2 0.6.3",
  "tokio",
  "tokio-rustls",
  "url",

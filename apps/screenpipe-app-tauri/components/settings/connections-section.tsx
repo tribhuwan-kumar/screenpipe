@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Calendar as CalendarIcon } from "lucide-react";
+import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Calendar as CalendarIcon, Eye, EyeOff } from "lucide-react";
 import { commands } from "@/lib/utils/tauri";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -185,35 +185,11 @@ function IntegrationIcon({ icon }: { icon: string }) {
         <path d="M20.32 4.37a19.8 19.8 0 00-4.89-1.52.07.07 0 00-.08.04c-.21.38-.44.87-.6 1.25a18.27 18.27 0 00-5.49 0 12.64 12.64 0 00-.62-1.25.08.08 0 00-.08-.04 19.74 19.74 0 00-4.89 1.52.07.07 0 00-.03.03C1.11 8.39.34 12.27.74 16.1a.08.08 0 00.03.06 19.9 19.9 0 005.99 3.03.08.08 0 00.08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 00-.04-.11 13.1 13.1 0 01-1.87-.9.08.08 0 01-.01-.13c.13-.09.25-.19.37-.29a.08.08 0 01.08-.01c3.93 1.79 8.18 1.79 12.07 0a.08.08 0 01.08.01c.12.1.25.2.37.29a.08.08 0 01 0 .13c-.6.35-1.22.65-1.87.9a.08.08 0 00-.04.1c.36.7.77 1.37 1.22 2a.08.08 0 00.08.03 19.83 19.83 0 006-3.03.08.08 0 00.04-.05c.46-4.54-.78-8.38-3.36-11.77a.06.06 0 00-.03-.03zM8.02 13.72c-1.02 0-1.86-.93-1.86-2.08s.82-2.08 1.86-2.08c1.05 0 1.88.94 1.86 2.08 0 1.15-.82 2.08-1.86 2.08zm6.88 0c-1.02 0-1.86-.93-1.86-2.08s.82-2.08 1.86-2.08c1.05 0 1.88.94 1.86 2.08 0 1.15-.81 2.08-1.86 2.08z"/>
       </svg>
     ),
-    "apple-intelligence": (
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-      </svg>
-    ),
-    "apple-calendar": (
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-      </svg>
-    ),
-    "google-calendar": (
-      <svg viewBox="0 0 200 200" className="w-5 h-5">
-        <path fill="#fff" d="M152.637 200H47.363C21.202 200 0 178.798 0 152.637V47.363C0 21.202 21.202 0 47.363 0h105.273C178.798 0 200 21.202 200 47.363v105.273C200 178.798 178.798 200 152.637 200z"/>
-        <path fill="#1a73e8" d="M152.637 200H47.363C21.202 200 0 178.798 0 152.637V47.363C0 21.202 21.202 0 47.363 0h105.273C178.798 0 200 21.202 200 47.363v105.273C200 178.798 178.798 200 152.637 200z" opacity=".05"/>
-        <path fill="#ea4335" d="M152.637 0h-30.318L100 27.682V47.37h52.637c5.248 0 9.498 4.25 9.498 9.497v43.14L200 77.684V47.363C200 21.202 178.798 0 152.637 0z"/>
-        <path fill="#34a853" d="M47.363 200h30.318L100 172.318V152.63H47.363c-5.247 0-9.497-4.25-9.497-9.497V100L0 122.322v30.315C0 178.798 21.202 200 47.363 200z"/>
-        <path fill="#4285f4" d="M200 47.363v30.318L162.135 100v52.637c0 5.247-4.25 9.497-9.498 9.497H100l22.319 37.866h30.318C178.798 200 200 178.798 200 152.637z"/>
-        <path fill="#188038" d="M37.866 100v43.133c0 5.247 4.25 9.497 9.497 9.497H100v-52.63z"/>
-        <path fill="#fbbc04" d="M100 47.37H47.363c-5.247 0-9.497 4.25-9.497 9.497V100h62.134zM0 152.637v-30.315L37.866 100V47.363c0-5.247 4.25-9.497 9.497-9.497H100L77.681 0H47.363C21.202 0 0 21.202 0 47.363z"/>
-        <path fill="#1a73e8" d="M162.135 100V56.867c0-5.247-4.25-9.497-9.498-9.497H100V100z"/>
-        <text x="100" y="135" textAnchor="middle" fill="#1a73e8" fontFamily="Arial,sans-serif" fontSize="80" fontWeight="bold">31</text>
-      </svg>
-    ),
+    "apple-intelligence": <img src="/images/apple-intelligence.png" alt="Apple Intelligence" className="w-5 h-5 rounded" />,
+    "apple-calendar": <img src="/images/apple.svg" alt="Apple" className="w-5 h-5 dark:invert" />,
+    "google-calendar": <img src="/images/google-calendar.svg" alt="Google Calendar" className="w-5 h-5" />,
     "ics-calendar": <CalendarIcon className="h-5 w-5 text-muted-foreground" />,
-    openclaw: (
-      <svg viewBox="0 0 24 24" className="w-5 h-5">
-        <path fill="#E8453C" d="M12 2C8.5 2 6 4.5 6 7c0 1.5.7 2.8 1.8 3.7L6 12l-2-1c-.6-.3-1.2.3-.9.9l2 4c.2.4.1.8-.2 1.1L3 19c-.4.4-.1 1.1.5 1.1h4c.3 0 .6-.1.8-.4l1.7-2.5c.6.2 1.3.3 2 .3s1.4-.1 2-.3l1.7 2.5c.2.3.5.4.8.4h4c.6 0 .9-.7.5-1.1l-1.9-2c-.3-.3-.4-.7-.2-1.1l2-4c.3-.6-.3-1.2-.9-.9l-2 1-1.8-1.3C17.3 9.8 18 8.5 18 7c0-2.5-2.5-5-6-5zm-2.5 5a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm4 0a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/>
-      </svg>
-    ),
+    openclaw: <img src="/images/openclaw.png" alt="OpenClaw" className="w-5 h-5" />,
     email: <Send className="h-5 w-5 text-muted-foreground" />,
     todoist: (
       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#E44332">
@@ -276,7 +252,7 @@ function Tile({ tile, selected, onClick }: {
 // Expanded panels for each connection type
 // ---------------------------------------------------------------------------
 
-function ClaudePanel() {
+function ClaudePanel({ onConnected }: { onConnected?: () => void }) {
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">("idle");
   const [versionInfo, setVersionInfo] = useState<McpVersionInfo>({ available: null, installed: null });
 
@@ -303,6 +279,7 @@ function ClaudePanel() {
       if (os === "macos") await Command.create("open", [mcpbPath]).execute();
       else if (os === "windows") await Command.create("cmd", ["/c", "start", "", mcpbPath]).execute();
       setDownloadState("downloaded");
+      onConnected?.();
     } catch (error) {
       console.error("failed to install claude mcp:", error instanceof Error ? error.message : String(error));
       await message(
@@ -331,18 +308,18 @@ function ClaudePanel() {
         Search your screen recordings and audio with natural language.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={handleConnect} disabled={downloadState === "downloading"} size="sm" className="gap-1.5 h-7 text-xs">
-          {downloadState === "downloading" ? (<><Loader2 className="h-3 w-3 animate-spin" />Connecting...</>)
-           : downloadState === "downloaded" || versionInfo.installed ? (<><Check className="h-3 w-3" />{downloadState === "downloaded" ? "Connected" : "Reconnect"}</>)
-           : (<><Download className="h-3 w-3" />Connect</>)}
+        <Button onClick={handleConnect} disabled={downloadState === "downloading"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          {downloadState === "downloading" ? (<><Loader2 className="h-3 w-3 animate-spin" />connecting...</>)
+           : downloadState === "downloaded" || versionInfo.installed ? (<><Check className="h-3 w-3" />{downloadState === "downloaded" ? "connected" : "reconnect"}</>)
+           : (<><Download className="h-3 w-3" />connect</>)}
         </Button>
-        <Button variant="outline" onClick={openClaude} size="sm" className="gap-1.5 h-7 text-xs">
-          <ExternalLink className="h-3 w-3" />Open Claude
+        <Button variant="outline" onClick={openClaude} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          <ExternalLink className="h-3 w-3" />open claude
         </Button>
       </div>
       {downloadState === "downloaded" && (
         <div className="p-3 bg-muted border border-border rounded-lg">
-          <p className="text-xs"><strong>Connected!</strong> Restart Claude if it was running. Try: &quot;What did I do in the last 5 minutes?&quot;</p>
+          <p className="text-xs"><strong>connected!</strong> restart claude if it was running. try: &quot;what did I do in the last 5 minutes?&quot;</p>
         </div>
       )}
     </div>
@@ -382,13 +359,13 @@ function CursorPanel() {
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">Give Cursor access to your screen &amp; audio history via MCP.</p>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={handleConnect} disabled={state === "installing"} size="sm" className="gap-1.5 h-7 text-xs">
-          {state === "installing" ? (<><Loader2 className="h-3 w-3 animate-spin" />Installing...</>)
-           : state === "installed" ? (<><Check className="h-3 w-3" />Connected</>)
-           : (<><Download className="h-3 w-3" />Connect</>)}
+        <Button onClick={handleConnect} disabled={state === "installing"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          {state === "installing" ? (<><Loader2 className="h-3 w-3 animate-spin" />installing...</>)
+           : state === "installed" ? (<><Check className="h-3 w-3" />connected</>)
+           : (<><Download className="h-3 w-3" />connect</>)}
         </Button>
-        <Button variant="outline" onClick={openCursor} size="sm" className="gap-1.5 h-7 text-xs">
-          <ExternalLink className="h-3 w-3" />Open Cursor
+        <Button variant="outline" onClick={openCursor} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          <ExternalLink className="h-3 w-3" />open cursor
         </Button>
       </div>
     </div>
@@ -432,8 +409,8 @@ function ChatGptPanel() {
       <p className="text-xs text-muted-foreground">Use your ChatGPT Plus/Pro subscription as an AI provider. No API key needed.</p>
       <div className="flex flex-wrap gap-2">
         {status === "logged_in" ? (
-          <Button onClick={async () => { setStatus("loading"); await commands.chatgptOauthLogout(); setStatus("idle"); }} variant="outline" size="sm" className="gap-1.5 h-7 text-xs">
-            <LogOut className="h-3 w-3" />Disconnect
+          <Button onClick={async () => { setStatus("loading"); await commands.chatgptOauthLogout(); setStatus("idle"); }} variant="outline" size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+            <LogOut className="h-3 w-3" />disconnect
           </Button>
         ) : (
           <Button onClick={async () => {
@@ -442,8 +419,8 @@ function ChatGptPanel() {
               const res = await commands.chatgptOauthLogin();
               setStatus(res.status === "ok" && res.data ? "logged_in" : "idle");
             } catch { setStatus("idle"); }
-          }} disabled={status === "loading"} size="sm" className="gap-1.5 h-7 text-xs">
-            {status === "loading" ? (<><Loader2 className="h-3 w-3 animate-spin" />Connecting...</>) : (<><LogIn className="h-3 w-3" />Sign in with ChatGPT</>)}
+          }} disabled={status === "loading"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+            {status === "loading" ? (<><Loader2 className="h-3 w-3 animate-spin" />connecting...</>) : (<><LogIn className="h-3 w-3" />sign in with ChatGPT</>)}
           </Button>
         )}
       </div>
@@ -478,8 +455,26 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
   onRefresh: () => void;
 }) {
   const [creds, setCreds] = useState<Record<string, string>>({});
+  const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<"idle" | "testing" | "saving" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (integration.connected) {
+      fetch(`http://localhost:3030/connections/${integration.id}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.credentials) {
+            const loaded: Record<string, string> = {};
+            for (const [k, v] of Object.entries(data.credentials)) {
+              if (typeof v === "string") loaded[k] = v;
+            }
+            setCreds(loaded);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [integration.id, integration.connected]);
 
   const handleTest = async () => {
     setStatus("testing");
@@ -501,7 +496,6 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
       const saveData = await saveRes.json();
       if (!saveRes.ok || saveData.error) throw new Error(saveData.error || "save failed");
       setStatus("idle");
-      setCreds({});
       onRefresh();
     } catch (e: any) {
       setError(e?.message || "unknown error");
@@ -512,6 +506,7 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
   const handleDisconnect = async () => {
     try {
       await fetch(`http://localhost:3030/connections/${integration.id}`, { method: "DELETE" });
+      setCreds({});
       onRefresh();
     } catch { /* ignore */ }
   };
@@ -528,25 +523,36 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
               </button>
             )}
           </div>
-          <Input
-            type={field.secret ? "password" : "text"}
-            placeholder={field.placeholder}
-            value={creds[field.key] || ""}
-            onChange={(e) => setCreds(prev => ({ ...prev, [field.key]: e.target.value }))}
-            className="h-8 text-xs"
-          />
+          <div className="relative">
+            <Input
+              type={field.secret && !visible[field.key] ? "password" : "text"}
+              placeholder={field.placeholder}
+              value={creds[field.key] || ""}
+              onChange={(e) => setCreds(prev => ({ ...prev, [field.key]: e.target.value }))}
+              className="h-8 text-xs pr-8"
+            />
+            {field.secret && (
+              <button
+                type="button"
+                onClick={() => setVisible(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {visible[field.key] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            )}
+          </div>
         </div>
       ))}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button onClick={handleTest} disabled={status === "testing" || status === "saving"} size="sm" className="gap-1.5 h-7 text-xs">
-          {status === "testing" ? (<><Loader2 className="h-3 w-3 animate-spin" />Testing...</>)
-           : status === "saving" ? (<><Loader2 className="h-3 w-3 animate-spin" />Saving...</>)
-           : (<><Check className="h-3 w-3" />Test &amp; Save</>)}
+        <Button onClick={handleTest} disabled={status === "testing" || status === "saving"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+          {status === "testing" ? (<><Loader2 className="h-3 w-3 animate-spin" />testing...</>)
+           : status === "saving" ? (<><Loader2 className="h-3 w-3 animate-spin" />saving...</>)
+           : (<><Check className="h-3 w-3" />test &amp; save</>)}
         </Button>
         {integration.connected && (
-          <Button onClick={handleDisconnect} variant="ghost" size="sm" className="gap-1.5 h-7 text-xs text-destructive">
-            <X className="h-3 w-3" />Disconnect
+          <Button onClick={handleDisconnect} variant="ghost" size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal text-destructive">
+            <X className="h-3 w-3" />disconnect
           </Button>
         )}
       </div>
@@ -568,13 +574,20 @@ export function ConnectionsSection() {
   const [cursorInstalled, setCursorInstalled] = useState(false);
   const [chatgptConnected, setChatgptConnected] = useState(false);
 
-  useEffect(() => {
-    getInstalledMcpVersion().then(v => setClaudeInstalled(!!v)).catch(() => {});
+  const refreshStatus = useCallback(() => {
+    getInstalledMcpVersion().then(v => {
+      const installed = !!v || localStorage.getItem("screenpipe_claude_connected") === "true";
+      setClaudeInstalled(installed);
+    }).catch(() => {
+      setClaudeInstalled(localStorage.getItem("screenpipe_claude_connected") === "true");
+    });
     isCursorMcpInstalled().then(setCursorInstalled).catch(() => {});
     commands.chatgptOauthStatus().then(res => {
-      if (res.status === "ok" && res.data.logged_in) setChatgptConnected(true);
+      setChatgptConnected(res.status === "ok" && res.data.logged_in);
     }).catch(() => {});
-  }, [selected]);
+  }, []);
+
+  useEffect(() => { refreshStatus(); }, [selected, refreshStatus]);
 
   const fetchIntegrations = useCallback(async () => {
     try {
@@ -616,7 +629,7 @@ export function ConnectionsSection() {
   const renderPanel = () => {
     if (!selected) return null;
     switch (selected) {
-      case "claude": return <ClaudePanel />;
+      case "claude": return <ClaudePanel onConnected={() => { localStorage.setItem("screenpipe_claude_connected", "true"); setClaudeInstalled(true); }} />;
       case "cursor": return <CursorPanel />;
       case "claude-code": return <ClaudeCodePanel />;
       case "chatgpt": return <ChatGptPanel />;

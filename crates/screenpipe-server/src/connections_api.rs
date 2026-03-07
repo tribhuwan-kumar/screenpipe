@@ -6,7 +6,7 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use screenpipe_integrations::connections::ConnectionManager;
 use serde::Deserialize;
@@ -31,6 +31,22 @@ async fn list_connections(State(cm): State<SharedConnectionManager>) -> Json<Val
     let mgr = cm.lock().await;
     let list = mgr.list();
     Json(json!({ "data": list }))
+}
+
+/// GET /connections/:id — get saved credentials.
+async fn get_connection(
+    State(cm): State<SharedConnectionManager>,
+    Path(id): Path<String>,
+) -> (StatusCode, Json<Value>) {
+    let mgr = cm.lock().await;
+    match mgr.get_credentials(&id) {
+        Ok(Some(creds)) => (StatusCode::OK, Json(json!({ "credentials": creds }))),
+        Ok(None) => (StatusCode::OK, Json(json!({ "credentials": {} }))),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        ),
+    }
 }
 
 /// PUT /connections/:id — save credentials.
@@ -86,8 +102,7 @@ where
 {
     Router::new()
         .route("/", get(list_connections))
-        .route("/:id", put(connect))
-        .route("/:id", delete(disconnect))
+        .route("/:id", get(get_connection).put(connect).delete(disconnect))
         .route("/:id/test", post(test_connection))
         .with_state(cm)
 }

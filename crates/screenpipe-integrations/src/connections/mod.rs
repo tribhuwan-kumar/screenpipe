@@ -162,6 +162,12 @@ impl ConnectionManager {
         save_store(&self.screenpipe_dir, &store)
     }
 
+    pub fn get_credentials(&self, id: &str) -> Result<Option<Map<String, Value>>> {
+        self.find(id)?;
+        let store = load_store(&self.screenpipe_dir);
+        Ok(store.get(id).map(|c| c.credentials.clone()))
+    }
+
     pub fn disconnect(&self, id: &str) -> Result<()> {
         let mut store = load_store(&self.screenpipe_dir);
         store.remove(id);
