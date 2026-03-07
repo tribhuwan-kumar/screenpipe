@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Sparkles, Calendar as CalendarIcon, Rss, Cloud } from "lucide-react";
+import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Calendar as CalendarIcon } from "lucide-react";
 import { commands } from "@/lib/utils/tauri";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -185,20 +185,34 @@ function IntegrationIcon({ icon }: { icon: string }) {
         <path d="M20.32 4.37a19.8 19.8 0 00-4.89-1.52.07.07 0 00-.08.04c-.21.38-.44.87-.6 1.25a18.27 18.27 0 00-5.49 0 12.64 12.64 0 00-.62-1.25.08.08 0 00-.08-.04 19.74 19.74 0 00-4.89 1.52.07.07 0 00-.03.03C1.11 8.39.34 12.27.74 16.1a.08.08 0 00.03.06 19.9 19.9 0 005.99 3.03.08.08 0 00.08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 00-.04-.11 13.1 13.1 0 01-1.87-.9.08.08 0 01-.01-.13c.13-.09.25-.19.37-.29a.08.08 0 01.08-.01c3.93 1.79 8.18 1.79 12.07 0a.08.08 0 01.08.01c.12.1.25.2.37.29a.08.08 0 01 0 .13c-.6.35-1.22.65-1.87.9a.08.08 0 00-.04.1c.36.7.77 1.37 1.22 2a.08.08 0 00.08.03 19.83 19.83 0 006-3.03.08.08 0 00.04-.05c.46-4.54-.78-8.38-3.36-11.77a.06.06 0 00-.03-.03zM8.02 13.72c-1.02 0-1.86-.93-1.86-2.08s.82-2.08 1.86-2.08c1.05 0 1.88.94 1.86 2.08 0 1.15-.82 2.08-1.86 2.08zm6.88 0c-1.02 0-1.86-.93-1.86-2.08s.82-2.08 1.86-2.08c1.05 0 1.88.94 1.86 2.08 0 1.15-.81 2.08-1.86 2.08z"/>
       </svg>
     ),
-    "apple-intelligence": <Sparkles className="h-5 w-5 text-muted-foreground" />,
-    "apple-calendar": <CalendarIcon className="h-5 w-5 text-muted-foreground" />,
-    "google-calendar": (
-      <svg viewBox="0 0 24 24" className="w-5 h-5">
-        <path fill="#4285F4" d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12s4.48 10 10 10 10-4.48 10-10z" opacity=".1"/>
-        <path fill="#4285F4" d="M17 12h-4V8h-2v4H7v2h4v4h2v-4h4z" opacity=".6"/>
-        <path fill="#EA4335" d="M12 2C6.48 2 2 6.48 2 12h2a8 8 0 018-8V2z"/>
-        <path fill="#FBBC04" d="M22 12c0-5.52-4.48-10-10-10v2a8 8 0 018 8h2z"/>
-        <path fill="#34A853" d="M12 22c5.52 0 10-4.48 10-10h-2a8 8 0 01-8 8v2z"/>
-        <path fill="#4285F4" d="M2 12c0 5.52 4.48 10 10 10v-2a8 8 0 01-8-8H2z"/>
+    "apple-intelligence": (
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
       </svg>
     ),
-    "ics-calendar": <Rss className="h-5 w-5 text-muted-foreground" />,
-    openclaw: <Cloud className="h-5 w-5 text-muted-foreground" />,
+    "apple-calendar": (
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
+        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+      </svg>
+    ),
+    "google-calendar": (
+      <svg viewBox="0 0 24 24" className="w-5 h-5">
+        <path fill="#4285F4" d="M6.27 21.73h10.42l3.58-3.58V5.85L16.69 2.27H6.27L2.69 5.85v12.3z" opacity=".15"/>
+        <path fill="#EA4335" d="M16.69 2.27v3.58h3.58z"/>
+        <path fill="#34A853" d="M2.69 18.15l3.58 3.58V18.15z"/>
+        <path fill="#FBBC04" d="M6.27 2.27L2.69 5.85h3.58z"/>
+        <path fill="#4285F4" d="M20.27 18.15h-3.58v3.58z"/>
+        <rect fill="none" stroke="#4285F4" strokeWidth="1.5" x="5" y="5" width="14" height="14" rx="1"/>
+        <path fill="#4285F4" d="M8 10h8v1.5H8zm0 3h5v1.5H8z"/>
+        <path fill="#EA4335" d="M5 8h14v1.5H5z"/>
+      </svg>
+    ),
+    "ics-calendar": <CalendarIcon className="h-5 w-5 text-muted-foreground" />,
+    openclaw: (
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 14a1 1 0 01-.78-1.63l9.9-10.2a.5.5 0 01.86.46l-1.92 6.02A1 1 0 0013 10h7a1 1 0 01.78 1.63l-9.9 10.2a.5.5 0 01-.86-.46l1.92-6.02A1 1 0 0011 14z"/>
+      </svg>
+    ),
     email: <Send className="h-5 w-5 text-muted-foreground" />,
     todoist: (
       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#E44332">
@@ -206,8 +220,11 @@ function IntegrationIcon({ icon }: { icon: string }) {
       </svg>
     ),
     teams: (
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#6264A7">
-        <path d="M20.63 8.05h-3.3a3.2 3.2 0 01.42 1.58v5.68a3.2 3.2 0 01-3.2 3.2h-3.82a4.44 4.44 0 004.07 2.64h2.94a4.44 4.44 0 004.44-4.44v-4.11a4.55 4.55 0 00-1.55-3.42v-.01a4.44 4.44 0 00-.86-.55c-.37-.18-.77-.31-1.14-.41v-.16zm-3.38-2.2a2.63 2.63 0 100-5.26 2.63 2.63 0 000 5.26zM14.55 6.6H6.17A2.17 2.17 0 004 8.77v6.54a2.17 2.17 0 002.17 2.17h8.38a2.17 2.17 0 002.17-2.17V8.77A2.17 2.17 0 0014.55 6.6zm-4.19-2.2a3.16 3.16 0 100-6.32 3.16 3.16 0 000 6.32z"/>
+      <svg viewBox="0 0 24 24" className="w-5 h-5">
+        <path fill="#5059C9" d="M16.5 3A2.5 2.5 0 1116.5 8 2.5 2.5 0 0116.5 3z"/>
+        <path fill="#5059C9" d="M20 9h-5a1 1 0 00-1 1v6a3 3 0 003 3h1a3 3 0 003-3v-6a1 1 0 00-1-1z"/>
+        <path fill="#7B83EB" d="M10 5a3 3 0 11-3 3 3 3 0 013-3z"/>
+        <path fill="#7B83EB" d="M15 12v5a4 4 0 01-4 4H7a4 4 0 01-4-4v-5a1 1 0 011-1h10a1 1 0 011 1z"/>
       </svg>
     ),
   };
