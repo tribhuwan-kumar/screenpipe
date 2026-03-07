@@ -1185,7 +1185,7 @@ pub async fn perform_ocr_on_image(
     image_base64: String,
 ) -> Result<String, String> {
     use crate::store::SettingsStore;
-    use screenpipe_vision::OcrEngine;
+    use screenpipe_screen::OcrEngine;
 
     use base64::Engine;
     let image_data = base64::engine::general_purpose::STANDARD
@@ -1231,10 +1231,10 @@ pub async fn perform_ocr_on_image(
 
     let (text, _text_json, _confidence) = match ocr_engine {
         #[cfg(target_os = "macos")]
-        OcrEngine::AppleNative => screenpipe_vision::perform_ocr_apple(&img, &languages),
-        OcrEngine::Tesseract => screenpipe_vision::perform_ocr_tesseract(&img, languages),
+        OcrEngine::AppleNative => screenpipe_screen::perform_ocr_apple(&img, &languages),
+        OcrEngine::Tesseract => screenpipe_screen::perform_ocr_tesseract(&img, languages),
         #[cfg(target_os = "windows")]
-        OcrEngine::WindowsNative => screenpipe_vision::perform_ocr_windows(&img)
+        OcrEngine::WindowsNative => screenpipe_screen::perform_ocr_windows(&img)
             .await
             .map_err(|e| format!("windows ocr failed: {}", e))?,
         _ => return Err("unsupported ocr engine".to_string()),
