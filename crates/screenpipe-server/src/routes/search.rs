@@ -82,6 +82,12 @@ pub(crate) struct SearchQuery {
     /// When set, long content is replaced with first half + "...(truncated N chars)..." + last half.
     #[serde(default)]
     max_content_length: Option<usize>,
+    /// Filter results by device name (e.g., "MacBook Pro")
+    #[serde(default)]
+    device_name: Option<String>,
+    /// Filter results by machine identifier (UUID)
+    #[serde(default)]
+    machine_id: Option<String>,
 }
 
 #[derive(OaSchema, Deserialize)]
@@ -147,6 +153,8 @@ pub(crate) fn compute_search_cache_key(query: &SearchQuery) -> u64 {
     query.speaker_name.hash(&mut hasher);
     query.include_cloud.hash(&mut hasher);
     query.max_content_length.hash(&mut hasher);
+    query.device_name.hash(&mut hasher);
+    query.machine_id.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -206,6 +214,8 @@ pub(crate) async fn search(
                 query.browser_url.as_deref(),
                 query.focused,
                 query.speaker_name.as_deref(),
+                query.device_name.as_deref(),
+                query.machine_id.as_deref(),
             ),
             state.db.count_search_results(
                 query_str,
@@ -566,6 +576,8 @@ mod tests {
             speaker_name: None,
             include_cloud: false,
             max_content_length: None,
+            device_name: None,
+            machine_id: None,
         };
 
         let query2 = SearchQuery {
@@ -589,6 +601,8 @@ mod tests {
             speaker_name: None,
             include_cloud: false,
             max_content_length: None,
+            device_name: None,
+            machine_id: None,
         };
 
         let key1 = compute_search_cache_key(&query1);
@@ -620,6 +634,8 @@ mod tests {
             speaker_name: None,
             include_cloud: false,
             max_content_length: None,
+            device_name: None,
+            machine_id: None,
         };
 
         let query2 = SearchQuery {
@@ -643,6 +659,8 @@ mod tests {
             speaker_name: None,
             include_cloud: false,
             max_content_length: None,
+            device_name: None,
+            machine_id: None,
         };
 
         let key1 = compute_search_cache_key(&query1);

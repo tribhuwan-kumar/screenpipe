@@ -146,13 +146,8 @@ pub async fn archive_init(
 
     let retention_days = request.retention_days.unwrap_or(7);
 
-    // Derive machine ID
-    let machine_id = if let Ok(hostname) = hostname::get() {
-        let hostname_str = hostname.to_string_lossy();
-        format!("{:x}", md5::compute(hostname_str.as_bytes()))
-    } else {
-        Uuid::new_v4().to_string()
-    };
+    // Use persistent machine ID
+    let machine_id = screenpipe_core::sync::get_or_create_machine_id();
 
     // Reuse the sync manager if sync is already initialized (same encryption keys).
     // This avoids the AEAD decryption failure that occurs when archive derives a

@@ -39,6 +39,8 @@ curl "http://localhost:3030/search?q=QUERY&content_type=all&limit=10&start_time=
 | `speaker_name` | string | No | Filter audio by speaker name (case-insensitive partial match) |
 | `focused` | boolean | No | Only return results from focused windows |
 | `max_content_length` | integer | No | Truncate each result's text/transcription to this many characters (middle-truncation). Useful for limiting token usage. |
+| `device_name` | string | No | Filter results by device name (e.g., "MacBook Pro"). Partial match. |
+| `machine_id` | string | No | Filter results by machine identifier (UUID). Exact match. Useful for multi-device setups with cloud sync. |
 
 ### Content Types
 

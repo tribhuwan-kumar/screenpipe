@@ -176,10 +176,7 @@ mod tests {
         assert_eq!(sanitize_fts5_query(r#"path\to\file"#), r#""pathtofile""#);
         assert_eq!(sanitize_fts5_query(r#"\"#), "");
         assert_eq!(sanitize_fts5_query(r#"hello\ world"#), r#""hello" "world""#);
-        assert_eq!(
-            sanitize_fts5_query(r#"test\"quoted""#),
-            r#""testquoted""#
-        );
+        assert_eq!(sanitize_fts5_query(r#"test\"quoted""#), r#""testquoted""#);
     }
 
     #[test]

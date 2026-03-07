@@ -524,10 +524,5 @@ pub fn get_or_create_machine_id(override_id: Option<String>) -> String {
         return id;
     }
 
-    if let Ok(hostname) = hostname::get() {
-        let hostname_str = hostname.to_string_lossy();
-        format!("{:x}", md5::compute(hostname_str.as_bytes()))
-    } else {
-        uuid::Uuid::new_v4().to_string()
-    }
+    screenpipe_core::sync::get_or_create_machine_id()
 }

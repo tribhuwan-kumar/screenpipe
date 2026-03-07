@@ -76,8 +76,13 @@ pub async fn get_frame_data(
                                     Err(_) => {
                                         // File was deleted (e.g. by compaction) — evict stale entry
                                         // and fall through to DB lookup for updated path
-                                        debug!("Cache stale for frame_id: {} (file gone), evicting", frame_id);
-                                        if let Ok(mut cache) = state.frame_image_cache.as_ref().unwrap().try_lock() {
+                                        debug!(
+                                            "Cache stale for frame_id: {} (file gone), evicting",
+                                            frame_id
+                                        );
+                                        if let Ok(mut cache) =
+                                            state.frame_image_cache.as_ref().unwrap().try_lock()
+                                        {
                                             cache.pop(&frame_id);
                                         }
                                     }
