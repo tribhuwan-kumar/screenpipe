@@ -143,8 +143,8 @@ export default function ShortcutReminderPage() {
             flexDirection: "column",
           }}
         >
-          {/* Row 1: Shortcuts */}
-          <div className="flex">
+          {/* Row 1: Shortcuts — flex-1 basis-0 for equal thirds */}
+          <div className="flex items-stretch">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -152,7 +152,7 @@ export default function ShortcutReminderPage() {
                 posthog.capture("shortcut_reminder_timeline_clicked");
               }}
               onMouseDown={(e) => e.stopPropagation()}
-              className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
+              className="flex-1 basis-0 flex items-center justify-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               title="Open timeline"
             >
@@ -164,7 +164,7 @@ export default function ShortcutReminderPage() {
                 {overlayShortcut ?? "..."}
               </span>
             </button>
-
+            <div className="w-px bg-white/20" />
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -172,7 +172,7 @@ export default function ShortcutReminderPage() {
                 posthog.capture("shortcut_reminder_chat_clicked");
               }}
               onMouseDown={(e) => e.stopPropagation()}
-              className="flex items-center gap-0.5 px-1 py-0.5 border-r border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
+              className="flex-1 basis-0 flex items-center justify-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               title="Open chat"
             >
@@ -183,7 +183,7 @@ export default function ShortcutReminderPage() {
                 {chatShortcut ?? "..."}
               </span>
             </button>
-
+            <div className="w-px bg-white/20" />
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -192,7 +192,7 @@ export default function ShortcutReminderPage() {
                 posthog.capture("shortcut_reminder_search_clicked");
               }}
               onMouseDown={(e) => e.stopPropagation()}
-              className="flex items-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+              className="flex-1 basis-0 flex items-center justify-center gap-0.5 px-1 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               title="Open search"
             >
@@ -206,16 +206,16 @@ export default function ShortcutReminderPage() {
             </button>
           </div>
 
-          {/* Row 2: Status + close */}
+          {/* Row 2: Status + close — all flex-1 to match row 1 equal thirds */}
           <div className="flex items-stretch border-t border-white/10">
-            <div className="flex-1 px-1 py-0.5 min-w-0 overflow-hidden">
+            <div className="flex-1 basis-0 px-1 py-0.5 min-w-0 overflow-hidden">
               <AudioEqualizer
                 active={overlayData.audioActive}
                 speechRatio={overlayData.speechRatio}
               />
             </div>
             <div className="w-px bg-white/10" />
-            <div className="flex-1 px-1 py-0.5 min-w-0 overflow-hidden">
+            <div className="flex-1 basis-0 px-1 py-0.5 min-w-0 overflow-hidden">
               <ScreenMatrix
                 active={overlayData.screenActive}
                 captureFps={overlayData.captureFps}
@@ -229,7 +229,7 @@ export default function ShortcutReminderPage() {
                 e.preventDefault();
                 e.stopPropagation();
               }}
-              className="flex items-center justify-center px-1.5 py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
+              className="flex-1 basis-0 flex items-center justify-center py-0.5 hover:bg-white/10 transition-colors cursor-pointer"
               title="Hide shortcut reminder"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
