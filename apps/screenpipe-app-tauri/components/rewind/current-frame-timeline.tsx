@@ -249,12 +249,11 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 	}, [frameContext?.text, textPositions]);
 
 	// --- Live Text hook (native macOS VisionKit overlay) ---
-	// Determine which Tauri window/panel to attach Live Text overlay to:
-	// - embedded timeline lives in the "settings" window
-	// - overlay/fullscreen mode uses "main" NSPanel
-	// - window mode uses "main-window" NSPanel
+	// VisionKit attaches at the NSWindow level, so it can only work on
+	// dedicated timeline panels (overlay/window mode), NOT on the embedded
+	// timeline inside the settings window (would cover sidebar, chat, etc.)
 	const liveTextWindowLabel = embedded
-		? "settings"
+		? undefined  // disable Live Text in embedded mode
 		: settings?.overlayMode === "window" ? "main-window" : "main";
 
 	const { nativeLiveTextActive } = useLiveText({
@@ -264,7 +263,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		isSearchModalOpen,
 		highlightTerms,
 		highlightDismissed,
-		isMac,
+		isMac: isMac && !embedded,  // disable native Live Text in embedded mode
 		containerRef,
 		useVideoMode,
 		videoRef,
