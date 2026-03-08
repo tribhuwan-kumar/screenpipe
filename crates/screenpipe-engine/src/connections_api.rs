@@ -53,8 +53,8 @@ async fn list_connections(State(state): State<ConnectionsState>) -> Json<Value> 
     let wa_connected = matches!(wa_status, screenpipe_connect::whatsapp::WhatsAppStatus::Connected { .. });
     let wa_desc = if let Some(port) = wa_port {
         format!(
-            "Send WhatsApp messages. curl -X POST http://localhost:{}/send -H 'Content-Type: application/json' -d '{{\"to\":\"PHONE\",\"text\":\"MESSAGE\"}}'",
-            port
+            "WhatsApp messaging. First GET http://localhost:{}/contacts to resolve names to phone numbers, then POST http://localhost:{}/send with {{\"to\":\"+PHONE\",\"text\":\"MSG\"}}",
+            port, port
         )
     } else {
         "Connect your personal WhatsApp via QR code pairing in Settings > Connections.".to_string()

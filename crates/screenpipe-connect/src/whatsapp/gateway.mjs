@@ -12,7 +12,8 @@
 //   { "type": "http", "port": 3035 }
 //
 // HTTP API (Pi curls this directly):
-//   POST /send  { "to": "33612345678", "text": "hello" }
+//   POST /send      { "to": "+33612345678", "text": "hello" }
+//   GET  /contacts  returns [{ "id": "33612345678", "name": "John", "phone": "+33612345678" }, ...]
 //   GET  /status
 
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
@@ -58,6 +59,33 @@ const server = createServer(async (req, res) => {
       await sock.sendMessage(jid, { text });
       res.writeHead(200);
       return res.end(JSON.stringify({ success: true, to: jid }));
+    } catch (err) {
+      res.writeHead(500);
+      return res.end(JSON.stringify({ error: err.message || String(err) }));
+    }
+  }
+
+  if (req.method === "GET" && req.url === "/contacts") {
+    if (!sock) {
+      res.writeHead(503);
+      return res.end(JSON.stringify({ error: "whatsapp not connected" }));
+    }
+    try {
+      const contacts = [];
+      const store = sock.store?.contacts || {};
+      // sock.store may not be available; use the contacts from the socket directly
+      const contactMap = sock.contacts || store;
+      for (const [jid, contact] of Object.entries(contactMap)) {
+        if (!jid.endsWith("@s.whatsapp.net")) continue;
+        const phone = "+" + jid.split("@")[0];
+        contacts.push({
+          id: jid,
+          name: contact.name || contact.notify || contact.verifiedName || phone,
+          phone,
+        });
+      }
+      res.writeHead(200);
+      return res.end(JSON.stringify(contacts));
     } catch (err) {
       res.writeHead(500);
       return res.end(JSON.stringify({ error: err.message || String(err) }));

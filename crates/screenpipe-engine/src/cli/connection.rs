@@ -24,9 +24,9 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                 .join("creds.json")
                 .exists();
             let wa_desc = if wa_connected {
-                "Send messages: curl -X POST http://localhost:3035/send -H 'Content-Type: application/json' -d '{\"to\":\"PHONE\",\"text\":\"MSG\"}'".to_string()
+                "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}".to_string()
             } else {
-                "Pair via Settings > Connections in the desktop app".to_string()
+                "Not paired. User must pair via Settings > Connections in the desktop app first.".to_string()
             };
 
             if *use_json {
@@ -73,13 +73,13 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                     json!({
                         "id": "whatsapp",
                         "connected": true,
-                        "description": "Send messages: curl -X POST http://localhost:3035/send -H 'Content-Type: application/json' -d '{\"to\":\"PHONE\",\"text\":\"MSG\"}'"
+                        "description": "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}"
                     })
                 } else {
                     json!({
                         "id": "whatsapp",
                         "connected": false,
-                        "description": "Pair via Settings > Connections in the desktop app"
+                        "description": "Not paired. User must pair via Settings > Connections in the desktop app first."
                     })
                 };
                 if *use_json {
