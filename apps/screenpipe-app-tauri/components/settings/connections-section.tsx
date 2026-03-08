@@ -810,7 +810,7 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
                       <HelpCircle className="h-3 w-3" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs max-w-[200px]">
+                  <TooltipContent sideOffset={2} className="text-xs max-w-[200px]">
                     <button onClick={() => openUrl(field.help_url)} className="underline hover:text-primary cursor-pointer">
                       How to get this →
                     </button>
