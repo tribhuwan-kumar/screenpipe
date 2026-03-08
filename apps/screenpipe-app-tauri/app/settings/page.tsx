@@ -299,14 +299,8 @@ function SettingsPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Transparent titlebar area with close button */}
-      <div className="h-8 bg-transparent flex items-center" data-tauri-drag-region>
-        <button
-          onClick={() => commands.closeWindow({ Settings: { page: null } })}
-          className="ml-2 w-3 h-3 rounded-full bg-[#ff5f57] hover:bg-[#ff5f57]/80 transition-colors flex-shrink-0"
-          title="close"
-        />
-      </div>
+      {/* Transparent titlebar area */}
+      <div className="h-8 bg-transparent" data-tauri-drag-region></div>
 
       <div className="px-4">
         <div className="flex h-[calc(100vh-2rem)] min-h-0">

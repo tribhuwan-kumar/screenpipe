@@ -406,21 +406,28 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
             let _ = app.emit("shortcut-show", ());
             #[cfg(target_os = "macos")]
             {
-                // Toggle the settings window (the main app window).
-                // Check its visibility directly rather than the overlay panel,
-                // since show_main_window/hide_main_window operate on the
-                // settings window. The overlay panels ("main"/"main-window")
-                // may not exist when the settings window is the primary UI.
-                let is_visible = app
-                    .get_webview_window("settings")
-                    .and_then(|w| w.is_visible().ok())
-                    .unwrap_or(false);
+                use crate::store::SettingsStore;
+                use crate::window_api::main_label_for_mode;
+                // Get current mode to find the right window label
+                let mode = SettingsStore::get(app)
+                    .unwrap_or_default()
+                    .unwrap_or_default()
+                    .overlay_mode;
+                let label = main_label_for_mode(&mode);
 
-                if is_visible {
-                    info!("settings window is visible, hiding");
-                    hide_main_window(app)
+                if let Some(window) = app.get_webview_window(label) {
+                    match window.is_visible() {
+                        Ok(true) => {
+                            info!("window is visible, hiding main window");
+                            hide_main_window(app)
+                        }
+                        _ => {
+                            info!("window is not visible, showing main window");
+                            show_main_window(app, false)
+                        }
+                    }
                 } else {
-                    info!("settings window is not visible, showing");
+                    info!("main window not found for mode '{}', creating it", mode);
                     show_main_window(app, false)
                 }
             }
@@ -1375,16 +1382,6 @@ async fn main() {
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 let _ = window.set_always_on_top(false);
                 let _ = window.set_visible_on_all_workspaces(false);
-
-                // Settings window on macOS: prevent close but do NOT hide.
-                // macOS sends spurious CloseRequested during workspace swipes
-                // and hiding the window makes it disappear when swiping back.
-                // The frontend handles closing via the hide_settings_window command.
-                #[cfg(target_os = "macos")]
-                if window.label() == "settings" {
-                    api.prevent_close();
-                    return;
-                }
 
                 #[cfg(target_os = "macos")]
                 crate::window_api::reset_to_regular_and_refresh_tray(window.app_handle());
