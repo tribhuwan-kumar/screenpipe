@@ -472,29 +472,13 @@ pub enum ConnectionCommand {
 #[derive(Subcommand)]
 pub enum VaultCommand {
     /// Check vault status
-    Status {
-        /// Port of running server
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
+    Status {},
     /// Set up vault encryption (first-time password setup)
-    Setup {
-        /// Port of running server
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
+    Setup {},
     /// Lock the vault (encrypt all data, stop recording)
-    Lock {
-        /// Port of running server
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
+    Lock {},
     /// Unlock the vault (decrypt data, resume recording)
-    Unlock {
-        /// Port of running server
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
+    Unlock {},
 }
 
 // =============================================================================
