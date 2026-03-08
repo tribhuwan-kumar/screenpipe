@@ -4,7 +4,7 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { AudioData, StreamTimeSeriesResponse, TimeRange } from "@/components/rewind/timeline";
 import { Button } from "@/components/ui/button";
-import { GripHorizontal, X, Copy, Check, BotMessageSquare, Sparkles, MoreVertical, RefreshCw, Loader2, UserCheck } from "lucide-react";
+import { GripHorizontal, X, Copy, Check, BotMessageSquare, Sparkles, MoreVertical, RefreshCw, UserCheck } from "lucide-react";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -769,15 +769,7 @@ export function AudioTranscript({
 					WebkitOverflowScrolling: "touch",
 				}}
 			>
-				{/* Retranscribing banner */}
-				{isRetranscribing && (
-					<div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/50 text-xs text-muted-foreground">
-						<Loader2 className="h-3 w-3 animate-spin shrink-0" />
-						<span>retranscribing audio — this may take a moment...</span>
-					</div>
-				)}
-
-				{activeMeeting ? (
+					{activeMeeting ? (
 					// Full meeting transcript view
 					<div className="p-3 pb-14 space-y-0">
 						{meetingConversationData.items.length === 0 ? (
