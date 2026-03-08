@@ -179,7 +179,8 @@ export function useScrollZoom(opts: {
 				document.querySelector(".ai-panel")?.contains(target) ||
 				document.querySelector(".audio-transcript-panel")?.contains(target) ||
 				document.querySelector('[role="dialog"]')?.contains(target) ||
-				document.querySelector('[data-settings-dialog]')?.contains(target);
+				document.querySelector('[data-settings-dialog]')?.contains(target) ||
+				document.querySelector('[data-search-modal]')?.contains(target);
 
 			if (isWithinExcluded) return;
 
@@ -342,7 +343,8 @@ export function useScrollZoom(opts: {
 				document.querySelector(".ai-panel")?.contains(target) ||
 				document.querySelector(".audio-transcript-panel")?.contains(target) ||
 				document.querySelector('[role="dialog"]')?.contains(target) ||
-				document.querySelector('[data-settings-dialog]')?.contains(target);
+				document.querySelector('[data-settings-dialog]')?.contains(target) ||
+				document.querySelector('[data-search-modal]')?.contains(target);
 			if (isWithinExcluded) return;
 
 			e.preventDefault();
