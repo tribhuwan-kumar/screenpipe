@@ -463,7 +463,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 			)}
 
 			{/* Fallback mode: preloaded <img> via HTTP server (also used for search nav) */}
-			{displayedFallbackUrl && (!useVideoMode || searchNavFrame) && !(snapshotAssetUrl && isSnapshotFrame && !snapshotFailed) && (
+			{displayedFallbackUrl && (!useVideoMode || searchNavFrame || snapshotFailed) && !(snapshotAssetUrl && isSnapshotFrame && !snapshotFailed) && (
 				// eslint-disable-next-line @next/next/no-img-element
 				<img
 					src={displayedFallbackUrl}
