@@ -1334,7 +1334,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	
 				{/* Search — inline overlay in embedded mode, standard modal otherwise */}
 				{embedded && showSearchModal ? (
-					<div className="absolute inset-0 z-50 flex flex-col" data-search-modal
+					<div className="absolute inset-0 z-50 flex flex-col" data-search-modal>
 						{/* Backdrop */}
 						<div
 							className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
