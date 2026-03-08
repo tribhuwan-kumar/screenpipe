@@ -428,13 +428,13 @@ fn create_dynamic_menu(
     }
     menu_builder = menu_builder.item(&stop_builder.build(app)?);
 
-    // --- Vault lock ---
-    menu_builder = menu_builder
-        .item(&PredefinedMenuItem::separator(app)?)
-        .item(
-            &MenuItemBuilder::with_id("lock_vault", "Lock vault")
-                .build(app)?,
-        );
+    // TODO: vault lock tray item disabled — CLI-only for now
+    // menu_builder = menu_builder
+    //     .item(&PredefinedMenuItem::separator(app)?)
+    //     .item(
+    //         &MenuItemBuilder::with_id("lock_vault", "Lock vault")
+    //             .build(app)?,
+    //     );
 
     // --- Settings + Quit ---
     menu_builder = menu_builder

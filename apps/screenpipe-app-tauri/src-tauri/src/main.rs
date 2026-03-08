@@ -618,15 +618,15 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
     })
     .await?;
 
-    // Register vault lock shortcut (defer off event stack)
-    register_shortcut(app, &config.lock_vault, config.is_disabled("lock_vault"), |app| {
-        let app_for_closure = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            info!("vault lock shortcut triggered");
-            let _ = app_for_closure.emit("vault-lock-requested", ());
-        });
-    })
-    .await?;
+    // TODO: vault lock shortcut disabled — CLI-only for now
+    // register_shortcut(app, &config.lock_vault, config.is_disabled("lock_vault"), |app| {
+    //     let app_for_closure = app.clone();
+    //     let _ = app.run_on_main_thread(move || {
+    //         info!("vault lock shortcut triggered");
+    //         let _ = app_for_closure.emit("vault-lock-requested", ());
+    //     });
+    // })
+    // .await?;
 
     Ok(())
 }
@@ -2098,19 +2098,19 @@ async fn main() {
                 }
             }
 
-            // Check if vault is locked — if so, skip server start and notify frontend
-            let vault_is_locked = data_dir.join(".vault_locked").exists()
-                || (data_dir.join("vault.meta").exists()
-                    && data_dir.join("db.sqlite").exists()
-                    && screenpipe_vault::crypto::is_encrypted_file(&data_dir.join("db.sqlite")).unwrap_or(false));
-            if vault_is_locked {
-                info!("Vault is locked — skipping server start, waiting for unlock");
-                let _ = app_handle.emit("vault-locked-on-startup", ());
-            }
+            // TODO: vault lock app integration disabled — CLI-only for now
+            // let vault_is_locked = data_dir.join(".vault_locked").exists()
+            //     || (data_dir.join("vault.meta").exists()
+            //         && data_dir.join("db.sqlite").exists()
+            //         && screenpipe_vault::crypto::is_encrypted_file(&data_dir.join("db.sqlite")).unwrap_or(false));
+            // if vault_is_locked {
+            //     info!("Vault is locked — skipping server start, waiting for unlock");
+            //     let _ = app_handle.emit("vault-locked-on-startup", ());
+            // }
 
             // Start embedded server on a dedicated thread with its own tokio runtime
             // to avoid competing with Tauri's UI runtime
-            if !vault_is_locked {
+            {
                 let store_clone = store.clone();
                 let data_dir_clone = data_dir.clone();
                 let recording_state = app_handle.state::<RecordingState>();
@@ -2222,7 +2222,7 @@ async fn main() {
                         });
                     })
                     .expect("Failed to spawn server thread");
-            } // end if !vault_is_locked
+            }
 
             // Initialize update check
             let update_manager = start_update_check(&app_handle, 5)?;

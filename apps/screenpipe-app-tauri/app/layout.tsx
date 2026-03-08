@@ -7,7 +7,8 @@ import { useEffect } from "react";
 import { DeeplinkHandler } from "@/components/deeplink-handler";
 import { ShortcutTracker } from "@/components/shortcut-reminder";
 import { PipeInstallDialog } from "@/components/pipe-install-dialog";
-import { VaultLockDialog } from "@/components/vault-lock-dialog";
+// TODO: vault lock UI disabled for now — vault is CLI-only until app UX is polished
+// import { VaultLockDialog } from "@/components/vault-lock-dialog";
 import { usePathname } from "next/navigation";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -202,7 +203,8 @@ export default function RootLayout({
           {!isOverlay && <DeeplinkHandler />}
           {!isOverlay && <ShortcutTracker />}
           {!isOverlay && <PipeInstallDialog />}
-          {!isOverlay && <VaultLockDialog />}
+          {/* TODO: vault lock UI disabled — CLI-only for now */}
+          {/* {!isOverlay && <VaultLockDialog />} */}
           {children}
           {!isOverlay && <Toaster />}
         </body>
