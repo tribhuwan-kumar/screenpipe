@@ -95,10 +95,7 @@ fn set_fd_limit() {
                     );
                 }
             } else {
-                eprintln!(
-                    "file descriptor limit already sufficient: {} (requested: {})",
-                    current_soft, desired_limit
-                );
+                // already sufficient — no need to log
             }
         } else {
             eprintln!("warning: failed to get current file descriptor limits");
