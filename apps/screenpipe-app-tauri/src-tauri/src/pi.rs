@@ -485,11 +485,31 @@ fn ensure_screenpipe_skill(project_dir: &str) -> Result<(), String> {
         ),
     ];
 
+    // Clean up deprecated skills from the 8→2 consolidation.
+    // Only removes known old names so user-created skills are preserved.
+    let deprecated = [
+        "screenpipe-analytics",
+        "screenpipe-connections",
+        "screenpipe-elements",
+        "screenpipe-media",
+        "screenpipe-pipe-creator",
+        "screenpipe-pipes",
+        "screenpipe-retranscribe",
+        "screenpipe-search",
+    ];
+    let skills_root = std::path::Path::new(project_dir)
+        .join(".pi")
+        .join("skills");
+    for old in &deprecated {
+        let old_dir = skills_root.join(old);
+        if old_dir.exists() {
+            let _ = std::fs::remove_dir_all(&old_dir);
+            debug!("removed deprecated skill dir {:?}", old_dir);
+        }
+    }
+
     for (name, content) in skills {
-        let skill_dir = std::path::Path::new(project_dir)
-            .join(".pi")
-            .join("skills")
-            .join(name);
+        let skill_dir = skills_root.join(name);
         let skill_path = skill_dir.join("SKILL.md");
 
         // Always overwrite to keep skill up-to-date with app version
