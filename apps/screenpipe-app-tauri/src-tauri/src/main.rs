@@ -661,6 +661,14 @@ async fn vault_status(app: AppHandle) -> Result<String, String> {
     if data_dir.join(".vault_locked").exists() {
         return Ok("locked".to_string());
     }
+    // Fallback: if vault.meta exists but no sentinel, check if DB is actually encrypted
+    // (handles crash during lock where sentinel wasn't written yet)
+    let db_path = data_dir.join("db.sqlite");
+    if db_path.exists() {
+        if let Ok(true) = screenpipe_vault::crypto::is_encrypted_file(&db_path) {
+            return Ok("locked".to_string());
+        }
+    }
     Ok("unlocked".to_string())
 }
 
@@ -2035,8 +2043,10 @@ async fn main() {
             }
 
             // Check if vault is locked — if so, skip server start and notify frontend
-            let vault_locked_sentinel = data_dir.join(".vault_locked");
-            let vault_is_locked = vault_locked_sentinel.exists();
+            let vault_is_locked = data_dir.join(".vault_locked").exists()
+                || (data_dir.join("vault.meta").exists()
+                    && data_dir.join("db.sqlite").exists()
+                    && screenpipe_vault::crypto::is_encrypted_file(&data_dir.join("db.sqlite")).unwrap_or(false));
             if vault_is_locked {
                 info!("Vault is locked — skipping server start, waiting for unlock");
                 let _ = app_handle.emit("vault-locked-on-startup", ());

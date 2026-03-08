@@ -146,6 +146,10 @@ impl VaultManager {
         *self.state.write().await = VaultState::Migrating { progress: 0.0 };
 
         tokio::spawn(async move {
+            // Write sentinel FIRST — if we crash mid-encryption, startup
+            // still knows the vault is locked and won't try to open the DB.
+            let _ = std::fs::write(&sentinel, "locked");
+
             // Encrypt DB file (must be closed by caller already)
             if db_path.exists() {
                 info!("encrypting db.sqlite...");
@@ -175,8 +179,7 @@ impl VaultManager {
                 }
             }
 
-            // Write sentinel and mark locked
-            let _ = std::fs::write(&sentinel, "locked");
+            // Mark locked (sentinel already written at start)
             *vault_state.write().await = VaultState::Locked;
             info!("vault locked");
 
