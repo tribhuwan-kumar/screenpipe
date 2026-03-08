@@ -1947,6 +1947,16 @@ impl ShowRewindWindow {
         // }
 
         if let Some(window) = id.get(app) {
+            // On macOS, the settings window has prevent_close to avoid
+            // workspace swipe issues. Use hide() instead of close() so
+            // programmatic close (shortcut toggle, close button) works.
+            #[cfg(target_os = "macos")]
+            if id.label() == RewindWindowId::Settings.label() {
+                window.hide().ok();
+            } else {
+                window.close().ok();
+            }
+            #[cfg(not(target_os = "macos"))]
             window.close().ok();
         }
         Ok(())

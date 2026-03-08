@@ -249,11 +249,12 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 	}, [frameContext?.text, textPositions]);
 
 	// --- Live Text hook (native macOS VisionKit overlay) ---
-	// VisionKit attaches at the NSWindow level, so it can only work on
-	// dedicated timeline panels (overlay/window mode), NOT on the embedded
-	// timeline inside the settings window (would cover sidebar, chat, etc.)
+	// In overlay/window mode, attach to the correct NSPanel.
+	// In embedded mode, VisionKit can't work (it covers the entire NSWindow
+	// including sidebar/chat), so pass "main" which will fail gracefully
+	// and the web-based SelectableTextLayer kicks in as fallback.
 	const liveTextWindowLabel = embedded
-		? undefined  // disable Live Text in embedded mode
+		? "main"
 		: settings?.overlayMode === "window" ? "main-window" : "main";
 
 	const { nativeLiveTextActive } = useLiveText({
@@ -263,7 +264,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		isSearchModalOpen,
 		highlightTerms,
 		highlightDismissed,
-		isMac: isMac && !embedded,  // disable native Live Text in embedded mode
+		isMac,
 		containerRef,
 		useVideoMode,
 		videoRef,
