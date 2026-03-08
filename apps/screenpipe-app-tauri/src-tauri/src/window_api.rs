@@ -1134,6 +1134,10 @@ impl ShowRewindWindow {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
+                    // On Windows, restore from minimized state before focusing
+                    if window.is_minimized().unwrap_or(false) {
+                        window.unminimize().ok();
+                    }
                     window.set_focus().ok();
                 }
 
@@ -2076,6 +2080,13 @@ impl ShowRewindWindow {
         // }
 
         if let Some(window) = id.get(app) {
+            // On Windows, minimize the Settings window instead of closing it
+            // so it stays in the taskbar and can be restored quickly.
+            #[cfg(target_os = "windows")]
+            if id.label() == RewindWindowId::Settings.label() {
+                window.minimize().ok();
+                return Ok(());
+            }
             window.close().ok();
         }
         Ok(())
