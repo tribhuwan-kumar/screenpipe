@@ -48,9 +48,20 @@ impl VaultManager {
     pub fn new(screenpipe_dir: PathBuf) -> Self {
         let initial_state = if !screenpipe_dir.join("vault.meta").exists() {
             VaultState::None
-        } else {
-            // Vault was set up. Key not in memory → effectively locked.
+        } else if screenpipe_dir.join(".vault_locked").exists() {
+            // Sentinel file present → vault is locked
             VaultState::Locked
+        } else {
+            // Vault set up but no lock sentinel — check if DB is actually encrypted
+            let db_path = screenpipe_dir.join("db.sqlite");
+            if db_path.exists() && crypto::is_encrypted_file(&db_path).unwrap_or(false) {
+                // DB encrypted but sentinel missing (crash during lock) → locked
+                VaultState::Locked
+            } else {
+                // Vault set up, data not encrypted → unlocked (key not in memory,
+                // but data is accessible so server should not block requests)
+                VaultState::Unlocked
+            }
         };
 
         Self {
