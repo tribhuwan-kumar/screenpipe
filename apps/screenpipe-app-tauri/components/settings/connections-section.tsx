@@ -810,9 +810,10 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
                       <HelpCircle className="h-3 w-3" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent sideOffset={2} className="text-xs max-w-[200px]">
+                  <TooltipContent sideOffset={2} className="text-xs max-w-[220px] space-y-1">
+                    <p>Learn how to find your {field.label.toLowerCase()} for this integration.</p>
                     <button onClick={() => openUrl(field.help_url)} className="underline hover:text-primary cursor-pointer">
-                      How to get this →
+                      Open guide →
                     </button>
                   </TooltipContent>
                 </Tooltip>
