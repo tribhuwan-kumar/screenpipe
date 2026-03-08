@@ -360,18 +360,9 @@ async fn main() -> anyhow::Result<()> {
                     );
                     map.insert("use_pii_removal".into(), json!(record_args.use_pii_removal));
                     map.insert("disable_vision".into(), json!(record_args.disable_vision));
-                    map.insert(
-                        "vad_engine".into(),
-                        json!(format!("{:?}", record_args.vad_engine)),
-                    );
-                    map.insert(
-                        "enable_input_capture".into(),
-                        json!(record_args.enable_input_capture),
-                    );
-                    map.insert(
-                        "enable_accessibility".into(),
-                        json!(record_args.enable_accessibility),
-                    );
+                    map.insert("vad_engine".into(), json!("Silero"));
+                    map.insert("enable_input_capture".into(), json!(true));
+                    map.insert("enable_accessibility".into(), json!(true));
                     map.insert("enable_sync".into(), json!(record_args.enable_sync));
                     map.insert(
                         "sync_interval_secs".into(),
@@ -530,8 +521,6 @@ async fn main() -> anyhow::Result<()> {
 
     let languages = config.languages.clone();
 
-    let vad_engine = record_args.vad_engine.clone();
-    let vad_engine_clone = vad_engine.clone();
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
     let vision_handle = Handle::current();
@@ -793,10 +782,7 @@ async fn main() -> anyhow::Result<()> {
         "│ audio engine           │ {:<34} │",
         format!("{:?}", warning_audio_transcription_engine_clone)
     );
-    println!(
-        "│ vad engine             │ {:<34} │",
-        format!("{:?}", vad_engine_clone)
-    );
+    println!("│ vad engine             │ {:<34} │", "Silero");
     println!(
         "│ data directory         │ {:<34} │",
         local_data_dir_clone.display()

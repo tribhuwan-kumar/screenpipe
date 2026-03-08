@@ -14,7 +14,7 @@ use clap::ValueEnum;
 use clap::{Parser, Subcommand, ValueHint};
 use screenpipe_audio::{
     audio_manager::builder::TranscriptionMode,
-    core::engine::AudioTranscriptionEngine as CoreAudioTranscriptionEngine, vad::VadEngineEnum,
+    core::engine::AudioTranscriptionEngine as CoreAudioTranscriptionEngine,
 };
 use screenpipe_core::Language;
 use std::path::PathBuf;
@@ -69,23 +69,6 @@ impl From<CliAudioTranscriptionEngine> for CoreAudioTranscriptionEngine {
             }
             CliAudioTranscriptionEngine::Qwen3Asr => CoreAudioTranscriptionEngine::Qwen3Asr,
             CliAudioTranscriptionEngine::Disabled => CoreAudioTranscriptionEngine::Disabled,
-        }
-    }
-}
-
-#[derive(Clone, Debug, ValueEnum, PartialEq)]
-pub enum CliVadEngine {
-    #[clap(name = "webrtc")]
-    WebRtc,
-    #[clap(name = "silero")]
-    Silero,
-}
-
-impl From<CliVadEngine> for VadEngineEnum {
-    fn from(cli_engine: CliVadEngine) -> Self {
-        match cli_engine {
-            CliVadEngine::WebRtc => VadEngineEnum::WebRtc,
-            CliVadEngine::Silero => VadEngineEnum::Silero,
         }
     }
 }
@@ -254,10 +237,6 @@ pub struct RecordArgs {
     #[arg(long, default_value_t = false)]
     pub disable_vision: bool,
 
-    /// VAD engine to use for speech detection
-    #[arg(long, value_enum, default_value_t = CliVadEngine::Silero)]
-    pub vad_engine: CliVadEngine,
-
     /// Windows to ignore (by title, uses contains matching)
     #[arg(long)]
     pub ignored_windows: Vec<String>,
@@ -289,14 +268,6 @@ pub struct RecordArgs {
     /// Video quality preset: low, balanced, high, max
     #[arg(long, default_value = "balanced")]
     pub video_quality: String,
-
-    /// Enable input event capture (keyboard, mouse, clipboard)
-    #[arg(long, default_value_t = false)]
-    pub enable_input_capture: bool,
-
-    /// Enable accessibility text capture (AX tree walker)
-    #[arg(long, default_value_t = false)]
-    pub enable_accessibility: bool,
 
     /// Enable cloud sync
     #[arg(long, default_value_t = false)]
@@ -333,9 +304,9 @@ impl RecordArgs {
     /// Create UI recorder configuration from record arguments
     pub fn to_ui_recorder_config(&self) -> crate::ui_recorder::UiRecorderConfig {
         crate::ui_recorder::UiRecorderConfig {
-            enabled: self.enable_input_capture || self.enable_accessibility,
-            enable_tree_walker: self.enable_accessibility,
-            record_input_events: self.enable_input_capture,
+            enabled: true,
+            enable_tree_walker: true,
+            record_input_events: true,
             excluded_windows: self.ignored_windows.clone(),
             ignored_windows: self.ignored_windows.clone(),
             included_windows: self.included_windows.clone(),
@@ -357,8 +328,8 @@ impl RecordArgs {
             disable_vision: self.disable_vision,
             use_pii_removal: self.use_pii_removal,
             filter_music: self.filter_music,
-            enable_input_capture: self.enable_input_capture,
-            enable_accessibility: self.enable_accessibility,
+            enable_input_capture: true,
+            enable_accessibility: true,
             audio_transcription_engine: self.audio_transcription_engine.into(),
             transcription_mode: self.transcription_mode.into(),
             audio_devices: self.audio_device,
