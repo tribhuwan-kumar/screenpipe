@@ -34,11 +34,6 @@ export function useLiveText(opts: {
 	const [nativeLiveTextActive, setNativeLiveTextActive] = useState(false);
 	const liveTextInitRef = useRef(false);
 
-	// Track whether we have image info via a ref for the analyze effect,
-	// and a boolean for dependency tracking.
-	const renderedInfoRef = useRef(renderedImageInfo);
-	renderedInfoRef.current = renderedImageInfo;
-
 	const analyzeFailCountRef = useRef(0);
 
 	// Get absolute position within the window (accounts for sidebar, titlebar, etc.)
@@ -98,14 +93,8 @@ export function useLiveText(opts: {
 			? debouncedFrame.filePath
 			: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 
-		// Use last known position for analyze call, or a default.
-		// Position will be corrected by the update_position effect once layout is ready.
-		const info = renderedInfoRef.current;
-		const pos = info
-			? getAbsolutePosition(info)
-			: { x: 0, y: 0, w: 800, h: 600 };
-		const { x, y, w, h } = pos;
-
+		// Position is managed exclusively by livetext_update_position.
+		// The analyze call only sets the analysis + shows the overlay.
 		// Debounce: 150ms — short enough to feel responsive, long enough to skip
 		// intermediate frames during fast scroll. Generation counter in Swift
 		// handles cancellation of stale in-flight requests.
@@ -114,7 +103,7 @@ export function useLiveText(opts: {
 			if (cancelled) return;
 			invoke("livetext_analyze", {
 				imagePath,
-				x, y, w, h,
+				x: 0, y: 0, w: 0, h: 0,
 			}).then(() => {
 				analyzeFailCountRef.current = 0;
 			}).catch((e: unknown) => {
@@ -161,17 +150,13 @@ export function useLiveText(opts: {
 		if (isSearchModalOpen) {
 			invoke("livetext_hide").catch(() => {});
 		} else if (debouncedFrame?.frameId) {
-			// Re-analyze to show overlay again
-			const info = renderedInfoRef.current;
-			const pos = info
-				? getAbsolutePosition(info)
-				: { x: 0, y: 0, w: 800, h: 600 };
+			// Re-analyze to show overlay again (position managed by update_position)
 			const imagePath = isSnapshotFrame && debouncedFrame.filePath
 				? debouncedFrame.filePath
 				: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 			invoke("livetext_analyze", {
 				imagePath,
-				...pos,
+				x: 0, y: 0, w: 0, h: 0,
 			}).catch(() => {});
 		}
 	}, [nativeLiveTextActive, isSearchModalOpen]);
