@@ -27,6 +27,7 @@ export function useLiveText(opts: {
 		highlightDismissed,
 		isMac,
 		windowLabel: windowLabelProp,
+		containerRef,
 	} = opts;
 
 	// Native macOS Live Text overlay (VisionKit ImageAnalysisOverlayView)
@@ -39,6 +40,19 @@ export function useLiveText(opts: {
 	renderedInfoRef.current = renderedImageInfo;
 
 	const analyzeFailCountRef = useRef(0);
+
+	// Get absolute position within the window (accounts for sidebar, titlebar, etc.)
+	const getAbsolutePosition = (info: { offsetX: number; offsetY: number; width: number; height: number }) => {
+		const rect = containerRef?.current?.getBoundingClientRect();
+		const containerX = rect?.left ?? 0;
+		const containerY = rect?.top ?? 0;
+		return {
+			x: containerX + info.offsetX,
+			y: containerY + info.offsetY,
+			w: info.width,
+			h: info.height,
+		};
+	};
 
 	const windowLabel = windowLabelProp ?? "main";
 
@@ -87,10 +101,10 @@ export function useLiveText(opts: {
 		// Use last known position for analyze call, or a default.
 		// Position will be corrected by the update_position effect once layout is ready.
 		const info = renderedInfoRef.current;
-		const x = info?.offsetX ?? 0;
-		const y = info?.offsetY ?? 0;
-		const w = info?.width ?? 800;
-		const h = info?.height ?? 600;
+		const pos = info
+			? getAbsolutePosition(info)
+			: { x: 0, y: 0, w: 800, h: 600 };
+		const { x, y, w, h } = pos;
 
 		// Debounce: 150ms — short enough to feel responsive, long enough to skip
 		// intermediate frames during fast scroll. Generation counter in Swift
@@ -127,12 +141,8 @@ export function useLiveText(opts: {
 	// Update overlay position on resize or when renderedImageInfo first becomes available
 	useEffect(() => {
 		if (!nativeLiveTextActive || !renderedImageInfo) return;
-		invoke("livetext_update_position", {
-			x: renderedImageInfo.offsetX,
-			y: renderedImageInfo.offsetY,
-			w: renderedImageInfo.width,
-			h: renderedImageInfo.height,
-		}).catch(() => {});
+		const pos = getAbsolutePosition(renderedImageInfo);
+		invoke("livetext_update_position", pos).catch(() => {});
 	}, [nativeLiveTextActive, renderedImageInfo?.offsetX, renderedImageInfo?.offsetY, renderedImageInfo?.width, renderedImageInfo?.height]);
 
 	// Highlight search terms (native Live Text, macOS 14+)
@@ -153,15 +163,15 @@ export function useLiveText(opts: {
 		} else if (debouncedFrame?.frameId) {
 			// Re-analyze to show overlay again
 			const info = renderedInfoRef.current;
+			const pos = info
+				? getAbsolutePosition(info)
+				: { x: 0, y: 0, w: 800, h: 600 };
 			const imagePath = isSnapshotFrame && debouncedFrame.filePath
 				? debouncedFrame.filePath
 				: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 			invoke("livetext_analyze", {
 				imagePath,
-				x: info?.offsetX ?? 0,
-				y: info?.offsetY ?? 0,
-				w: info?.width ?? 800,
-				h: info?.height ?? 600,
+				...pos,
 			}).catch(() => {});
 		}
 	}, [nativeLiveTextActive, isSearchModalOpen]);
