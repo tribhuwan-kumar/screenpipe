@@ -6,6 +6,7 @@
 
 import React, { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useVaultStore } from "@/lib/hooks/use-vault-store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ import { Lock, Unlock, ShieldCheck, Loader2 } from "lucide-react";
 import { commands } from "@/lib/utils/tauri";
 
 export function VaultLockDialog() {
-  const { state, progress, showLockDialog, showSetupDialog, setShowLockDialog, setShowSetupDialog, fetchStatus, setup, lock, unlock } = useVaultStore();
+  const { state, progress, showLockDialog, showSetupDialog, setShowLockDialog, setShowSetupDialog, setState, fetchStatus, setup, lock } = useVaultStore();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,17 +30,18 @@ export function VaultLockDialog() {
     return () => clearInterval(interval);
   }, [state, fetchStatus]);
 
-  // listen for tray lock event
+  // listen for tray/shortcut lock event
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const unlisten = listen("vault-lock-requested", async () => {
-      await fetchStatus();
-      const currentState = useVaultStore.getState().state;
+      // check vault state via filesystem (no server needed)
+      const status = await invoke<string>("vault_status").catch(() => "none");
 
-      if (currentState === "none") {
+      if (status === "none") {
+        setState("none");
         setShowSetupDialog(true);
-      } else if (currentState === "unlocked") {
+      } else if (status === "unlocked") {
         try {
           // stop recording before encrypting data
           try { await commands.stopScreenpipe(); } catch {}
@@ -48,25 +50,38 @@ export function VaultLockDialog() {
         } catch (e: any) {
           toast({ title: "lock failed", description: e.message, variant: "destructive" });
         }
-      } else if (currentState === "locked") {
+      } else if (status === "locked") {
+        setState("locked");
         setShowLockDialog(true);
       }
     });
 
     return () => { unlisten.then(fn => fn()); };
-  }, [fetchStatus, lock, setShowLockDialog, setShowSetupDialog, toast]);
+  }, [lock, setShowLockDialog, setShowSetupDialog, setState, toast]);
 
-  // fetch initial status
+  // listen for vault-locked-on-startup (server didn't start because vault is locked)
   useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+    if (typeof window === "undefined") return;
 
-  // auto-show unlock dialog when locked
-  useEffect(() => {
-    if (state === "locked") {
+    const unlisten = listen("vault-locked-on-startup", () => {
+      setState("locked");
       setShowLockDialog(true);
-    }
-  }, [state, setShowLockDialog]);
+    });
+
+    return () => { unlisten.then(fn => fn()); };
+  }, [setState, setShowLockDialog]);
+
+  // check vault state on mount via filesystem (works even without server)
+  useEffect(() => {
+    invoke<string>("vault_status").then((status) => {
+      if (status === "locked") {
+        setState("locked");
+        setShowLockDialog(true);
+      } else if (status === "unlocked") {
+        setState("unlocked");
+      }
+    }).catch(() => {});
+  }, [setState, setShowLockDialog]);
 
   const resetForm = () => {
     setPassword("");
@@ -103,13 +118,16 @@ export function VaultLockDialog() {
     setLoading(true);
     setError("");
     try {
-      await unlock(password);
-      // restart recording after decryption
+      // use Tauri command to decrypt (works without server running)
+      await invoke("vault_unlock", { password });
+      setState("unlocked");
+      setShowLockDialog(false);
+      // start screenpipe now that data is decrypted
       try { await commands.spawnScreenpipe(null); } catch {}
       toast({ title: "vault unlocked", description: "recording resumed" });
       resetForm();
     } catch (e: any) {
-      setError(e.message);
+      setError(typeof e === "string" ? e : e.message || "wrong password");
     } finally {
       setLoading(false);
     }

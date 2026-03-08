@@ -650,6 +650,38 @@ async fn resume_global_shortcuts(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Check vault lock state from filesystem (no server needed).
+#[tauri::command]
+#[specta::specta]
+async fn vault_status(app: AppHandle) -> Result<String, String> {
+    let data_dir = app.path().home_dir().map_err(|e| e.to_string())?.join(".screenpipe");
+    if !data_dir.join("vault.meta").exists() {
+        return Ok("none".to_string());
+    }
+    if data_dir.join(".vault_locked").exists() {
+        return Ok("locked".to_string());
+    }
+    Ok("unlocked".to_string())
+}
+
+/// Unlock vault: decrypt DB + data files, remove sentinel. No server needed.
+#[tauri::command]
+#[specta::specta]
+async fn vault_unlock(app: AppHandle, password: String) -> Result<(), String> {
+    let data_dir = app.path().home_dir().map_err(|e| e.to_string())?.join(".screenpipe");
+    let vault = screenpipe_vault::VaultManager::new(data_dir);
+    let _progress_rx = vault.unlock(&password).await.map_err(|e| e.to_string())?;
+    // Wait for decryption to complete
+    loop {
+        let state = vault.state().await;
+        if state == screenpipe_vault::VaultState::Unlocked {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
 fn get_env(name: &str) -> String {
@@ -1249,6 +1281,8 @@ async fn main() {
                 permissions::request_arc_automation_permission,
                 // Commands from main.rs
                 get_env,
+                vault_status,
+                vault_unlock,
                 get_log_files,
                 get_media_file,
                 upload_file_to_s3,
@@ -1535,6 +1569,8 @@ async fn main() {
             suspend_global_shortcuts,
             resume_global_shortcuts,
             get_env,
+            vault_status,
+            vault_unlock,
             // Sync commands
             sync::get_sync_status,
             sync::set_sync_enabled,
@@ -1998,9 +2034,17 @@ async fn main() {
                 }
             }
 
+            // Check if vault is locked — if so, skip server start and notify frontend
+            let vault_locked_sentinel = data_dir.join(".vault_locked");
+            let vault_is_locked = vault_locked_sentinel.exists();
+            if vault_is_locked {
+                info!("Vault is locked — skipping server start, waiting for unlock");
+                let _ = app_handle.emit("vault-locked-on-startup", ());
+            }
+
             // Start embedded server on a dedicated thread with its own tokio runtime
             // to avoid competing with Tauri's UI runtime
-            {
+            if !vault_is_locked {
                 let store_clone = store.clone();
                 let data_dir_clone = data_dir.clone();
                 let recording_state = app_handle.state::<RecordingState>();
@@ -2112,7 +2156,7 @@ async fn main() {
                         });
                     })
                     .expect("Failed to spawn server thread");
-            }
+            } // end if !vault_is_locked
 
             // Initialize update check
             let update_manager = start_update_check(&app_handle, 5)?;
