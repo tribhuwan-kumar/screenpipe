@@ -104,7 +104,7 @@ port_check = "0.2.1"
 
 regex = "1.10.0"
 
-lru = "0.13.0"
+lru = "0.16.3"
 tokio-util = { version = "0.7", features = ["io"] }
 
 once_cell = { workspace = true }
