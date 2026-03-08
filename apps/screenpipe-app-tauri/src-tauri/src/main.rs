@@ -271,6 +271,7 @@ struct ShortcutConfig {
     stop_audio: String,
     show_chat: String,
     search: String,
+    lock_vault: String,
     disabled: Vec<String>,
 }
 
@@ -307,6 +308,7 @@ impl ShortcutConfig {
             },
             show_chat: store.show_chat_shortcut,
             search: store.search_shortcut,
+            lock_vault: store.lock_vault_shortcut,
             disabled: store.disabled_shortcuts,
         })
     }
@@ -323,6 +325,7 @@ impl ShortcutConfig {
             "stop_audio" => "stopAudioShortcut",
             "show_chat" => "showChatShortcut",
             "search" => "searchShortcut",
+            "lock_vault" => "lockVaultShortcut",
             _ => shortcut_type,
         };
         self.disabled.contains(&shortcut_type.to_string())
@@ -381,6 +384,7 @@ async fn update_global_shortcuts(
         stop_audio: stop_audio_shortcut,
         show_chat: store_config.show_chat,
         search: store_config.search,
+        lock_vault: store_config.lock_vault,
         disabled: store_config.disabled,
     };
     apply_shortcuts(&app, &config).await
@@ -610,6 +614,16 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
             }
             // Emit event so the frontend opens the search modal
             let _ = app.emit("open-search", ());
+        });
+    })
+    .await?;
+
+    // Register vault lock shortcut (defer off event stack)
+    register_shortcut(app, &config.lock_vault, config.is_disabled("lock_vault"), |app| {
+        let app_for_closure = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            info!("vault lock shortcut triggered");
+            let _ = app_for_closure.emit("vault-lock-requested", ());
         });
     })
     .await?;

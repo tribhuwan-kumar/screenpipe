@@ -433,7 +433,6 @@ fn create_dynamic_menu(
         .item(&PredefinedMenuItem::separator(app)?)
         .item(
             &MenuItemBuilder::with_id("lock_vault", "Lock vault")
-                .accelerator("CmdOrCtrl+Shift+L")
                 .build(app)?,
         );
 
