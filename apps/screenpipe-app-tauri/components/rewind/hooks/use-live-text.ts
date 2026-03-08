@@ -16,6 +16,7 @@ export function useLiveText(opts: {
 	containerRef: React.RefObject<HTMLDivElement | null>;
 	useVideoMode: boolean;
 	videoRef: React.RefObject<HTMLVideoElement | null>;
+	windowLabel?: string;
 }) {
 	const {
 		debouncedFrame,
@@ -25,6 +26,7 @@ export function useLiveText(opts: {
 		highlightTerms,
 		highlightDismissed,
 		isMac,
+		windowLabel: windowLabelProp,
 	} = opts;
 
 	// Native macOS Live Text overlay (VisionKit ImageAnalysisOverlayView)
@@ -38,18 +40,26 @@ export function useLiveText(opts: {
 
 	const analyzeFailCountRef = useRef(0);
 
-	// Initialize Live Text overlay once on mount (macOS only)
+	const windowLabel = windowLabelProp ?? "main";
+
+	// Re-initialize Live Text when window label changes (different window/panel)
+	const prevLabelRef = useRef(windowLabel);
+
+	// Initialize Live Text overlay once on mount (macOS only), and re-init on mode change
 	useEffect(() => {
-		if (!isMac || liveTextInitRef.current) return;
+		if (!isMac) return;
+		// If label changed, we need to re-init on the new panel
+		if (liveTextInitRef.current && prevLabelRef.current === windowLabel) return;
+		prevLabelRef.current = windowLabel;
+
 		let cancelled = false;
 		(async () => {
 			try {
 				const available = await invoke<boolean>("livetext_is_available");
 				console.log("[livetext] is_available:", available);
 				if (cancelled || !available) return;
-				// Use "main" panel label — the NSPanel the timeline renders in
-				await invoke("livetext_init", { windowLabel: "main" });
-				console.log("[livetext] init succeeded, native overlay active");
+				await invoke("livetext_init", { windowLabel });
+				console.log("[livetext] init succeeded on panel:", windowLabel);
 				if (!cancelled) {
 					liveTextInitRef.current = true;
 					setNativeLiveTextActive(true);
@@ -59,7 +69,7 @@ export function useLiveText(opts: {
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [isMac]);
+	}, [isMac, windowLabel]);
 
 	// Analyze frame when frameId changes. Decoupled from renderedImageInfo —
 	// we start analysis immediately and update position separately when layout is ready.

@@ -1386,6 +1386,7 @@ async fn main() {
                 // Settings window on macOS: prevent close but do NOT hide.
                 // macOS sends spurious CloseRequested during workspace swipes
                 // and hiding the window makes it disappear when swiping back.
+                // The frontend handles closing via the hide_settings_window command.
                 #[cfg(target_os = "macos")]
                 if window.label() == "settings" {
                     api.prevent_close();

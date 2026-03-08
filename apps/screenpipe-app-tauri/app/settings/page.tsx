@@ -18,6 +18,7 @@ import {
   Users,
   Home,
   Clock,
+  X,
   Gift,
   HelpCircle,
   UserPlus,
@@ -298,8 +299,14 @@ function SettingsPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Transparent titlebar area */}
-      <div className="h-8 bg-transparent" data-tauri-drag-region></div>
+      {/* Transparent titlebar area with close button */}
+      <div className="h-8 bg-transparent flex items-center" data-tauri-drag-region>
+        <button
+          onClick={() => commands.closeWindow({ Settings: { page: null } })}
+          className="ml-2 w-3 h-3 rounded-full bg-[#ff5f57] hover:bg-[#ff5f57]/80 transition-colors flex-shrink-0"
+          title="close"
+        />
+      </div>
 
       <div className="px-4">
         <div className="flex h-[calc(100vh-2rem)] min-h-0">
@@ -572,7 +579,7 @@ function SettingsPageContent() {
 
             {/* Settings modal overlay */}
             {settingsModalOpen && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm" onClick={closeModal}>
                 <div
                   className="bg-background border border-border flex w-[960px] max-w-[calc(100%-2rem)] h-[calc(100%-2rem)] overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
@@ -687,10 +694,16 @@ function SettingsPageContent() {
                   {/* Modal content */}
                   <div className="flex-1 flex flex-col min-w-0">
                     {/* Modal header */}
-                    <div className="flex items-center px-6 py-3 border-b border-border flex-shrink-0">
+                    <div className="flex items-center justify-between px-6 py-3 border-b border-border flex-shrink-0">
                       <h2 className="text-sm font-medium text-foreground">
                         {settingsModalSections.find(s => s.id === modalSection)?.label}
                       </h2>
+                      <button
+                        onClick={closeModal}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
 
                     {/* Modal body */}

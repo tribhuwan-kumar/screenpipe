@@ -77,7 +77,7 @@ dependencies = [
  "bytestring",
  "derive_more 2.1.1",
  "encoding_rs",
- "foldhash",
+ "foldhash 0.1.5",
  "futures-core",
  "http 0.2.12",
  "httparse",
@@ -172,7 +172,7 @@ dependencies = [
  "cfg-if 1.0.4",
  "derive_more 2.1.1",
  "encoding_rs",
- "foldhash",
+ "foldhash 0.1.5",
  "futures-core",
  "futures-util",
  "impl-more",
@@ -3439,6 +3439,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
 name = "fontconfig-parser"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4224,9 +4230,7 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "allocator-api2",
- "equivalent",
- "foldhash",
+ "foldhash 0.1.5",
 ]
 
 [[package]]
@@ -4234,6 +4238,11 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+]
 
 [[package]]
 name = "hashlink"
@@ -5692,11 +5701,11 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.13.0"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "227748d55f2f0ab4735d87fd623798cb6b664512fe979705f829c9f81c934465"
+checksum = "a1dc47f592c06f33f8e3aea9591776ec7c9f9e4124778ff8a3c3b87159f7e593"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
 ]
 
 [[package]]
@@ -9153,7 +9162,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.72"
+version = "2.2.74"
 dependencies = [
  "anyhow",
  "arboard",
@@ -9253,7 +9262,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-audio"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "anyhow",
  "audiopipe",
@@ -9305,7 +9314,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-connect"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9331,7 +9340,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-core"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -9373,7 +9382,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-db"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9398,7 +9407,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-engine"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9458,7 +9467,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-events"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9474,7 +9483,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-screen"
-version = "0.3.176"
+version = "0.3.178"
 dependencies = [
  "accessibility-sys",
  "anyhow",
