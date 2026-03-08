@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Lock, Unlock, ShieldCheck, Loader2 } from "lucide-react";
+import { commands } from "@/lib/utils/tauri";
 
 export function VaultLockDialog() {
   const { state, progress, showLockDialog, showSetupDialog, setShowLockDialog, setShowSetupDialog, fetchStatus, setup, lock, unlock } = useVaultStore();
@@ -40,8 +41,10 @@ export function VaultLockDialog() {
         setShowSetupDialog(true);
       } else if (currentState === "unlocked") {
         try {
+          // stop recording before encrypting data
+          try { await commands.stopScreenpipe(); } catch {}
           await lock();
-          toast({ title: "vault locked", description: "your data is now encrypted" });
+          toast({ title: "vault locked", description: "recording stopped and data encrypted" });
         } catch (e: any) {
           toast({ title: "lock failed", description: e.message, variant: "destructive" });
         }
@@ -85,7 +88,7 @@ export function VaultLockDialog() {
     setError("");
     try {
       await setup(password);
-      toast({ title: "vault set up", description: "you can now lock your data with Cmd+Shift+L" });
+      toast({ title: "vault set up", description: "you can now lock your data from the tray menu or shortcut" });
       setShowSetupDialog(false);
       resetForm();
     } catch (e: any) {
@@ -101,7 +104,9 @@ export function VaultLockDialog() {
     setError("");
     try {
       await unlock(password);
-      toast({ title: "vault unlocked" });
+      // restart recording after decryption
+      try { await commands.spawnScreenpipe(null); } catch {}
+      toast({ title: "vault unlocked", description: "recording resumed" });
       resetForm();
     } catch (e: any) {
       setError(e.message);
@@ -174,7 +179,7 @@ export function VaultLockDialog() {
           </DialogTitle>
           <DialogDescription>
             create a password to encrypt all your screenpipe data at rest.
-            you can lock/unlock anytime with Cmd+Shift+L.
+            lock/unlock anytime from the tray menu or settings shortcut.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 pt-2">
