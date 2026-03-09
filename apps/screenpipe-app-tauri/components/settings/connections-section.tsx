@@ -221,6 +221,14 @@ function IntegrationIcon({ icon }: { icon: string }) {
     n8n: <img src="/images/n8n.png" alt="n8n" className="w-5 h-5 rounded" />,
     make: <img src="/images/make.png" alt="Make" className="w-5 h-5 rounded" />,
     zapier: <img src="/images/zapier.png" alt="Zapier" className="w-5 h-5 rounded" />,
+    github: <img src="/images/github.png" alt="GitHub" className="w-5 h-5 rounded" />,
+    jira: <img src="/images/jira.png" alt="Jira" className="w-5 h-5 rounded" />,
+    hubspot: <img src="/images/hubspot.png" alt="HubSpot" className="w-5 h-5 rounded" />,
+    airtable: <img src="/images/airtable.png" alt="Airtable" className="w-5 h-5 rounded" />,
+    logseq: <img src="/images/logseq.png" alt="Logseq" className="w-5 h-5 rounded" />,
+    pushover: <img src="/images/pushover.png" alt="Pushover" className="w-5 h-5 rounded" />,
+    ntfy: <img src="/images/ntfy.png" alt="ntfy" className="w-5 h-5 rounded" />,
+    toggl: <img src="/images/toggl.png" alt="Toggl" className="w-5 h-5 rounded" />,
   };
   return (
     <div className="w-10 h-10 bg-muted rounded-xl flex items-center justify-center">

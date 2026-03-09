@@ -53,6 +53,8 @@ pub struct DeleteTimeRangeResult {
     pub ui_events_deleted: u64,
     pub video_files: Vec<String>,
     pub audio_files: Vec<String>,
+    /// Snapshot JPEG files that were uploaded to cloud and can be deleted.
+    pub snapshot_files: Vec<String>,
 }
 
 /// A transaction wrapper that uses `BEGIN IMMEDIATE` to acquire the write lock upfront,
@@ -3823,12 +3825,26 @@ impl DatabaseManager {
         let start_str = start.to_rfc3339();
         let end_str = end.to_rfc3339();
 
-        // 1. Collect video file paths for chunks that become fully orphaned
-        // ?1 and ?2 are numbered params — reused automatically, only need 2 binds
+        // 1. Collect video file paths for chunks that become fully orphaned.
+        // Only include files that have been uploaded to cloud (cloud_blob_id IS NOT NULL)
+        // or files not managed by archive (no cloud tracking needed for non-archive deletes).
         let video_files: Vec<String> = sqlx::query_scalar(
             r#"SELECT file_path FROM video_chunks
                WHERE id IN (SELECT DISTINCT video_chunk_id FROM frames WHERE timestamp BETWEEN ?1 AND ?2)
-               AND id NOT IN (SELECT DISTINCT video_chunk_id FROM frames WHERE timestamp NOT BETWEEN ?1 AND ?2)"#,
+               AND id NOT IN (SELECT DISTINCT video_chunk_id FROM frames WHERE timestamp NOT BETWEEN ?1 AND ?2)
+               AND (cloud_blob_id IS NOT NULL OR file_path LIKE 'cloud://%')"#,
+        )
+        .bind(&start_str)
+        .bind(&end_str)
+        .fetch_all(&mut **tx.conn())
+        .await?;
+
+        // Also collect snapshot files that have been uploaded
+        let snapshot_files: Vec<String> = sqlx::query_scalar(
+            r#"SELECT snapshot_path FROM frames
+               WHERE timestamp BETWEEN ?1 AND ?2
+               AND snapshot_path IS NOT NULL
+               AND cloud_blob_id IS NOT NULL"#,
         )
         .bind(&start_str)
         .bind(&end_str)
@@ -3951,7 +3967,89 @@ impl DatabaseManager {
             ui_events_deleted,
             video_files,
             audio_files,
+            snapshot_files,
         })
+    }
+
+    // =========================================================================
+    // Cloud archive media upload tracking
+    // =========================================================================
+
+    /// Get video chunks that haven't been uploaded to cloud yet, before cutoff.
+    /// Returns (chunk_id, file_path, min_frame_timestamp).
+    pub async fn get_unuploaded_video_chunks(
+        &self,
+        cutoff: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<(i64, String, String)>, sqlx::Error> {
+        let cutoff_str = cutoff.to_rfc3339();
+        sqlx::query_as(
+            r#"SELECT vc.id, vc.file_path, MIN(f.timestamp) as min_ts
+               FROM video_chunks vc
+               JOIN frames f ON f.video_chunk_id = vc.id
+               WHERE vc.cloud_blob_id IS NULL
+                 AND f.timestamp < ?1
+               GROUP BY vc.id
+               HAVING MAX(f.timestamp) < ?1
+               ORDER BY min_ts ASC
+               LIMIT ?2"#,
+        )
+        .bind(&cutoff_str)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// Get snapshot frames (not yet compacted into video chunks) that haven't
+    /// been uploaded to cloud yet, before cutoff.
+    /// Returns (frame_id, snapshot_path, timestamp).
+    pub async fn get_unuploaded_snapshots(
+        &self,
+        cutoff: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<(i64, String, String)>, sqlx::Error> {
+        let cutoff_str = cutoff.to_rfc3339();
+        sqlx::query_as(
+            r#"SELECT id, snapshot_path, timestamp
+               FROM frames
+               WHERE snapshot_path IS NOT NULL
+                 AND cloud_blob_id IS NULL
+                 AND timestamp < ?1
+               ORDER BY timestamp ASC
+               LIMIT ?2"#,
+        )
+        .bind(&cutoff_str)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// Mark a video chunk as uploaded to cloud.
+    pub async fn mark_video_chunk_uploaded(
+        &self,
+        chunk_id: i64,
+        blob_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE video_chunks SET cloud_blob_id = ?1 WHERE id = ?2")
+            .bind(blob_id)
+            .bind(chunk_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Mark a snapshot frame as uploaded to cloud.
+    pub async fn mark_snapshot_uploaded(
+        &self,
+        frame_id: i64,
+        blob_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE frames SET cloud_blob_id = ?1 WHERE id = ?2")
+            .bind(blob_id)
+            .bind(frame_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn get_similar_speakers(

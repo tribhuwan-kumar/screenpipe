@@ -7,18 +7,26 @@
 //! Each integration defines its fields and a test function.
 //! Pi receives credentials directly in its context and makes API calls itself.
 
+pub mod airtable;
 pub mod discord;
 pub mod email;
+pub mod github_issues;
+pub mod hubspot;
+pub mod jira;
 pub mod linear;
+pub mod logseq;
 pub mod make;
 pub mod n8n;
 pub mod notion;
+pub mod ntfy;
 pub mod obsidian;
 pub mod perplexity;
+pub mod pushover;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
 pub mod todoist;
+pub mod toggl;
 pub mod whatsapp;
 pub mod zapier;
 
@@ -95,6 +103,14 @@ pub fn all_integrations() -> Vec<Box<dyn Integration>> {
         Box::new(n8n::N8n),
         Box::new(make::Make),
         Box::new(zapier::Zapier),
+        Box::new(github_issues::GithubIssues),
+        Box::new(jira::Jira),
+        Box::new(hubspot::HubSpot),
+        Box::new(airtable::Airtable),
+        Box::new(logseq::Logseq),
+        Box::new(pushover::Pushover),
+        Box::new(ntfy::Ntfy),
+        Box::new(toggl::Toggl),
     ]
 }
 

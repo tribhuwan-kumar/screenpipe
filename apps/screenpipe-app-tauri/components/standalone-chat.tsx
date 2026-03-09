@@ -951,6 +951,16 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     const unlisten = listen("chat-ping", () => {
       emit("chat-ready", {});
     });
+    // Check for pending prefill from same-window navigation (e.g. pipes → home)
+    const pending = sessionStorage.getItem("pendingChatPrefill");
+    if (pending) {
+      sessionStorage.removeItem("pendingChatPrefill");
+      try {
+        const data = JSON.parse(pending);
+        // Small delay to let the chat fully initialize
+        setTimeout(() => emit("chat-prefill", data), 500);
+      } catch {}
+    }
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
@@ -3198,7 +3208,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                     ? disabledReason
                     : "Ask about your screen... (type @ for filters, paste images)"
                 }
-                disabled={isLoading || !canChat}
+                disabled={!canChat}
                 rows={1}
                 className={cn(
                   "flex w-full border border-border bg-input px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-foreground disabled:cursor-not-allowed disabled:opacity-50 caret-foreground resize-none overflow-y-auto",

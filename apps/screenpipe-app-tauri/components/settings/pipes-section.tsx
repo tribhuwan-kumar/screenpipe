@@ -34,8 +34,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
-import { emit } from "@tauri-apps/api/event";
-import { showChatWithPrefill } from "@/lib/chat-utils";
+import { emit, once } from "@tauri-apps/api/event";
+import { ChatPrefillData } from "@/lib/chat-utils";
 import { commands } from "@/lib/utils/tauri";
 import { cn } from "@/lib/utils";
 import {
@@ -123,6 +123,15 @@ the pipe.md file MUST start with --- on the very first line (YAML front-matter).
 ## task
 
 create the pipe.md file, install it, and enable it. here is what the user wants:`;
+
+function navigateHomeAndPrefill(data: ChatPrefillData): void {
+  // Store prefill data before navigating — the page will reload so
+  // any code after location change won't execute.
+  sessionStorage.setItem("pendingChatPrefill", JSON.stringify(data));
+  const url = new URL(window.location.href);
+  url.searchParams.set("section", "home");
+  window.location.href = url.toString();
+}
 
 function buildOptimizePrompt(pipeName: string): string {
   const sessionDir = `~/.pi/agent/sessions/`;
@@ -1200,9 +1209,10 @@ export function PipesSection() {
                       )}
                       <DropdownMenuItem
                         onClick={async () => {
-                          await showChatWithPrefill({
-                            context: buildOptimizePrompt(pipe.config.name),
-                            autoSend: false,
+                          navigateHomeAndPrefill({
+                            context: "the user wants to optimize their pipe",
+                            prompt: buildOptimizePrompt(pipe.config.name),
+                            autoSend: true,
                           });
                         }}
                       >
@@ -1646,7 +1656,7 @@ export function PipesSection() {
           if (!value) return;
           input.value = "";
 
-          await showChatWithPrefill({
+          navigateHomeAndPrefill({
             context: PIPE_CREATION_PROMPT,
             prompt: value,
             autoSend: true,

@@ -510,6 +510,40 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
     );
 }
 
+/// Shared panel visibility sequence — the single source of truth for making an
+/// NSPanel visible and interactive. Call this **on the main thread** after any
+/// mode-specific pre-show setup (collection behavior, screen positioning, etc.).
+///
+/// Steps: save_frontmost_app → alpha:1 → [optional activate] →
+///        order_front → make_key → first_responder → emit("window-focused")
+///
+/// `activate_app`: pass `true` for **window mode** (needs explicit activation
+/// for keyboard input). Overlay mode should pass `false` to avoid Space-switch.
+#[cfg(target_os = "macos")]
+unsafe fn show_panel_visible(
+    panel: &tauri_nspanel::raw_nspanel::RawNSPanel,
+    app: &AppHandle,
+    activate_app: bool,
+) {
+    use objc::{msg_send, sel, sel_impl};
+    use tauri_nspanel::cocoa::base::id;
+
+    save_frontmost_app();
+
+    let _: () = msg_send![&*panel, setAlphaValue: 1.0f64];
+
+    if activate_app {
+        let ns_app: id = msg_send![objc::class!(NSApplication), sharedApplication];
+        let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+    }
+
+    panel.order_front_regardless();
+    panel.make_key_window();
+    make_webview_first_responder(panel);
+
+    let _ = app.emit("window-focused", true);
+}
+
 /// Tracks which overlay mode the current Main window was created for.
 /// When the mode changes, show() hides the old panel and creates a fresh one
 /// under a different label to avoid NSPanel reconfiguration crashes.
@@ -873,39 +907,21 @@ impl ShowRewindWindow {
                     if let Ok(panel) = app_clone.get_webview_panel(&lbl) {
                         use objc::{msg_send, sel, sel_impl};
                         use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
-                        use tauri_nspanel::cocoa::base::id;
                         panel.set_level(1001);
                         panel.set_collection_behaviour(
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace |
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                         );
-                        // Update screen capture sharing type
                         let sharing: u64 = if capturable { 1 } else { 0 };
                         let _: () = unsafe { msg_send![&*panel, setSharingType: sharing] };
-                        save_frontmost_app();
-                        unsafe {
-                            let _: () = msg_send![&*panel, setAlphaValue: 1.0f64];
-                            // Activate the app so keyboard events route to the WKWebView.
-                            // NSNonactivatingPanelMask prevents the app from becoming
-                            // frontmost on its own, so without this the webview never
-                            // receives keyboard input when opened from the tray menu.
-                            let ns_app: id =
-                                msg_send![objc::class!(NSApplication), sharedApplication];
-                            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
-                        }
-                        panel.order_front_regardless();
-                        panel.make_key_window();
-                        // Set WKWebView as first responder AFTER make_key_window so
-                        // the responder chain update doesn't reset it to content_view.
-                        // This is critical for trackpad pinch-to-zoom (magnifyWithEvent:).
-                        unsafe {
-                            make_webview_first_responder(&panel);
-                        }
+
+                        // Shared visibility sequence (activate_app=true for window mode)
+                        unsafe { show_panel_visible(&panel, &app_clone, true); }
+
                         // Remove MoveToActiveSpace so panel stays pinned to this Space
                         panel.set_collection_behaviour(
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                         );
-                        let _ = app_clone.emit("window-focused", true);
                     }
                 });
             }
@@ -974,21 +990,8 @@ impl ShowRewindWindow {
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle |
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                         );
-                        // Save frontmost app before we steal activation so we
-                        // can restore it on hide (prevents Space switching).
-                        save_frontmost_app();
-
-                        // Restore alpha in case it was set to 0 by focus-loss handler
-                        unsafe {
-                            let _: () = msg_send![&*panel, setAlphaValue: 1.0f64];
-                        }
-                        panel.order_front_regardless();
-                        panel.make_key_window();
-                        // Set WKWebView as first responder AFTER make_key_window so
-                        // the responder chain update doesn't reset it to content_view.
-                        unsafe {
-                            make_webview_first_responder(&panel);
-                        }
+                        // Shared visibility sequence (activate_app=false for overlay mode)
+                        unsafe { show_panel_visible(&panel, &app_clone, false); }
 
                         // Remove MoveToActiveSpace now that the panel is shown.
                         // This keeps it pinned to THIS Space so it won't follow
@@ -997,8 +1000,6 @@ impl ShowRewindWindow {
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle |
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                         );
-
-                        let _ = app_clone.emit("window-focused", true);
                     }
                 });
             }
@@ -1296,7 +1297,6 @@ impl ShowRewindWindow {
                             run_on_main_thread_safe(app, move || {
                                 use objc::{msg_send, sel, sel_impl};
                                 use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
-                                use tauri_nspanel::cocoa::base::id;
 
                                 if let Ok(panel) = window_clone.to_panel() {
                                     // Same level as overlay — above fullscreen
@@ -1319,22 +1319,14 @@ impl ShowRewindWindow {
                                         NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace |
                                         NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                                     );
-                                    // Activate the app so keyboard events route to the WKWebView.
-                                    unsafe {
-                                        let ns_app: id = msg_send![
-                                            objc::class!(NSApplication),
-                                            sharedApplication
-                                        ];
-                                        let _: () =
-                                            msg_send![ns_app, activateIgnoringOtherApps: true];
-                                    }
-                                    panel.order_front_regardless();
-                                    panel.make_key_window();
-                                    // Set WKWebView as first responder AFTER make_key_window
-                                    unsafe {
-                                        make_webview_first_responder(&panel);
-                                    }
-                                    let _ = app_for_emit.emit("window-focused", true);
+
+                                    // Shared visibility sequence (activate_app=true for window mode)
+                                    unsafe { show_panel_visible(&panel, &app_for_emit, true); }
+
+                                    // Remove MoveToActiveSpace so panel stays pinned to this Space
+                                    panel.set_collection_behaviour(
+                                        NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
+                                    );
                                 }
                             });
                         }
@@ -1609,6 +1601,7 @@ impl ShowRewindWindow {
                         // Set panel behaviors on main thread to avoid crashes
                         let window_clone = window.clone();
                         let capturable = show_in_recording;
+                        let app_for_emit = window_clone.app_handle().clone();
                         run_on_main_thread_safe(app, move || {
                             use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
 
@@ -1647,17 +1640,9 @@ impl ShowRewindWindow {
                                     NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                                 );
 
-                                // Make the panel visible on first creation.
-                                // Without this, the panel is created hidden and requires
-                                // a second shortcut press to trigger show_existing_main().
-                                save_frontmost_app();
+                                // Shared visibility sequence (activate_app=false for overlay)
                                 unsafe {
-                                    let _: () = objc::msg_send![&*panel, setAlphaValue: 1.0f64];
-                                }
-                                panel.order_front_regardless();
-                                panel.make_key_window();
-                                unsafe {
-                                    make_webview_first_responder(&panel);
+                                    show_panel_visible(&panel, &app_for_emit, false);
                                 }
 
                                 // Remove MoveToActiveSpace so the panel stays pinned to

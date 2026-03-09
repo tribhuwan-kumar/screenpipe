@@ -1080,7 +1080,13 @@ videoQuality?: string;
 /**
  * When true, the chat window stays above all other windows (default: true).
  */
-chatAlwaysOnTop?: boolean }
+chatAlwaysOnTop?: boolean; 
+/**
+ * Automatically detect and skip incognito / private browsing windows.
+ * Uses localized title matching (20+ languages) and on macOS, native
+ * AppleScript detection for Chromium browsers.
+ */
+ignoreIncognitoWindows?: boolean }
 export type ShowRewindWindow = "Main" | { Settings: { page: string | null } } | { Search: { query: string | null } } | "Onboarding" | "Chat" | "PermissionRecovery"
 export type Suggestion = { text: string }
 /**
