@@ -237,6 +237,12 @@ pub struct SettingsStore {
     #[serde(rename = "chatAlwaysOnTop", default = "default_true")]
     pub chat_always_on_top: bool,
 
+    /// Automatically detect and skip incognito / private browsing windows.
+    /// Uses localized title matching (20+ languages) and on macOS, native
+    /// AppleScript detection for Chromium browsers.
+    #[serde(rename = "ignoreIncognitoWindows", default = "default_true")]
+    pub ignore_incognito_windows: bool,
+
     /// Catch-all for fields added by the frontend (e.g. chatHistory, deviceId)
     /// that the Rust struct doesn't know about. Without this, `save()` would
     /// serialize only known fields and silently wipe frontend-only data.
@@ -578,6 +584,7 @@ impl Default for SettingsStore {
             show_overlay_in_screen_recording: false,
             video_quality: "balanced".to_string(),
             chat_always_on_top: true,
+            ignore_incognito_windows: true,
             extra: std::collections::HashMap::new(),
         }
     }
@@ -683,6 +690,7 @@ impl SettingsStore {
             ignored_windows: self.ignored_windows.clone(),
             included_windows: self.included_windows.clone(),
             ignored_urls: self.ignored_urls.clone(),
+            ignore_incognito_windows: self.ignore_incognito_windows,
             languages: self
                 .languages
                 .iter()

@@ -161,6 +161,8 @@ pub struct TreeWalkerConfig {
     pub monitor_width: f64,
     /// Monitor height in screen points.
     pub monitor_height: f64,
+    /// Automatically detect and skip incognito / private browsing windows.
+    pub ignore_incognito_windows: bool,
 }
 
 impl Default for TreeWalkerConfig {
@@ -178,6 +180,7 @@ impl Default for TreeWalkerConfig {
             monitor_y: 0.0,
             monitor_width: 0.0,
             monitor_height: 0.0,
+            ignore_incognito_windows: true,
         }
     }
 }

@@ -47,6 +47,8 @@ pub struct RecordingConfig {
     pub ignored_windows: Vec<String>,
     pub included_windows: Vec<String>,
     pub ignored_urls: Vec<String>,
+    /// Automatically detect and skip incognito / private browsing windows.
+    pub ignore_incognito_windows: bool,
     pub languages: Vec<Language>,
 
     // Cloud/auth
@@ -128,6 +130,7 @@ impl RecordingConfig {
             use_pii_removal: self.use_pii_removal,
             monitor_ids: self.monitor_ids.clone(),
             use_all_monitors: self.use_all_monitors,
+            ignore_incognito_windows: self.ignore_incognito_windows,
         }
     }
 }

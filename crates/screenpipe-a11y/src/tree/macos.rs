@@ -257,7 +257,9 @@ impl MacosTreeWalker {
         // On macOS Chromium browsers, the full AppleScript-based detection
         // happens in the capture pipeline; here we only do the cheap title
         // check to avoid recording sensitive content in the a11y tree.
-        if crate::incognito::is_title_private(&window_name) {
+        if self.config.ignore_incognito_windows
+            && crate::incognito::is_title_private(&window_name)
+        {
             return Ok(None);
         }
 
