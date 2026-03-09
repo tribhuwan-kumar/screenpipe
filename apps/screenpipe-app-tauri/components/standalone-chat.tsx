@@ -954,12 +954,22 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
+  // Guard against duplicate chat-prefill processing. The listener below
+  // re-subscribes when piInfo changes; during the brief overlap window
+  // (async unlisten hasn't resolved yet) both old and new listeners can
+  // receive the same event, causing duplicate abort→session→prompt sequences.
+  const prefillInFlightRef = useRef(false);
+
   // Listen for chat-prefill events from search modal and pipe creation
   useEffect(() => {
     const unlisten = listen<{ context: string; prompt?: string; frameId?: number; autoSend?: boolean; source?: string }>("chat-prefill", (event) => {
       const { context, prompt, frameId, autoSend, source } = event.payload;
 
       if (autoSend && prompt && context) {
+        // Deduplicate: skip if another listener instance is already handling this
+        if (prefillInFlightRef.current) return;
+        prefillInFlightRef.current = true;
+
         // Auto-send: compose full message (context above, user text below) and send immediately
         const fullMessage = `${context}\n\n${prompt}`;
         // Start a new conversation then send
@@ -1019,6 +1029,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             }
             autoSendBypassRef.current = false;
           }
+          prefillInFlightRef.current = false;
         })();
         return;
       }
