@@ -541,8 +541,18 @@ unsafe fn show_panel_visible(
     panel.make_key_window();
     make_webview_first_responder(panel);
 
+    MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit("window-focused", true);
 }
+
+/// Logical visibility of the main panel. `true` means the panel is (or should
+/// be) visible to the user. Set `true` by `show_panel_visible`, set `false`
+/// by focus-loss auto-hide and explicit `close()`. The shortcut toggle uses
+/// this instead of `window.is_visible()` because `is_visible()` returns `true`
+/// even when the panel's alpha is 0 (still in the window list but invisible).
+#[cfg(target_os = "macos")]
+pub static MAIN_PANEL_SHOWN: Lazy<std::sync::atomic::AtomicBool> =
+    Lazy::new(|| std::sync::atomic::AtomicBool::new(false));
 
 /// Tracks which overlay mode the current Main window was created for.
 /// When the mode changes, show() hides the old panel and creates a fresh one
@@ -1350,6 +1360,7 @@ impl ShowRewindWindow {
                                                 let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
                                             }
                                         }
+                                        MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
                                     }
                                     focus_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                     let cancel = focus_cancel.clone();
@@ -1405,6 +1416,7 @@ impl ShowRewindWindow {
                                             panel.make_key_window();
                                             unsafe { make_webview_first_responder(&panel); }
                                         }
+                                        MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
                                     }
                                     // Re-register window shortcuts on focus gain
                                     let app_reg = app_clone.clone();
@@ -1686,6 +1698,7 @@ impl ShowRewindWindow {
                                             let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
                                         }
                                     }
+                                    MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
                                 }
                                 focus_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                 let cancel = focus_cancel.clone();
@@ -1746,6 +1759,7 @@ impl ShowRewindWindow {
                                         panel.make_key_window();
                                         unsafe { make_webview_first_responder(&panel); }
                                     }
+                                    MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
                                 }
                                 // Re-register window-specific shortcuts on focus gain
                                 let app_reg = app_clone.clone();
@@ -2004,6 +2018,7 @@ impl ShowRewindWindow {
                 // By doing both inside one run_on_main_thread_safe closure with
                 // order_out first, the panel is off-screen before the previous app
                 // is reactivated, so no focus events can bounce back to it.
+                MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
                 let app_clone = app.clone();
                 run_on_main_thread_safe(app, move || {
                     use objc::{msg_send, sel, sel_impl};

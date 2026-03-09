@@ -154,11 +154,15 @@ fn looks_like_url(s: &str) -> bool {
 /// macOS tree walker using cidre's AX bindings.
 pub struct MacosTreeWalker {
     config: TreeWalkerConfig,
+    incognito_detector: Box<dyn crate::incognito::IncognitoDetector>,
 }
 
 impl MacosTreeWalker {
     pub fn new(config: TreeWalkerConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            incognito_detector: crate::incognito::create_detector(),
+        }
     }
 }
 
@@ -253,12 +257,11 @@ impl MacosTreeWalker {
 
         let window_name = get_string_attr(window, ax::attr::title()).unwrap_or_default();
 
-        // Skip incognito / private browsing windows (localized title check).
-        // On macOS Chromium browsers, the full AppleScript-based detection
-        // happens in the capture pipeline; here we only do the cheap title
-        // check to avoid recording sensitive content in the a11y tree.
+        // Skip incognito / private browsing windows.  Uses the full detector
+        // which checks AppleScript window properties for Chromium browsers
+        // (Arc, Chrome, Edge, etc.) and falls back to localized title matching.
         if self.config.ignore_incognito_windows
-            && crate::incognito::is_title_private(&window_name)
+            && self.incognito_detector.is_incognito(&app_name, 0, &window_name)
         {
             return Ok(None);
         }

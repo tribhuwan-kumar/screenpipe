@@ -992,11 +992,11 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               // Abort any in-flight processing, then reset session
               // Always abort — Pi may be processing even if our ref was cleared
               await commands.piAbort(PI_CHAT_SESSION);
-              // Wait for Pi to process the abort before sending new_session
-              await new Promise(r => setTimeout(r, 500));
+              // Wait for Pi to fully finish aborting before sending new_session
+              await new Promise(r => setTimeout(r, 1500));
               await commands.piNewSession(PI_CHAT_SESSION);
               // Wait for Pi to process the session reset before sending prompt
-              await new Promise(r => setTimeout(r, 500));
+              await new Promise(r => setTimeout(r, 1000));
             } catch (e) {
               console.warn("[Pi] Failed to reset session:", e);
             }
@@ -2394,18 +2394,34 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         piSessionSyncedRef.current = true;
       }
 
-      const result = await commands.piPrompt(
+      // Send prompt with retry on "already processing" (Pi may still be finishing previous work)
+      let result = await commands.piPrompt(
         PI_CHAT_SESSION,
         promptMessage,
         piImages.length > 0 ? piImages : null,
       );
+
+      if (result.status === "error" && result.error.includes("already processing")) {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          console.warn(`[Pi] Already processing, retry ${attempt + 1}/3 after delay`);
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          result = await commands.piPrompt(
+            PI_CHAT_SESSION,
+            promptMessage,
+            piImages.length > 0 ? piImages : null,
+          );
+          if (result.status !== "error" || !result.error.includes("already processing")) break;
+        }
+      }
 
       if (result.status === "error") {
         clearTimeout(timeoutId);
         piMessageIdRef.current = null;
         // Provide helpful error messages for common failures
         let errorMsg = result.error;
-        if (errorMsg.includes("Broken pipe") || errorMsg.includes("not running") || errorMsg.includes("has died")) {
+        if (errorMsg.includes("already processing")) {
+          errorMsg = "AI is busy — please wait a moment and try again.";
+        } else if (errorMsg.includes("Broken pipe") || errorMsg.includes("not running") || errorMsg.includes("has died")) {
           const provider = activePreset?.provider;
           if (provider === "native-ollama") {
             errorMsg = "Ollama is not running. Start it with: `ollama serve`";
