@@ -939,7 +939,6 @@ jobs:
 
       - name: Upload to Cloudflare R2 (macOS)
         if: matrix.os_type == 'macos'
-        continue-on-error: true
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -989,22 +988,26 @@ jobs:
 
           echo "uploading ${TARGET} bundles for v${VERSION} to R2..."
           echo "aws cli: $(aws --version)"
+          UPLOAD_FAILED=0
 
           # Upload DMG
           for f in "${BUNDLE_DIR}"/dmg/*.dmg; do
-            [ -f "$f" ] && upload_with_retry "$f" "${R2_PREFIX}/$(basename "$f")"
+            [ -f "$f" ] && { upload_with_retry "$f" "${R2_PREFIX}/$(basename "$f")" || UPLOAD_FAILED=1; }
           done
 
           # Upload updater artifacts (.tar.gz + .sig)
           for f in "${BUNDLE_DIR}"/macos/*.tar.gz "${BUNDLE_DIR}"/macos/*.sig; do
-            [ -f "$f" ] && upload_with_retry "$f" "${R2_PREFIX}/$(basename "$f")"
+            [ -f "$f" ] && { upload_with_retry "$f" "${R2_PREFIX}/$(basename "$f")" || UPLOAD_FAILED=1; }
           done
 
+          if [ "$UPLOAD_FAILED" -eq 1 ]; then
+            echo "❌ Some uploads failed — marking step as failed"
+            exit 1
+          fi
           echo "R2 upload complete for ${TARGET}"
 
       - name: Upload to Cloudflare R2 (Windows)
         if: matrix.os_type == 'windows'
-        continue-on-error: true
         shell: powershell
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
