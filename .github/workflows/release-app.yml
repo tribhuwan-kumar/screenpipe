@@ -813,6 +813,15 @@ jobs:
           TARGET="${{ matrix.target }}"
           BUNDLE_DIR="apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/bundle"
 
+          # On Windows, ensure MSVC link.exe is found before Git's /usr/bin/link
+          if [[ "${{ matrix.os_type }}" == "windows" ]]; then
+            MSVC_DIR=$(dirname "$(which cl.exe 2>/dev/null)" 2>/dev/null)
+            if [ -n "$MSVC_DIR" ]; then
+              export PATH="$MSVC_DIR:$PATH"
+              echo "Prepended MSVC dir to PATH: $MSVC_DIR"
+            fi
+          fi
+
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "=== Build attempt $attempt/$MAX_ATTEMPTS ==="
 
