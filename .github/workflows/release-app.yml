@@ -756,8 +756,8 @@ jobs:
             security find-identity -v -p codesigning "$BUILD_KC" 2>&1 | tail -3
           fi
 
-      - name: Build
-        uses: tauri-apps/tauri-action@v0.5.17
+      - name: Build (with codesign retry)
+        shell: bash
         env:
           # for updater
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -807,11 +807,55 @@ jobs:
           NO_STRIP: ${{ matrix.os_type == 'linux' && '1' || '' }}
           LINUXDEPLOY_OUTPUT_VERSION: ${{ matrix.os_type == 'linux' && '1' || '' }}
           APPIMAGE_EXTRACT_AND_RUN: ${{ matrix.os_type == 'linux' && '1' || '' }}
-        with:
-          args: ${{ steps.tauri-args.outputs.args || matrix.tauri-args }}
-          projectPath: "./apps/screenpipe-app-tauri"
-          tauriScript: bunx tauri -v
-          retryAttempts: 3
+        run: |
+          TAURI_ARGS="${{ steps.tauri-args.outputs.args || matrix.tauri-args }}"
+          MAX_ATTEMPTS=3
+          TARGET="${{ matrix.target }}"
+          BUNDLE_DIR="apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/bundle"
+
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "=== Build attempt $attempt/$MAX_ATTEMPTS ==="
+
+            # Re-unlock keychain before each attempt (macOS) — prevents transient codesign failures
+            if [[ "${{ matrix.os_type }}" == "macos" ]]; then
+              BUILD_KC="$HOME/Library/Keychains/build.keychain-db"
+              if [ -f "$BUILD_KC" ]; then
+                security unlock-keychain -p "build_password" "$BUILD_KC"
+                security set-keychain-settings -t 3600 "$BUILD_KC"
+                security list-keychains -d user -s "$BUILD_KC" \
+                  "$HOME/Library/Keychains/login.keychain-db" \
+                  "/Library/Keychains/System.keychain" \
+                  "/System/Library/Keychains/SystemRootCertificates.keychain"
+                echo "Keychain unlocked for attempt $attempt"
+              fi
+            fi
+
+            cd apps/screenpipe-app-tauri
+            if bunx tauri build -v $TAURI_ARGS 2>&1 | tee /tmp/tauri-build-$attempt.log; then
+              echo "✅ Build succeeded on attempt $attempt"
+              cd ../..
+              break
+            fi
+            cd ../..
+
+            if [ $attempt -eq $MAX_ATTEMPTS ]; then
+              echo "❌ Build failed after $MAX_ATTEMPTS attempts"
+              cat /tmp/tauri-build-$attempt.log | tail -50
+              exit 1
+            fi
+
+            # Check if it's a transient signing/bundling failure (worth retrying)
+            if grep -qiE "failed to sign|codesign.*failed|errSecInternalComponent|failed to bundle|CSSMERR|SecKeychainOpen" /tmp/tauri-build-$attempt.log; then
+              echo "⚠️ Transient codesign/bundle failure detected, retrying..."
+              # Clean only bundle output — cargo cache is still warm
+              find "$BUNDLE_DIR" -type f -delete 2>/dev/null || true
+              sleep $((attempt * 30))
+            else
+              echo "❌ Non-transient build failure, aborting"
+              cat /tmp/tauri-build-$attempt.log | tail -50
+              exit 1
+            fi
+          done
 
       - name: Clean up signing cert from login keychain (macOS)
         if: matrix.os_type == 'macos' && always()
