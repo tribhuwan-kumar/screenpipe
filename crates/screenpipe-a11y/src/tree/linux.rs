@@ -160,8 +160,6 @@ const EXCLUDED_APPS: &[&str] = &[
     "compiz",
 ];
 
-const SENSITIVE_TITLES: &[&str] = &["password", "private", "incognito", "secret"];
-
 /// Known browser process names for URL extraction.
 const BROWSER_NAMES: &[&str] = &[
     "chrome",
@@ -865,13 +863,13 @@ impl TreeWalkerPlatform for LinuxTreeWalker {
             None => return Ok(None),
         };
 
-        // Check sensitive window titles
-        let window_lower = window_title.to_lowercase();
-        if SENSITIVE_TITLES.iter().any(|s| window_lower.contains(s)) {
+        // Skip incognito / private browsing windows (localized title check)
+        if crate::incognito::is_title_private(&window_title) {
             return Ok(None);
         }
 
         let app_lower = app_name.to_lowercase();
+        let window_lower = window_title.to_lowercase();
 
         // Apply user-configured ignored windows
         if self.config.ignored_windows.iter().any(|pattern| {
@@ -1013,11 +1011,11 @@ mod tests {
     }
 
     #[test]
-    fn test_sensitive_titles() {
-        assert!(SENSITIVE_TITLES
-            .iter()
-            .any(|s| "enter password".contains(s)));
-        assert!(!SENSITIVE_TITLES.iter().any(|s| "calculator".contains(s)));
+    fn test_incognito_detection() {
+        use crate::incognito::is_title_private;
+        assert!(is_title_private("Enter Password - Chrome"));
+        assert!(is_title_private("Private Browsing - Firefox"));
+        assert!(!is_title_private("Calculator"));
     }
 
     #[test]

@@ -253,17 +253,16 @@ impl MacosTreeWalker {
 
         let window_name = get_string_attr(window, ax::attr::title()).unwrap_or_default();
 
-        // Skip windows with sensitive titles
-        let window_lower = window_name.to_lowercase();
-        if window_lower.contains("password")
-            || window_lower.contains("private")
-            || window_lower.contains("incognito")
-            || window_lower.contains("secret")
-        {
+        // Skip incognito / private browsing windows (localized title check).
+        // On macOS Chromium browsers, the full AppleScript-based detection
+        // happens in the capture pipeline; here we only do the cheap title
+        // check to avoid recording sensitive content in the a11y tree.
+        if crate::incognito::is_title_private(&window_name) {
             return Ok(None);
         }
 
         // Apply user-configured ignored windows (also check window title)
+        let window_lower = window_name.to_lowercase();
         if self.config.ignored_windows.iter().any(|pattern| {
             let p = pattern.to_lowercase();
             window_lower.contains(&p)

@@ -45,9 +45,6 @@ const EXCLUDED_APPS: &[&str] = &[
     "snippingtool",
 ];
 
-/// Window title patterns that indicate sensitive content.
-const SENSITIVE_TITLES: &[&str] = &["password", "private", "incognito", "secret"];
-
 /// UIA control types that should be skipped (decorative, not text-bearing).
 const SKIP_TYPES: &[&str] = &[
     "ScrollBar",
@@ -198,13 +195,13 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
             String::from_utf16_lossy(&buf[..len as usize])
         };
 
-        // Skip sensitive windows
-        let window_lower = window_name.to_lowercase();
-        if SENSITIVE_TITLES.iter().any(|s| window_lower.contains(s)) {
+        // Skip incognito / private browsing windows (localized title check)
+        if crate::incognito::is_title_private(&window_name) {
             return Ok(None);
         }
 
         // Apply user-configured ignored windows (check app name and window title)
+        let window_lower = window_name.to_lowercase();
         if self.config.ignored_windows.iter().any(|pattern| {
             let p = pattern.to_lowercase();
             app_lower.contains(&p) || window_lower.contains(&p)
@@ -733,13 +730,11 @@ mod tests {
     }
 
     #[test]
-    fn test_sensitive_titles() {
-        assert!(SENSITIVE_TITLES
-            .iter()
-            .any(|s| "enter password".contains(s)));
-        assert!(SENSITIVE_TITLES
-            .iter()
-            .any(|s| "private browsing".contains(s)));
-        assert!(!SENSITIVE_TITLES.iter().any(|s| "calculator".contains(s)));
+    fn test_incognito_detection() {
+        use crate::incognito::is_title_private;
+        assert!(is_title_private("Enter Password - Chrome"));
+        assert!(is_title_private("Private Browsing - Firefox"));
+        assert!(is_title_private("New Tab - Google Chrome (Incognito)"));
+        assert!(!is_title_private("Calculator"));
     }
 }
