@@ -1203,6 +1203,21 @@ const AISection = ({
               </Command>
             </PopoverContent>
           </Popover>
+          {settingsPreset?.provider === "native-ollama" && (
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>
+                <span className="font-medium">recommended:</span>{" "}
+                <code className="bg-secondary/50 px-1 rounded">qwen3.5:9b</code>{" "}
+                <code className="bg-secondary/50 px-1 rounded">glm-4.7:9b</code>{" "}
+                <code className="bg-secondary/50 px-1 rounded">qwen3.5:4b</code>{" "}
+                (all support tool calling)
+              </p>
+              <p>
+                GPU strongly recommended. without a dedicated GPU, local models will be very slow and pipes may time out.
+                for best results consider screenpipe cloud or groq as custom provider.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
