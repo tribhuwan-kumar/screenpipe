@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   Play,
+  Sparkles,
   Square,
   Trash2,
   ChevronDown,
@@ -122,6 +123,39 @@ the pipe.md file MUST start with --- on the very first line (YAML front-matter).
 ## task
 
 create the pipe.md file, install it, and enable it. here is what the user wants:`;
+
+function buildOptimizePrompt(pipeName: string): string {
+  const sessionDir = `~/.pi/agent/sessions/`;
+  return `i need help optimizing my screenpipe pipe "${pipeName}".
+
+## your task
+
+1. first, ask me: what do i expect this pipe to produce? what's the ideal output?
+2. then read the pipe prompt: ~/.screenpipe/pipes/${pipeName}/pipe.md
+3. check the last few execution logs by querying the screenpipe API: GET http://localhost:3030/pipes/${pipeName}/executions?limit=5
+4. look at the pi agent session files in ${sessionDir} for the full conversation history (tool calls, reasoning, errors)
+5. based on all of this, suggest specific improvements to the pipe.md prompt
+
+## optimization guidelines
+
+follow these prompt engineering best practices (from anthropic's guide):
+- be specific and explicit about expected output format
+- give the agent clear step-by-step instructions
+- include examples of good output
+- add error handling: "if the API returns empty results, try content_type=accessibility instead of ocr"
+- add validation: "before writing the file, verify you have at least 3 activity entries"
+- avoid ambiguity: specify exact file paths, exact API parameters, exact output structure
+
+## common issues to check for
+
+- pipe queries content_type=ocr but user may not have OCR enabled (try accessibility instead)
+- pipe doesn't specify output file path explicitly (agent guesses wrong location)
+- pipe prompt is too vague for small/local models (needs more explicit steps)
+- schedule is too frequent (burning credits on empty time ranges)
+- no error handling for empty API responses (agent exits successfully with no output)
+
+after analyzing, show me the improved pipe.md and explain what you changed and why.`;
+}
 
 function parsePipeError(stderr: string): {
   type: "daily_limit" | "credits_exhausted" | "rate_limit" | "unknown";
@@ -1164,6 +1198,17 @@ export function PipesSection() {
                           </DropdownMenuItem>
                         </>
                       )}
+                      <DropdownMenuItem
+                        onClick={async () => {
+                          await showChatWithPrefill({
+                            context: buildOptimizePrompt(pipe.config.name),
+                            autoSend: false,
+                          });
+                        }}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-2" />
+                        optimize
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
