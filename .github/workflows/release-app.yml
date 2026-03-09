@@ -37,7 +37,6 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
       # publish is now a separate workflow: publish-release.yml
       should_test: ${{ steps.check.outputs.should_test }}
-      should_beta: ${{ steps.check.outputs.should_beta }}
       macos_arm_runner: ${{ steps.check-runner.outputs.macos_arm_runner }}
       windows_runner: ${{ steps.check-runner.outputs.windows_runner }}
     steps:
@@ -57,14 +56,6 @@ jobs:
             echo "should_publish=true" >> $GITHUB_OUTPUT
           else
             echo "should_publish=false" >> $GITHUB_OUTPUT
-          fi
-          
-          # Beta: only build on explicit release triggers (same as stable)
-          # Beta is rebuilt from same compilation with different config — adds ~2-5 min, not a full rebuild
-          if echo "$COMMIT_MSG" | head -1 | grep -qE "^(Bump app|release-app)"; then
-            echo "should_beta=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_beta=false" >> $GITHUB_OUTPUT
           fi
 
           # Check for explicit testing or skip flags first
@@ -194,7 +185,7 @@ jobs:
 
   draft:
     needs: [check_commit]
-    if: github.event_name == 'workflow_dispatch' || needs.check_commit.outputs.should_release == 'true' || needs.check_commit.outputs.should_beta == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.check_commit.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -215,7 +206,7 @@ jobs:
 
   publish-tauri:
     needs: [check_commit, draft]
-    if: github.event_name == 'workflow_dispatch' || needs.check_commit.outputs.should_release == 'true' || needs.check_commit.outputs.should_beta == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.check_commit.outputs.should_release == 'true'
     permissions:
       contents: write
     strategy:
@@ -993,141 +984,6 @@ jobs:
 
           Write-Host "R2 upload complete for Windows"
 
-      - name: Rebuild and upload beta (Windows)
-        if: matrix.os_type == 'windows' && (needs.check_commit.outputs.should_beta == 'true' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
-        shell: powershell
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          cd apps/screenpipe-app-tauri/src-tauri
-
-          Write-Host "=== Rebuilding with beta config ==="
-          Copy-Item "tauri.beta.conf.json" "tauri.conf.json" -Force
-          $bundleNsis = "target\x86_64-pc-windows-msvc\release\bundle\nsis"
-          if (Test-Path $bundleNsis) { Remove-Item -Recurse -Force $bundleNsis }
-          Push-Location ..
-          # Skip frontend rebuild (already built for stable) and vulkan
-          $env:TAURI_CLI_CONFIG = '{"build":{"beforeBuildCommand":""}}'
-          bunx tauri build --target x86_64-pc-windows-msvc --features official-build
-          Pop-Location
-          Write-Host "=== Beta rebuild complete ==="
-
-          # Upload beta to R2
-          if (-not (Get-Command aws -ErrorAction SilentlyContinue)) {
-            Write-Host "Installing AWS CLI..."
-            Invoke-WebRequest -Uri "https://awscli.amazonaws.com/AWSCLIV2.msi" -OutFile "$env:TEMP\awscli.msi"
-            Start-Process msiexec.exe -Wait -ArgumentList "/i $env:TEMP\awscli.msi /quiet"
-            $env:PATH += ";C:\Program Files\Amazon\AWSCLIV2"
-          }
-          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
-          $r2Endpoint = "https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com"
-          $r2Prefix = "s3://screenpipe-releases/beta/releases/$version/x86_64-pc-windows-msvc"
-
-          Write-Host "Uploading beta Windows bundles for v$version to R2..."
-
-          Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
-            aws s3 cp $_.FullName "$r2Prefix/$($_.Name)" --endpoint-url $r2Endpoint
-            Write-Host "  ✅ $($_.Name)"
-          }
-
-          Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip","target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sig" -ErrorAction SilentlyContinue | ForEach-Object {
-            aws s3 cp $_.FullName "$r2Prefix/$($_.Name)" --endpoint-url $r2Endpoint
-            Write-Host "  ✅ $($_.Name)"
-          }
-
-          Write-Host "R2 beta upload complete for Windows"
-
-      - name: Clean stale beta artifacts before stable upload
-        if: matrix.os_type != 'windows'
-        shell: bash
-        run: |
-          # Remove any leftover beta artifacts from previous builds (self-hosted runners persist)
-          find apps/screenpipe-app-tauri/src-tauri/target -name "*beta*" -type f -delete 2>/dev/null || true
-          echo "Cleaned stale beta artifacts"
-
-      - name: Rebuild with beta config (Non-Windows)
-        if: matrix.os_type != 'windows' && (needs.check_commit.outputs.should_beta == 'true' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          # Cert already in login keychain from earlier import step
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CI: true
-          MACOSX_DEPLOYMENT_TARGET: "10.15"
-        run: |
-          echo "=== Rebuilding with beta config ==="
-          # Swap to beta config
-          cp apps/screenpipe-app-tauri/src-tauri/tauri.beta.conf.json apps/screenpipe-app-tauri/src-tauri/tauri.conf.json
-          # Only remove bundle outputs (NOT cargo cache). Use parens to group -o conditions properly.
-          find apps/screenpipe-app-tauri/src-tauri/target -type d -name "bundle" -exec rm -rf {} + 2>/dev/null || true
-          find apps/screenpipe-app-tauri/src-tauri/target \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.sig" -o -name "*.nsis*" \) -type f -delete 2>/dev/null || true
-          # Skip frontend rebuild — already built for stable, beta uses same frontend
-          # Override beforeBuildCommand to no-op so tauri doesn't re-run bun run build
-          cd apps/screenpipe-app-tauri
-          TAURI_CLI_CONFIG='{"build":{"beforeBuildCommand":""}}' bunx tauri build ${{ steps.tauri-args.outputs.args || matrix.tauri-args }}
-          echo "=== Beta rebuild complete ==="
-          echo "Beta artifacts:"
-          find src-tauri/target -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.exe" 2>/dev/null
-
-      - name: Upload beta to R2 (macOS)
-        if: matrix.os_type == 'macos' && (needs.check_commit.outputs.should_beta == 'true' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
-        shell: bash
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-        run: |
-          upload_with_retry() {
-            local src="$1" dst="$2"
-            for attempt in 1 2; do
-              if aws s3 cp "$src" "$dst" --endpoint-url "$R2_ENDPOINT" 2>&1; then
-                echo "  ✅ $(basename "$src") (aws)"
-                return 0
-              fi
-              echo "  ⚠️ aws attempt $attempt failed for $(basename "$src")"
-              sleep 5
-            done
-            echo "  🔄 falling back to curl for $(basename "$src")..."
-            for attempt in 1 2 3; do
-              PRESIGNED=$(aws s3 presign "$dst" --endpoint-url "$R2_ENDPOINT" --expires-in 3600 2>/dev/null)
-              if [ -n "$PRESIGNED" ] && curl --retry 3 --retry-delay 5 -sf -T "$src" "$PRESIGNED" 2>&1; then
-                echo "  ✅ $(basename "$src") (curl)"
-                return 0
-              fi
-              echo "  ⚠️ curl attempt $attempt failed for $(basename "$src")"
-              sleep $((attempt * 10))
-            done
-            echo "  ❌ failed to upload $(basename "$src") after all attempts"
-            return 1
-          }
-          VERSION=$(grep '^version = ' apps/screenpipe-app-tauri/src-tauri/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          TARGET="${{ matrix.target }}"
-          BUNDLE_DIR="apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/bundle"
-          R2_PREFIX="s3://screenpipe-releases/beta/releases/${VERSION}/${TARGET}"
-
-          echo "uploading beta ${TARGET} bundles for v${VERSION} to R2..."
-
-          for f in "${BUNDLE_DIR}"/dmg/*.dmg; do
-            [ -f "$f" ] && upload_with_retry "$f" "${R2_PREFIX}/$(basename "$f")"
-          done
-
-          for f in "${BUNDLE_DIR}"/macos/*.tar.gz "${BUNDLE_DIR}"/macos/*.sig; do
-            [ -f "$f" ] && upload_with_retry "$f" "${R2_PREFIX}/$(basename "$f")"
-          done
-
-          echo "R2 beta upload complete for ${TARGET}"
 
   generate-changelog:
     needs: [check_commit, publish-tauri]
