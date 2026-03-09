@@ -10,13 +10,17 @@
 pub mod discord;
 pub mod email;
 pub mod linear;
+pub mod make;
+pub mod n8n;
 pub mod notion;
+pub mod obsidian;
 pub mod perplexity;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
 pub mod todoist;
 pub mod whatsapp;
+pub mod zapier;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -87,6 +91,10 @@ pub fn all_integrations() -> Vec<Box<dyn Integration>> {
         Box::new(notion::Notion),
         Box::new(linear::Linear),
         Box::new(perplexity::Perplexity),
+        Box::new(obsidian::Obsidian),
+        Box::new(n8n::N8n),
+        Box::new(make::Make),
+        Box::new(zapier::Zapier),
     ]
 }
 

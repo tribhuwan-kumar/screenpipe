@@ -114,6 +114,11 @@ pub struct PipeConfig {
     )]
     pub allow_frames: bool,
 
+    /// Connections this pipe uses (e.g. `["obsidian", "slack"]`).
+    /// The AI can query `GET /connections/<id>` at runtime to get credentials.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connections: Vec<String>,
+
     /// Catches any extra fields from front-matter (backwards compat).
     #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, serde_json::Value>,
@@ -1684,6 +1689,14 @@ impl PipeManager {
                         config.preset = None;
                     } else if let Some(s) = v.as_str() {
                         config.preset = Some(s.to_string());
+                    }
+                }
+                "connections" => {
+                    if let Some(arr) = v.as_array() {
+                        config.connections = arr
+                            .iter()
+                            .filter_map(|item| item.as_str().map(String::from))
+                            .collect();
                     }
                 }
                 _ => {

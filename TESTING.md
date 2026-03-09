@@ -133,6 +133,18 @@ commits: device_monitor.rs atomic swap, tiered backoff, empty device list guard
 - [ ] **SCK transient failure doesn't cascade** — if ScreenCaptureKit returns empty device list, running devices are NOT disconnected. Verify: `grep "device list returned empty" ~/.screenpipe/screenpipe-app.*.log` shows warning but no disconnections.
 - [ ] **DB gap query after device switch** — run: `sqlite3 ~/.screenpipe/db.sqlite "SELECT t1.timestamp as gap_start, t2.timestamp as gap_end, (julianday(t2.timestamp) - julianday(t1.timestamp)) * 86400 as gap_seconds FROM audio_transcriptions t1 JOIN audio_transcriptions t2 ON t2.id = (SELECT MIN(id) FROM audio_transcriptions WHERE id > t1.id AND is_input_device = 0) WHERE t1.is_input_device = 0 AND (julianday(t2.timestamp) - julianday(t1.timestamp)) * 86400 > 60 ORDER BY t1.timestamp;"` — should return no rows if output was continuously captured.
 
+#### meeting detection & speaker identification
+
+commits: calendar_speaker_id.rs, meetings.rs, meeting_persister.rs
+
+- [ ] **restart during active meeting** — start a 1:1 calendar meeting (2 attendees), quit app mid-meeting, relaunch. meeting re-detected via calendar event still in progress. speaker names assigned. verify: `grep "meeting detected via calendar" ~/.screenpipe/screenpipe-app.*.log` shows detection after restart. verify: `sqlite3 ~/.screenpipe/db.sqlite "SELECT id, name FROM speakers WHERE name != ''"` shows both user and attendee names.
+- [ ] **calendar-only meeting detection** — schedule a 1:1 meeting with 2 attendees, no meeting app (Zoom/Meet) open. meeting detected purely via calendar. verify: `grep "meeting_started" ~/.screenpipe/screenpipe-app.*.log`.
+- [ ] **calendar meeting auto-end** — calendar meeting detected, wait past the calendar event end time. meeting_ended fires. verify: `grep "meeting ended via calendar" ~/.screenpipe/screenpipe-app.*.log`.
+- [ ] **speaker naming in 1:1** — during 1:1 call with userName set in settings, input speaker named as user, output speaker named as other attendee. verify: `curl 'localhost:3030/search?content_type=audio&speaker_name=<attendee>&limit=5'` returns results.
+- [ ] **auto-name input speaker** — with userName set, after ~2 minutes of speaking into mic, dominant input speaker named. verify: `grep "auto speaker identification: named" ~/.screenpipe/screenpipe-app.*.log`.
+- [ ] **speaker names survive restart** — speaker named pre-restart stays named post-restart. verify: `sqlite3 ~/.screenpipe/db.sqlite "SELECT id, name FROM speakers WHERE name != ''"` shows same speakers before and after restart.
+- [ ] **no duplicate speaker naming on restart** — restart during meeting, speakers already named aren't overwritten or duplicated. verify: no duplicate names in speakers table.
+
 ### 5. frame comparison & OCR pipeline
 
 commits: `6dd5d98e`, `831ad258`

@@ -962,8 +962,11 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
   // Listen for chat-prefill events from search modal and pipe creation
   useEffect(() => {
-    const unlisten = listen<{ context: string; prompt?: string; frameId?: number; autoSend?: boolean; source?: string }>("chat-prefill", (event) => {
-      const { context, prompt, frameId, autoSend, source } = event.payload;
+    const unlisten = listen<{ context: string; prompt?: string; frameId?: number; autoSend?: boolean; source?: string; targetWindow?: string }>("chat-prefill", (event) => {
+      const { context, prompt, frameId, autoSend, source, targetWindow } = event.payload;
+
+      // Only process if this window is the intended target (or no target for backwards compat)
+      if (targetWindow && getCurrentWindow().label !== targetWindow) return;
 
       if (autoSend && prompt && context) {
         // Deduplicate: skip if another listener instance is already handling this

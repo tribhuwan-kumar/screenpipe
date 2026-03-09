@@ -13,6 +13,7 @@ export type AIProviderType =
 	| "native-ollama"
 	| "openai"
 	| "openai-chatgpt"
+	| "anthropic"
 	| "custom"
 	| "embedded"
 	| "pi";
@@ -47,6 +48,10 @@ export type AIPreset = {
 	  }
 	| {
 			provider: "screenpipe-cloud";
+	  }
+	| {
+			provider: "anthropic";
+			apiKey: string;
 	  }
 	| {
 			provider: "custom";

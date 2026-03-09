@@ -101,20 +101,12 @@ pub fn init_magnify_handler(app: tauri::AppHandle) {
                         }),
                     );
                 }
-                // Call original for overlay (NSPanel) windows so JS wheel
-                // events still fire there. For regular windows (settings),
-                // skip the original to prevent double-processing — the
-                // native-scroll Tauri event handles everything.
-                use objc::class;
-                use tauri_nspanel::cocoa::base::{id as cocoa_id, nil as cocoa_nil};
-                let window: cocoa_id = msg_send![this, window];
-                if window != cocoa_nil {
-                    let is_panel: bool = msg_send![window, isKindOfClass: class!(NSPanel)];
-                    if is_panel {
-                        if let Some(original) = ORIGINAL_SCROLL_WHEEL.get() {
-                            original(this, sel, event);
-                        }
-                    }
+                // Always call the original scrollWheel: so native CSS
+                // overflow scrolling keeps working in all windows.
+                // The native-scroll Tauri event is emitted above for
+                // timeline/search components that need it.
+                if let Some(original) = ORIGINAL_SCROLL_WHEEL.get() {
+                    original(this, sel, event);
                 }
             }
         }

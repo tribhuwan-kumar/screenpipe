@@ -634,6 +634,7 @@ fn ensure_pi_config(
             "openai" => "openai-byok",
             "openai-chatgpt" => "openai-chatgpt",
             "native-ollama" => "ollama",
+            "anthropic" => "anthropic-byok",
             "custom" => "custom",
             _ => "", // screenpipe-cloud already added above
         };
@@ -643,6 +644,8 @@ fn ensure_pi_config(
                 "http://localhost:11434/v1".to_string()
             } else if config.provider == "openai-chatgpt" {
                 "https://chatgpt.com/backend-api".to_string()
+            } else if config.provider == "anthropic" && config.url.is_empty() {
+                "https://api.anthropic.com".to_string()
             } else {
                 config.url.clone()
             };
@@ -653,12 +656,15 @@ fn ensure_pi_config(
                 "native-ollama" => "ollama".to_string(), // Ollama ignores API key but Pi requires one
                 "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
                 "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
+                "anthropic" => "ANTHROPIC_API_KEY".to_string(), // Pi will read from env
                 "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
                 _ => "".to_string(),
             };
 
             let wire_api = if config.provider == "openai-chatgpt" {
                 "openai-codex-responses"
+            } else if config.provider == "anthropic" {
+                "anthropic"
             } else {
                 "openai-completions"
             };
@@ -924,6 +930,7 @@ pub async fn pi_start_inner(
                 "openai" => "openai-byok",
                 "openai-chatgpt" => "openai-chatgpt",
                 "native-ollama" => "ollama",
+                "anthropic" => "anthropic-byok",
                 "custom" => "custom",
                 "screenpipe-cloud" | "pi" | _ => "screenpipe",
             };
@@ -1121,6 +1128,9 @@ pub async fn pi_start_inner(
                 match config.provider.as_str() {
                     "openai" => {
                         cmd.env("OPENAI_API_KEY", api_key);
+                    }
+                    "anthropic" => {
+                        cmd.env("ANTHROPIC_API_KEY", api_key);
                     }
                     "custom" => {
                         cmd.env("CUSTOM_API_KEY", api_key);

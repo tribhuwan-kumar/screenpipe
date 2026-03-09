@@ -118,6 +118,7 @@ impl PiExecutor {
             "screenpipe-pipes",
             "screenpipe-retranscribe",
             "screenpipe-search",
+            "screenpipe-qa",
         ];
         let skills_root = project_dir.join(".pi").join("skills");
         for old in &deprecated {
@@ -330,11 +331,18 @@ impl PiExecutor {
                         "https://chatgpt.com/backend-api",
                         "OPENAI_CHATGPT_TOKEN",
                     ),
+                    "anthropic" => (
+                        "anthropic-byok",
+                        provider_url.unwrap_or("https://api.anthropic.com"),
+                        "ANTHROPIC_API_KEY",
+                    ),
                     other => (other, provider_url.unwrap_or(""), "CUSTOM_API_KEY"),
                 };
 
                 let wire_api = if prov == "openai-chatgpt" {
                     "openai-codex-responses"
+                } else if prov == "anthropic" {
+                    "anthropic"
                 } else {
                     "openai-completions"
                 };
@@ -478,6 +486,9 @@ impl PiExecutor {
                     "openai-chatgpt" => {
                         cmd.env("OPENAI_CHATGPT_TOKEN", key);
                     }
+                    "anthropic" | "anthropic-byok" => {
+                        cmd.env("ANTHROPIC_API_KEY", key);
+                    }
                     "custom" => {
                         cmd.env("CUSTOM_API_KEY", key);
                     }
@@ -574,6 +585,9 @@ impl PiExecutor {
                     }
                     "openai-chatgpt" => {
                         cmd.env("OPENAI_CHATGPT_TOKEN", key);
+                    }
+                    "anthropic" | "anthropic-byok" => {
+                        cmd.env("ANTHROPIC_API_KEY", key);
                     }
                     "custom" => {
                         cmd.env("CUSTOM_API_KEY", key);

@@ -282,6 +282,8 @@ pub enum AIProviderType {
     ScreenpipeCloud,
     #[serde(rename = "pi", alias = "opencode")]
     Pi,
+    #[serde(rename = "anthropic")]
+    Anthropic,
 }
 
 #[derive(Serialize, Deserialize, Type, Clone)]
@@ -604,6 +606,7 @@ impl SettingsStore {
                 "screenpipe-cloud",
                 "opencode",
                 "pi",
+                "anthropic",
             ];
             if let Some(presets) = obj.get_mut("aiPresets") {
                 if let Some(arr) = presets.as_array_mut() {

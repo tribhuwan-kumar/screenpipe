@@ -107,7 +107,7 @@ const INITIAL_DIAGNOSTICS: DiagnosticResults = {
 };
 
 export interface AIProviderCardProps {
-  type: "openai" | "openai-chatgpt" | "native-ollama" | "custom" | "embedded" | "pi";
+  type: "openai" | "openai-chatgpt" | "native-ollama" | "anthropic" | "custom" | "embedded" | "pi";
   title: string;
   description: string;
   imageSrc: string;
@@ -395,6 +395,10 @@ const AISection = ({
         newUrl = "https://api.openai.com/v1";
         newModel = "gpt-5.4";
         break;
+      case "anthropic":
+        newUrl = "https://api.anthropic.com";
+        newModel = "claude-sonnet-4-5-20250514";
+        break;
       case "pi":
         newUrl = ""; // Pi uses RPC mode, not HTTP
         newModel = "claude-haiku-4-5";
@@ -440,11 +444,14 @@ const AISection = ({
     };
 
     // Determine models URL
+    const isAnthropic = settingsPreset?.provider === "anthropic";
     let modelsUrl: string;
     if (settingsPreset?.provider === "native-ollama") {
       modelsUrl = "http://localhost:11434/api/tags";
     } else if (settingsPreset?.provider === "openai" || settingsPreset?.provider === "openai-chatgpt") {
       modelsUrl = "https://api.openai.com/v1/models";
+    } else if (isAnthropic) {
+      modelsUrl = "https://api.anthropic.com/v1/models";
     } else {
       modelsUrl = `${settingsPreset?.url}/models`;
     }
@@ -464,6 +471,9 @@ const AISection = ({
         skipRemaining("auth", `Could not get ChatGPT token: ${err}. You may need to rebuild the app.`);
         return;
       }
+    } else if (isAnthropic && settingsPreset?.apiKey) {
+      headers["x-api-key"] = settingsPreset.apiKey;
+      headers["anthropic-version"] = "2023-06-01";
     } else if (settingsPreset?.apiKey) {
       headers["Authorization"] = `Bearer ${settingsPreset.apiKey}`;
     }
@@ -475,8 +485,10 @@ const AISection = ({
     }));
 
     let modelsResponse: Response;
+    // Use tauriFetch for Anthropic to bypass CORS restrictions
+    const modelsFetchFn = isAnthropic ? tauriFetch : fetch;
     try {
-      modelsResponse = await fetch(modelsUrl, {
+      modelsResponse = await modelsFetchFn(modelsUrl, {
         headers,
         signal: abort.signal,
       });
@@ -487,6 +499,8 @@ const AISection = ({
           ? "Is Ollama running? Try: `ollama serve`"
           : settingsPreset?.provider === "custom"
           ? "Verify the URL is correct and the server is running"
+          : isAnthropic
+          ? "Check your Anthropic API key and network connection"
           : "Check your network connection";
       skipRemaining("endpoint", `Connection failed: ${hint}`);
       return;
@@ -574,12 +588,16 @@ const AISection = ({
       chatUrl = "https://api.openai.com/v1/chat/completions";
     } else if (isChatGpt) {
       chatUrl = "https://chatgpt.com/backend-api/codex/responses";
+    } else if (isAnthropic) {
+      chatUrl = "https://api.anthropic.com/v1/messages";
     } else {
       chatUrl = `${settingsPreset?.url}/chat/completions`;
     }
 
     const chatBody = isChatGpt
       ? { model: settingsPreset?.model || "", instructions: "reply briefly", input: [{ role: "user", content: "say hi" }], store: false, stream: true }
+      : isAnthropic
+      ? { model: settingsPreset?.model || "", messages: [{ role: "user", content: "say hi" }], max_tokens: 50 }
       : { model: settingsPreset?.model || "", messages: [{ role: "user", content: "say hi" }], max_tokens: 50 };
 
     // For ChatGPT Codex endpoint, extract account ID from JWT and add required headers
@@ -599,8 +617,8 @@ const AISection = ({
       chatHeaders["OpenAI-Beta"] = "responses=experimental";
     }
 
-    // Use tauriFetch for chatgpt.com to bypass CORS
-    const fetchFn = isChatGpt ? tauriFetch : fetch;
+    // Use tauriFetch for chatgpt.com and Anthropic to bypass CORS
+    const fetchFn = (isChatGpt || isAnthropic) ? tauriFetch : fetch;
 
     const chatStart = performance.now();
     try {
@@ -631,6 +649,9 @@ const AISection = ({
       if (isChatGpt) {
         // Streaming SSE — just confirm we got a 200 response
         reply = "Stream started OK";
+      } else if (isAnthropic) {
+        const chatData = await chatResponse.json();
+        reply = chatData.content?.[0]?.text?.slice(0, 100) || "No response";
       } else {
         const chatData = await chatResponse.json();
         reply = chatData.choices?.[0]?.message?.content?.slice(0, 100) || "No response";
@@ -742,6 +763,41 @@ const AISection = ({
           }
           break;
 
+        case "anthropic": {
+          try {
+            const anthropicResp = await tauriFetch("https://api.anthropic.com/v1/models", {
+              headers: {
+                "x-api-key": settingsPreset?.apiKey || "",
+                "anthropic-version": "2023-06-01",
+              },
+            });
+            if (anthropicResp.ok) {
+              const anthropicData = await anthropicResp.json();
+              setModels(
+                (anthropicData.data || []).map((m: any) => ({
+                  id: m.id,
+                  name: m.display_name || m.id,
+                  provider: "anthropic",
+                }))
+              );
+            } else {
+              // Fallback to hardcoded models
+              setModels([
+                { id: "claude-opus-4-6-20250828", name: "Claude Opus 4.6", provider: "anthropic" },
+                { id: "claude-sonnet-4-5-20250514", name: "Claude Sonnet 4.5", provider: "anthropic" },
+                { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
+              ]);
+            }
+          } catch {
+            setModels([
+              { id: "claude-opus-4-6-20250828", name: "Claude Opus 4.6", provider: "anthropic" },
+              { id: "claude-sonnet-4-5-20250514", name: "Claude Sonnet 4.5", provider: "anthropic" },
+              { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
+            ]);
+          }
+          break;
+        }
+
         case "openai-chatgpt": {
           // Try /v1/models with OAuth token; fall back to known models if it fails.
           let loaded = false;
@@ -823,6 +879,7 @@ const AISection = ({
   useEffect(() => {
     if (
       (settingsPreset?.provider === "openai" ||
+        settingsPreset?.provider === "anthropic" ||
         settingsPreset?.provider === "custom") &&
       !settingsPreset?.apiKey
     )
@@ -837,7 +894,7 @@ const AISection = ({
     if (!settingsPreset?.provider) return;
 
     const needsApiKey =
-      settingsPreset.provider === "openai" || settingsPreset.provider === "custom";
+      settingsPreset.provider === "openai" || settingsPreset.provider === "anthropic" || settingsPreset.provider === "custom";
     if (needsApiKey && !settingsPreset.apiKey) return;
 
     if (settingsPreset.provider === "openai-chatgpt" || settingsPreset.provider === "native-ollama" || settingsPreset.url) {
@@ -884,6 +941,15 @@ const AISection = ({
             imageSrc="/images/openai.png"
             selected={settingsPreset?.provider === "openai-chatgpt"}
             onClick={() => handleAiProviderChange("openai-chatgpt")}
+          />
+
+          <AIProviderCard
+            type="anthropic"
+            title="Anthropic"
+            description="Use your Anthropic API key for Claude models"
+            imageSrc="/images/anthropic.png"
+            selected={settingsPreset?.provider === "anthropic"}
+            onClick={() => handleAiProviderChange("anthropic")}
           />
 
           <AIProviderCard
@@ -945,7 +1011,7 @@ const AISection = ({
         />
       )}
 
-      {(settingsPreset?.provider === "custom" || (isApiKeyRequired &&
+      {(settingsPreset?.provider === "anthropic" || settingsPreset?.provider === "custom" || (isApiKeyRequired &&
         settingsPreset?.provider === "openai")) && (
           <div className="w-full">
             <div className="flex flex-col gap-4 mb-4 w-full">
@@ -981,6 +1047,15 @@ const AISection = ({
                   )}
                 </Button>
               </div>
+              {settingsPreset?.provider === "anthropic" && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 w-fit"
+                  onClick={() => openUrl("https://console.anthropic.com/settings/keys")}
+                >
+                  Get your API key at console.anthropic.com
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1311,6 +1386,7 @@ const AISection = ({
 const providerImageSrc: Record<string, string> = {
   openai: "/images/openai.png",
   "openai-chatgpt": "/images/openai.png",
+  anthropic: "/images/anthropic.png",
   "native-ollama": "/images/ollama.png",
   custom: "/images/custom.png",
   pi: "/images/screenpipe.png",

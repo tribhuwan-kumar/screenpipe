@@ -173,8 +173,16 @@ interface PipeConfig {
   provider?: string;
   preset?: string;
   history?: boolean;
+  connections?: string[];
   // serde(flatten) merges extra YAML fields into this level at runtime
   [key: string]: unknown;
+}
+
+interface AvailableConnection {
+  id: string;
+  name: string;
+  icon: string;
+  connected: boolean;
 }
 
 interface PipeStatus {
@@ -442,9 +450,20 @@ export function PipesSection() {
   const isTeamAdmin = !!team.team && team.role === "admin";
   const [sharingPipe, setSharingPipe] = useState<string | null>(null);
   const [sharingPublic, setSharingPublic] = useState<string | null>(null);
-  const [pipeFilter, setPipeFilter] = useState<"all" | "personal" | "team">("all");
+  const [pipeFilter, setPipeFilter] = useState<"all" | "personal" | "team">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("pipes-pipe-filter") as "all" | "personal" | "team") || "all";
+    }
+    return "all";
+  });
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "running" | "enabled" | "failed" | "scheduled" | "manual">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "running" | "enabled" | "failed" | "scheduled" | "manual">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("pipes-status-filter") as "all" | "running" | "enabled" | "failed" | "scheduled" | "manual") || "all";
+    }
+    return "all";
+  });
+  const [availableConnections, setAvailableConnections] = useState<AvailableConnection[]>([]);
   const sharedPipeNames = new Set(
     team.configs
       .filter((c) => c.config_type === "pipe" && c.scope === "team")
@@ -584,8 +603,21 @@ export function PipesSection() {
     }
   }, []);
 
+  const fetchConnections = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:3030/connections");
+      const data = await res.json();
+      if (data.data) {
+        setAvailableConnections(
+          data.data.map((c: any) => ({ id: c.id, name: c.name, icon: c.icon, connected: c.connected }))
+        );
+      }
+    } catch { /* server may not be running */ }
+  }, []);
+
   const trackedPipesView = useRef(false);
   useEffect(() => {
+    fetchConnections();
     fetchPipes().then(() => {
       if (!trackedPipesView.current) {
         trackedPipesView.current = true;
@@ -942,7 +974,7 @@ export function PipesSection() {
           ] as const).map(({ key, label, count }) => (
             <button
               key={key}
-              onClick={() => setStatusFilter(key)}
+              onClick={() => { setStatusFilter(key); localStorage.setItem("pipes-status-filter", key); }}
               className={cn(
                 "px-2.5 py-1 rounded-full text-xs transition-colors",
                 statusFilter === key
@@ -967,7 +999,7 @@ export function PipesSection() {
             return (
               <button
                 key={tab}
-                onClick={() => setPipeFilter(tab)}
+                onClick={() => { setPipeFilter(tab); localStorage.setItem("pipes-pipe-filter", tab); }}
                 className={cn(
                   "pb-2 text-sm transition-colors duration-150 border-b-2 -mb-px",
                   pipeFilter === tab
@@ -1313,6 +1345,112 @@ export function PipesSection() {
                           pendingConfigSaves.current[pipeName] = savePromise;
                         }}
                       />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <Label className="text-xs">connections</Label>
+                        <HelpTooltip text="connections this pipe can use. the ai will query the connections api at runtime to get credentials." />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {(pipe.config.connections || []).map((connId) => {
+                          const conn = availableConnections.find((c) => c.id === connId);
+                          const isConnected = conn?.connected ?? false;
+                          return (
+                            <Badge
+                              key={connId}
+                              variant={isConnected ? "default" : "outline"}
+                              className={cn("text-[10px] gap-1 pr-1", !isConnected && "border-destructive/50")}
+                            >
+                              {isConnected ? (
+                                <span>{conn?.name || connId}</span>
+                              ) : (
+                                <button
+                                  className="text-destructive hover:underline"
+                                  onClick={() => {
+                                    sessionStorage.setItem("openConnection", connId);
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.set("section", "connections");
+                                    window.location.href = url.toString();
+                                  }}
+                                >
+                                  {conn?.name || connId} — setup →
+                                </button>
+                              )}
+                              <button
+                                className="ml-0.5 hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const pipeName = pipe.config.name;
+                                  const updated = (pipe.config.connections || []).filter(
+                                    (c) => c !== connId
+                                  );
+                                  setPipes((prev) =>
+                                    prev.map((p) =>
+                                      p.config.name === pipeName
+                                        ? { ...p, config: { ...p.config, connections: updated } }
+                                        : p
+                                    )
+                                  );
+                                  fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ connections: updated }),
+                                  }).then(() => fetchPipes());
+                                }}
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                        <DropdownMenu modal={false}>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-5 text-[10px] px-1.5 gap-0.5">
+                              <Plus className="h-3 w-3" /> add
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {availableConnections
+                              .filter((c) => !(pipe.config.connections || []).includes(c.id))
+                              .map((conn) => (
+                                <DropdownMenuItem
+                                  key={conn.id}
+                                  onClick={() => {
+                                    const pipeName = pipe.config.name;
+                                    const updated = [...(pipe.config.connections || []), conn.id];
+                                    setPipes((prev) =>
+                                      prev.map((p) =>
+                                        p.config.name === pipeName
+                                          ? { ...p, config: { ...p.config, connections: updated } }
+                                          : p
+                                      )
+                                    );
+                                    fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ connections: updated }),
+                                    }).then(() => fetchPipes());
+                                  }}
+                                >
+                                  <span className="text-xs">{conn.name}</span>
+                                  {conn.connected ? (
+                                    <span className="ml-auto text-[10px] text-green-500">●</span>
+                                  ) : (
+                                    <span className="ml-auto text-[10px] text-muted-foreground">○</span>
+                                  )}
+                                </DropdownMenuItem>
+                              ))}
+                            {availableConnections.filter(
+                              (c) => !(pipe.config.connections || []).includes(c.id)
+                            ).length === 0 && (
+                              <DropdownMenuItem disabled>
+                                <span className="text-xs text-muted-foreground">all connections added</span>
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
 
                     <div>
