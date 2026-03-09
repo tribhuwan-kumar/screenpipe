@@ -422,7 +422,7 @@ export function PrivacySection() {
             </div>
             <Switch
               id="ignoreIncognitoWindows"
-              checked={settings.ignoreIncognitoWindows ?? true}
+              checked={Boolean(settings.ignoreIncognitoWindows ?? true)}
               onCheckedChange={handleIncognitoToggle}
             />
           </div>
