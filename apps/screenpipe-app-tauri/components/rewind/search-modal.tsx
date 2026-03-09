@@ -415,18 +415,30 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
 
   // Build time range labels from raw rows
   const buildTimeRanges = useCallback((rows: { dateKey: string; timestamp: string; count: number }[]) => {
-    return rows.map(r => {
+    // Re-bucket by local date since SQL DATE() operates on UTC strings.
+    // Multiple UTC dates can map to the same local date, so merge counts.
+    const buckets = new Map<string, { label: string; dateKey: string; timestamp: string; count: number }>();
+    for (const r of rows) {
       const d = new Date(r.timestamp);
-      let label: string;
-      if (isToday(d)) {
-        label = format(d, "h a");
-      } else if (isYesterday(d)) {
-        label = "yesterday " + format(d, "h a");
+      const localDateKey = format(d, "yyyy-MM-dd");
+      const existing = buckets.get(localDateKey);
+      if (existing) {
+        existing.count += r.count;
       } else {
-        label = format(d, "MMM d");
+        let label: string;
+        if (isToday(d)) {
+          label = format(d, "h a");
+        } else if (isYesterday(d)) {
+          label = "yesterday " + format(d, "h a");
+        } else {
+          label = format(d, "MMM d");
+        }
+        buckets.set(localDateKey, { label, dateKey: localDateKey, timestamp: r.timestamp, count: r.count });
       }
-      return { label, dateKey: r.dateKey, timestamp: r.timestamp, count: r.count };
-    }).slice(0, 10);
+    }
+    return [...buckets.values()]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 10);
   }, []);
 
   // Async facet loading — fires a lightweight SQL aggregation query
@@ -563,7 +575,10 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [searchResults]);
 
-  const appCounts = facetApps.length > 0 ? facetApps : resultAppCounts;
+  // Always derive app chips from actual search results so chip labels
+  // exactly match r.app_name used by the client-side filter. Facet apps
+  // come from accessibility.app_name which can differ from frames.app_name.
+  const appCounts = resultAppCounts;
   const domainCounts = facetDomains;
   const timeRanges = facetTimeRanges;
 
@@ -591,7 +606,10 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
 
   const matchesTimeFilter = useCallback((timestamp: string) => {
     if (!timeFilter) return true;
-    return timestamp.startsWith(timeFilter);
+    // Compare in local time — timeFilter is a local date like "2026-02-28"
+    const d = new Date(timestamp);
+    const localDate = format(d, "yyyy-MM-dd");
+    return localDate === timeFilter;
   }, [timeFilter]);
 
   const filteredResults = useMemo(() => {
