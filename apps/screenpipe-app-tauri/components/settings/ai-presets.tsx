@@ -422,6 +422,7 @@ const AISection = ({
     diagnosticsAbortRef.current?.abort();
     const abort = new AbortController();
     diagnosticsAbortRef.current = abort;
+    const isChatGpt = settingsPreset?.provider === "openai-chatgpt";
 
     setTestStatus("testing");
     setTestResults(INITIAL_DIAGNOSTICS);
@@ -484,103 +485,110 @@ const AISection = ({
       endpoint: { status: "running", message: "Connecting..." },
     }));
 
-    let modelsResponse: Response;
-    // Use tauriFetch for Anthropic to bypass CORS restrictions
-    const modelsFetchFn = isAnthropic ? tauriFetch : fetch;
-    try {
-      modelsResponse = await modelsFetchFn(modelsUrl, {
-        headers,
-        signal: abort.signal,
-      });
-    } catch (err: any) {
-      if (abort.signal.aborted) return;
-      const hint =
-        settingsPreset?.provider === "native-ollama"
-          ? "Is Ollama running? Try: `ollama serve`"
-          : settingsPreset?.provider === "custom"
-          ? "Verify the URL is correct and the server is running"
-          : isAnthropic
-          ? "Check your Anthropic API key and network connection"
-          : "Check your network connection";
-      skipRemaining("endpoint", `Connection failed: ${hint}`);
-      return;
-    }
-
-    if (abort.signal.aborted) return;
-
-    // Step 1 pass
-    setTestResults((prev) => ({
-      ...prev,
-      endpoint: { status: "pass", message: isChatGpt ? "Reachable (OAuth)" : `GET ${modelsResponse.status}` },
-      auth: { status: "running", message: "Checking..." },
-    }));
-
-    // Step 2: Auth check
-    // ChatGPT OAuth tokens lack model.read scope so /v1/models returns 403 — skip to chat test
-    if (settingsPreset?.provider === "openai-chatgpt" && (modelsResponse.status === 403 || modelsResponse.status === 401)) {
+    // Anthropic: skip /v1/models (may not be available for all keys) and go straight to chat test
+    let modelsResponse: Response | null = null;
+    if (isAnthropic) {
       setTestResults((prev) => ({
         ...prev,
-        auth: { status: "pass", message: "OAuth token present" },
-        models: { status: "pass", message: "Using known models (API scope limited)" },
+        endpoint: { status: "pass", message: "api.anthropic.com" },
+        auth: { status: "pass", message: "Will verify with chat test" },
+        models: { status: "pass", message: "Using known models" },
         chat: { status: "running", message: "Sending test message..." },
       }));
-    } else if (modelsResponse.status === 401 || modelsResponse.status === 403) {
-      const hint =
-        settingsPreset?.provider === "openai"
-          ? "Check your API key at platform.openai.com"
-          : "Check your API key is valid and has credits";
-      skipRemaining("auth", `${modelsResponse.status} Unauthorized. ${hint}`);
-      return;
-    } else if (!modelsResponse.ok) {
-      skipRemaining("auth", `Unexpected status ${modelsResponse.status}`);
-      return;
     } else {
-      setTestResults((prev) => ({
-        ...prev,
-        auth: { status: "pass", message: "API key accepted" },
-        models: { status: "running", message: "Loading..." },
-      }));
-    }
-
-    // Step 3: Parse models (skip for openai-chatgpt when /v1/models returned 403)
-    if (modelsResponse.ok) {
-      let modelCount = 0;
+      const modelsFetchFn = fetch;
       try {
-        const data = await modelsResponse.json();
-        if (settingsPreset?.provider === "native-ollama") {
-          const ollamaModels = (data.models || []).map((m: any) => ({
-            id: m.name,
-            name: m.name,
-            provider: "ollama",
-          }));
-          modelCount = ollamaModels.length;
-          setModels(ollamaModels);
-        } else {
-          const apiModels = (data.data || []).map((m: any) => ({
-            id: m.id,
-            name: m.id,
-            provider: settingsPreset?.provider || "custom",
-          }));
-          modelCount = apiModels.length;
-          setModels(apiModels);
-        }
-      } catch {
+        modelsResponse = await modelsFetchFn(modelsUrl, {
+          headers,
+          signal: abort.signal,
+        });
+      } catch (err: any) {
         if (abort.signal.aborted) return;
-        skipRemaining("models", "Failed to parse models response");
+        const hint =
+          settingsPreset?.provider === "native-ollama"
+            ? "Is Ollama running? Try: `ollama serve`"
+            : settingsPreset?.provider === "custom"
+            ? "Verify the URL is correct and the server is running"
+            : "Check your network connection";
+        skipRemaining("endpoint", `Connection failed: ${hint}`);
         return;
       }
 
       if (abort.signal.aborted) return;
 
+      // Step 1 pass
       setTestResults((prev) => ({
         ...prev,
-        models: { status: "pass", message: `${modelCount} model${modelCount !== 1 ? "s" : ""} loaded` },
-        chat: { status: "running", message: "Sending test message..." },
+        endpoint: { status: "pass", message: isChatGpt ? "Reachable (OAuth)" : `GET ${modelsResponse!.status}` },
+        auth: { status: "running", message: "Checking..." },
       }));
+
+      // Step 2: Auth check
+      // ChatGPT OAuth tokens lack model.read scope so /v1/models returns 403 — skip to chat test
+      if (settingsPreset?.provider === "openai-chatgpt" && (modelsResponse!.status === 403 || modelsResponse!.status === 401)) {
+        setTestResults((prev) => ({
+          ...prev,
+          auth: { status: "pass", message: "OAuth token present" },
+          models: { status: "pass", message: "Using known models (API scope limited)" },
+          chat: { status: "running", message: "Sending test message..." },
+        }));
+      } else if (modelsResponse!.status === 401 || modelsResponse!.status === 403) {
+        const hint =
+          settingsPreset?.provider === "openai"
+            ? "Check your API key at platform.openai.com"
+            : "Check your API key is valid and has credits";
+        skipRemaining("auth", `${modelsResponse!.status} Unauthorized. ${hint}`);
+        return;
+      } else if (!modelsResponse!.ok) {
+        skipRemaining("auth", `Unexpected status ${modelsResponse!.status}`);
+        return;
+      } else {
+        setTestResults((prev) => ({
+          ...prev,
+          auth: { status: "pass", message: "API key accepted" },
+          models: { status: "running", message: "Loading..." },
+        }));
+      }
+
+      // Step 3: Parse models (skip for openai-chatgpt when /v1/models returned 403)
+      if (modelsResponse!.ok) {
+        let modelCount = 0;
+        try {
+          const data = await modelsResponse!.json();
+          if (settingsPreset?.provider === "native-ollama") {
+            const ollamaModels = (data.models || []).map((m: any) => ({
+              id: m.name,
+              name: m.name,
+              provider: "ollama",
+            }));
+            modelCount = ollamaModels.length;
+            setModels(ollamaModels);
+          } else {
+            const apiModels = (data.data || []).map((m: any) => ({
+              id: m.id,
+              name: m.id,
+              provider: settingsPreset?.provider || "custom",
+            }));
+            modelCount = apiModels.length;
+            setModels(apiModels);
+          }
+        } catch {
+          if (abort.signal.aborted) return;
+          skipRemaining("models", "Failed to parse models response");
+          return;
+        }
+
+        if (abort.signal.aborted) return;
+
+        setTestResults((prev) => ({
+          ...prev,
+          models: { status: "pass", message: `${modelCount} model${modelCount !== 1 ? "s" : ""} loaded` },
+          chat: { status: "running", message: "Sending test message..." },
+        }));
+      }
     }
 
     // Step 4: Test chat completion (or Codex Responses API for ChatGPT OAuth)
-    const isChatGpt = settingsPreset?.provider === "openai-chatgpt";
     let chatUrl: string;
     if (settingsPreset?.provider === "native-ollama") {
       chatUrl = "http://localhost:11434/v1/chat/completions";
