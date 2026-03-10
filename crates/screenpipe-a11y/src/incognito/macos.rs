@@ -126,11 +126,7 @@ end if"#,
             name = as_name,
         );
 
-        let output = match Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .output()
-        {
+        let output = match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(o) => o,
             Err(e) => {
                 debug!("incognito: osascript spawn failed for {}: {}", as_name, e);
@@ -161,8 +157,7 @@ end if"#,
                 Some(HashSet::new())
             }
             _ => {
-                let titles: HashSet<String> =
-                    result.split("|||").map(|s| s.to_string()).collect();
+                let titles: HashSet<String> = result.split("|||").map(|s| s.to_string()).collect();
                 debug!(
                     "incognito: {} has {} incognito window(s): {:?}",
                     as_name,
@@ -235,7 +230,9 @@ mod tests {
         assert!(MacOSIncognitoDetector::is_chromium_browser("Google Chrome"));
         assert!(MacOSIncognitoDetector::is_chromium_browser("google chrome"));
         assert!(MacOSIncognitoDetector::is_chromium_browser("Arc"));
-        assert!(MacOSIncognitoDetector::is_chromium_browser("Microsoft Edge"));
+        assert!(MacOSIncognitoDetector::is_chromium_browser(
+            "Microsoft Edge"
+        ));
         assert!(MacOSIncognitoDetector::is_chromium_browser("Brave Browser"));
         assert!(MacOSIncognitoDetector::is_chromium_browser("Vivaldi"));
         assert!(!MacOSIncognitoDetector::is_chromium_browser("Firefox"));
@@ -256,11 +253,7 @@ mod tests {
     fn test_fallback_to_title_for_firefox() {
         let detector = MacOSIncognitoDetector::new();
         // Firefox is not a Chromium browser, so it should fall back to title.
-        assert!(detector.is_incognito(
-            "Firefox",
-            0,
-            "Mozilla Firefox (Private Browsing)"
-        ));
+        assert!(detector.is_incognito("Firefox", 0, "Mozilla Firefox (Private Browsing)"));
         assert!(!detector.is_incognito("Firefox", 0, "Reddit - Mozilla Firefox"));
     }
 

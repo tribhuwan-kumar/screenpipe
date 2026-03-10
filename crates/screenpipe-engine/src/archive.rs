@@ -456,8 +456,7 @@ fn spawn_archive_loop(
                 }
             }
 
-            let media_result =
-                upload_media_files(&db, &manager, cutoff, state.clone()).await;
+            let media_result = upload_media_files(&db, &manager, cutoff, state.clone()).await;
 
             if let Err(ref e) = media_result {
                 warn!("archive: media upload error (non-fatal): {}", e);
@@ -722,7 +721,17 @@ async fn get_archive_chunk(
     let mut frame_records = Vec::new();
     let mut frame_sync_map = std::collections::HashMap::new();
 
-    for (id, timestamp, offset_index, app_name, window_name, browser_url, device_name, cloud_blob_id) in &frames {
+    for (
+        id,
+        timestamp,
+        offset_index,
+        app_name,
+        window_name,
+        browser_url,
+        device_name,
+        cloud_blob_id,
+    ) in &frames
+    {
         let sync_id = Uuid::new_v4().to_string();
         frame_sync_map.insert(*id, sync_id.clone());
         frame_records.push(FrameRecord {
@@ -970,7 +979,10 @@ async fn upload_media_files(
     for (chunk_id, file_path, timestamp) in &chunks {
         match upload_single_file(manager, file_path, timestamp, BlobType::Frames).await {
             Ok(result) => {
-                if let Err(e) = db.mark_video_chunk_uploaded(*chunk_id, &result.blob_id).await {
+                if let Err(e) = db
+                    .mark_video_chunk_uploaded(*chunk_id, &result.blob_id)
+                    .await
+                {
                     warn!(
                         "archive: uploaded chunk {} but failed to mark in DB: {}",
                         chunk_id, e
@@ -989,9 +1001,7 @@ async fn upload_media_files(
                 info!(
                     "archive: uploaded video chunk {} ({} bytes), blob_id={}",
                     chunk_id,
-                    std::fs::metadata(file_path)
-                        .map(|m| m.len())
-                        .unwrap_or(0),
+                    std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0),
                     result.blob_id
                 );
             }

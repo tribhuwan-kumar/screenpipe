@@ -310,9 +310,7 @@ pub async fn paired_capture(
 /// Returns a `TreeWalkResult` distinguishing found/skipped/not-found states.
 ///
 /// This is a blocking operation that should be spawned on a blocking thread.
-pub fn walk_accessibility_tree(
-    config: &TreeWalkerConfig,
-) -> screenpipe_a11y::tree::TreeWalkResult {
+pub fn walk_accessibility_tree(config: &TreeWalkerConfig) -> screenpipe_a11y::tree::TreeWalkResult {
     use screenpipe_a11y::tree::TreeWalkResult;
     let walker = create_tree_walker(config.clone());
     match walker.walk_focused_window() {
@@ -707,7 +705,11 @@ mod tests {
     // --- a11y_content_is_thin tests ---
 
     fn make_snap(nodes: Vec<AccessibilityTreeNode>) -> TreeSnapshot {
-        let text = nodes.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("\n");
+        let text = nodes
+            .iter()
+            .map(|n| n.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
         TreeSnapshot {
             app_name: "Test".to_string(),
             window_name: "Test Window".to_string(),
@@ -727,11 +729,18 @@ mod tests {
 
     #[test]
     fn test_thin_known_canvas_app_google_docs() {
-        let snap = make_snap(vec![
-            AccessibilityTreeNode { role: "AXStaticText".into(), text: "Lots of real content here that is very long and should normally be fine".into(), depth: 0, bounds: None },
-        ]);
+        let snap = make_snap(vec![AccessibilityTreeNode {
+            role: "AXStaticText".into(),
+            text: "Lots of real content here that is very long and should normally be fine".into(),
+            depth: 0,
+            bounds: None,
+        }]);
         // Google Docs in window title → always thin regardless of content
-        assert!(a11y_content_is_thin(&snap, Some("Untitled - Google Docs"), None));
+        assert!(a11y_content_is_thin(
+            &snap,
+            Some("Untitled - Google Docs"),
+            None
+        ));
     }
 
     #[test]
@@ -755,21 +764,96 @@ mod tests {
     fn test_thin_mostly_chrome() {
         // All buttons/menus, very little content — like a canvas app's toolbar
         let snap = make_snap(vec![
-            AccessibilityTreeNode { role: "AXButton".into(), text: "File".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Edit".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "View".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Insert".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Format".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Tools".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Help".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Undo".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Redo".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Cut".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Copy".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Paste".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Select All".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXMenuItem".into(), text: "Find and Replace".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXStaticText".into(), text: "Untitled".into(), depth: 0, bounds: None },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "File".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "Edit".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "View".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "Insert".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "Format".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "Tools".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXButton".into(),
+                text: "Help".into(),
+                depth: 0,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Undo".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Redo".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Cut".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Copy".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Paste".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Select All".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXMenuItem".into(),
+                text: "Find and Replace".into(),
+                depth: 1,
+                bounds: None,
+            },
+            AccessibilityTreeNode {
+                role: "AXStaticText".into(),
+                text: "Untitled".into(),
+                depth: 0,
+                bounds: None,
+            },
         ]);
         // >70% chrome text
         assert!(a11y_content_is_thin(&snap, Some("Untitled document"), None));
@@ -777,9 +861,12 @@ mod tests {
 
     #[test]
     fn test_thin_very_little_text() {
-        let snap = make_snap(vec![
-            AccessibilityTreeNode { role: "AXStaticText".into(), text: "Loading...".into(), depth: 0, bounds: None },
-        ]);
+        let snap = make_snap(vec![AccessibilityTreeNode {
+            role: "AXStaticText".into(),
+            text: "Loading...".into(),
+            depth: 0,
+            bounds: None,
+        }]);
         // < 100 chars total
         assert!(a11y_content_is_thin(&snap, Some("Some App"), None));
     }
@@ -792,7 +879,11 @@ mod tests {
             AccessibilityTreeNode { role: "AXButton".into(), text: "Search".into(), depth: 0, bounds: None },
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "fn main() { println!(\"hello world\"); } // This is a Rust program with many lines of code that form a substantial amount of content text in the editor buffer area".into(), depth: 1, bounds: None },
         ]);
-        assert!(!a11y_content_is_thin(&snap, Some("main.rs - Visual Studio Code"), None));
+        assert!(!a11y_content_is_thin(
+            &snap,
+            Some("main.rs - Visual Studio Code"),
+            None
+        ));
     }
 
     #[test]
@@ -803,8 +894,16 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "Docs home Star Add shortcut to Drive Document status Saved to Drive Request edit access Share Anyone with the link Join a call here or present".into(), depth: 0, bounds: None },
         ]);
         // Window title is doc name, but URL reveals it's Google Docs → thin
-        assert!(a11y_content_is_thin(&snap, Some("Creon's list of profound books"), Some("https://docs.google.com/document/d/abc123/edit")));
+        assert!(a11y_content_is_thin(
+            &snap,
+            Some("Creon's list of profound books"),
+            Some("https://docs.google.com/document/d/abc123/edit")
+        ));
         // Same content on a non-canvas URL → not thin (content ratio is fine)
-        assert!(!a11y_content_is_thin(&snap, Some("Creon's list of profound books"), Some("https://example.com")));
+        assert!(!a11y_content_is_thin(
+            &snap,
+            Some("Creon's list of profound books"),
+            Some("https://example.com")
+        ));
     }
 }

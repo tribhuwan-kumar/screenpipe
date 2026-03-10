@@ -50,7 +50,10 @@ async fn list_connections(State(state): State<ConnectionsState>) -> Json<Value> 
     let has_session = wa.has_session();
     let wa_port = wa.http_port().await;
     drop(wa);
-    let wa_connected = matches!(wa_status, screenpipe_connect::whatsapp::WhatsAppStatus::Connected { .. });
+    let wa_connected = matches!(
+        wa_status,
+        screenpipe_connect::whatsapp::WhatsAppStatus::Connected { .. }
+    );
     let wa_desc = if let Some(port) = wa_port {
         format!(
             "WhatsApp messaging. First GET http://localhost:{}/contacts to resolve names to phone numbers, then POST http://localhost:{}/send with {{\"to\":\"+PHONE\",\"text\":\"MSG\"}}",
@@ -131,7 +134,10 @@ async fn test_connection(
 ) -> (StatusCode, Json<Value>) {
     let mgr = state.cm.lock().await;
     match mgr.test(&id, &body.credentials).await {
-        Ok(msg) => (StatusCode::OK, Json(json!({ "success": true, "message": msg }))),
+        Ok(msg) => (
+            StatusCode::OK,
+            Json(json!({ "success": true, "message": msg })),
+        ),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": e.to_string() })),
@@ -184,7 +190,12 @@ where
         .route("/whatsapp/status", get(whatsapp_status))
         .route("/whatsapp/disconnect", post(whatsapp_disconnect))
         // Generic integration routes
-        .route("/:id", get(get_connection).put(connect_integration).delete(disconnect_integration))
+        .route(
+            "/:id",
+            get(get_connection)
+                .put(connect_integration)
+                .delete(disconnect_integration),
+        )
         .route("/:id/test", post(test_connection))
         .with_state(state)
 }

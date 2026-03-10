@@ -1028,7 +1028,10 @@ fn seed_pi_package_json(install_dir: &Path) {
             }
         }
     });
-    match std::fs::write(&pkg_path, serde_json::to_string_pretty(&pkg_json).unwrap_or_default()) {
+    match std::fs::write(
+        &pkg_path,
+        serde_json::to_string_pretty(&pkg_json).unwrap_or_default(),
+    ) {
         Ok(_) => info!("Seeded pi-agent package.json with lru-cache overrides"),
         Err(e) => warn!("Failed to seed pi-agent package.json: {}", e),
     }

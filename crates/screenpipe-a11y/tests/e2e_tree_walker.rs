@@ -89,9 +89,7 @@ mod e2e {
         }
     }
 
-    fn create_walker(
-        max_nodes: usize,
-    ) -> Box<dyn screenpipe_a11y::tree::TreeWalkerPlatform> {
+    fn create_walker(max_nodes: usize) -> Box<dyn screenpipe_a11y::tree::TreeWalkerPlatform> {
         let config = TreeWalkerConfig {
             max_nodes,
             ..Default::default()

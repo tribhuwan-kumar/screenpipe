@@ -864,8 +864,7 @@ impl TreeWalkerPlatform for LinuxTreeWalker {
         };
 
         // Skip incognito / private browsing windows (localized title check)
-        if self.config.ignore_incognito_windows
-            && crate::incognito::is_title_private(&window_title)
+        if self.config.ignore_incognito_windows && crate::incognito::is_title_private(&window_title)
         {
             return Ok(TreeWalkResult::Skipped);
         }

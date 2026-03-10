@@ -26,7 +26,8 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
             let wa_desc = if wa_connected {
                 "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}".to_string()
             } else {
-                "Not paired. User must pair via Settings > Connections in the desktop app first.".to_string()
+                "Not paired. User must pair via Settings > Connections in the desktop app first."
+                    .to_string()
             };
 
             if *use_json {
@@ -53,10 +54,7 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                 println!("{}", "-".repeat(72));
                 for info in &list {
                     let status = if info.connected { "connected" } else { "-" };
-                    println!(
-                        "{:<20} {:<12} {:<40}",
-                        info.def.id, status, info.def.name
-                    );
+                    println!("{:<20} {:<12} {:<40}", info.def.id, status, info.def.name);
                 }
                 let wa_status = if wa_connected { "connected" } else { "-" };
                 println!("{:<20} {:<12} {:<40}", "whatsapp", wa_status, "WhatsApp");
@@ -85,11 +83,17 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                 if *use_json {
                     println!("{}", serde_json::to_string_pretty(&info)?);
                 } else {
-                    let status = if connected { "connected" } else { "not connected" };
+                    let status = if connected {
+                        "connected"
+                    } else {
+                        "not connected"
+                    };
                     println!("whatsapp: {}", status);
                     println!(
                         "\n{}",
-                        info.get("description").and_then(|v| v.as_str()).unwrap_or("")
+                        info.get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
                     );
                 }
                 return Ok(());
@@ -98,7 +102,12 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
             match cm.get_credentials(id)? {
                 Some(creds) => {
                     if *use_json {
-                        println!("{}", serde_json::to_string_pretty(&json!({ "id": id, "credentials": creds }))?);
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(
+                                &json!({ "id": id, "credentials": creds })
+                            )?
+                        );
                     } else {
                         println!("{}", id);
                         for (key, value) in &creds {
@@ -131,24 +140,20 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
             println!("saved credentials for {}", id);
         }
 
-        ConnectionCommand::Test { id } => {
-            match cm.get_credentials(id)? {
-                Some(creds) => {
-                    match cm.test(id, &creds).await {
-                        Ok(msg) => println!("ok: {}", msg),
-                        Err(e) => {
-                            eprintln!("error: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                None => {
-                    eprintln!("{} has no saved credentials", id);
-                    eprintln!("\nhint: screenpipe connection set {} key=value ...", id);
+        ConnectionCommand::Test { id } => match cm.get_credentials(id)? {
+            Some(creds) => match cm.test(id, &creds).await {
+                Ok(msg) => println!("ok: {}", msg),
+                Err(e) => {
+                    eprintln!("error: {}", e);
                     std::process::exit(1);
                 }
+            },
+            None => {
+                eprintln!("{} has no saved credentials", id);
+                eprintln!("\nhint: screenpipe connection set {} key=value ...", id);
+                std::process::exit(1);
             }
-        }
+        },
 
         ConnectionCommand::Remove { id } => {
             cm.disconnect(id)?;

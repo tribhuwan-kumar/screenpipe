@@ -12,7 +12,8 @@ static DEF: IntegrationDef = IntegrationDef {
     name: "n8n",
     icon: "n8n",
     category: Category::Productivity,
-    description: "Send data to n8n workflows via webhook. POST JSON to the webhook URL with any payload.",
+    description:
+        "Send data to n8n workflows via webhook. POST JSON to the webhook URL with any payload.",
     fields: &[FieldDef {
         key: "webhook_url",
         label: "Webhook URL",

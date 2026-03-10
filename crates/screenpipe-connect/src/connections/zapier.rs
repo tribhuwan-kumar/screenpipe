@@ -12,7 +12,8 @@ static DEF: IntegrationDef = IntegrationDef {
     name: "Zapier",
     icon: "zapier",
     category: Category::Productivity,
-    description: "Send data to Zapier Zaps via webhook. POST JSON to the webhook URL with any payload.",
+    description:
+        "Send data to Zapier Zaps via webhook. POST JSON to the webhook URL with any payload.",
     fields: &[FieldDef {
         key: "webhook_url",
         label: "Webhook URL",

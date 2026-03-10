@@ -39,11 +39,7 @@ impl Integration for Obsidian {
         &DEF
     }
 
-    async fn test(
-        &self,
-        _client: &reqwest::Client,
-        creds: &Map<String, Value>,
-    ) -> Result<String> {
+    async fn test(&self, _client: &reqwest::Client, creds: &Map<String, Value>) -> Result<String> {
         let vault_path = require_str(creds, "vault_path")?;
         let path = std::path::Path::new(vault_path);
 
@@ -57,9 +53,7 @@ impl Integration for Obsidian {
         // Check it looks like an Obsidian vault
         let obsidian_dir = path.join(".obsidian");
         if !obsidian_dir.exists() {
-            anyhow::bail!(
-                "no .obsidian folder found — are you sure this is an Obsidian vault?"
-            );
+            anyhow::bail!("no .obsidian folder found — are you sure this is an Obsidian vault?");
         }
 
         // Check writable by creating a temp file
@@ -78,18 +72,11 @@ impl Integration for Obsidian {
             .map(|entries| {
                 entries
                     .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.path()
-                            .extension()
-                            .is_some_and(|ext| ext == "md")
-                    })
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
                     .count()
             })
             .unwrap_or(0);
 
-        Ok(format!(
-            "vault found ({} top-level notes)",
-            note_count
-        ))
+        Ok(format!("vault found ({} top-level notes)", note_count))
     }
 }

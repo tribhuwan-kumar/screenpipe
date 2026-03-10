@@ -31,12 +31,12 @@
 //! let is_private = detector.is_incognito("Google Chrome", 12345, "New Tab");
 //! ```
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
-#[cfg(target_os = "linux")]
-mod linux;
 
 mod titles;
 
@@ -93,7 +93,9 @@ mod tests {
         // German Chrome
         assert!(is_title_private("Neuer Tab - Google Chrome (Inkognito)"));
         // Japanese Chrome
-        assert!(is_title_private("新しいタブ - Google Chrome (シークレット)"));
+        assert!(is_title_private(
+            "新しいタブ - Google Chrome (シークレット)"
+        ));
         // Chinese Chrome
         assert!(is_title_private("新标签页 - Google Chrome (无痕模式)"));
         // Korean Chrome

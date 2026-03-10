@@ -263,7 +263,9 @@ impl MacosTreeWalker {
         // which checks AppleScript window properties for Chromium browsers
         // (Arc, Chrome, Edge, etc.) and falls back to localized title matching.
         if self.config.ignore_incognito_windows
-            && self.incognito_detector.is_incognito(&app_name, 0, &window_name)
+            && self
+                .incognito_detector
+                .is_incognito(&app_name, 0, &window_name)
         {
             return Ok(TreeWalkResult::Skipped);
         }

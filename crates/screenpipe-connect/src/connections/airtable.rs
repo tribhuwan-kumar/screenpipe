@@ -49,10 +49,7 @@ impl Integration for Airtable {
             .error_for_status()?
             .json()
             .await?;
-        let count = resp["bases"]
-            .as_array()
-            .map(|a| a.len())
-            .unwrap_or(0);
+        let count = resp["bases"].as_array().map(|a| a.len()).unwrap_or(0);
         Ok(format!("connected, {} bases found", count))
     }
 }

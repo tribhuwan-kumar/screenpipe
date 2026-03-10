@@ -50,7 +50,7 @@ struct PendingTranscription {
 fn default_max_batch_duration_secs(engine: &AudioTranscriptionEngine) -> u64 {
     match engine {
         // Cloud engines can handle long audio
-        AudioTranscriptionEngine::Deepgram => 3600,     // 1 hour
+        AudioTranscriptionEngine::Deepgram => 3600, // 1 hour
         // OpenAI-compatible has 25MB limit (~10 min at typical bitrates)
         AudioTranscriptionEngine::OpenAICompatible => 600,
         // Local Whisper quality degrades past ~10 min
@@ -129,8 +129,8 @@ pub async fn reconcile_untranscribed(
     );
 
     // Group consecutive chunks by device for batched transcription.
-    let max_duration = batch_max_duration_secs
-        .unwrap_or_else(|| default_max_batch_duration_secs(&audio_engine));
+    let max_duration =
+        batch_max_duration_secs.unwrap_or_else(|| default_max_batch_duration_secs(&audio_engine));
     let batches = group_chunks_by_device(&chunks, max_duration);
     debug!(
         "reconciliation: grouped into {} batches (max {}s each)",
@@ -564,9 +564,7 @@ fn group_chunks_by_device(
             } else {
                 // Check for gap between this chunk and the last one in the batch
                 let last_chunk = current_batch.last().unwrap();
-                let gap = (chunk.timestamp - last_chunk.timestamp)
-                    .num_seconds()
-                    .abs();
+                let gap = (chunk.timestamp - last_chunk.timestamp).num_seconds().abs();
                 gap > MAX_GAP_BETWEEN_CHUNKS_SECS
             }
         } else {

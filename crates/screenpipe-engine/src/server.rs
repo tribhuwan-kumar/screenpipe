@@ -484,9 +484,18 @@ impl SCServer {
             .merge(server.into_router())
             // Vault lock/unlock routes
             .route("/vault/status", get(crate::routes::vault::vault_status))
-            .route("/vault/lock", axum::routing::post(crate::routes::vault::vault_lock))
-            .route("/vault/unlock", axum::routing::post(crate::routes::vault::vault_unlock))
-            .route("/vault/setup", axum::routing::post(crate::routes::vault::vault_setup))
+            .route(
+                "/vault/lock",
+                axum::routing::post(crate::routes::vault::vault_lock),
+            )
+            .route(
+                "/vault/unlock",
+                axum::routing::post(crate::routes::vault::vault_unlock),
+            )
+            .route(
+                "/vault/setup",
+                axum::routing::post(crate::routes::vault::vault_setup),
+            )
             // Cloud Sync API routes
             .route("/sync/init", axum::routing::post(sync_api::sync_init))
             .route("/sync/status", get(sync_api::sync_status))
@@ -588,14 +597,10 @@ impl SCServer {
 
         // Connections routes (pipe-facing integrations: Telegram, Slack, etc.)
         let cm: crate::connections_api::SharedConnectionManager = Arc::new(Mutex::new(
-            screenpipe_connect::connections::ConnectionManager::new(
-                self.screenpipe_dir.clone(),
-            ),
+            screenpipe_connect::connections::ConnectionManager::new(self.screenpipe_dir.clone()),
         ));
         let wa: crate::connections_api::SharedWhatsAppGateway = Arc::new(Mutex::new(
-            screenpipe_connect::whatsapp::WhatsAppGateway::new(
-                self.screenpipe_dir.clone(),
-            ),
+            screenpipe_connect::whatsapp::WhatsAppGateway::new(self.screenpipe_dir.clone()),
         ));
         let router = router.nest("/connections", crate::connections_api::router(cm, wa));
 

@@ -2034,8 +2034,13 @@ impl PipeManager {
 
                     let pipe_dir = pipes_dir.join(name);
 
-                    let prompt =
-                        render_prompt_with_port(config, body, api_port, preset_prompt.as_deref(), extra_context.as_deref());
+                    let prompt = render_prompt_with_port(
+                        config,
+                        body,
+                        api_port,
+                        preset_prompt.as_deref(),
+                        extra_context.as_deref(),
+                    );
                     let pipe_name = name.clone();
                     let logs_ref = logs.clone();
                     let running_ref = running.clone();

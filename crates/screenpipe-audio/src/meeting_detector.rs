@@ -342,22 +342,18 @@ impl MeetingDetector {
         now: i64,
     ) -> Option<&'a CalendarSignal> {
         let buffer_ms = CALENDAR_EARLY_JOIN_BUFFER.as_millis() as i64;
-        state
-            .calendar_events
-            .iter()
-            .find(|e| {
-                let in_time_window =
-                    (e.start_epoch_ms - buffer_ms) <= now && e.end_epoch_ms > now;
-                if !in_time_window {
-                    return false;
-                }
-                // ICS feeds often lack attendees — trust the event + audio confirmation
-                if e.source == "ics" {
-                    return true;
-                }
-                // Native calendar: require 2+ attendees to filter out solo blocks
-                e.attendees.len() >= 2
-            })
+        state.calendar_events.iter().find(|e| {
+            let in_time_window = (e.start_epoch_ms - buffer_ms) <= now && e.end_epoch_ms > now;
+            if !in_time_window {
+                return false;
+            }
+            // ICS feeds often lack attendees — trust the event + audio confirmation
+            if e.source == "ics" {
+                return true;
+            }
+            // Native calendar: require 2+ attendees to filter out solo blocks
+            e.attendees.len() >= 2
+        })
     }
 
     /// Returns calendar context (title + attendees) for the active calendar meeting, if any.
@@ -1388,8 +1384,7 @@ mod tests {
         // Step 4: Simulate 6 minutes passing — beyond APP_CONFIRMATION_WINDOW
         // The app meeting timestamp was refreshed by audio extension,
         // so it should still be within the window
-        let six_min_ago =
-            now_millis() - APP_CONFIRMATION_WINDOW.as_millis() as i64 - 60_000;
+        let six_min_ago = now_millis() - APP_CONFIRMATION_WINDOW.as_millis() as i64 - 60_000;
         // If the fix works, last_app_meeting_epoch_ms was refreshed to ~now
         // by the is_in_meeting() call above, so it should still be recent
         let stored_ts = detector.last_app_meeting_epoch_ms.load(Ordering::Relaxed);
@@ -1451,7 +1446,11 @@ mod tests {
             state.calendar_events.len(),
             2,
             "should have both ICS and native events, got {:?}",
-            state.calendar_events.iter().map(|e| &e.title).collect::<Vec<_>>()
+            state
+                .calendar_events
+                .iter()
+                .map(|e| &e.title)
+                .collect::<Vec<_>>()
         );
     }
 

@@ -59,13 +59,7 @@ pub fn is_title_private(window_title: &str) -> bool {
 /// "private" is intentionally broad — it catches "Private Browsing",
 /// "Brave Private", and any variation.  A title like "Private API docs"
 /// would be a false positive, but skipping is safer than recording.
-const ENGLISH_KEYWORDS: &[&str] = &[
-    "incognito",
-    "inprivate",
-    "private",
-    "password",
-    "secret",
-];
+const ENGLISH_KEYWORDS: &[&str] = &["incognito", "inprivate", "private", "password", "secret"];
 
 /// Localized incognito / private-browsing strings from Chromium and Firefox
 /// translation files.  All entries are lowercase.
@@ -81,88 +75,88 @@ const LOCALIZED_KEYWORDS: &[&str] = &[
     "privater modus",   // Firefox "Privater Modus"
     "privates fenster", // Firefox alternate
     // French
-    "navigation privée",   // Firefox "Navigation privée"
-    "navigation privee",   // ASCII fallback (no accent)
+    "navigation privée", // Firefox "Navigation privée"
+    "navigation privee", // ASCII fallback (no accent)
     // Spanish
-    "incógnito",           // Chrome "Incógnito"
-    "navegación privada",  // Firefox "Navegación privada"
-    "navegacion privada",  // ASCII fallback
+    "incógnito",          // Chrome "Incógnito"
+    "navegación privada", // Firefox "Navegación privada"
+    "navegacion privada", // ASCII fallback
     // Portuguese
-    "navegação privada",   // Firefox "Navegação privada"
-    "navegacao privada",   // ASCII fallback
-    "anônima",             // Chrome "Janela anônima" (anonymous window)
-    "anonima",             // ASCII fallback
+    "navegação privada", // Firefox "Navegação privada"
+    "navegacao privada", // ASCII fallback
+    "anônima",           // Chrome "Janela anônima" (anonymous window)
+    "anonima",           // ASCII fallback
     // Italian
     "navigazione anonima", // Chrome / Firefox
     // Dutch
-    "incognitovenster",    // Chrome "Incognitovenster"
-    "privévenster",        // Firefox
-    "privevenster",        // ASCII fallback
+    "incognitovenster", // Chrome "Incognitovenster"
+    "privévenster",     // Firefox
+    "privevenster",     // ASCII fallback
     // Polish
     "przeglądanie prywatne", // Firefox
     "przegladanie prywatne", // ASCII fallback
     // Turkish
-    "gizli sekme",         // Chrome "Gizli sekme"
-    "gizli gezinme",       // Firefox "Gizli Gezinme"
+    "gizli sekme",   // Chrome "Gizli sekme"
+    "gizli gezinme", // Firefox "Gizli Gezinme"
     // Russian
-    "инкогнито",           // Chrome
-    "приватное окно",      // Firefox
+    "инкогнито",      // Chrome
+    "приватное окно", // Firefox
     // Ukrainian
-    "інкогніто",           // Chrome
-    "приватне вікно",      // Firefox
+    "інкогніто",      // Chrome
+    "приватне вікно", // Firefox
     // Arabic
-    "تصفح متخفي",         // Chrome "Incognito"
-    "تصفح خاص",           // Firefox "Private Browsing"
+    "تصفح متخفي", // Chrome "Incognito"
+    "تصفح خاص",   // Firefox "Private Browsing"
     // Hindi
-    "गुप्त",              // Chrome "Incognito"
+    "गुप्त", // Chrome "Incognito"
     // Thai
-    "ไม่ระบุตัวตน",       // Chrome "Incognito"
+    "ไม่ระบุตัวตน", // Chrome "Incognito"
     // Vietnamese
-    "ẩn danh",             // Chrome "Ẩn danh"
+    "ẩn danh", // Chrome "Ẩn danh"
     // Czech
     "anonymní",            // Chrome
     "soukromé prohlížení", // Firefox
     // Romanian
-    "navigare privată",    // Firefox
+    "navigare privată", // Firefox
     // Hungarian
-    "inkognitó",           // Chrome
-    "privát böngészés",    // Firefox
+    "inkognitó",        // Chrome
+    "privát böngészés", // Firefox
     // Swedish
-    "inkognitofönster",    // Chrome
-    "privat surfning",     // Firefox
+    "inkognitofönster", // Chrome
+    "privat surfning",  // Firefox
     // Norwegian
-    "inkognitovindu",      // Chrome
-    "privat nettlesing",   // Firefox
+    "inkognitovindu",    // Chrome
+    "privat nettlesing", // Firefox
     // Danish
-    "inkognitovindue",     // Chrome
-    "privat browsing",     // Firefox
+    "inkognitovindue", // Chrome
+    "privat browsing", // Firefox
     // Finnish
-    "incognito-ikkuna",    // Chrome
-    "yksityinen selaus",   // Firefox
+    "incognito-ikkuna",  // Chrome
+    "yksityinen selaus", // Firefox
     // Greek
-    "ανώνυμη περιήγηση",   // Chrome
-    "ιδιωτική περιήγηση",  // Firefox
+    "ανώνυμη περιήγηση",  // Chrome
+    "ιδιωτική περιήγηση", // Firefox
     // Hebrew
-    "גלישה בסתר",         // Chrome "Incognito"
-    "גלישה פרטית",        // Firefox "Private Browsing"
+    "גלישה בסתר",  // Chrome "Incognito"
+    "גלישה פרטית", // Firefox "Private Browsing"
 ];
 
 /// CJK and other non-Latin scripts where lowercasing is meaningless.
 /// Checked against the original (non-lowered) title.
 const CJK_KEYWORDS: &[&str] = &[
     // Japanese
-    "シークレット",       // Chrome "Secret" (incognito)
+    "シークレット",             // Chrome "Secret" (incognito)
     "プライベートブラウジング", // Firefox "Private Browsing"
     // Chinese Simplified
-    "无痕",               // Chrome "无痕模式" (incognito mode)
-    "隐身",               // Chrome alternate "隐身模式"
-    "隐私浏览",           // Firefox "隐私浏览"
+    "无痕",     // Chrome "无痕模式" (incognito mode)
+    "隐身",     // Chrome alternate "隐身模式"
+    "隐私浏览", // Firefox "隐私浏览"
     // Chinese Traditional
-    "無痕",               // Chrome "無痕模式"
-    "隱私瀏覽",           // Firefox
+    "無痕",     // Chrome "無痕模式"
+    "隱私瀏覽", // Firefox
     // Korean
-    "시크릿",             // Chrome "시크릿 모드"
-    "사생활 보호",        // Firefox "Private Browsing"
+    "시크릿",      // Chrome "시크릿 모드"
+    "사생활 보호", // Firefox "Private Browsing"
 ];
 
 #[cfg(test)]
@@ -210,32 +204,28 @@ mod tests {
 
     #[test]
     fn test_firefox_privater_modus_german() {
-        assert!(is_title_private(
-            "Startseite — Firefox (Privater Modus)"
-        ));
+        assert!(is_title_private("Startseite — Firefox (Privater Modus)"));
     }
 
     // ---- French ----
 
     #[test]
     fn test_firefox_navigation_privee_french() {
-        assert!(is_title_private(
-            "Accueil — Firefox (Navigation privée)"
-        ));
+        assert!(is_title_private("Accueil — Firefox (Navigation privée)"));
     }
 
     // ---- Spanish ----
 
     #[test]
     fn test_chrome_incognito_spanish() {
-        assert!(is_title_private("Nueva pestaña - Google Chrome (Incógnito)"));
+        assert!(is_title_private(
+            "Nueva pestaña - Google Chrome (Incógnito)"
+        ));
     }
 
     #[test]
     fn test_firefox_navegacion_privada_spanish() {
-        assert!(is_title_private(
-            "Firefox (Navegación privada)"
-        ));
+        assert!(is_title_private("Firefox (Navegación privada)"));
     }
 
     // ---- Japanese ----
@@ -249,9 +239,7 @@ mod tests {
 
     #[test]
     fn test_firefox_private_browsing_japanese() {
-        assert!(is_title_private(
-            "Firefox (プライベートブラウジング)"
-        ));
+        assert!(is_title_private("Firefox (プライベートブラウジング)"));
     }
 
     // ---- Chinese Simplified ----
@@ -284,9 +272,7 @@ mod tests {
 
     #[test]
     fn test_firefox_private_russian() {
-        assert!(is_title_private(
-            "Firefox (Приватное окно)"
-        ));
+        assert!(is_title_private("Firefox (Приватное окно)"));
     }
 
     // ---- Negative cases ----

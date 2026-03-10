@@ -77,11 +77,7 @@ pub trait Integration: Send + Sync {
     fn def(&self) -> &'static IntegrationDef;
 
     /// Verify credentials work. Returns a human-readable success message.
-    async fn test(
-        &self,
-        client: &reqwest::Client,
-        creds: &Map<String, Value>,
-    ) -> Result<String>;
+    async fn test(&self, client: &reqwest::Client, creds: &Map<String, Value>) -> Result<String>;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,10 +132,7 @@ pub fn load_store(screenpipe_dir: &Path) -> HashMap<String, SavedConnection> {
     }
 }
 
-pub fn save_store(
-    screenpipe_dir: &Path,
-    data: &HashMap<String, SavedConnection>,
-) -> Result<()> {
+pub fn save_store(screenpipe_dir: &Path, data: &HashMap<String, SavedConnection>) -> Result<()> {
     let path = store_path(screenpipe_dir);
     let json = serde_json::to_string_pretty(data)?;
     std::fs::write(&path, json)?;
