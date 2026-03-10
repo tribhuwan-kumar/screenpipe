@@ -129,7 +129,7 @@ pub async fn paired_capture(
     // where the document body is invisible to the accessibility tree.
     let a11y_is_thin = has_accessibility_text
         && tree_snapshot
-            .map(|s| a11y_content_is_thin(s, ctx.window_name))
+            .map(|s| a11y_content_is_thin(s, ctx.window_name, ctx.browser_url))
             .unwrap_or(false);
 
     // Run OCR when: no a11y text, app prefers OCR, OR a11y text is thin (hybrid)
@@ -346,6 +346,7 @@ pub fn walk_accessibility_tree(
 /// Known canvas-rendered apps/sites where the accessibility tree returns only
 /// UI chrome (toolbar, sidebar) but the main content is drawn on a <canvas>
 /// or GPU surface and invisible to the a11y tree.
+/// Matched against window title.
 const CANVAS_APP_PATTERNS: &[&str] = &[
     "google docs",
     "google sheets",
@@ -358,6 +359,18 @@ const CANVAS_APP_PATTERNS: &[&str] = &[
     "tldraw",
 ];
 
+/// URL patterns for canvas-rendered apps. When inside a Google Doc, the window
+/// title is the document name (not "Google Docs"), so we also check the URL.
+const CANVAS_URL_PATTERNS: &[&str] = &[
+    "docs.google.com",
+    "sheets.google.com",
+    "slides.google.com",
+    "figma.com",
+    "excalidraw.com",
+    "miro.com",
+    "tldraw.com",
+];
+
 /// Check if the accessibility tree captured mostly UI chrome and likely missed
 /// the actual content. Returns `true` when OCR should supplement a11y data.
 ///
@@ -368,8 +381,9 @@ const CANVAS_APP_PATTERNS: &[&str] = &[
 fn a11y_content_is_thin(
     snap: &screenpipe_a11y::tree::TreeSnapshot,
     window_name: Option<&str>,
+    browser_url: Option<&str>,
 ) -> bool {
-    // 1. Known canvas-rendered apps — always need OCR
+    // 1a. Known canvas-rendered apps by window title
     if let Some(win) = window_name {
         let win_lower = win.to_lowercase();
         if CANVAS_APP_PATTERNS
@@ -377,6 +391,19 @@ fn a11y_content_is_thin(
             .any(|pat| win_lower.contains(pat))
         {
             debug!("a11y_content_is_thin: known canvas app '{}'", win);
+            return true;
+        }
+    }
+
+    // 1b. Known canvas-rendered apps by URL (e.g. inside a Google Doc the
+    //     window title is the document name, not "Google Docs")
+    if let Some(url) = browser_url {
+        let url_lower = url.to_lowercase();
+        if CANVAS_URL_PATTERNS
+            .iter()
+            .any(|pat| url_lower.contains(pat))
+        {
+            debug!("a11y_content_is_thin: known canvas URL '{}'", url);
             return true;
         }
     }
@@ -704,13 +731,13 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "Lots of real content here that is very long and should normally be fine".into(), depth: 0, bounds: None },
         ]);
         // Google Docs in window title → always thin regardless of content
-        assert!(a11y_content_is_thin(&snap, Some("Untitled - Google Docs")));
+        assert!(a11y_content_is_thin(&snap, Some("Untitled - Google Docs"), None));
     }
 
     #[test]
     fn test_thin_known_canvas_app_figma() {
         let snap = make_snap(vec![]);
-        assert!(a11y_content_is_thin(&snap, Some("My Design - Figma")));
+        assert!(a11y_content_is_thin(&snap, Some("My Design - Figma"), None));
     }
 
     #[test]
@@ -721,7 +748,7 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "This is a long article about dogs. Dogs are domesticated descendants of wolves. They were the first species to be domesticated over 14,000 years ago.".into(), depth: 1, bounds: None },
             AccessibilityTreeNode { role: "AXLink".into(), text: "Read more about canine history".into(), depth: 1, bounds: None },
         ]);
-        assert!(!a11y_content_is_thin(&snap, Some("Dog - Wikipedia")));
+        assert!(!a11y_content_is_thin(&snap, Some("Dog - Wikipedia"), None));
     }
 
     #[test]
@@ -745,7 +772,7 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "Untitled".into(), depth: 0, bounds: None },
         ]);
         // >70% chrome text
-        assert!(a11y_content_is_thin(&snap, Some("Untitled document")));
+        assert!(a11y_content_is_thin(&snap, Some("Untitled document"), None));
     }
 
     #[test]
@@ -754,7 +781,7 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "Loading...".into(), depth: 0, bounds: None },
         ]);
         // < 100 chars total
-        assert!(a11y_content_is_thin(&snap, Some("Some App")));
+        assert!(a11y_content_is_thin(&snap, Some("Some App"), None));
     }
 
     #[test]
@@ -765,6 +792,19 @@ mod tests {
             AccessibilityTreeNode { role: "AXButton".into(), text: "Search".into(), depth: 0, bounds: None },
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "fn main() { println!(\"hello world\"); } // This is a Rust program with many lines of code that form a substantial amount of content text in the editor buffer area".into(), depth: 1, bounds: None },
         ]);
-        assert!(!a11y_content_is_thin(&snap, Some("main.rs - Visual Studio Code")));
+        assert!(!a11y_content_is_thin(&snap, Some("main.rs - Visual Studio Code"), None));
+    }
+
+    #[test]
+    fn test_thin_google_docs_by_url() {
+        // When inside a Google Doc, window title is the doc name, not "Google Docs".
+        // Use enough content text so the heuristic alone wouldn't flag it as thin.
+        let snap = make_snap(vec![
+            AccessibilityTreeNode { role: "AXStaticText".into(), text: "Docs home Star Add shortcut to Drive Document status Saved to Drive Request edit access Share Anyone with the link Join a call here or present".into(), depth: 0, bounds: None },
+        ]);
+        // Window title is doc name, but URL reveals it's Google Docs → thin
+        assert!(a11y_content_is_thin(&snap, Some("Creon's list of profound books"), Some("https://docs.google.com/document/d/abc123/edit")));
+        // Same content on a non-canvas URL → not thin (content ratio is fine)
+        assert!(!a11y_content_is_thin(&snap, Some("Creon's list of profound books"), Some("https://example.com")));
     }
 }

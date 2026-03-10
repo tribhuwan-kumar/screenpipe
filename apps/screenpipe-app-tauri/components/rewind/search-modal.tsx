@@ -254,10 +254,11 @@ const FrameThumbnail = ({ frameId, alt }: { frameId: number; alt: string }) => {
           src={src}
           alt={alt}
           className={cn(
-            "w-full h-full object-cover transition-opacity",
+            "w-full h-full object-cover transition-opacity pointer-events-none",
             isLoading ? "opacity-0" : "opacity-100"
           )}
           loading="lazy"
+          draggable={false}
           onLoad={() => setIsLoading(false)}
           onError={() => {
             if (retryCount.current < 3) {
@@ -566,19 +567,6 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       .slice(0, 10);
   }, [speakerTranscriptions]);
 
-  // Use facet data for filter chips (falls back to result-derived if facets not loaded yet)
-  const resultAppCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of searchResults) {
-      counts.set(r.app_name, (counts.get(r.app_name) || 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [searchResults]);
-
-  // Always derive app chips from actual search results so chip labels
-  // exactly match r.app_name used by the client-side filter. Facet apps
-  // come from accessibility.app_name which can differ from frames.app_name.
-  const appCounts = resultAppCounts;
   const domainCounts = facetDomains;
   const timeRanges = facetTimeRanges;
 
@@ -611,6 +599,20 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     const localDate = format(d, "yyyy-MM-dd");
     return localDate === timeFilter;
   }, [timeFilter]);
+
+  // Derive app chips from time-filtered results so they stay consistent
+  // when a date chip is active. Uses actual search result app_names to
+  // guarantee the client-side filter (r.app_name === appFilter) matches.
+  const appCounts = useMemo(() => {
+    const source = timeFilter
+      ? searchResults.filter(r => matchesTimeFilter(r.timestamp))
+      : searchResults;
+    const counts = new Map<string, number>();
+    for (const r of source) {
+      counts.set(r.app_name, (counts.get(r.app_name) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [searchResults, timeFilter, matchesTimeFilter]);
 
   const filteredResults = useMemo(() => {
     let results = searchResults;
@@ -1508,7 +1510,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
                   {appCounts.map(([app, count]) => (
                     <button
                       key={app}
-                      onClick={() => { setAppFilter(appFilter === app ? null : app); setSelectedIndex(0); }}
+                      onClick={() => { const newApp = appFilter === app ? null : app; setAppFilter(newApp); if (newApp) setDomainFilter(null); setSelectedIndex(0); }}
                       className={cn(
                         "px-2.5 py-1 text-[11px] rounded-full border transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0",
                         appFilter === app
@@ -1529,8 +1531,9 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
                 </div>
               )}
 
-              {/* Domain filter chips */}
-              {domainCounts.length > 1 && (
+              {/* Domain filter chips — hide when a non-browser app is selected
+                  (non-browser apps don't have URLs so domain chips are irrelevant) */}
+              {domainCounts.length > 1 && (!appFilter || filteredResults.some(r => r.url)) && (
                 <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-hide pb-0.5">
                   <button
                     onClick={() => { setDomainFilter(null); setSelectedIndex(0); }}
