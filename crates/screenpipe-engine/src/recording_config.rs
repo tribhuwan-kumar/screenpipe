@@ -77,6 +77,11 @@ pub struct RecordingConfig {
 
     /// Custom vocabulary for transcription biasing and word replacement.
     pub vocabulary: Vec<VocabularyEntry>,
+
+    /// User-configurable maximum batch duration in seconds for batch transcription.
+    /// When set, overrides the engine-aware default (Deepgram=3600s, Whisper/OpenAI=600s).
+    /// None = use engine-aware defaults.
+    pub batch_max_duration_secs: Option<u64>,
 }
 
 impl RecordingConfig {
@@ -114,6 +119,7 @@ impl RecordingConfig {
             .filter_music(self.filter_music)
             .transcription_mode(self.transcription_mode.clone())
             .vocabulary(self.vocabulary.clone())
+            .batch_max_duration_secs(self.batch_max_duration_secs)
     }
 
     /// Build a `VisionManagerConfig` from this config.

@@ -195,6 +195,7 @@ curl -X POST http://localhost:3030/raw_sql \
 | `speakers` | `name`, `metadata` | — |
 | `ui_events` | `event_type`, `app_name`, `window_title`, `browser_url` | `timestamp` |
 | `accessibility` | `app_name`, `window_name`, `text_content`, `browser_url` | `timestamp` |
+| `meetings` | `meeting_app`, `title`, `attendees`, `detection_source` | `meeting_start` |
 
 ### Example Queries
 
@@ -250,7 +251,30 @@ If not connected, tell user to set up in Settings > Connections.
 
 ---
 
-## 9. Other Endpoints
+## 9. Meetings — `GET /meetings`
+
+```bash
+curl "http://localhost:3030/meetings?start_time=1d%20ago&end_time=now&limit=10&offset=0"
+curl "http://localhost:3030/meetings/42"
+```
+
+Returns detected meetings (from calendar, app detection, window titles, UI elements, multi-speaker audio).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | integer | Meeting ID |
+| `meeting_start` | ISO 8601 | Start time |
+| `meeting_end` | ISO 8601? | End time (null if ongoing) |
+| `meeting_app` | string | App (zoom, teams, meet, etc.) |
+| `title` | string? | Meeting title |
+| `attendees` | string? | Attendees |
+| `detection_source` | string | How detected (`app`, `calendar`, `ui`, etc.) |
+
+Also available via raw SQL: `SELECT * FROM meetings WHERE meeting_start > datetime('now', '-24 hours') LIMIT 20`
+
+---
+
+## 10. Other Endpoints
 
 ```bash
 curl http://localhost:3030/health              # Health check

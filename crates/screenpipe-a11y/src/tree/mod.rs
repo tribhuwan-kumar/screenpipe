@@ -185,11 +185,21 @@ impl Default for TreeWalkerConfig {
     }
 }
 
+/// Result of a tree walk attempt.
+#[derive(Debug, Clone)]
+pub enum TreeWalkResult {
+    /// Successfully walked the tree and captured a snapshot.
+    Found(TreeSnapshot),
+    /// Window was skipped due to incognito/private browsing or user filters.
+    Skipped,
+    /// No focused window found or tree walk produced no text.
+    NotFound,
+}
+
 /// Platform-specific tree walker trait.
 pub trait TreeWalkerPlatform: Send {
     /// Walk the focused window's accessibility tree.
-    /// Returns `None` if no window is focused or no text is found.
-    fn walk_focused_window(&self) -> Result<Option<TreeSnapshot>>;
+    fn walk_focused_window(&self) -> Result<TreeWalkResult>;
 }
 
 /// Create a platform-appropriate tree walker.
@@ -218,8 +228,8 @@ struct StubTreeWalker;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 impl TreeWalkerPlatform for StubTreeWalker {
-    fn walk_focused_window(&self) -> Result<Option<TreeSnapshot>> {
-        Ok(None)
+    fn walk_focused_window(&self) -> Result<TreeWalkResult> {
+        Ok(TreeWalkResult::NotFound)
     }
 }
 

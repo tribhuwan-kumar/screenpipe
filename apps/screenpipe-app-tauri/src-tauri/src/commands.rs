@@ -85,7 +85,7 @@ pub fn show_main_window(app_handle: &tauri::AppHandle, _overlay: bool) {
     #[cfg(target_os = "macos")]
     let window_to_show = ShowRewindWindow::Main;
     #[cfg(not(target_os = "macos"))]
-    let window_to_show = ShowRewindWindow::Settings { page: None };
+    let window_to_show = ShowRewindWindow::Home { page: None };
 
     match window_to_show.show(app_handle) {
         Ok(window) => {
@@ -127,7 +127,7 @@ pub fn hide_main_window(app_handle: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     let window_to_close = ShowRewindWindow::Main;
     #[cfg(not(target_os = "macos"))]
-    let window_to_close = ShowRewindWindow::Settings { page: None };
+    let window_to_close = ShowRewindWindow::Home { page: None };
 
     if let Err(e) = window_to_close.close(app_handle) {
         error!("failed to close window: {}", e);
@@ -242,7 +242,7 @@ pub fn update_show_screenpipe_shortcut(
             }
             #[cfg(not(target_os = "macos"))]
             {
-                if let Some(window) = app_handle.get_webview_window("settings") {
+                if let Some(window) = app_handle.get_webview_window("home") {
                     match window.is_visible() {
                         Ok(true) => hide_main_window(app_handle),
                         _ => show_main_window(app_handle, true),

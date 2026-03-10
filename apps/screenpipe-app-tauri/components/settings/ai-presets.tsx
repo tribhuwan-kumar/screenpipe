@@ -475,6 +475,7 @@ const AISection = ({
     } else if (isAnthropic && settingsPreset?.apiKey) {
       headers["x-api-key"] = settingsPreset.apiKey;
       headers["anthropic-version"] = "2023-06-01";
+      headers["anthropic-dangerous-direct-browser-access"] = "true";
     } else if (settingsPreset?.apiKey) {
       headers["Authorization"] = `Bearer ${settingsPreset.apiKey}`;
     }
@@ -777,6 +778,7 @@ const AISection = ({
               headers: {
                 "x-api-key": settingsPreset?.apiKey || "",
                 "anthropic-version": "2023-06-01",
+                "anthropic-dangerous-direct-browser-access": "true",
               },
             });
             if (anthropicResp.ok) {

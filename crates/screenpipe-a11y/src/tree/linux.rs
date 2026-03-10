@@ -16,8 +16,8 @@
 //! - Enable with: `gsettings set org.gnome.desktop.interface toolkit-accessibility true`
 
 use super::{
-    AccessibilityTreeNode, NodeBounds, TreeSnapshot, TreeWalkerConfig, TreeWalkerPlatform,
-    TruncationReason,
+    AccessibilityTreeNode, NodeBounds, TreeSnapshot, TreeWalkResult, TreeWalkerConfig,
+    TreeWalkerPlatform, TruncationReason,
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -851,7 +851,7 @@ impl LinuxTreeWalker {
 }
 
 impl TreeWalkerPlatform for LinuxTreeWalker {
-    fn walk_focused_window(&self) -> Result<Option<TreeSnapshot>> {
+    fn walk_focused_window(&self) -> Result<TreeWalkResult> {
         let start = Instant::now();
 
         // Safety: single-threaded access guaranteed by walker thread design
@@ -860,14 +860,14 @@ impl TreeWalkerPlatform for LinuxTreeWalker {
         // Find the focused window
         let (app_name, window_title, window_ref, _pid) = match find_focused_window(conn) {
             Some(result) => result,
-            None => return Ok(None),
+            None => return Ok(TreeWalkResult::NotFound),
         };
 
         // Skip incognito / private browsing windows (localized title check)
         if self.config.ignore_incognito_windows
             && crate::incognito::is_title_private(&window_title)
         {
-            return Ok(None);
+            return Ok(TreeWalkResult::Skipped);
         }
 
         let app_lower = app_name.to_lowercase();
@@ -878,7 +878,7 @@ impl TreeWalkerPlatform for LinuxTreeWalker {
             let p = pattern.to_lowercase();
             app_lower.contains(&p) || window_lower.contains(&p)
         }) {
-            return Ok(None);
+            return Ok(TreeWalkResult::Skipped);
         }
 
         // Apply user-configured included windows (whitelist)
@@ -888,7 +888,7 @@ impl TreeWalkerPlatform for LinuxTreeWalker {
                 app_lower.contains(&p) || window_lower.contains(&p)
             });
             if !matches {
-                return Ok(None);
+                return Ok(TreeWalkResult::Skipped);
             }
         }
 
@@ -940,7 +940,7 @@ impl TreeWalkerPlatform for LinuxTreeWalker {
             walk_duration
         );
 
-        Ok(Some(TreeSnapshot {
+        Ok(TreeWalkResult::Found(TreeSnapshot {
             app_name,
             window_name: window_title,
             text_content,

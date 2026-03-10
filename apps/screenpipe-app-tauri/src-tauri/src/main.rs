@@ -139,7 +139,7 @@ fn setup_dock_menu(app_handle: AppHandle) {
                 if let Some(ref app) = DOCK_APP_HANDLE {
                     let app_for_closure = app.clone();
                     let _ = app.run_on_main_thread(move || {
-                        let _ = ShowRewindWindow::Settings { page: None }.show(&app_for_closure);
+                        let _ = ShowRewindWindow::Home { page: None }.show(&app_for_closure);
                     });
                 }
             }
@@ -437,9 +437,9 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
             }
             #[cfg(not(target_os = "macos"))]
             {
-                // Windows uses the Settings window (embedded timeline) as main UI.
-                // Check "settings" label directly instead of overlay labels.
-                let label = "settings";
+                // Windows uses the Home window (embedded timeline) as main UI.
+                // Check "home" label directly instead of overlay labels.
+                let label = "home";
 
                 if let Some(window) = app.get_webview_window(label) {
                     info!("found {} window, checking visibility", label);
@@ -593,8 +593,8 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
             }
             #[cfg(not(target_os = "macos"))]
             {
-                // Windows uses "settings" window (embedded timeline)
-                let label = "settings";
+                // Windows uses "home" window (embedded timeline)
+                let label = "home";
                 if let Some(window) = app.get_webview_window(label) {
                     // On Windows, minimized windows still report is_visible()=true
                     let needs_show = !window.is_visible().unwrap_or(false)
@@ -1495,7 +1495,7 @@ async fn main() {
                 // clicks X. For other windows, minimize or hide.
                 #[cfg(target_os = "windows")]
                 {
-                    if window.label() == "settings" {
+                    if window.label() == "home" {
                         // Let the close proceed (don't prevent it)
                         return;
                     } else if window.label() == "main-window" {
@@ -1757,7 +1757,7 @@ async fn main() {
                             // Defer off event stack (same as tray: runs from tao::send_event).
                             let app_for_closure = app_handle.clone();
                             let _ = app_handle.run_on_main_thread(move || {
-                                let _ = ShowRewindWindow::Settings { page: None }.show(&app_for_closure);
+                                let _ = ShowRewindWindow::Home { page: None }.show(&app_for_closure);
                             });
                         }
                         "check_for_updates" => {
@@ -2011,7 +2011,7 @@ async fn main() {
             if !onboarding_store.is_completed {
                 let _ = ShowRewindWindow::Onboarding.show(&app.handle());
             } else {
-                let _ = ShowRewindWindow::Settings { page: None }.show(&app.handle());
+                let _ = ShowRewindWindow::Home { page: None }.show(&app.handle());
             }
 
             // Pre-create chat panel (hidden) so the shortcut can show an
@@ -2461,7 +2461,7 @@ async fn main() {
                 } => {
                     if let Ok(window_id) = RewindWindowId::from_str(label.as_str()) {
                         match window_id {
-                            RewindWindowId::Settings => {
+                            RewindWindowId::Home => {
                                 // Closing Settings hides the Main panel (it's always a panel now).
                                 // Defer off the event stack: run handler must stay panic-free.
                                 let app = app_handle.app_handle().clone();
@@ -2480,7 +2480,7 @@ async fn main() {
                     // Open the settings/app window (not the timeline overlay).
                     let app = app_handle.app_handle().clone();
                     let _ = app_handle.app_handle().run_on_main_thread(move || {
-                        let _ = ShowRewindWindow::Settings { page: None }.show(&app);
+                        let _ = ShowRewindWindow::Home { page: None }.show(&app);
                     });
                 }
                 _ => {}

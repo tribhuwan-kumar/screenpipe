@@ -744,6 +744,11 @@ impl SettingsStore {
                     .ok()
                 })
                 .unwrap_or_default(),
+            batch_max_duration_secs: self
+                .extra
+                .get("batchMaxDurationSecs")
+                .and_then(|v| v.as_u64())
+                .filter(|&v| v > 0),
         }
     }
 

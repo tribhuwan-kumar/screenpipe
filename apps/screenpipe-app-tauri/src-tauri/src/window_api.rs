@@ -323,7 +323,7 @@ fn restore_frontmost_app_if_external_with_app(app: Option<&AppHandle>) {
     // These are regular windows (not panels) that may be on another Space —
     // we don't want to activate a previous app and bury them.
     if let Some(app) = app {
-        let non_panel_labels = ["settings", "chat", "search"];
+        let non_panel_labels = ["home", "chat", "search"];
         for label in &non_panel_labels {
             if app.get_webview_window(label).is_some() {
                 info!(
@@ -707,7 +707,7 @@ pub async fn close_window(
 
 pub enum RewindWindowId {
     Main,
-    Settings,
+    Home,
     Search,
     Onboarding,
     Chat,
@@ -720,7 +720,7 @@ impl FromStr for RewindWindowId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "main" => Ok(RewindWindowId::Main),
-            "settings" => Ok(RewindWindowId::Settings),
+            "home" | "settings" => Ok(RewindWindowId::Home),
             "search" => Ok(RewindWindowId::Search),
             "onboarding" => Ok(RewindWindowId::Onboarding),
             "chat" => Ok(RewindWindowId::Chat),
@@ -734,7 +734,7 @@ impl std::fmt::Display for RewindWindowId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RewindWindowId::Main => write!(f, "main"),
-            RewindWindowId::Settings => write!(f, "settings"),
+            RewindWindowId::Home => write!(f, "home"),
             RewindWindowId::Search => write!(f, "search"),
             RewindWindowId::Onboarding => write!(f, "onboarding"),
             RewindWindowId::Chat => write!(f, "chat"),
@@ -747,7 +747,7 @@ impl RewindWindowId {
     pub fn label(&self) -> &str {
         match self {
             RewindWindowId::Main => "main",
-            RewindWindowId::Settings => "settings",
+            RewindWindowId::Home => "home",
             RewindWindowId::Search => "search",
             RewindWindowId::Onboarding => "onboarding",
             RewindWindowId::Chat => "chat",
@@ -758,7 +758,7 @@ impl RewindWindowId {
     pub fn title(&self) -> &str {
         match self {
             RewindWindowId::Main => "screenpipe",
-            RewindWindowId::Settings => "settings",
+            RewindWindowId::Home => "screenpipe",
             RewindWindowId::Search => "search",
             RewindWindowId::Onboarding => "onboarding",
             RewindWindowId::Chat => "ai chat",
@@ -769,7 +769,7 @@ impl RewindWindowId {
     pub fn min_size(&self) -> Option<(f64, f64)> {
         Some(match self {
             RewindWindowId::Main => (800.0, 600.0),
-            RewindWindowId::Settings => (800.0, 600.0),
+            RewindWindowId::Home => (800.0, 600.0),
             RewindWindowId::Search => (800.0, 600.0),
             RewindWindowId::Onboarding => (450.0, 500.0),
             RewindWindowId::Chat => (600.0, 750.0),
@@ -800,7 +800,7 @@ fn screen_aware_size(app: &AppHandle, desired_w: f64, desired_h: f64) -> (f64, f
 #[derive(Serialize, Deserialize, Debug, Clone, specta::Type)]
 pub enum ShowRewindWindow {
     Main,
-    Settings { page: Option<String> },
+    Home { page: Option<String> },
     Search { query: Option<String> },
     Onboarding,
     Chat,
@@ -872,7 +872,7 @@ impl ShowRewindWindow {
     pub fn id(&self) -> RewindWindowId {
         match self {
             ShowRewindWindow::Main => RewindWindowId::Main,
-            ShowRewindWindow::Settings { page: _ } => RewindWindowId::Settings,
+            ShowRewindWindow::Home { page: _ } => RewindWindowId::Home,
             ShowRewindWindow::Search { query: _ } => RewindWindowId::Search,
             ShowRewindWindow::Onboarding => RewindWindowId::Onboarding,
             ShowRewindWindow::Chat => RewindWindowId::Chat,
@@ -883,7 +883,7 @@ impl ShowRewindWindow {
     pub fn metadata(&self) -> Option<String> {
         match self {
             ShowRewindWindow::Main => None,
-            ShowRewindWindow::Settings { page: _ } => None,
+            ShowRewindWindow::Home { page: _ } => None,
             ShowRewindWindow::Search { query } => {
                 Some(query.clone().unwrap_or_default().to_string())
             }
@@ -1091,14 +1091,14 @@ impl ShowRewindWindow {
 
             // Settings window: navigate to the requested section if specified
             // and ensure it comes to front (macOS set_focus alone is unreliable from tray context)
-            if id.label() == RewindWindowId::Settings.label() {
-                if let ShowRewindWindow::Settings {
+            if id.label() == RewindWindowId::Home.label() {
+                if let ShowRewindWindow::Home {
                     page: Some(ref section),
                 } = self
                 {
                     let _ = window.emit(
                         "navigate",
-                        serde_json::json!({ "url": format!("/settings?section={}", section) }),
+                        serde_json::json!({ "url": format!("/home?section={}", section) }),
                     );
                 }
                 window.show().ok();
@@ -1791,10 +1791,10 @@ impl ShowRewindWindow {
 
                 window
             }
-            ShowRewindWindow::Settings { page } => {
+            ShowRewindWindow::Home { page } => {
                 let url = match page {
-                    Some(p) => format!("/settings?section={}", p),
-                    None => "/settings".to_string(),
+                    Some(p) => format!("/home?section={}", p),
+                    None => "/home".to_string(),
                 };
                 let builder = self.window_builder(app, &url).focused(true);
                 #[cfg(target_os = "macos")]
@@ -2075,7 +2075,7 @@ impl ShowRewindWindow {
             // On Windows, minimize the Settings window instead of closing it
             // so it stays in the taskbar and can be restored quickly.
             #[cfg(target_os = "windows")]
-            if id.label() == RewindWindowId::Settings.label() {
+            if id.label() == RewindWindowId::Home.label() {
                 window.minimize().ok();
                 return Ok(());
             }

@@ -8,7 +8,8 @@
 //! the focused window's tree and extract all visible text — matching macOS behavior.
 
 use super::{
-    AccessibilityTreeNode, NodeBounds, TreeSnapshot, TreeWalkerConfig, TreeWalkerPlatform,
+    AccessibilityTreeNode, NodeBounds, TreeSnapshot, TreeWalkResult, TreeWalkerConfig,
+    TreeWalkerPlatform,
 };
 use crate::events::AccessibilityNode;
 use crate::platform::windows_uia::UiaContext;
@@ -164,7 +165,7 @@ impl Drop for WindowsTreeWalker {
 }
 
 impl TreeWalkerPlatform for WindowsTreeWalker {
-    fn walk_focused_window(&self) -> Result<Option<TreeSnapshot>> {
+    fn walk_focused_window(&self) -> Result<TreeWalkResult> {
         let start = Instant::now();
 
         // Safety: single-threaded access guaranteed by walker thread design
@@ -173,7 +174,7 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
         // Get the focused window
         let hwnd = unsafe { GetForegroundWindow() };
         if hwnd == HWND::default() {
-            return Ok(None);
+            return Ok(TreeWalkResult::NotFound);
         }
 
         // Get process info
@@ -185,7 +186,7 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
         // Skip excluded apps
         let app_lower = app_name.to_lowercase();
         if EXCLUDED_APPS.iter().any(|ex| app_lower.contains(ex)) {
-            return Ok(None);
+            return Ok(TreeWalkResult::Skipped);
         }
 
         // Get window title
@@ -199,7 +200,7 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
         if self.config.ignore_incognito_windows
             && crate::incognito::is_title_private(&window_name)
         {
-            return Ok(None);
+            return Ok(TreeWalkResult::Skipped);
         }
 
         // Apply user-configured ignored windows (check app name and window title)
@@ -208,7 +209,7 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
             let p = pattern.to_lowercase();
             app_lower.contains(&p) || window_lower.contains(&p)
         }) {
-            return Ok(None);
+            return Ok(TreeWalkResult::Skipped);
         }
 
         // Apply user-configured included windows (whitelist mode)
@@ -218,19 +219,19 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
                 app_lower.contains(&p) || window_lower.contains(&p)
             });
             if !matches {
-                return Ok(None);
+                return Ok(TreeWalkResult::Skipped);
             }
         }
 
         // Check timeout budget
         if start.elapsed() >= self.config.walk_timeout {
-            return Ok(None);
+            return Ok(TreeWalkResult::NotFound);
         }
 
         // Capture the accessibility tree
         let root = match uia.capture_window_tree(hwnd, self.config.max_nodes) {
             Some(tree) => tree,
-            None => return Ok(None),
+            None => return Ok(TreeWalkResult::NotFound),
         };
 
         // Get monitor dimensions for normalizing element bounds to 0-1 coords
@@ -278,7 +279,7 @@ impl TreeWalkerPlatform for WindowsTreeWalker {
         );
 
         // Windows walker doesn't have timeout-based truncation yet — report as complete
-        Ok(Some(TreeSnapshot {
+        Ok(TreeWalkResult::Found(TreeSnapshot {
             app_name,
             window_name,
             text_content: text_buffer,

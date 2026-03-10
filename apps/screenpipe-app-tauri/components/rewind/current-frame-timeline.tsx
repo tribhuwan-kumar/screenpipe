@@ -250,11 +250,11 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 
 	// --- Live Text hook (native macOS VisionKit overlay) ---
 	// Determine which window/panel to attach VisionKit overlay to.
-	// In embedded mode, use the "settings" window (regular WebviewWindow).
+	// In embedded mode, use the "home" window (regular WebviewWindow).
 	// The overlay is positioned precisely over the frame using absolute
 	// coordinates from containerRef + renderedImageInfo.
 	const liveTextWindowLabel = embedded
-		? "settings"
+		? "home"
 		: settings?.overlayMode === "window" ? "main-window" : "main";
 
 	const { nativeLiveTextActive } = useLiveText({
