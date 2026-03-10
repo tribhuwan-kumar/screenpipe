@@ -261,6 +261,7 @@ fn parse_ics_to_events(ics_text: &str, feed_name: &str) -> Vec<CalendarEventItem
             location,
             calendar_name: feed_name.to_string(),
             is_all_day: all_day,
+            source: "ics".to_string(),
         });
     }
 

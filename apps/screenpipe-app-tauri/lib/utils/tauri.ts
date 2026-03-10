@@ -966,7 +966,12 @@ startDisplay: string;
 /**
  * Pre-formatted local time, e.g. "5:00 PM" — for display.
  */
-endDisplay: string; attendees: string[]; location: string | null; calendarName: string; isAllDay: boolean }
+endDisplay: string; attendees: string[]; location: string | null; calendarName: string; isAllDay: boolean; 
+/**
+ * Source identifier: "native" for OS calendar, "ics" for ICS feeds.
+ * Used by meeting detector to merge events from multiple publishers.
+ */
+source?: string }
 export type CalendarStatus = { available: boolean; authorized: boolean; authorizationStatus: string; calendarCount: number }
 export type ChatGptOAuthStatus = { logged_in: boolean }
 export type Credits = { amount: number }
@@ -1087,7 +1092,7 @@ chatAlwaysOnTop?: boolean;
  * AppleScript detection for Chromium browsers.
  */
 ignoreIncognitoWindows?: boolean }
-export type ShowRewindWindow = "Main" | { Settings: { page: string | null } } | { Search: { query: string | null } } | "Onboarding" | "Chat" | "PermissionRecovery"
+export type ShowRewindWindow = "Main" | { Home: { page: string | null } } | { Search: { query: string | null } } | "Onboarding" | "Chat" | "PermissionRecovery"
 export type Suggestion = { text: string }
 /**
  * Sync configuration.

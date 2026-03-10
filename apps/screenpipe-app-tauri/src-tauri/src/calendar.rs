@@ -41,6 +41,14 @@ pub struct CalendarEventItem {
     pub location: Option<String>,
     pub calendar_name: String,
     pub is_all_day: bool,
+    /// Source identifier: "native" for OS calendar, "ics" for ICS feeds.
+    /// Used by meeting detector to merge events from multiple publishers.
+    #[serde(default = "default_native_source")]
+    pub source: String,
+}
+
+fn default_native_source() -> String {
+    "native".to_string()
 }
 
 // ─── Commands ───────────────────────────────────────────────────────────────
@@ -345,6 +353,7 @@ fn calendar_event_to_item(
         location: event.location,
         calendar_name: event.calendar_name,
         is_all_day: event.is_all_day,
+        source: "native".to_string(),
     }
 }
 
@@ -366,5 +375,6 @@ fn calendar_event_to_item_win(
         location: event.location,
         calendar_name: event.calendar_name,
         is_all_day: event.is_all_day,
+        source: "native".to_string(),
     }
 }

@@ -388,6 +388,51 @@ fn pi_local_install_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".screenpipe").join("pi-agent"))
 }
 
+/// Seed the pi-agent package.json with overrides to fix dependency resolution.
+/// `hosted-git-info` requires `lru-cache@^10`, but bun on Windows can hoist
+/// an ESM-only lru-cache@7.x that breaks CJS `require()`.
+/// Writing overrides before `bun add` ensures the correct version is used.
+fn seed_pi_package_json(install_dir: &std::path::Path) {
+    let pkg_path = install_dir.join("package.json");
+    // Only seed if package.json doesn't exist yet — don't overwrite user/bun changes
+    if pkg_path.exists() {
+        // If it exists, check if overrides are already present
+        if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
+            if !contents.contains("overrides") {
+                // Merge overrides into existing package.json
+                if let Ok(mut pkg) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    pkg.as_object_mut().map(|obj| {
+                        obj.insert(
+                            "overrides".to_string(),
+                            json!({
+                                "hosted-git-info": {
+                                    "lru-cache": "^10.0.0"
+                                }
+                            }),
+                        );
+                    });
+                    if let Ok(new_contents) = serde_json::to_string_pretty(&pkg) {
+                        let _ = std::fs::write(&pkg_path, new_contents);
+                        info!("Added lru-cache overrides to existing pi-agent package.json");
+                    }
+                }
+            }
+        }
+        return;
+    }
+    let pkg_json = json!({
+        "overrides": {
+            "hosted-git-info": {
+                "lru-cache": "^10.0.0"
+            }
+        }
+    });
+    match std::fs::write(&pkg_path, serde_json::to_string_pretty(&pkg_json).unwrap_or_default()) {
+        Ok(_) => info!("Seeded pi-agent package.json with lru-cache overrides"),
+        Err(e) => warn!("Failed to seed pi-agent package.json: {}", e),
+    }
+}
+
 /// Find the JS entrypoint for the locally-installed pi package.
 fn find_local_pi_entrypoint() -> Option<String> {
     let dir = pi_local_install_dir()?;
@@ -1485,6 +1530,9 @@ pub async fn pi_install(app: AppHandle) -> Result<(), String> {
 
     let app_handle = app.clone();
     std::thread::spawn(move || {
+        // Seed package.json with overrides to fix lru-cache resolution on Windows
+        seed_pi_package_json(&install_dir);
+
         let mut cmd = std::process::Command::new(&bun);
         cmd.current_dir(&install_dir)
             .args(["add", PI_PACKAGE]);
@@ -1869,10 +1917,49 @@ fn ensure_bash_available() -> Option<String> {
 /// Runs on a dedicated thread, never panics, never blocks the caller.
 /// Sets `PI_INSTALL_DONE` when finished so `pi_start` can wait for it.
 pub fn ensure_pi_installed_background() {
-    // If Pi is already installed locally, mark done immediately.
-    // We specifically check the local install (not global) to ensure we control the deps.
+    // If Pi is already installed locally, check if it needs the lru-cache fix.
     if find_local_pi_entrypoint().is_some() {
-        debug!("Pi already installed locally, skipping background install");
+        if let Some(install_dir) = pi_local_install_dir() {
+            let pkg_path = install_dir.join("package.json");
+            let needs_fix = pkg_path.exists()
+                && std::fs::read_to_string(&pkg_path)
+                    .map(|c| !c.contains("overrides"))
+                    .unwrap_or(false);
+            if needs_fix {
+                info!("Pi installed but missing lru-cache overrides — patching and reinstalling");
+                seed_pi_package_json(&install_dir);
+                // Delete bun.lock so bun resolves deps with new overrides
+                let _ = std::fs::remove_file(install_dir.join("bun.lock"));
+                let _ = std::fs::remove_file(install_dir.join("bun.lockb"));
+                // Trigger reinstall in background (don't block)
+                if let Some(bun) = find_bun_executable() {
+                    let _ = std::thread::Builder::new()
+                        .name("pi-lru-fix".to_string())
+                        .spawn(move || {
+                            let mut cmd = std::process::Command::new(&bun);
+                            cmd.current_dir(&install_dir).args(["install"]);
+                            #[cfg(windows)]
+                            {
+                                use std::os::windows::process::CommandExt;
+                                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                                cmd.creation_flags(CREATE_NO_WINDOW);
+                            }
+                            match cmd.output() {
+                                Ok(output) if output.status.success() => {
+                                    info!("Pi lru-cache fix: reinstall successful");
+                                }
+                                Ok(output) => {
+                                    let stderr = String::from_utf8_lossy(&output.stderr);
+                                    warn!("Pi lru-cache fix: reinstall failed: {}", stderr);
+                                }
+                                Err(e) => warn!("Pi lru-cache fix: bun error: {}", e),
+                            }
+                        });
+                }
+            } else {
+                debug!("Pi already installed locally, skipping background install");
+            }
+        }
         PI_INSTALL_DONE.store(true, Ordering::SeqCst);
         return;
     }
@@ -1903,6 +1990,9 @@ pub fn ensure_pi_installed_background() {
                 }
 
                 info!("Pi not found — installing into {} via bun", install_dir.display());
+
+                // Seed package.json with overrides to fix lru-cache resolution on Windows
+                seed_pi_package_json(&install_dir);
 
                 let mut cmd = std::process::Command::new(&bun);
                 cmd.current_dir(&install_dir)
