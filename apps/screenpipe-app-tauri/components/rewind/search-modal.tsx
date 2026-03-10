@@ -1484,6 +1484,27 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             </div>
           )}
 
+          {/* Screen results skeleton — keyword search still in flight but UI events already loaded */}
+          {isSearching && searchResults.length === 0 && contentFilter !== "input" && uiEventResults.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
+                <Monitor className="w-3 h-3" />
+                screen
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-muted animate-pulse rounded overflow-hidden">
+                    <div className="aspect-video" />
+                    <div className="p-2 space-y-1">
+                      <div className="h-3 bg-muted-foreground/20 rounded w-16" />
+                      <div className="h-2 bg-muted-foreground/20 rounded w-24" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Screen results grid */}
           {searchResults.length > 0 && contentFilter !== "input" && (
             <>
