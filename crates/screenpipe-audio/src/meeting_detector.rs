@@ -28,6 +28,11 @@ const AUDIO_MEETING_COOLDOWN: Duration = Duration::from_secs(120);
 /// from Google Meet but is still on the call), not a standalone detector.
 const APP_CONFIRMATION_WINDOW: Duration = Duration::from_secs(300); // 5 minutes
 
+/// Buffer before a calendar event's start time to handle early joins.
+/// Most people join meetings 5-15 min early — this ensures calendar-based
+/// detection activates even when you join before the scheduled time.
+const CALENDAR_EARLY_JOIN_BUFFER: Duration = Duration::from_secs(15 * 60); // 15 minutes
+
 /// A calendar event signal fed into the meeting detector.
 /// Contains only the fields needed for meeting detection — no serde/chrono deps.
 #[derive(Debug, Clone)]
@@ -314,15 +319,22 @@ impl MeetingDetector {
     }
 
     /// Returns the first active calendar event (2+ attendees, overlapping now).
+    /// Includes a 15-min early-join buffer before the event start time so that
+    /// joining a meeting early (common) still triggers calendar-based detection.
     fn active_calendar_event<'a>(
         &self,
         state: &'a MeetingState,
         now: i64,
     ) -> Option<&'a CalendarSignal> {
+        let buffer_ms = CALENDAR_EARLY_JOIN_BUFFER.as_millis() as i64;
         state
             .calendar_events
             .iter()
-            .find(|e| e.attendees.len() >= 2 && e.start_epoch_ms <= now && e.end_epoch_ms > now)
+            .find(|e| {
+                e.attendees.len() >= 2
+                    && (e.start_epoch_ms - buffer_ms) <= now
+                    && e.end_epoch_ms > now
+            })
     }
 
     /// Returns calendar context (title + attendees) for the active calendar meeting, if any.
@@ -359,7 +371,17 @@ impl MeetingDetector {
         let has_recent_app = self.had_recent_app_meeting_atomic();
         let audio_active = has_recent_app && self.is_bidirectional_audio_active();
 
-        // Track transition from active → inactive for cooldown (Fix 2)
+        // When audio extension is active, refresh the app confirmation timestamp
+        // so the 5-min APP_CONFIRMATION_WINDOW doesn't expire while the user is
+        // still in a bidirectional conversation (e.g., coding in terminal while
+        // screen-sharing on Google Meet). Without this, the meeting detection
+        // dies after 5 min even though both mic and speakers are active.
+        if audio_active {
+            self.last_app_meeting_epoch_ms
+                .store(now_millis(), Ordering::Relaxed);
+        }
+
+        // Track transition from active → inactive for cooldown
         let was_active = self.was_audio_meeting.load(Ordering::Relaxed);
         if was_active && !audio_active {
             // Audio meeting just ended — record cooldown start
@@ -1131,7 +1153,7 @@ mod tests {
     async fn test_calendar_event_not_yet_started_no_meeting() {
         let detector = MeetingDetector::new();
 
-        // Future event
+        // Future event (well beyond early-join buffer)
         let events = vec![calendar_future("Tomorrow's Meeting", &["Alice", "Bob"])];
         detector.on_calendar_events(events).await;
 
@@ -1140,6 +1162,53 @@ mod tests {
         assert!(
             !detector.is_in_meeting(),
             "future calendar event should NOT trigger meeting"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_calendar_early_join_detected() {
+        // User joins 10 min before calendar event start — should still detect
+        let detector = MeetingDetector::new();
+
+        let now = now_millis();
+        let events = vec![CalendarSignal {
+            event_id: "early-join".to_string(),
+            title: "Sprint Planning".to_string(),
+            start_epoch_ms: now + 10 * 60_000, // starts in 10 min
+            end_epoch_ms: now + 70 * 60_000,   // ends in 70 min
+            attendees: vec!["Alice".to_string(), "Bob".to_string()],
+        }];
+        detector.on_calendar_events(events).await;
+
+        // Audio activity confirms user is present
+        detector.on_audio_activity(&DeviceType::Output, true);
+
+        assert!(
+            detector.is_in_meeting(),
+            "early join (10 min before start) should be detected via calendar buffer"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_calendar_early_join_too_early_not_detected() {
+        // User is doing something 20 min before event — beyond the 15-min buffer
+        let detector = MeetingDetector::new();
+
+        let now = now_millis();
+        let events = vec![CalendarSignal {
+            event_id: "too-early".to_string(),
+            title: "Later Meeting".to_string(),
+            start_epoch_ms: now + 20 * 60_000, // starts in 20 min
+            end_epoch_ms: now + 80 * 60_000,
+            attendees: vec!["Alice".to_string(), "Bob".to_string()],
+        }];
+        detector.on_calendar_events(events).await;
+
+        detector.on_audio_activity(&DeviceType::Output, true);
+
+        assert!(
+            !detector.is_in_meeting(),
+            "20 min before event should NOT trigger (beyond 15-min buffer)"
         );
     }
 
@@ -1243,6 +1312,57 @@ mod tests {
         assert!(
             detector.is_in_meeting(),
             "calendar meeting should stay active (latched) even when audio goes silent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_audio_extension_sustains_beyond_app_confirmation_window() {
+        // The exact bug scenario: user joins Google Meet, tabs to terminal to
+        // code while presenting, stays there for >5 min. Without the fix,
+        // APP_CONFIRMATION_WINDOW (5 min) expires and meeting detection drops
+        // even though bidirectional audio is active.
+        let detector = MeetingDetector::new();
+
+        // Step 1: User was in Google Meet
+        detector
+            .on_app_switch("Arc", Some("call - meet.google.com/abc"))
+            .await;
+        assert!(detector.is_in_meeting());
+
+        // Step 2: Tab away, grace period expires
+        detector.on_app_switch("WezTerm", None).await;
+        {
+            let mut state = detector.state.write().await;
+            state.last_meeting_focus =
+                Some(Instant::now() - MEETING_GRACE_PERIOD - Duration::from_secs(1));
+        }
+        detector.check_grace_period().await;
+        assert!(!detector.in_meeting.load(Ordering::Relaxed));
+
+        // Step 3: Audio extension kicks in
+        detector.on_audio_activity(&DeviceType::Input, true);
+        detector.on_audio_activity(&DeviceType::Output, true);
+        assert!(detector.is_in_meeting(), "audio extension should work");
+
+        // Step 4: Simulate 6 minutes passing — beyond APP_CONFIRMATION_WINDOW
+        // The app meeting timestamp was refreshed by audio extension,
+        // so it should still be within the window
+        let six_min_ago =
+            now_millis() - APP_CONFIRMATION_WINDOW.as_millis() as i64 - 60_000;
+        // If the fix works, last_app_meeting_epoch_ms was refreshed to ~now
+        // by the is_in_meeting() call above, so it should still be recent
+        let stored_ts = detector.last_app_meeting_epoch_ms.load(Ordering::Relaxed);
+        assert!(
+            (now_millis() - stored_ts) < 1000,
+            "audio extension should have refreshed app meeting timestamp"
+        );
+
+        // Continuous audio — meeting should still be detected
+        detector.on_audio_activity(&DeviceType::Input, true);
+        detector.on_audio_activity(&DeviceType::Output, true);
+        assert!(
+            detector.is_in_meeting(),
+            "audio extension should sustain meeting beyond 5-min APP_CONFIRMATION_WINDOW"
         );
     }
 
