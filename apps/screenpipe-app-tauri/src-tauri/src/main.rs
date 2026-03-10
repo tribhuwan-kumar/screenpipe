@@ -20,7 +20,6 @@ use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 use tauri_plugin_global_shortcut::ShortcutState;
 #[allow(unused_imports)]
 use tauri_plugin_shell::process::CommandEvent;
-use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::prelude::*;
@@ -2440,10 +2439,17 @@ async fn main() {
                         }
                     });
 
-                    // Shutdown server
-                    if let Some(server_shutdown_tx) = app_handle.try_state::<mpsc::Sender<()>>() {
-                        drop(server_shutdown_tx.send(()));
-                    }
+                    // Shut down embedded server (incl. audio manager / ggml Metal cleanup)
+                    // MUST happen synchronously before exit() runs C++ static destructors,
+                    // otherwise the ggml Metal device destructor hits a freed resource → SIGABRT.
+                    let app_handle_shutdown = app_handle.app_handle().clone();
+                    let _ = tauri::async_runtime::block_on(async move {
+                        if let Some(recording_state) = app_handle_shutdown.try_state::<recording::RecordingState>() {
+                            if let Some(handle) = recording_state.handle.lock().await.take() {
+                                handle.shutdown_and_wait().await;
+                            }
+                        }
+                    });
 
                     // Cleanup Pi sidecar
                     let app_handle_pi = app_handle.app_handle().clone();
