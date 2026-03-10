@@ -254,11 +254,12 @@ const FrameThumbnail = ({ frameId, alt }: { frameId: number; alt: string }) => {
           src={src}
           alt={alt}
           className={cn(
-            "w-full h-full object-cover transition-opacity pointer-events-none",
+            "w-full h-full object-cover transition-opacity select-none",
             isLoading ? "opacity-0" : "opacity-100"
           )}
           loading="lazy"
           draggable={false}
+          data-lm-disable="true"
           onLoad={() => setIsLoading(false)}
           onError={() => {
             if (retryCount.current < 3) {
@@ -1874,20 +1875,14 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] isolate"
-      onWheel={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-      }}
+      onWheel={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
     >
       {/* Backdrop - captures all pointer events to prevent interaction with timeline */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
-        onWheel={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-        }}
+        onWheel={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
       />
 
