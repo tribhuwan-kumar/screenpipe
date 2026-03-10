@@ -513,6 +513,7 @@ mod tests {
         let handle = EmbeddedServerHandle {
             shutdown_tx,
             ui_recorder_handle: Some(screenpipe_engine::UiRecorderHandle::new_for_test(flag)),
+            audio_manager: None,
         };
 
         assert!(!flag_clone.load(Ordering::Relaxed));
@@ -529,6 +530,7 @@ mod tests {
         let handle = EmbeddedServerHandle {
             shutdown_tx,
             ui_recorder_handle: None,
+            audio_manager: None,
         };
 
         handle.shutdown();
@@ -544,6 +546,7 @@ mod tests {
         let handle = EmbeddedServerHandle {
             shutdown_tx,
             ui_recorder_handle: None,
+            audio_manager: None,
         };
 
         // Should not panic when ui_recorder_handle is None

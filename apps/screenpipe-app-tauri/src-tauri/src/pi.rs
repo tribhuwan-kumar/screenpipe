@@ -199,7 +199,7 @@ fn check_package_bin(pkg_dir: std::path::PathBuf, bin_name: &str) -> Option<Stri
     }
 }
 
-const PI_PACKAGE: &str = "@mariozechner/pi-coding-agent@0.51.1";
+const PI_PACKAGE: &str = "@mariozechner/pi-coding-agent@0.57.1";
 const SCREENPIPE_API_URL: &str = "https://api.screenpi.pe/v1";
 
 /// Pool of Pi sessions — each session_id gets its own PiManager/process.
@@ -1211,7 +1211,7 @@ pub async fn pi_start_inner(
     }
 
     // Bun 1.3+ fixed the readline pipe bug (bun 1.2 needed a PTY workaround).
-    // The bundled bun is 1.3.7, so piped stdin works correctly.
+    // The bundled bun is 1.3.10, so piped stdin works correctly.
     // PTY canonical mode has a ~1024-byte line limit on macOS which silently
     // drops large JSON commands (prompts are 2500+ bytes), so pipe is required.
     cmd.stdin(Stdio::piped());
