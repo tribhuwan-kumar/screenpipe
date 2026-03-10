@@ -611,6 +611,20 @@ impl SCServer {
         let wa: crate::connections_api::SharedWhatsAppGateway = Arc::new(Mutex::new(
             screenpipe_connect::whatsapp::WhatsAppGateway::new(self.screenpipe_dir.clone()),
         ));
+
+        // Auto-reconnect WhatsApp if a previous session exists on disk
+        {
+            let wa_lock = wa.lock().await;
+            if wa_lock.has_session() {
+                tracing::info!("whatsapp: found existing session, auto-reconnecting...");
+                let bun_path =
+                    screenpipe_connect::whatsapp::which_bun().unwrap_or_else(|| "bun".to_string());
+                if let Err(e) = wa_lock.start_pairing(&bun_path).await {
+                    tracing::warn!("whatsapp: auto-reconnect failed: {:?}", e);
+                }
+            }
+        }
+
         let router = router.nest("/connections", crate::connections_api::router(cm, wa));
 
         // Power management routes (if power manager is available)

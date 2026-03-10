@@ -18,13 +18,22 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
         ConnectionCommand::List { json: use_json } => {
             let list = cm.list();
 
-            // Add WhatsApp — check session on disk
-            let wa_connected = screenpipe_dir
+            // Add WhatsApp — check session on disk AND whether gateway is actually reachable
+            let has_session = screenpipe_dir
                 .join("whatsapp-session")
                 .join("creds.json")
                 .exists();
+            let wa_connected = has_session
+                && reqwest::Client::new()
+                    .get("http://localhost:3035/status")
+                    .timeout(std::time::Duration::from_secs(2))
+                    .send()
+                    .await
+                    .is_ok();
             let wa_desc = if wa_connected {
                 "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}".to_string()
+            } else if has_session {
+                "WhatsApp has a saved session but the gateway is not running. It should auto-reconnect on server restart.".to_string()
             } else {
                 "Not paired. User must pair via Settings > Connections in the desktop app first."
                     .to_string()
@@ -63,15 +72,29 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
 
         ConnectionCommand::Get { id, json: use_json } => {
             if id == "whatsapp" {
-                let connected = screenpipe_dir
+                let has_session = screenpipe_dir
                     .join("whatsapp-session")
                     .join("creds.json")
                     .exists();
-                let info = if connected {
+                let gateway_reachable = has_session
+                    && reqwest::Client::new()
+                        .get("http://localhost:3035/status")
+                        .timeout(std::time::Duration::from_secs(2))
+                        .send()
+                        .await
+                        .is_ok();
+                let info = if gateway_reachable {
                     json!({
                         "id": "whatsapp",
                         "connected": true,
                         "description": "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}"
+                    })
+                } else if has_session {
+                    json!({
+                        "id": "whatsapp",
+                        "connected": false,
+                        "has_session": true,
+                        "description": "WhatsApp has a saved session but the gateway is not running. It should auto-reconnect on server restart."
                     })
                 } else {
                     json!({
@@ -83,7 +106,7 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                 if *use_json {
                     println!("{}", serde_json::to_string_pretty(&info)?);
                 } else {
-                    let status = if connected {
+                    let status = if gateway_reachable {
                         "connected"
                     } else {
                         "not connected"

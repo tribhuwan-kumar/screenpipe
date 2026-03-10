@@ -72,7 +72,8 @@ async fn list_connections(State(state): State<ConnectionsState>) -> Json<Value> 
             "category": "notification",
             "description": wa_desc,
             "fields": [],
-            "connected": wa_connected || has_session,
+            "connected": wa_connected,
+            "has_session": has_session,
         }));
     }
 
