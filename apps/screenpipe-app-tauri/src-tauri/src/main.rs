@@ -572,6 +572,7 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
         let _ = app.run_on_main_thread(move || {
             let app = &app_for_closure;
             info!("search shortcut triggered");
+            let mut needed_show = false;
             // Always show the overlay, then emit search event to focus the search input
             #[cfg(target_os = "macos")]
             {
@@ -585,9 +586,11 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
                 if let Some(window) = app.get_webview_window(label) {
                     if !window.is_visible().unwrap_or(false) {
                         show_main_window(app, false);
+                        needed_show = true;
                     }
                 } else {
                     show_main_window(app, false);
+                    needed_show = true;
                 }
             }
             #[cfg(not(target_os = "macos"))]
@@ -600,13 +603,24 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
                         || window.is_minimized().unwrap_or(false);
                     if needs_show {
                         show_main_window(app, false);
+                        needed_show = true;
                     }
                 } else {
                     show_main_window(app, false);
+                    needed_show = true;
                 }
             }
-            // Emit event so the frontend opens the search modal
-            let _ = app.emit("open-search", ());
+            if needed_show {
+                // Webview was just created/shown — the frontend listener hasn't
+                // mounted yet, so emit with a delay to let the page load.
+                let app_clone = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let _ = app_clone.emit("open-search", ());
+                });
+            } else {
+                let _ = app.emit("open-search", ());
+            }
         });
     })
     .await?;

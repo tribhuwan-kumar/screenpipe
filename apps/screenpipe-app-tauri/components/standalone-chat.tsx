@@ -998,14 +998,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         (async () => {
           if (piInfo?.running) {
             try {
-              // Abort any in-flight processing, then reset session
-              // Always abort — Pi may be processing even if our ref was cleared
+              // Abort + new_session now await completion — no sleeps needed
               await commands.piAbort(PI_CHAT_SESSION);
-              // Wait for Pi to fully finish aborting before sending new_session
-              await new Promise(r => setTimeout(r, 1500));
               await commands.piNewSession(PI_CHAT_SESSION);
-              // Wait for Pi to process the session reset before sending prompt
-              await new Promise(r => setTimeout(r, 1000));
             } catch (e) {
               console.warn("[Pi] Failed to reset session:", e);
             }
@@ -2280,7 +2275,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       }
     }
 
-    // If a previous message is still processing, abort it first
+    // If a previous message is still processing, abort it first.
+    // piAbort now waits for the Pi SDK to confirm the abort completed — no sleep needed.
     if (piMessageIdRef.current) {
       console.warn("[Pi] Aborting previous message before sending new one");
       try {
@@ -2293,8 +2289,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       piContentBlocksRef.current = [];
       setIsLoading(false);
       setIsStreaming(false);
-      // Brief delay for the backend to clean up
-      await new Promise(r => setTimeout(r, 300));
     }
 
     const newUserMessage: Message = {
@@ -2416,24 +2410,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         piSessionSyncedRef.current = true;
       }
 
-      // Send prompt with retry on "already processing" (Pi may still be finishing previous work)
-      let result = await commands.piPrompt(
+      // Send prompt — abort/new_session now await completion, so no retry needed
+      const result = await commands.piPrompt(
         PI_CHAT_SESSION,
         promptMessage,
         piImages.length > 0 ? piImages : null,
       );
-
-      if (result.status === "error" && result.error.includes("already processing")) {
-        // Abort the stuck agent, then retry
-        console.warn("[Pi] Already processing — aborting and retrying");
-        try { await commands.piAbort(PI_CHAT_SESSION); } catch {}
-        await new Promise(r => setTimeout(r, 500));
-        result = await commands.piPrompt(
-          PI_CHAT_SESSION,
-          promptMessage,
-          piImages.length > 0 ? piImages : null,
-        );
-      }
 
       if (result.status === "error") {
         clearTimeout(timeoutId);

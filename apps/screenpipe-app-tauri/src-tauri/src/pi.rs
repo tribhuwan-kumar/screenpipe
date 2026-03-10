@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use specta::Type;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use tokio::sync::oneshot;
 
 /// Read lines from a byte stream using lossy UTF-8 conversion.
 /// Unlike `BufReader::lines()`, this never fails on invalid UTF-8 —
@@ -246,9 +247,9 @@ pub struct PiCheckResult {
 }
 
 /// RPC Response from Pi
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
-struct RpcResponse {
+pub(crate) struct RpcResponse {
     #[serde(rename = "type")]
     response_type: String,
     success: Option<bool>,
@@ -257,6 +258,10 @@ struct RpcResponse {
     command: Option<String>,
     id: Option<String>,
 }
+
+/// Pending response channels keyed by request ID.
+/// Shared between PiManager (sender side) and the stdout reader thread (resolver side).
+type PendingResponses = Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<RpcResponse>>>>;
 
 #[allow(dead_code)]
 pub struct PiManager {
@@ -269,6 +274,8 @@ pub struct PiManager {
     last_activity: std::time::Instant,
     /// Guard: ensures only one `pi_terminated` event is emitted per session.
     terminated_emitted: Arc<AtomicBool>,
+    /// Channels waiting for RPC responses, keyed by request ID.
+    pending_responses: PendingResponses,
 }
 
 impl PiManager {
@@ -281,6 +288,7 @@ impl PiManager {
             app_handle,
             last_activity: std::time::Instant::now(),
             terminated_emitted: Arc::new(AtomicBool::new(false)),
+            pending_responses: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -339,24 +347,52 @@ impl PiManager {
         }
         self.stdin = None;
         self.project_dir = None;
+        // Drop all pending response channels so waiting callers get an error
+        self.pending_responses.lock().unwrap().clear();
     }
 
     pub fn is_running(&mut self) -> bool {
         self.check_alive()
     }
 
-    /// Send a command to Pi via stdin pipe and return response
+    /// Send a command to Pi via stdin (fire-and-forget).
+    /// Use this for commands like `prompt` where the result streams via events.
     pub fn send_command(&mut self, command: Value) -> Result<(), String> {
-        // Verify process is actually alive before writing
+        self.send_command_inner(command).map(|_| ())
+    }
+
+    /// Send a command and wait for the Pi process to respond.
+    /// Use this for commands like `abort` and `new_session` that must complete
+    /// before the next command can be sent safely.
+    pub fn send_command_and_wait(
+        &mut self,
+        command: Value,
+        timeout: std::time::Duration,
+    ) -> Result<oneshot::Receiver<RpcResponse>, String> {
+        let req_id = self.send_command_inner(command)?;
+        let (tx, rx) = oneshot::channel();
+        self.pending_responses
+            .lock()
+            .unwrap()
+            .insert(req_id, tx);
+        // Caller awaits `rx` with a timeout
+        let _ = timeout; // timeout is applied by the caller via tokio::time::timeout
+        Ok(rx)
+    }
+
+    /// Shared implementation: stamps the command with an ID, writes to stdin.
+    fn send_command_inner(&mut self, command: Value) -> Result<String, String> {
         if !self.check_alive() {
             return Err("Pi process has died".to_string());
         }
 
         self.last_activity = std::time::Instant::now();
         self.request_id += 1;
+        let req_id = format!("req_{}", self.request_id);
+
         let mut cmd = command;
         if let Some(obj) = cmd.as_object_mut() {
-            obj.insert("id".to_string(), json!(format!("req_{}", self.request_id)));
+            obj.insert("id".to_string(), json!(&req_id));
         }
 
         let cmd_str = serde_json::to_string(&cmd).map_err(|e| e.to_string())?;
@@ -370,8 +406,8 @@ impl PiManager {
         let stdin = self.stdin.as_mut().ok_or("Pi not running")?;
 
         info!(
-            "Sending to Pi (req_{}): type={}, child_pid={:?}, bytes={}",
-            self.request_id,
+            "Sending to Pi ({}): type={}, child_pid={:?}, bytes={}",
+            req_id,
             cmd_type,
             child_pid,
             cmd_str.len() + 1
@@ -382,9 +418,9 @@ impl PiManager {
         stdin
             .flush()
             .map_err(|e| format!("Failed to flush Pi stdin: {}", e))?;
-        info!("Sent to Pi (req_{}): flushed ok", self.request_id);
+        info!("Sent to Pi ({}): flushed ok", req_id);
 
-        Ok(())
+        Ok(req_id)
     }
 }
 
@@ -1255,6 +1291,7 @@ pub async fn pi_start_inner(
 
     // Update manager for this session
     let terminated_emitted = Arc::new(AtomicBool::new(false));
+    let pending_responses: PendingResponses;
     if let Some(m) = pool.sessions.get_mut(&sid) {
         m.child = Some(child);
         m.stdin = Some(stdin);
@@ -1262,6 +1299,9 @@ pub async fn pi_start_inner(
         m.last_activity = std::time::Instant::now();
         // Fresh flag for this session — old reader threads keep their own Arc
         m.terminated_emitted = terminated_emitted.clone();
+        pending_responses = m.pending_responses.clone();
+    } else {
+        pending_responses = Arc::new(std::sync::Mutex::new(HashMap::new()));
     }
 
     // Snapshot the state BEFORE dropping the lock, so we don't hold it during I/O
@@ -1283,6 +1323,7 @@ pub async fn pi_start_inner(
     let app_handle = app.clone();
     let terminated_guard = terminated_emitted.clone();
     let sid_clone = sid.clone();
+    let pending_for_reader = pending_responses.clone();
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         info!(
@@ -1293,7 +1334,8 @@ pub async fn pi_start_inner(
         let mut ready_signalled = false;
         while let Some(line) = read_lines_lossy(&mut reader) {
             line_count += 1;
-            let event_type = serde_json::from_str::<Value>(&line).ok().and_then(|v| {
+            let parsed = serde_json::from_str::<Value>(&line).ok();
+            let event_type = parsed.as_ref().and_then(|v| {
                 v.get("type")
                     .and_then(|t| t.as_str())
                     .map(|s| s.to_string())
@@ -1307,25 +1349,34 @@ pub async fn pi_start_inner(
             );
 
             // Signal readiness on first successful JSON line
-            if !ready_signalled {
-                if serde_json::from_str::<Value>(&line).is_ok() {
-                    ready_notify_reader.notify_one();
-                    ready_signalled = true;
-                }
+            if !ready_signalled && parsed.is_some() {
+                ready_notify_reader.notify_one();
+                ready_signalled = true;
             }
 
-            // Try to parse as JSON and emit event tagged with sessionId
-            match serde_json::from_str::<Value>(&line) {
-                Ok(event) => {
+            match parsed {
+                Some(event) => {
+                    // Route RPC responses to waiting callers
+                    if event_type.as_deref() == Some("response") {
+                        if let Some(id) = event.get("id").and_then(|v| v.as_str()) {
+                            let mut pending = pending_for_reader.lock().unwrap();
+                            if let Some(tx) = pending.remove(id) {
+                                if let Ok(rpc) = serde_json::from_value::<RpcResponse>(event.clone()) {
+                                    let _ = tx.send(rpc);
+                                }
+                            }
+                        }
+                    }
+                    // Always emit as Tauri event too (frontend may need response events)
                     let tagged = json!({ "sessionId": sid_clone, "event": event });
                     if let Err(e) = app_handle.emit("pi_event", &tagged) {
                         error!("Failed to emit pi_event: {}", e);
                     }
                 }
-                Err(e) => {
+                None => {
                     let end = line.len().min(100);
                     let end = line.floor_char_boundary(end);
-                    warn!("Pi stdout not JSON: {} (line: {})", e, &line[..end]);
+                    warn!("Pi stdout not JSON: (line: {})", &line[..end]);
                 }
             }
             if let Err(e) = app_handle.emit("pi_output", &line) {
@@ -1460,22 +1511,25 @@ pub async fn pi_prompt(
     m.send_command(cmd)
 }
 
-/// Abort current Pi operation
+/// Abort current Pi operation. Waits for the Pi SDK to confirm the abort completed.
 #[tauri::command]
 #[specta::specta]
 pub async fn pi_abort(state: State<'_, PiState>, session_id: Option<String>) -> Result<(), String> {
     let sid = session_id.unwrap_or_else(|| "chat".to_string());
-    let mut pool = state.0.lock().await;
-    let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
-
-    if !m.is_running() {
-        return Err("Pi is not running".to_string());
-    }
-
-    m.send_command(json!({"type": "abort"}))
+    let rx = {
+        let mut pool = state.0.lock().await;
+        let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
+        if !m.is_running() {
+            return Err("Pi is not running".to_string());
+        }
+        m.send_command_and_wait(json!({"type": "abort"}), RPC_RESPONSE_TIMEOUT)?
+    };
+    // Await outside the lock so other commands aren't blocked
+    await_rpc_response(rx, "abort").await
 }
 
-/// Start a new Pi session (clears conversation history)
+/// Start a new Pi session (clears conversation history).
+/// Waits for the Pi SDK to finish aborting any in-flight work and resetting state.
 #[tauri::command]
 #[specta::specta]
 pub async fn pi_new_session(
@@ -1483,14 +1537,43 @@ pub async fn pi_new_session(
     session_id: Option<String>,
 ) -> Result<(), String> {
     let sid = session_id.unwrap_or_else(|| "chat".to_string());
-    let mut pool = state.0.lock().await;
-    let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
+    let rx = {
+        let mut pool = state.0.lock().await;
+        let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
+        if !m.is_running() {
+            return Err("Pi is not running".to_string());
+        }
+        m.send_command_and_wait(json!({"type": "new_session"}), RPC_RESPONSE_TIMEOUT)?
+    };
+    await_rpc_response(rx, "new_session").await
+}
 
-    if !m.is_running() {
-        return Err("Pi is not running".to_string());
+/// Timeout for RPC responses that must complete before the next command.
+const RPC_RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Await an RPC response with a timeout. Returns Ok(()) on success or the error from Pi.
+async fn await_rpc_response(
+    rx: oneshot::Receiver<RpcResponse>,
+    command_name: &str,
+) -> Result<(), String> {
+    match tokio::time::timeout(RPC_RESPONSE_TIMEOUT, rx).await {
+        Ok(Ok(resp)) => {
+            if resp.success == Some(true) {
+                Ok(())
+            } else {
+                Err(resp.error.unwrap_or_else(|| format!("{} failed", command_name)))
+            }
+        }
+        Ok(Err(_)) => {
+            // Channel dropped — process likely died
+            Err(format!("Pi process died while waiting for {} response", command_name))
+        }
+        Err(_) => {
+            warn!("Timed out waiting for Pi {} response", command_name);
+            // Don't error — the command was sent, Pi may still process it
+            Ok(())
+        }
     }
-
-    m.send_command(json!({"type": "new_session"}))
 }
 
 /// Check if pi is available

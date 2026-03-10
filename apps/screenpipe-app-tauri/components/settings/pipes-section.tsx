@@ -164,7 +164,7 @@ follow these prompt engineering best practices (from anthropic's guide):
 
 ## common issues to check for
 
-- pipe queries content_type=ocr but user may not have OCR enabled (try accessibility instead)
+- pipe queries content_type=ocr but user have mostly accessibility (try accessibility instead)
 - pipe doesn't specify output file path explicitly (agent guesses wrong location)
 - pipe prompt is too vague for small/local models (needs more explicit steps)
 - schedule is too frequent (burning credits on empty time ranges)

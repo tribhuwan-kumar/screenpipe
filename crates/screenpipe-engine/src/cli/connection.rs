@@ -16,7 +16,7 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
 
     match command {
         ConnectionCommand::List { json: use_json } => {
-            let mut list = cm.list();
+            let list = cm.list();
 
             // Add WhatsApp — check session on disk
             let wa_connected = screenpipe_dir
