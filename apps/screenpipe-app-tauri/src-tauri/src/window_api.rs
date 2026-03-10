@@ -1022,7 +1022,11 @@ impl ShowRewindWindow {
             #[cfg(target_os = "windows")]
             {
                 window.show().ok();
-                if let Err(e) = crate::windows_overlay::bring_to_front_and_activate(window) {
+                // Overlay mode: bring to front WITHOUT stealing focus.
+                // Using bring_to_front (SWP_NOACTIVATE) instead of
+                // bring_to_front_and_activate (SetForegroundWindow) prevents
+                // the overlay from yanking focus away from fullscreen games.
+                if let Err(e) = crate::windows_overlay::bring_to_front(window) {
                     error!("Failed to bring window to front: {}", e);
                 }
                 let _ = app.emit("window-focused", true);
