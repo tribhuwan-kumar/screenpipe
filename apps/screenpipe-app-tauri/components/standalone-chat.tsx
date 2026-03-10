@@ -734,6 +734,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [recentSpeakers, setRecentSpeakers] = useState<MentionSuggestion[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1334,9 +1336,26 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [showMentionDropdown]);
 
+  // Smart auto-scroll: only scroll to bottom if user is near the bottom.
+  // If user scrolled up to read, don't interrupt them.
   useEffect(() => {
+    if (!isUserScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isUserScrolledUp]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    // Consider "near bottom" if within 150px of the bottom
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    setIsUserScrolledUp(!nearBottom);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    setIsUserScrolledUp(false);
+  }, []);
 
   // Preload recent speakers when filter popover opens
   useEffect(() => {
@@ -2358,20 +2377,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       message_index: messages.filter((m) => m.role === "user").length,
     });
 
-    const timeoutId = setTimeout(() => {
-      if (piMessageIdRef.current === assistantMessageId) {
-        piMessageIdRef.current = null;
-        setIsLoading(false);
-        setIsStreaming(false);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessageId && m.content === "Processing..."
-              ? { ...m, content: "Request timed out. Check if Pi is running correctly." }
-              : m
-          )
-        );
-      }
-    }, 60000);
+    // No timeout — Pi can run for minutes on long tasks (e.g. 30-day analysis
+    // with many tool calls). Process death is detected via pi_terminated event.
+    const timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     try {
       // Collect images (pasted image + prefill frame)
@@ -2446,7 +2454,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       );
 
       if (result.status === "error") {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         piMessageIdRef.current = null;
         // Provide helpful error messages for common failures
         let errorMsg = result.error;
@@ -2473,7 +2481,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         setIsStreaming(false);
       }
     } catch (error) {
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       piMessageIdRef.current = null;
       setMessages((prev) =>
         prev.map((m) =>
@@ -2510,12 +2518,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       if (args.speaker_name) params.append("speaker_name", String(args.speaker_name));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const searchTimeoutId = setTimeout(() => controller.abort(), 120000);
 
       const response = await fetch(`${SCREENPIPE_API}/search?${params.toString()}`, {
         signal: controller.signal,
       });
-      clearTimeout(timeoutId);
+      clearTimeout(searchTimeoutId);
 
       if (!response.ok) throw new Error(`Search failed: ${response.status}`);
 
@@ -2824,6 +2832,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
         {/* Messages */}
         <div
+          ref={scrollContainerRef}
+          onScroll={handleMessagesScroll}
           className="relative flex-1 overflow-y-auto overflow-x-hidden"
           onContextMenu={(e) => {
             if (messages.length === 0) return;
@@ -3061,6 +3071,17 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div> {/* End of max-w-4xl wrapper */}
+
+      {/* Floating scroll-to-bottom pill */}
+      {isUserScrolledUp && messages.length > 0 && (
+        <button
+          onClick={scrollToBottom}
+          className="sticky bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground shadow-lg text-xs font-medium hover:bg-primary/90 transition-opacity animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+          new content
+        </button>
+      )}
       </div>
       </div> {/* End of main content area with history sidebar */}
 
