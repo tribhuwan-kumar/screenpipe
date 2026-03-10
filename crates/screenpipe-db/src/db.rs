@@ -3897,29 +3897,7 @@ impl DatabaseManager {
         .fetch_all(&mut **tx.conn())
         .await?;
 
-        // 3. Delete chunked_text_entries (no CASCADE) — by frame_id
-        sqlx::query(
-            "DELETE FROM chunked_text_entries WHERE frame_id IN (SELECT id FROM frames WHERE timestamp BETWEEN ?1 AND ?2)",
-        )
-        .bind(&start_str)
-        .bind(&end_str)
-        .execute(&mut **tx.conn())
-        .await?;
-
-        // Also delete chunked_text_entries by audio_chunk_id for orphaned audio chunks
-        sqlx::query(
-            r#"DELETE FROM chunked_text_entries WHERE audio_chunk_id IN (
-                SELECT id FROM audio_chunks
-                WHERE id IN (SELECT DISTINCT audio_chunk_id FROM audio_transcriptions WHERE timestamp BETWEEN ?1 AND ?2)
-                AND id NOT IN (SELECT DISTINCT audio_chunk_id FROM audio_transcriptions WHERE timestamp NOT BETWEEN ?1 AND ?2)
-            )"#,
-        )
-        .bind(&start_str)
-        .bind(&end_str)
-        .execute(&mut **tx.conn())
-        .await?;
-
-        // 4. Delete ocr_text — triggers ocr_text_delete -> cleans ocr_text_fts
+        // 3. Delete ocr_text — triggers ocr_text_delete -> cleans ocr_text_fts
         let ocr_result = sqlx::query(
             "DELETE FROM ocr_text WHERE frame_id IN (SELECT id FROM frames WHERE timestamp BETWEEN ?1 AND ?2)",
         )
