@@ -36,9 +36,9 @@ fn read_lines_lossy(reader: &mut BufReader<impl std::io::Read>) -> Option<String
         }
     }
 }
-use std::path::PathBuf;
 #[cfg(windows)]
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -121,9 +121,16 @@ fn resolve_bun_global_entrypoint(exe_path: &str) -> Option<String> {
 
     // Bun global modules live at ~/.bun/install/global/node_modules/
     let home = dirs::home_dir()?;
-    let global_nm = home.join(".bun").join("install").join("global").join("node_modules");
+    let global_nm = home
+        .join(".bun")
+        .join("install")
+        .join("global")
+        .join("node_modules");
     if !global_nm.exists() {
-        debug!("Bun global node_modules not found at {}", global_nm.display());
+        debug!(
+            "Bun global node_modules not found at {}",
+            global_nm.display()
+        );
         return None;
     }
 
@@ -144,7 +151,11 @@ fn resolve_bun_global_entrypoint(exe_path: &str) -> Option<String> {
         }
     }
 
-    debug!("No package with bin '{}' found in {}", stem, global_nm.display());
+    debug!(
+        "No package with bin '{}' found in {}",
+        stem,
+        global_nm.display()
+    );
     None
 }
 
@@ -179,7 +190,10 @@ fn check_package_bin(pkg_dir: std::path::PathBuf, bin_name: &str) -> Option<Stri
     if js_path.exists() {
         Some(js_path.to_string_lossy().to_string())
     } else {
-        debug!("bin entry points to {} but file doesn't exist", js_path.display());
+        debug!(
+            "bin entry points to {} but file doesn't exist",
+            js_path.display()
+        );
         None
     }
 }
@@ -451,7 +465,10 @@ fn seed_pi_package_json(install_dir: &std::path::Path) {
             }
         }
     });
-    match std::fs::write(&pkg_path, serde_json::to_string_pretty(&pkg_json).unwrap_or_default()) {
+    match std::fs::write(
+        &pkg_path,
+        serde_json::to_string_pretty(&pkg_json).unwrap_or_default(),
+    ) {
         Ok(_) => info!("Seeded pi-agent package.json with lru-cache overrides"),
         Err(e) => warn!("Failed to seed pi-agent package.json: {}", e),
     }
@@ -566,9 +583,7 @@ fn ensure_screenpipe_skill(project_dir: &str) -> Result<(), String> {
         "screenpipe-retranscribe",
         "screenpipe-search",
     ];
-    let skills_root = std::path::Path::new(project_dir)
-        .join(".pi")
-        .join("skills");
+    let skills_root = std::path::Path::new(project_dir).join(".pi").join("skills");
     for old in &deprecated {
         let old_dir = skills_root.join(old);
         if old_dir.exists() {
@@ -1122,7 +1137,7 @@ pub async fn pi_start_inner(
                     Some(bash_dir) => {
                         // Also add the usr/bin dir which has common unix utils (grep, cat, etc.)
                         let usr_bin = Path::new(&bash_dir)
-                            .parent()  // git-portable/
+                            .parent() // git-portable/
                             .map(|p| p.join("usr").join("bin"));
                         new_path = format!("{}{}{}", bash_dir, sep, new_path);
                         if let Some(ref ub) = usr_bin {
@@ -1184,9 +1199,14 @@ pub async fn pi_start_inner(
         // ChatGPT OAuth: inject token from stored OAuth file (no api_key in config)
         if config.provider == "openai-chatgpt" {
             match crate::chatgpt_oauth::get_valid_token().await {
-                Ok(token) => { cmd.env("OPENAI_CHATGPT_TOKEN", token); }
+                Ok(token) => {
+                    cmd.env("OPENAI_CHATGPT_TOKEN", token);
+                }
                 Err(e) => {
-                    return Err(format!("ChatGPT OAuth token unavailable: {}. Please sign in again.", e));
+                    return Err(format!(
+                        "ChatGPT OAuth token unavailable: {}. Please sign in again.",
+                        e
+                    ));
                 }
             }
         }
@@ -1341,8 +1361,7 @@ pub async fn pi_start_inner(
             while let Some(line) = read_lines_lossy(&mut reader) {
                 // Try to parse as JSON RPC event and forward like stdout
                 if let Ok(event) = serde_json::from_str::<Value>(&line) {
-                    let event_type =
-                        event.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                    let event_type = event.get("type").and_then(|t| t.as_str()).unwrap_or("?");
                     debug!(
                         "Pi stderr JSON (session {}): type={}",
                         sid_stderr, event_type
@@ -1531,8 +1550,8 @@ pub async fn pi_install(app: AppHandle) -> Result<(), String> {
 
     let bun = find_bun_executable().ok_or("Could not find bun. Install from https://bun.sh")?;
 
-    let install_dir = pi_local_install_dir()
-        .ok_or("Cannot determine home directory for Pi install")?;
+    let install_dir =
+        pi_local_install_dir().ok_or("Cannot determine home directory for Pi install")?;
     std::fs::create_dir_all(&install_dir)
         .map_err(|e| format!("Failed to create Pi install dir: {}", e))?;
 
@@ -1542,8 +1561,7 @@ pub async fn pi_install(app: AppHandle) -> Result<(), String> {
         seed_pi_package_json(&install_dir);
 
         let mut cmd = std::process::Command::new(&bun);
-        cmd.current_dir(&install_dir)
-            .args(["add", PI_PACKAGE]);
+        cmd.current_dir(&install_dir).args(["add", PI_PACKAGE]);
 
         // On Windows, prevent console window from appearing
         #[cfg(windows)]
@@ -1695,8 +1713,8 @@ fn find_bash_executable() -> Option<String> {
 /// Returns Ok(path_to_bash_exe) on success.
 #[cfg(windows)]
 fn download_portable_git() -> Result<String, String> {
-    let local_app_data = std::env::var("LOCALAPPDATA")
-        .map_err(|_| "LOCALAPPDATA env var not set".to_string())?;
+    let local_app_data =
+        std::env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA env var not set".to_string())?;
     let screenpipe_dir = PathBuf::from(&local_app_data).join("screenpipe");
     let git_dir = screenpipe_dir.join("git-portable");
     let bash_path = git_dir.join("bin").join("bash.exe");
@@ -1710,7 +1728,8 @@ fn download_portable_git() -> Result<String, String> {
     // Pinned version for reproducibility
     const PORTABLE_GIT_VERSION: &str = "2.47.1";
     const PORTABLE_GIT_URL: &str = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/PortableGit-2.47.1-64-bit.7z.exe";
-    const PORTABLE_GIT_SHA256: &str = "4f3f21f4effcb659566883ee1ed3ae403e5b3d7a0699cee455f6cd765e1ac39c";
+    const PORTABLE_GIT_SHA256: &str =
+        "4f3f21f4effcb659566883ee1ed3ae403e5b3d7a0699cee455f6cd765e1ac39c";
 
     info!(
         "Downloading PortableGit {} for bash support...",
@@ -1722,8 +1741,10 @@ fn download_portable_git() -> Result<String, String> {
         .map_err(|e| format!("Failed to create screenpipe data dir: {}", e))?;
 
     // Download to temp file
-    let temp_file = std::env::temp_dir()
-        .join(format!("PortableGit-{}-64-bit.7z.exe", PORTABLE_GIT_VERSION));
+    let temp_file = std::env::temp_dir().join(format!(
+        "PortableGit-{}-64-bit.7z.exe",
+        PORTABLE_GIT_VERSION
+    ));
 
     // Use bun or curl to download (bun is always available since we bundle it)
     let download_result = if let Some(bun) = find_bun_executable() {
@@ -1813,7 +1834,11 @@ fn download_portable_git() -> Result<String, String> {
 
     {
         let mut cmd = std::process::Command::new(&temp_file);
-        cmd.args([&format!("-o{}", extract_temp.to_string_lossy()), "-y", "-gm2"]);
+        cmd.args([
+            &format!("-o{}", extract_temp.to_string_lossy()),
+            "-y",
+            "-gm2",
+        ]);
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -1875,7 +1900,10 @@ fn download_portable_git() -> Result<String, String> {
     let _ = std::fs::remove_dir_all(&git_dir);
     std::fs::rename(&extract_temp, &git_dir).map_err(|e| {
         let _ = std::fs::remove_dir_all(&extract_temp);
-        format!("Failed to move extracted PortableGit to final location: {}", e)
+        format!(
+            "Failed to move extracted PortableGit to final location: {}",
+            e
+        )
     })?;
 
     // Clean up temp download
@@ -2413,7 +2441,10 @@ mod tests {
     fn test_read_lines_lossy_valid_utf8() {
         let data = b"hello world\n";
         let mut reader = BufReader::new(&data[..]);
-        assert_eq!(super::read_lines_lossy(&mut reader), Some("hello world".into()));
+        assert_eq!(
+            super::read_lines_lossy(&mut reader),
+            Some("hello world".into())
+        );
         assert_eq!(super::read_lines_lossy(&mut reader), None); // EOF
     }
 
@@ -2422,9 +2453,18 @@ mod tests {
     fn test_read_lines_lossy_multiple_lines() {
         let data = b"line one\nline two\nline three\n";
         let mut reader = BufReader::new(&data[..]);
-        assert_eq!(super::read_lines_lossy(&mut reader), Some("line one".into()));
-        assert_eq!(super::read_lines_lossy(&mut reader), Some("line two".into()));
-        assert_eq!(super::read_lines_lossy(&mut reader), Some("line three".into()));
+        assert_eq!(
+            super::read_lines_lossy(&mut reader),
+            Some("line one".into())
+        );
+        assert_eq!(
+            super::read_lines_lossy(&mut reader),
+            Some("line two".into())
+        );
+        assert_eq!(
+            super::read_lines_lossy(&mut reader),
+            Some("line three".into())
+        );
         assert_eq!(super::read_lines_lossy(&mut reader), None);
     }
 
@@ -2435,7 +2475,11 @@ mod tests {
         let data: &[u8] = &[b'h', b'i', 0xFF, 0xFE, b'\n'];
         let mut reader = BufReader::new(data);
         let line = super::read_lines_lossy(&mut reader).unwrap();
-        assert!(line.contains('\u{FFFD}'), "should contain replacement char, got: {}", line);
+        assert!(
+            line.contains('\u{FFFD}'),
+            "should contain replacement char, got: {}",
+            line
+        );
         assert!(line.starts_with("hi"), "should preserve valid prefix");
     }
 
@@ -2444,7 +2488,10 @@ mod tests {
     fn test_read_lines_lossy_crlf() {
         let data = b"windows line\r\n";
         let mut reader = BufReader::new(&data[..]);
-        assert_eq!(super::read_lines_lossy(&mut reader), Some("windows line".into()));
+        assert_eq!(
+            super::read_lines_lossy(&mut reader),
+            Some("windows line".into())
+        );
     }
 
     /// Last line without trailing newline is still returned
@@ -2452,7 +2499,10 @@ mod tests {
     fn test_read_lines_lossy_no_trailing_newline() {
         let data = b"no newline at end";
         let mut reader = BufReader::new(&data[..]);
-        assert_eq!(super::read_lines_lossy(&mut reader), Some("no newline at end".into()));
+        assert_eq!(
+            super::read_lines_lossy(&mut reader),
+            Some("no newline at end".into())
+        );
         assert_eq!(super::read_lines_lossy(&mut reader), None);
     }
 
@@ -2481,7 +2531,7 @@ mod tests {
         let mut reader = BufReader::new(json_line.as_bytes());
         let line = super::read_lines_lossy(&mut reader).unwrap();
         assert_eq!(line.len(), json_line.len() - 1); // minus the \n
-        // Verify it's valid JSON
+                                                     // Verify it's valid JSON
         assert!(serde_json::from_str::<Value>(&line).is_ok());
     }
 

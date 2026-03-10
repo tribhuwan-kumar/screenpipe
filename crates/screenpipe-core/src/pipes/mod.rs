@@ -2888,6 +2888,7 @@ mod tests {
             allow_raw_sql: true,
             allow_frames: true,
             config: HashMap::new(),
+            connections: vec![],
         };
         let body = "Do something useful";
         let serialized = serialize_pipe(&config, body).unwrap();
@@ -2982,6 +2983,7 @@ mod tests {
             allow_raw_sql: true,
             allow_frames: true,
             config: HashMap::new(),
+            connections: vec![],
         };
         let prompt = render_prompt_with_port(&config, "body text", 3031, None, None);
         assert!(prompt.contains("http://localhost:3031"));
@@ -3010,6 +3012,7 @@ mod tests {
             allow_raw_sql: true,
             allow_frames: true,
             config: HashMap::new(),
+            connections: vec![],
         };
         let prompt = render_prompt_with_port(&config, "hello", 3030, None, None);
         assert!(prompt.contains("http://localhost:3030"));
@@ -3036,6 +3039,7 @@ mod tests {
             allow_raw_sql: true,
             allow_frames: true,
             config: HashMap::new(),
+            connections: vec![],
         };
         let prompt = render_prompt_with_port(
             &config,
@@ -3070,6 +3074,7 @@ mod tests {
             allow_raw_sql: true,
             allow_frames: true,
             config: HashMap::new(),
+            connections: vec![],
         };
         let prompt = render_prompt_with_port(&config, "body text", 3030, None, None);
         assert!(!prompt.contains("System prompt:"));
@@ -3143,6 +3148,7 @@ mod tests {
                 allow_raw_sql: true,
                 allow_frames: true,
                 config: HashMap::new(),
+                connections: vec![],
             },
             last_run: None,
             last_success: None,

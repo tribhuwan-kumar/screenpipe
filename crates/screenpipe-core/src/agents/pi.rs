@@ -1002,7 +1002,7 @@ fn seed_pi_package_json(install_dir: &Path) {
         if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
             if !contents.contains("overrides") {
                 if let Ok(mut pkg) = serde_json::from_str::<serde_json::Value>(&contents) {
-                    pkg.as_object_mut().map(|obj| {
+                    if let Some(obj) = pkg.as_object_mut() {
                         obj.insert(
                             "overrides".to_string(),
                             json!({
@@ -1011,7 +1011,7 @@ fn seed_pi_package_json(install_dir: &Path) {
                                 }
                             }),
                         );
-                    });
+                    }
                     if let Ok(new_contents) = serde_json::to_string_pretty(&pkg) {
                         let _ = std::fs::write(&pkg_path, new_contents);
                         info!("Added lru-cache overrides to existing pi-agent package.json");

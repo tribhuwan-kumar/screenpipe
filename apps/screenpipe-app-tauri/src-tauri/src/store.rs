@@ -624,10 +624,10 @@ impl SettingsStore {
                                     "unknown AI provider '{}' in preset, falling back to 'custom'",
                                     provider
                                 );
-                                preset
-                                    .as_object_mut()
-                                    .unwrap()
-                                    .insert("provider".to_string(), Value::String("custom".to_string()));
+                                preset.as_object_mut().unwrap().insert(
+                                    "provider".to_string(),
+                                    Value::String("custom".to_string()),
+                                );
                             }
                         }
                     }

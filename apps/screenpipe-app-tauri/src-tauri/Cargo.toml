@@ -105,7 +105,6 @@ urlencoding = "2"
 
 # Cloud sync utilities
 hostname = "0.4"
-md5 = "0.7"
 
 # Screenpipe core (for sync)
 screenpipe-core = { path = "../../../crates/screenpipe-core", features = ["cloud-sync"] }

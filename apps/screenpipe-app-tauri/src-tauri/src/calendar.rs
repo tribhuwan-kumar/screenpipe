@@ -336,9 +336,7 @@ pub async fn start_calendar_events_publisher() {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
-fn calendar_event_to_item(
-    event: screenpipe_connect::calendar::CalendarEvent,
-) -> CalendarEventItem {
+fn calendar_event_to_item(event: screenpipe_connect::calendar::CalendarEvent) -> CalendarEventItem {
     let start_display = event.start_local.format("%-I:%M %p").to_string();
     let end_display = event.end_local.format("%-I:%M %p").to_string();
 

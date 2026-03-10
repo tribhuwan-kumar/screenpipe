@@ -9200,7 +9200,6 @@ dependencies = [
  "ini",
  "lazy_static",
  "log",
- "md5",
  "nokhwa-bindings-macos",
  "notify",
  "objc",
@@ -9534,7 +9533,6 @@ dependencies = [
 name = "screenpipe-vault"
 version = "0.3.181"
 dependencies = [
- "anyhow",
  "argon2",
  "chacha20poly1305",
  "rand 0.8.5",

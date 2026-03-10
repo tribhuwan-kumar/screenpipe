@@ -140,7 +140,10 @@ fn date_perhaps_time_to_utc(dpt: &DatePerhapsTime) -> Option<DateTime<Utc>> {
                         let mut guard = WARNED_TIMEZONES.lock().unwrap();
                         let set = guard.get_or_insert_with(HashSet::new);
                         if set.insert(tzid.to_string()) {
-                            warn!("ics_calendar: unknown timezone '{}', falling back to local", tzid);
+                            warn!(
+                                "ics_calendar: unknown timezone '{}', falling back to local",
+                                tzid
+                            );
                         }
                         let local = Local::now().timezone();
                         local
@@ -440,13 +443,13 @@ mod tests {
         let now = Utc::now();
         let start = now + chrono::Duration::hours(2);
         let end = now + chrono::Duration::hours(3);
-        
+
         // Format to basic ICS datetime string: YYYYMMDDTHHMMSSZ
         let start_str = start.format("%Y%m%dT%H%M%SZ").to_string();
         let end_str = end.format("%Y%m%dT%H%M%SZ").to_string();
 
         let ics_data = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Zimbra\r\nBEGIN:VEVENT\r\nUID:12345\r\nDTSTAMP:20241010T101010Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Test Event\r\nEND:VEVENT\r\nEND:VCALENDAR", start_str, end_str);
-        
+
         let events1 = parse_ics_to_events(&ics_data, "feed1");
         let events2 = parse_ics_to_events(&ics_data, "feed2");
 

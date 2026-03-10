@@ -562,15 +562,22 @@ fn video_editing_suggestions(top_apps: &[String]) -> Vec<Suggestion> {
 }
 
 fn idle_suggestions(top_apps: &[String], windows: &[WindowActivity]) -> Vec<Suggestion> {
-    let mut suggestions = vec![
-        Suggestion {
-            text: "what did I work on in the last hour?".into(),
-        },
-    ];
+    let mut suggestions = vec![Suggestion {
+        text: "what did I work on in the last hour?".into(),
+    }];
 
     // Add app-specific suggestion from top active app
-    let skip = ["finder", "screenpipe", "screenpipe-app", "loginwindow", "systemuiserver"];
-    if let Some(app) = top_apps.iter().find(|a| !skip.contains(&a.to_lowercase().as_str())) {
+    let skip = [
+        "finder",
+        "screenpipe",
+        "screenpipe-app",
+        "loginwindow",
+        "systemuiserver",
+    ];
+    if let Some(app) = top_apps
+        .iter()
+        .find(|a| !skip.contains(&a.to_lowercase().as_str()))
+    {
         suggestions.push(Suggestion {
             text: format!("what was I doing in {}?", app),
         });

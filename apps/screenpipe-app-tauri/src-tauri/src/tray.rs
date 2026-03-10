@@ -357,7 +357,9 @@ fn create_dynamic_menu(
     }
 
     // --- Plan / usage info ---
-    let settings = SettingsStore::get(app).unwrap_or_default().unwrap_or_default();
+    let settings = SettingsStore::get(app)
+        .unwrap_or_default()
+        .unwrap_or_default();
     let is_pro = settings.user.cloud_subscribed == Some(true);
     menu_builder = menu_builder.item(&PredefinedMenuItem::separator(app)?);
     if is_pro {
@@ -373,9 +375,7 @@ fn create_dynamic_menu(
                     .enabled(false)
                     .build(app)?,
             )
-            .item(
-                &MenuItemBuilder::with_id("upgrade", "⚡ Upgrade to Pro").build(app)?,
-            );
+            .item(&MenuItemBuilder::with_id("upgrade", "⚡ Upgrade to Pro").build(app)?);
     }
 
     // --- Update item (if available) ---
@@ -413,8 +413,7 @@ fn create_dynamic_menu(
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_else(|| default_stop_rec.to_string());
 
-    menu_builder = menu_builder
-        .item(&PredefinedMenuItem::separator(app)?);
+    menu_builder = menu_builder.item(&PredefinedMenuItem::separator(app)?);
 
     let mut start_builder = MenuItemBuilder::with_id("start_recording", "Start recording");
     if !start_rec_shortcut.is_empty() {
@@ -836,4 +835,3 @@ fn to_accelerator(shortcut: &str) -> String {
         .replace("Control", "Ctrl")
         .replace("CommandOrControl", "CmdOrCtrl")
 }
-

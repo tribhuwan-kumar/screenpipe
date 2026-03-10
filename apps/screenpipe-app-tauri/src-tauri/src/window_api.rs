@@ -113,8 +113,10 @@ pub fn init_magnify_handler(app: tauri::AppHandle) {
 
         // Swizzle WKWebView scrollWheel:
         unsafe {
+            use objc::runtime::{
+                class_getInstanceMethod, method_getImplementation, method_setImplementation,
+            };
             use objc::{sel, sel_impl};
-            use objc::runtime::{class_getInstanceMethod, method_getImplementation, method_setImplementation};
 
             let wk_class = Class::get("WKWebView");
             if let Some(wk_class) = wk_class {
@@ -926,7 +928,9 @@ impl ShowRewindWindow {
                         let _: () = unsafe { msg_send![&*panel, setSharingType: sharing] };
 
                         // Shared visibility sequence (activate_app=true for window mode)
-                        unsafe { show_panel_visible(&panel, &app_clone, true); }
+                        unsafe {
+                            show_panel_visible(&panel, &app_clone, true);
+                        }
 
                         // Remove MoveToActiveSpace so panel stays pinned to this Space
                         panel.set_collection_behaviour(
@@ -1001,7 +1005,9 @@ impl ShowRewindWindow {
                             NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
                         );
                         // Shared visibility sequence (activate_app=false for overlay mode)
-                        unsafe { show_panel_visible(&panel, &app_clone, false); }
+                        unsafe {
+                            show_panel_visible(&panel, &app_clone, false);
+                        }
 
                         // Remove MoveToActiveSpace now that the panel is shown.
                         // This keeps it pinned to THIS Space so it won't follow
@@ -1331,7 +1337,9 @@ impl ShowRewindWindow {
                                     );
 
                                     // Shared visibility sequence (activate_app=true for window mode)
-                                    unsafe { show_panel_visible(&panel, &app_for_emit, true); }
+                                    unsafe {
+                                        show_panel_visible(&panel, &app_for_emit, true);
+                                    }
 
                                     // Remove MoveToActiveSpace so panel stays pinned to this Space
                                     panel.set_collection_behaviour(

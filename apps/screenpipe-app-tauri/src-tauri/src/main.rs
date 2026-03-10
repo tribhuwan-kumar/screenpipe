@@ -43,16 +43,21 @@ use crate::analytics::start_analytics;
 use crate::store::SettingsStore;
 
 mod calendar;
+mod chatgpt_oauth;
 #[allow(deprecated)]
 mod commands;
 mod disk_usage;
 mod embedded_server;
 mod hardware;
 mod ics_calendar;
+mod livetext;
+#[cfg(target_os = "macos")]
+mod livetext_ffi;
 mod permissions;
 mod pi;
 mod recording;
 mod reminders;
+mod remote_sync_commands;
 mod server;
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
@@ -67,11 +72,6 @@ mod voice_training;
 mod window_api;
 #[cfg(target_os = "windows")]
 mod windows_overlay;
-mod chatgpt_oauth;
-#[cfg(target_os = "macos")]
-mod livetext_ffi;
-mod livetext;
-mod remote_sync_commands;
 
 pub use server::*;
 
@@ -647,7 +647,11 @@ async fn resume_global_shortcuts(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 async fn vault_status(app: AppHandle) -> Result<String, String> {
-    let data_dir = app.path().home_dir().map_err(|e| e.to_string())?.join(".screenpipe");
+    let data_dir = app
+        .path()
+        .home_dir()
+        .map_err(|e| e.to_string())?
+        .join(".screenpipe");
     if !data_dir.join("vault.meta").exists() {
         return Ok("none".to_string());
     }
@@ -672,28 +676,39 @@ async fn vault_status(app: AppHandle) -> Result<String, String> {
 async fn vault_unlock(app: AppHandle, password: String) -> Result<(), String> {
     use screenpipe_vault::crypto;
 
-    let screenpipe_dir = app.path().home_dir().map_err(|e| e.to_string())?.join(".screenpipe");
+    let screenpipe_dir = app
+        .path()
+        .home_dir()
+        .map_err(|e| e.to_string())?
+        .join(".screenpipe");
 
     // Read vault metadata and verify password
     let meta_path = screenpipe_dir.join("vault.meta");
     let meta_json = std::fs::read_to_string(&meta_path).map_err(|e| e.to_string())?;
-    let meta: serde_json::Value = serde_json::from_str(&meta_json)
-        .map_err(|e| format!("corrupt vault.meta: {}", e))?;
+    let meta: serde_json::Value =
+        serde_json::from_str(&meta_json).map_err(|e| format!("corrupt vault.meta: {}", e))?;
 
-    let salt_arr: Vec<u8> = meta["salt"].as_array()
-        .ok_or("missing salt")?.iter()
-        .map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+    let salt_arr: Vec<u8> = meta["salt"]
+        .as_array()
+        .ok_or("missing salt")?
+        .iter()
+        .map(|v| v.as_u64().unwrap_or(0) as u8)
+        .collect();
     let mut salt = [0u8; 32];
-    if salt_arr.len() != 32 { return Err("invalid salt length".into()); }
+    if salt_arr.len() != 32 {
+        return Err("invalid salt length".into());
+    }
     salt.copy_from_slice(&salt_arr);
 
-    let encrypted_master_key: Vec<u8> = meta["encrypted_master_key"].as_array()
-        .ok_or("missing encrypted_master_key")?.iter()
-        .map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+    let encrypted_master_key: Vec<u8> = meta["encrypted_master_key"]
+        .as_array()
+        .ok_or("missing encrypted_master_key")?
+        .iter()
+        .map(|v| v.as_u64().unwrap_or(0) as u8)
+        .collect();
 
     // Derive key from password
-    let password_key = crypto::derive_key(&password, &salt)
-        .map_err(|e| e.to_string())?;
+    let password_key = crypto::derive_key(&password, &salt).map_err(|e| e.to_string())?;
 
     // Decrypt master key — fails if wrong password
     let master_key_bytes = crypto::decrypt_small(&encrypted_master_key, &password_key)
@@ -711,7 +726,9 @@ async fn vault_unlock(app: AppHandle, password: String) -> Result<(), String> {
         crypto::decrypt_file(&db_path, &key).map_err(|e| format!("decrypt db: {}", e))?;
         for ext in &["sqlite-wal", "sqlite-shm"] {
             let p = db_path.with_extension(ext);
-            if p.exists() { let _ = crypto::decrypt_file(&p, &key); }
+            if p.exists() {
+                let _ = crypto::decrypt_file(&p, &key);
+            }
         }
     }
 
@@ -722,12 +739,17 @@ async fn vault_unlock(app: AppHandle, password: String) -> Result<(), String> {
     let data_dir = screenpipe_dir.join("data");
     tokio::spawn(async move {
         if data_dir.exists() {
-            let (tx, _rx) = tokio::sync::watch::channel(screenpipe_vault::migration::MigrationProgress {
-                total_files: 0, processed_files: 0, total_bytes: 0, processed_bytes: 0,
-            });
-            if let Err(e) = screenpipe_vault::migration::decrypt_data_dir(
-                &screenpipe_dir, &data_dir, key, tx,
-            ).await {
+            let (tx, _rx) =
+                tokio::sync::watch::channel(screenpipe_vault::migration::MigrationProgress {
+                    total_files: 0,
+                    processed_files: 0,
+                    total_bytes: 0,
+                    processed_bytes: 0,
+                });
+            if let Err(e) =
+                screenpipe_vault::migration::decrypt_data_dir(&screenpipe_dir, &data_dir, key, tx)
+                    .await
+            {
                 tracing::error!("background data decrypt failed: {}", e);
             } else {
                 tracing::info!("background data decryption complete");
@@ -2444,7 +2466,9 @@ async fn main() {
                     // otherwise the ggml Metal device destructor hits a freed resource → SIGABRT.
                     let app_handle_shutdown = app_handle.app_handle().clone();
                     let _ = tauri::async_runtime::block_on(async move {
-                        if let Some(recording_state) = app_handle_shutdown.try_state::<recording::RecordingState>() {
+                        if let Some(recording_state) =
+                            app_handle_shutdown.try_state::<recording::RecordingState>()
+                        {
                             if let Some(handle) = recording_state.handle.lock().await.take() {
                                 handle.shutdown_and_wait().await;
                             }
