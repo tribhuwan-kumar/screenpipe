@@ -12,6 +12,30 @@ use serde_json::{json, Value};
 use specta::Type;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+
+/// Read lines from a byte stream using lossy UTF-8 conversion.
+/// Unlike `BufReader::lines()`, this never fails on invalid UTF-8 —
+/// invalid bytes are replaced with U+FFFD instead of crashing the reader.
+fn read_lines_lossy(reader: &mut BufReader<impl std::io::Read>) -> Option<String> {
+    let mut buf = Vec::new();
+    match reader.read_until(b'\n', &mut buf) {
+        Ok(0) => None, // EOF
+        Ok(_) => {
+            // Strip trailing newline
+            if buf.last() == Some(&b'\n') {
+                buf.pop();
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
+            }
+            Some(String::from_utf8_lossy(&buf).into_owned())
+        }
+        Err(e) => {
+            error!("I/O error reading pi output: {}", e);
+            None
+        }
+    }
+}
 use std::path::PathBuf;
 #[cfg(windows)]
 use std::path::Path;
@@ -709,7 +733,7 @@ fn ensure_pi_config(
             let wire_api = if config.provider == "openai-chatgpt" {
                 "openai-codex-responses"
             } else if config.provider == "anthropic" {
-                "anthropic"
+                "anthropic-messages"
             } else {
                 "openai-completions"
             };
@@ -1240,60 +1264,52 @@ pub async fn pi_start_inner(
     let terminated_guard = terminated_emitted.clone();
     let sid_clone = sid.clone();
     std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
+        let mut reader = BufReader::new(stdout);
         info!(
             "Pi stdout reader started (pid: {}, session: {})",
             pid, sid_clone
         );
         let mut line_count = 0u64;
         let mut ready_signalled = false;
-        for line in reader.lines() {
-            match line {
-                Ok(line) => {
-                    line_count += 1;
-                    let event_type = serde_json::from_str::<Value>(&line).ok().and_then(|v| {
-                        v.get("type")
-                            .and_then(|t| t.as_str())
-                            .map(|s| s.to_string())
-                    });
-                    debug!(
-                        "Pi stdout #{} (pid {}, session {}): type={}",
-                        line_count,
-                        pid,
-                        sid_clone,
-                        event_type.as_deref().unwrap_or("non-json")
-                    );
+        while let Some(line) = read_lines_lossy(&mut reader) {
+            line_count += 1;
+            let event_type = serde_json::from_str::<Value>(&line).ok().and_then(|v| {
+                v.get("type")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+            });
+            debug!(
+                "Pi stdout #{} (pid {}, session {}): type={}",
+                line_count,
+                pid,
+                sid_clone,
+                event_type.as_deref().unwrap_or("non-json")
+            );
 
-                    // Signal readiness on first successful JSON line
-                    if !ready_signalled {
-                        if serde_json::from_str::<Value>(&line).is_ok() {
-                            ready_notify_reader.notify_one();
-                            ready_signalled = true;
-                        }
-                    }
+            // Signal readiness on first successful JSON line
+            if !ready_signalled {
+                if serde_json::from_str::<Value>(&line).is_ok() {
+                    ready_notify_reader.notify_one();
+                    ready_signalled = true;
+                }
+            }
 
-                    // Try to parse as JSON and emit event tagged with sessionId
-                    match serde_json::from_str::<Value>(&line) {
-                        Ok(event) => {
-                            let tagged = json!({ "sessionId": sid_clone, "event": event });
-                            if let Err(e) = app_handle.emit("pi_event", &tagged) {
-                                error!("Failed to emit pi_event: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            let end = line.len().min(100);
-                            let end = line.floor_char_boundary(end);
-                            warn!("Pi stdout not JSON: {} (line: {})", e, &line[..end]);
-                        }
-                    }
-                    if let Err(e) = app_handle.emit("pi_output", &line) {
-                        error!("Failed to emit pi_output: {}", e);
+            // Try to parse as JSON and emit event tagged with sessionId
+            match serde_json::from_str::<Value>(&line) {
+                Ok(event) => {
+                    let tagged = json!({ "sessionId": sid_clone, "event": event });
+                    if let Err(e) = app_handle.emit("pi_event", &tagged) {
+                        error!("Failed to emit pi_event: {}", e);
                     }
                 }
                 Err(e) => {
-                    error!("Error reading pi stdout: {}", e);
-                    break;
+                    let end = line.len().min(100);
+                    let end = line.floor_char_boundary(end);
+                    warn!("Pi stdout not JSON: {} (line: {})", e, &line[..end]);
                 }
+            }
+            if let Err(e) = app_handle.emit("pi_output", &line) {
+                error!("Failed to emit pi_output: {}", e);
             }
         }
         info!(
@@ -1320,37 +1336,29 @@ pub async fn pi_start_inner(
         let app_handle = app.clone();
         let sid_stderr = sid.clone();
         std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
+            let mut reader = BufReader::new(stderr);
             info!("Pi stderr reader started (session: {})", sid_stderr);
-            for line in reader.lines() {
-                match line {
-                    Ok(line) => {
-                        // Try to parse as JSON RPC event and forward like stdout
-                        if let Ok(event) = serde_json::from_str::<Value>(&line) {
-                            let event_type =
-                                event.get("type").and_then(|t| t.as_str()).unwrap_or("?");
-                            debug!(
-                                "Pi stderr JSON (session {}): type={}",
-                                sid_stderr, event_type
-                            );
-                            let tagged = json!({ "sessionId": sid_stderr, "event": event });
-                            if let Err(e) = app_handle.emit("pi_event", &tagged) {
-                                error!("Failed to emit pi_event from stderr: {}", e);
-                            }
-                            if let Err(e) = app_handle.emit("pi_output", &line) {
-                                error!("Failed to emit pi_output from stderr: {}", e);
-                            }
-                        } else {
-                            // Not JSON — log as warn so Pi startup errors are visible
-                            warn!("Pi stderr: {}", &line[..line.len().min(500)]);
-                        }
-                        let _ = app_handle.emit("pi_log", &line);
+            while let Some(line) = read_lines_lossy(&mut reader) {
+                // Try to parse as JSON RPC event and forward like stdout
+                if let Ok(event) = serde_json::from_str::<Value>(&line) {
+                    let event_type =
+                        event.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                    debug!(
+                        "Pi stderr JSON (session {}): type={}",
+                        sid_stderr, event_type
+                    );
+                    let tagged = json!({ "sessionId": sid_stderr, "event": event });
+                    if let Err(e) = app_handle.emit("pi_event", &tagged) {
+                        error!("Failed to emit pi_event from stderr: {}", e);
                     }
-                    Err(e) => {
-                        error!("Error reading pi stderr: {}", e);
-                        break;
+                    if let Err(e) = app_handle.emit("pi_output", &line) {
+                        error!("Failed to emit pi_output from stderr: {}", e);
                     }
+                } else {
+                    // Not JSON — log as warn so Pi startup errors are visible
+                    warn!("Pi stderr: {}", &line[..line.len().min(500)]);
                 }
+                let _ = app_handle.emit("pi_log", &line);
             }
             info!("Pi stderr reader ended (session: {})", sid_stderr);
         });
@@ -2396,5 +2404,110 @@ mod tests {
     #[test]
     fn test_ready_timeout_constant() {
         assert_eq!(super::PI_READY_TIMEOUT.as_secs(), 2);
+    }
+
+    // -- read_lines_lossy unit tests --
+
+    /// Valid UTF-8 line is returned as-is
+    #[test]
+    fn test_read_lines_lossy_valid_utf8() {
+        let data = b"hello world\n";
+        let mut reader = BufReader::new(&data[..]);
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("hello world".into()));
+        assert_eq!(super::read_lines_lossy(&mut reader), None); // EOF
+    }
+
+    /// Multiple lines are read sequentially
+    #[test]
+    fn test_read_lines_lossy_multiple_lines() {
+        let data = b"line one\nline two\nline three\n";
+        let mut reader = BufReader::new(&data[..]);
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("line one".into()));
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("line two".into()));
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("line three".into()));
+        assert_eq!(super::read_lines_lossy(&mut reader), None);
+    }
+
+    /// Invalid UTF-8 bytes are replaced with U+FFFD instead of erroring
+    #[test]
+    fn test_read_lines_lossy_invalid_utf8() {
+        // 0xFF 0xFE are not valid UTF-8
+        let data: &[u8] = &[b'h', b'i', 0xFF, 0xFE, b'\n'];
+        let mut reader = BufReader::new(data);
+        let line = super::read_lines_lossy(&mut reader).unwrap();
+        assert!(line.contains('\u{FFFD}'), "should contain replacement char, got: {}", line);
+        assert!(line.starts_with("hi"), "should preserve valid prefix");
+    }
+
+    /// CRLF line endings are stripped
+    #[test]
+    fn test_read_lines_lossy_crlf() {
+        let data = b"windows line\r\n";
+        let mut reader = BufReader::new(&data[..]);
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("windows line".into()));
+    }
+
+    /// Last line without trailing newline is still returned
+    #[test]
+    fn test_read_lines_lossy_no_trailing_newline() {
+        let data = b"no newline at end";
+        let mut reader = BufReader::new(&data[..]);
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("no newline at end".into()));
+        assert_eq!(super::read_lines_lossy(&mut reader), None);
+    }
+
+    /// Empty input returns None immediately
+    #[test]
+    fn test_read_lines_lossy_empty() {
+        let data: &[u8] = b"";
+        let mut reader = BufReader::new(data);
+        assert_eq!(super::read_lines_lossy(&mut reader), None);
+    }
+
+    /// Empty line (just a newline) returns empty string
+    #[test]
+    fn test_read_lines_lossy_empty_line() {
+        let data = b"\n";
+        let mut reader = BufReader::new(&data[..]);
+        assert_eq!(super::read_lines_lossy(&mut reader), Some("".into()));
+        assert_eq!(super::read_lines_lossy(&mut reader), None);
+    }
+
+    /// Large JSON line (simulating Pi's big outputs) is read completely
+    #[test]
+    fn test_read_lines_lossy_large_json() {
+        let big_value = "x".repeat(100_000);
+        let json_line = format!("{{\"type\":\"data\",\"content\":\"{}\"}}\n", big_value);
+        let mut reader = BufReader::new(json_line.as_bytes());
+        let line = super::read_lines_lossy(&mut reader).unwrap();
+        assert_eq!(line.len(), json_line.len() - 1); // minus the \n
+        // Verify it's valid JSON
+        assert!(serde_json::from_str::<Value>(&line).is_ok());
+    }
+
+    /// Mixed valid and invalid UTF-8 lines — valid lines unaffected
+    #[test]
+    fn test_read_lines_lossy_mixed_valid_invalid() {
+        let mut data: Vec<u8> = Vec::new();
+        data.extend_from_slice(b"{\"type\":\"ok\"}\n");
+        data.extend_from_slice(&[0x80, 0x81, b'\n']); // invalid UTF-8 line
+        data.extend_from_slice(b"{\"type\":\"still_ok\"}\n");
+
+        let mut reader = BufReader::new(&data[..]);
+
+        // First line: valid JSON
+        let line1 = super::read_lines_lossy(&mut reader).unwrap();
+        assert!(serde_json::from_str::<Value>(&line1).is_ok());
+
+        // Second line: lossy conversion, not valid JSON but reader survives
+        let line2 = super::read_lines_lossy(&mut reader).unwrap();
+        assert!(line2.contains('\u{FFFD}'));
+
+        // Third line: valid JSON — reader recovered
+        let line3 = super::read_lines_lossy(&mut reader).unwrap();
+        let v: Value = serde_json::from_str(&line3).unwrap();
+        assert_eq!(v["type"], "still_ok");
+
+        assert_eq!(super::read_lines_lossy(&mut reader), None);
     }
 }

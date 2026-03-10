@@ -208,11 +208,13 @@ function GridDissolveLoader({
   label,
   toolName,
   thinkingSecs,
+  tokenCount,
 }: {
   phase?: LoaderPhase;
   label?: string;
   toolName?: string;
   thinkingSecs?: number;
+  tokenCount?: number;
 }) {
   const ROWS = 3;
   const COLS = 5;
@@ -262,6 +264,12 @@ function GridDissolveLoader({
     "analyzing..."
   );
 
+  const tokenLabel = tokenCount != null && tokenCount > 0
+    ? tokenCount >= 1000
+      ? `${(tokenCount / 1000).toFixed(1)}k tokens`
+      : `${tokenCount} tokens`
+    : null;
+
   return (
     <div className="flex items-center gap-2">
       <div
@@ -288,7 +296,7 @@ function GridDissolveLoader({
         ))}
       </div>
       <span className="text-[11px] font-mono text-muted-foreground tracking-wide">
-        {displayLabel}
+        {displayLabel}{tokenLabel && <span className="ml-1.5 opacity-60">· {tokenLabel}</span>}
       </span>
     </div>
   );
@@ -713,6 +721,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamedCharCount, setStreamedCharCount] = useState(0);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activePreset, setActivePreset] = useState<AIPreset | undefined>();
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -1427,6 +1436,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           const evt = data.assistantMessageEvent;
           if (evt.type === "text_delta" && evt.delta) {
             piStreamingTextRef.current += evt.delta;
+            setStreamedCharCount(piStreamingTextRef.current.length);
 
             // Append to last text block or create new one
             const blocks = piContentBlocksRef.current;
@@ -2301,6 +2311,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     piStreamingTextRef.current = "";
     piMessageIdRef.current = assistantMessageId;
     piContentBlocksRef.current = [];
+    setStreamedCharCount(0);
 
     // Clear follow-ups for new message
     setFollowUpSuggestions([]);
@@ -2872,7 +2883,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               <Button
                 variant="outline"
                 onClick={async () => {
-                  await commands.showWindow({ Settings: { page: null } });
+                  await commands.showWindow({ Home: { page: null } });
                 }}
                 className="gap-2"
               >
@@ -3032,6 +3043,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                   phase={loaderPhase}
                   toolName={toolName}
                   thinkingSecs={thinkingSecs}
+                  tokenCount={Math.round(streamedCharCount / 4)}
                 />
               </motion.div>
             );

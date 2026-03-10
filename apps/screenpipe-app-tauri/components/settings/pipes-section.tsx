@@ -32,6 +32,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
 import { emit, once } from "@tauri-apps/api/event";
@@ -1173,6 +1180,23 @@ export function PipesSection() {
                     }
                   />
 
+                  {/* Optimize with AI */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    title="optimize with ai"
+                    onClick={() => {
+                      navigateHomeAndPrefill({
+                        context: "the user wants to optimize their pipe",
+                        prompt: buildOptimizePrompt(pipe.config.name),
+                        autoSend: true,
+                      });
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </Button>
+
                   {/* Overflow menu */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1207,18 +1231,6 @@ export function PipesSection() {
                           </DropdownMenuItem>
                         </>
                       )}
-                      <DropdownMenuItem
-                        onClick={async () => {
-                          navigateHomeAndPrefill({
-                            context: "the user wants to optimize their pipe",
-                            prompt: buildOptimizePrompt(pipe.config.name),
-                            autoSend: true,
-                          });
-                        }}
-                      >
-                        <Sparkles className="h-3.5 w-3.5 mr-2" />
-                        optimize
-                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
@@ -1368,6 +1380,69 @@ export function PipesSection() {
                       />
                       <p className="text-[11px] text-muted-foreground mt-1">
                         uses model & provider from your ai settings preset
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs">schedule</Label>
+                      <Select
+                        value={pipe.config.schedule || "manual"}
+                        onValueChange={(value) => {
+                          const pipeName = pipe.config.name;
+                          setPipes((prev) =>
+                            prev.map((p) =>
+                              p.config.name === pipeName
+                                ? { ...p, config: { ...p.config, schedule: value } }
+                                : p
+                            )
+                          );
+                          const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ schedule: value }),
+                          }).then(() => {
+                            delete pendingConfigSaves.current[pipeName];
+                            fetchPipes();
+                          }).catch(() => {
+                            delete pendingConfigSaves.current[pipeName];
+                          });
+                          pendingConfigSaves.current[pipeName] = savePromise;
+                        }}
+                      >
+                        <SelectTrigger className="mt-1 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(() => {
+                            const presets = [
+                              { value: "manual", label: "manual" },
+                              { value: "every 5m", label: "every 5 minutes" },
+                              { value: "every 15m", label: "every 15 minutes" },
+                              { value: "every 30m", label: "every 30 minutes" },
+                              { value: "every 1h", label: "every hour" },
+                              { value: "every 3h", label: "every 3 hours" },
+                              { value: "every day at 9am", label: "every morning (9 AM)" },
+                              { value: "every day at 12pm", label: "every noon (12 PM)" },
+                              { value: "every day at 6pm", label: "every evening (6 PM)" },
+                              { value: "every monday at 9am", label: "every monday (9 AM)" },
+                            ];
+                            const current = pipe.config.schedule || "manual";
+                            const isCustom = !presets.some((p) => p.value === current);
+                            return (
+                              <>
+                                {isCustom && (
+                                  <SelectItem value={current}>{current} (custom)</SelectItem>
+                                )}
+                                {presets.map((p) => (
+                                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        how often this pipe runs automatically
                       </p>
                     </div>
 

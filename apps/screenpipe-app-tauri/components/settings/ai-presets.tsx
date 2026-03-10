@@ -369,6 +369,42 @@ const AISection = ({
     updateSettingsPreset({ apiKey: value });
   }, [updateSettingsPreset]);
 
+  // Auto-set max output tokens based on model name
+  const getDefaultMaxTokens = useCallback((model: string): number | null => {
+    const m = model.toLowerCase();
+    // Claude models
+    if (m.includes("opus")) return 64000;
+    if (m.includes("sonnet-4") || m.includes("sonnet-3.7")) return 64000;
+    if (m.includes("haiku")) return 8192;
+    // OpenAI models
+    if (m.includes("gpt-5")) return 128000;
+    if (m.includes("o3") || m.includes("o4") || m.includes("o1")) return 100000;
+    if (m.includes("gpt-4.1")) return 32768;
+    if (m.includes("gpt-oss")) return 8192;
+    // Google models
+    if (m.includes("gemini-3") || m.includes("gemini-2.5-pro")) return 65536;
+    if (m.includes("gemini")) return 8192;
+    // DeepSeek
+    if (m.includes("deepseek")) return 8192;
+    // Qwen
+    if (m.includes("qwen")) return 8192;
+    // Mistral
+    if (m.includes("mistral")) return 4096;
+    // Local/OSS models
+    if (m.includes("llama")) return 4096;
+    if (m.includes("phi")) return 16384;
+    return null; // unknown model, don't change
+  }, []);
+
+  useEffect(() => {
+    const model = settingsPreset?.model;
+    if (!model) return;
+    const tokens = getDefaultMaxTokens(model);
+    if (tokens && (settingsPreset as any)?.maxTokens !== tokens) {
+      updateSettingsPreset({ maxTokens: tokens } as any);
+    }
+  }, [settingsPreset?.model]);
+
   const handleCustomPromptChange = useCallback((value: string, isValid: boolean) => {
     updateSettingsPreset({ prompt: value });
   }, [updateSettingsPreset]);
@@ -1256,7 +1292,7 @@ const AISection = ({
             Max Output Tokens
           </Label>
           <p className="text-xs text-muted-foreground mb-2">
-            Maximum tokens the model can generate per response. Lower values work better with providers like Groq.
+            Maximum tokens the model can generate per response.
           </p>
           <Input
             id="maxTokens"
@@ -1268,6 +1304,30 @@ const AISection = ({
             onChange={(e) => updateSettingsPreset({ maxTokens: parseInt(e.target.value) || 4096 } as any)}
             className="w-full"
           />
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {[
+              { label: "8k", value: 8192, hint: "haiku / qwen / deepseek" },
+              { label: "32k", value: 32768, hint: "gpt-4.1" },
+              { label: "64k", value: 64000, hint: "opus / sonnet" },
+              { label: "65k", value: 65536, hint: "gemini 3 pro" },
+              { label: "100k", value: 100000, hint: "o3 / o4" },
+              { label: "128k", value: 128000, hint: "gpt-5" },
+            ].map((preset) => (
+              <button
+                key={preset.value}
+                type="button"
+                className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                  (settingsPreset as any)?.maxTokens === preset.value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 hover:bg-muted border-border"
+                }`}
+                onClick={() => updateSettingsPreset({ maxTokens: preset.value } as any)}
+              >
+                {preset.label}
+                <span className="text-[10px] ml-1 opacity-60">{preset.hint}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

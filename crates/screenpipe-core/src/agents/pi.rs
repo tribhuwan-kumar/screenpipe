@@ -342,7 +342,7 @@ impl PiExecutor {
                 let wire_api = if prov == "openai-chatgpt" {
                     "openai-codex-responses"
                 } else if prov == "anthropic" {
-                    "anthropic"
+                    "anthropic-messages"
                 } else {
                     "openai-completions"
                 };
