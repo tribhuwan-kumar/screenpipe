@@ -594,55 +594,12 @@ fn find_pi_executable() -> Option<String> {
     None
 }
 
-/// Ensure the screenpipe skills exist in the project's .pi/skills directory
+/// Ensure the screenpipe skills exist in the project's .pi/skills directory.
+/// Delegates to screenpipe-core's canonical implementation.
 fn ensure_screenpipe_skill(project_dir: &str) -> Result<(), String> {
-    let skills: &[(&str, &str)] = &[
-        (
-            "screenpipe-api",
-            include_str!("../assets/skills/screenpipe-api/SKILL.md"),
-        ),
-        (
-            "screenpipe-cli",
-            include_str!("../assets/skills/screenpipe-cli/SKILL.md"),
-        ),
-    ];
-
-    // Clean up deprecated skills from the 8→2 consolidation.
-    // Only removes known old names so user-created skills are preserved.
-    let deprecated = [
-        "screenpipe-analytics",
-        "screenpipe-connections",
-        "screenpipe-elements",
-        "screenpipe-media",
-        "screenpipe-pipe-creator",
-        "screenpipe-pipes",
-        "screenpipe-retranscribe",
-        "screenpipe-search",
-    ];
-    let skills_root = std::path::Path::new(project_dir).join(".pi").join("skills");
-    for old in &deprecated {
-        let old_dir = skills_root.join(old);
-        if old_dir.exists() {
-            let _ = std::fs::remove_dir_all(&old_dir);
-            debug!("removed deprecated skill dir {:?}", old_dir);
-        }
-    }
-
-    for (name, content) in skills {
-        let skill_dir = skills_root.join(name);
-        let skill_path = skill_dir.join("SKILL.md");
-
-        // Always overwrite to keep skill up-to-date with app version
-        std::fs::create_dir_all(&skill_dir)
-            .map_err(|e| format!("Failed to create skill dir for {}: {}", name, e))?;
-
-        std::fs::write(&skill_path, content)
-            .map_err(|e| format!("Failed to write {} skill: {}", name, e))?;
-
-        debug!("Screenpipe {} skill installed at {:?}", name, skill_path);
-    }
-
-    Ok(())
+    use screenpipe_core::agents::pi::PiExecutor;
+    PiExecutor::ensure_screenpipe_skill(std::path::Path::new(project_dir))
+        .map_err(|e| format!("Failed to install screenpipe skills: {}", e))
 }
 
 /// Ensure the web-search extension exists in the project's .pi/extensions directory
@@ -1157,12 +1114,13 @@ pub async fn pi_start_inner(
         if let Some(bun_dir) = std::path::Path::new(&bun_path).parent() {
             let current_path = std::env::var("PATH").unwrap_or_default();
             let sep = if cfg!(windows) { ";" } else { ":" };
-            let mut new_path = format!("{}{}{}", bun_dir.display(), sep, current_path);
+            let new_path = format!("{}{}{}", bun_dir.display(), sep, current_path);
 
             // On Windows, ensure bash is available for Pi's bash tool.
             // Downloads PortableGit on first use if no bash is found (~50MB, one-time).
             #[cfg(windows)]
-            {
+            let new_path = {
+                let mut path = new_path;
                 let bash_result = tokio::task::spawn_blocking(ensure_bash_available)
                     .await
                     .unwrap_or_else(|e| {
@@ -1175,10 +1133,10 @@ pub async fn pi_start_inner(
                         let usr_bin = Path::new(&bash_dir)
                             .parent() // git-portable/
                             .map(|p| p.join("usr").join("bin"));
-                        new_path = format!("{}{}{}", bash_dir, sep, new_path);
+                        path = format!("{}{}{}", bash_dir, sep, path);
                         if let Some(ref ub) = usr_bin {
                             if ub.exists() {
-                                new_path = format!("{}{}{}", ub.display(), sep, new_path);
+                                path = format!("{}{}{}", ub.display(), sep, path);
                             }
                         }
                         info!("Injected bash dir into PATH for pi: {}", bash_dir);
@@ -1187,7 +1145,8 @@ pub async fn pi_start_inner(
                         warn!("bash not available — Pi's bash tool may fail on Windows");
                     }
                 }
-            }
+                path
+            };
 
             cmd.env("PATH", new_path);
             debug!("Injected bun dir into PATH for pi: {}", bun_dir.display());

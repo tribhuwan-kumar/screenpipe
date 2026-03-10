@@ -1725,6 +1725,7 @@ async fn main() {
             livetext::livetext_highlight,
             livetext::livetext_clear_highlights,
             livetext::livetext_hide,
+            livetext::livetext_set_guard_rect,
             // Voice training
             voice_training::train_voice,
             // Suggestions

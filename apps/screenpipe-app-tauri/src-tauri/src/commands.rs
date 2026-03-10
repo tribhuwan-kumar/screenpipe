@@ -85,7 +85,9 @@ pub fn show_main_window(app_handle: &tauri::AppHandle, _overlay: bool) {
     #[cfg(target_os = "macos")]
     let window_to_show = ShowRewindWindow::Main;
     #[cfg(not(target_os = "macos"))]
-    let window_to_show = ShowRewindWindow::Home { page: None };
+    let window_to_show = ShowRewindWindow::Home {
+        page: Some("timeline".to_string()),
+    };
 
     match window_to_show.show(app_handle) {
         Ok(window) => {

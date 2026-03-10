@@ -602,7 +602,7 @@ async piPrompt(sessionId: string | null, message: string, images: PiImageContent
 }
 },
 /**
- * Abort current Pi operation
+ * Abort current Pi operation. Waits for the Pi SDK to confirm the abort completed.
  */
 async piAbort(sessionId: string | null) : Promise<Result<null, string>> {
     try {
@@ -613,7 +613,8 @@ async piAbort(sessionId: string | null) : Promise<Result<null, string>> {
 }
 },
 /**
- * Start a new Pi session (clears conversation history)
+ * Start a new Pi session (clears conversation history).
+ * Waits for the Pi SDK to finish aborting any in-flight work and resetting state.
  */
 async piNewSession(sessionId: string | null) : Promise<Result<null, string>> {
     try {

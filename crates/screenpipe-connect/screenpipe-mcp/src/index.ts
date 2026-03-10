@@ -93,8 +93,8 @@ const BASE_TOOLS: Tool[] = [
         },
         content_type: {
           type: "string",
-          enum: ["all", "ocr", "audio", "input", "accessibility"],
-          description: "Content type filter: 'audio' (transcriptions — use for meetings/calls/conversations), 'accessibility' (accessibility tree text, preferred for screen content), 'ocr' (screen text via OCR, legacy fallback), 'input' (clicks, keystrokes, clipboard, app switches), 'all'. Default: 'all'. For meeting/call queries, ALWAYS use 'audio'.",
+          enum: ["all", "ocr", "audio", "input", "accessibility", "memory"],
+          description: "Content type filter: 'audio' (transcriptions — use for meetings/calls/conversations), 'accessibility' (accessibility tree text, preferred for screen content), 'ocr' (screen text via OCR, legacy fallback), 'input' (clicks, keystrokes, clipboard, app switches), 'memory' (persistent facts/preferences/decisions stored via update-memory), 'all'. Default: 'all'. For meeting/call queries, ALWAYS use 'audio'.",
           default: "all",
         },
         limit: {
@@ -346,6 +346,57 @@ const BASE_TOOLS: Tool[] = [
       required: ["frame_id"],
     },
   },
+  {
+    name: "update-memory",
+    description:
+      "Create, update, or delete a persistent memory. Memories are facts, preferences, decisions, " +
+      "and insights about the user that persist across conversations.\n\n" +
+      "USE SPARINGLY: Only store genuinely useful, long-lived facts. Good: user preferences, important decisions, " +
+      "project context. Bad: transient observations, things easily re-searchable.\n\n" +
+      "RETRIEVE: Use search-content with content_type='memory' to find stored memories.\n\n" +
+      "EXAMPLES:\n" +
+      "- Create: {content: 'prefers dark mode', tags: ['preference']}\n" +
+      "- Update: {id: 42, content: 'switched to light mode'}\n" +
+      "- Delete: {id: 42, delete: true}",
+    annotations: {
+      title: "Update Memory",
+      destructiveHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "integer",
+          description:
+            "Memory ID. If provided, updates or deletes that memory. If omitted, creates new.",
+        },
+        content: {
+          type: "string",
+          description: "The memory text. Required for create, optional for update.",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Categorization tags (e.g., ['preference', 'work', 'project-x'])",
+        },
+        importance: {
+          type: "number",
+          description:
+            "Importance score 0.0-1.0. Higher = surfaces more in search. Default: 0.5",
+        },
+        source_context: {
+          type: "object",
+          description:
+            "Optional context linking to source data (frame_ids, timestamps, app_name)",
+        },
+        delete: {
+          type: "boolean",
+          description: "If true, deletes the memory identified by 'id'",
+        },
+      },
+    },
+  },
 ];
 
 // List tools handler
@@ -450,6 +501,7 @@ Screenpipe captures four types of data:
 - **Search screen text**: \`{"q": "search term", "content_type": "all"}\`
 - **Get keyboard input**: \`{"content_type": "input"}\`
 - **Get audio only**: \`{"content_type": "audio"}\`
+- **Recall memories**: \`{"content_type": "memory"}\` or \`{"q": "preference", "content_type": "memory"}\`
 
 ## Common User Requests → Correct Tool Choice
 | User says | Use this tool | Key params |
@@ -459,6 +511,10 @@ Screenpipe captures four types of data:
 | "how long on X" / "which apps" / "time spent" | activity-summary | start_time, end_time |
 | "what was I doing" | activity-summary | start_time, end_time (then drill into search-content) |
 | "what was I reading/looking at" | search-content | content_type:"all", start_time |
+| "remember that I..." / user states a preference | update-memory | content, tags |
+
+## Memory
+Use \`update-memory\` to store persistent facts, preferences, and decisions. Retrieve with \`search-content\` content_type="memory". Be selective — only store things that are genuinely useful across conversations. Don't store transient observations or things easily found by searching raw data.
 
 ## Behavior Rules
 - Act immediately on clear requests. NEVER ask "what time range?" or "which content type?" when the intent is obvious.
@@ -469,7 +525,7 @@ Screenpipe captures four types of data:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | q | Search query | (none - returns all) |
-| content_type | all/ocr/audio/input/accessibility | all |
+| content_type | all/ocr/audio/input/accessibility/memory | all |
 | limit | Max results | 10 |
 | start_time | ISO 8601 UTC or relative (e.g. '16h ago') | (no filter) |
 | end_time | ISO 8601 UTC or relative (e.g. 'now') | (no filter) |
@@ -635,7 +691,7 @@ curl "http://localhost:3030/search?limit=20&content_type=all&start_time=<ISO8601
 | Parameter | Description |
 |-----------|-------------|
 | \`q\` | Text search query (optional — skip for audio, transcriptions are noisy) |
-| \`content_type\` | \`all\`, \`ocr\`, \`audio\`, \`input\`, \`accessibility\` (prefer \`all\` or \`accessibility\`) |
+| \`content_type\` | \`all\`, \`ocr\`, \`audio\`, \`input\`, \`accessibility\`, \`memory\` (prefer \`all\` or \`accessibility\`) |
 | \`limit\` | Max results (default 20) |
 | \`offset\` | Pagination offset |
 | \`start_time\` / \`end_time\` | ISO 8601 timestamps or relative (\`1h ago\`, \`now\`) |
@@ -1370,6 +1426,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               `${content.timestamp || ""}\n` +
               `${content.text || ""}`
             );
+          } else if (result.type === "Memory") {
+            const tagsStr = content.tags?.length
+              ? ` [${content.tags.join(", ")}]`
+              : "";
+            const importance =
+              content.importance != null
+                ? ` (importance: ${content.importance})`
+                : "";
+            formattedResults.push(
+              `[Memory #${content.id}]${tagsStr}${importance}\n` +
+                `${content.created_at || ""}\n` +
+                `${content.content || ""}`
+            );
           }
         }
 
@@ -1759,6 +1828,78 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         return { content: [{ type: "text", text: lines.join("\n") }] };
+      }
+
+      case "update-memory": {
+        if (args.delete && args.id) {
+          const response = await fetchAPI(`/memories/${args.id}`, {
+            method: "DELETE",
+          });
+          if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+          return {
+            content: [
+              { type: "text", text: `Memory ${args.id} deleted.` },
+            ],
+          };
+        }
+        if (args.id) {
+          // Update existing memory
+          const body: Record<string, unknown> = {};
+          if (args.content !== undefined) body.content = args.content;
+          if (args.tags !== undefined) body.tags = args.tags;
+          if (args.importance !== undefined) body.importance = args.importance;
+          if (args.source_context !== undefined)
+            body.source_context = args.source_context;
+          const response = await fetchAPI(`/memories/${args.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+          const memory = await response.json();
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Memory ${memory.id} updated: "${memory.content}"`,
+              },
+            ],
+          };
+        }
+        // Create new memory
+        if (!args.content) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Error: 'content' is required to create a memory",
+              },
+            ],
+          };
+        }
+        const memoryBody: Record<string, unknown> = {
+          content: args.content,
+          source: "mcp",
+          tags: args.tags || [],
+          importance: args.importance ?? 0.5,
+        };
+        if (args.source_context) memoryBody.source_context = args.source_context;
+        const memoryResponse = await fetchAPI("/memories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(memoryBody),
+        });
+        if (!memoryResponse.ok)
+          throw new Error(`HTTP error: ${memoryResponse.status}`);
+        const newMemory = await memoryResponse.json();
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Memory created (id: ${newMemory.id}): "${newMemory.content}"`,
+            },
+          ],
+        };
       }
 
       default:

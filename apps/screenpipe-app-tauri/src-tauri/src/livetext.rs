@@ -223,3 +223,23 @@ pub async fn livetext_hide() -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     Ok(())
 }
+
+/// Place a transparent click guard above the Live Text overlay in the given
+/// rectangle (web/CSS coordinates: origin top-left). This prevents VisionKit's
+/// text-selection hit regions from intercepting clicks on the nav bar.
+#[tauri::command]
+pub async fn livetext_set_guard_rect(x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = unsafe { livetext_ffi::lt_set_guard_rect(x, y, w, h) };
+        if status != 0 {
+            return Err(format!("lt_set_guard_rect error: {}", status));
+        }
+        return Ok(());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (x, y, w, h);
+        Ok(())
+    }
+}

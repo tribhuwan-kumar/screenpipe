@@ -10,11 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSettings, ChatMessage, ChatConversation } from "@/lib/hooks/use-settings";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip } from "lucide-react";
+import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip, Filter } from "lucide-react";
 import { SchedulePromptDialog } from "@/components/chat/schedule-prompt-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { PipeAIIcon, PipeAIIconLarge } from "@/components/pipe-ai-icon";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MemoizedReactMarkdown } from "@/components/markdown";
 import { VideoComponent } from "@/components/rewind/video";
 import { MermaidDiagram } from "@/components/rewind/mermaid-diagram";
@@ -729,6 +730,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
   const [speakerSuggestions, setSpeakerSuggestions] = useState<MentionSuggestion[]>([]);
   const [isLoadingSpeakers, setIsLoadingSpeakers] = useState(false);
+  const [appFilterOpen, setAppFilterOpen] = useState(false);
+  const [recentSpeakers, setRecentSpeakers] = useState<MentionSuggestion[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1334,6 +1337,31 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Preload recent speakers when filter popover opens
+  useEffect(() => {
+    if (!appFilterOpen || recentSpeakers.length > 0) return;
+    (async () => {
+      try {
+        const response = await fetch(`${SCREENPIPE_API}/speakers/search?name=`);
+        if (response.ok) {
+          const speakers: Speaker[] = await response.json();
+          setRecentSpeakers(
+            speakers
+              .filter((s) => s.name)
+              .slice(0, 5)
+              .map((s) => ({
+                tag: s.name.includes(" ") ? `@"${s.name}"` : `@${s.name}`,
+                description: "speaker",
+                category: "speaker" as const,
+              }))
+          );
+        }
+      } catch {
+        // silent
+      }
+    })();
+  }, [appFilterOpen, recentSpeakers.length]);
 
   // Pi project dir is managed Rust-side at boot
 
@@ -3039,16 +3067,174 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       {/* Input */}
       <div className="relative border-t border-border/50 bg-gradient-to-t from-muted/20 to-transparent">
         <div className="max-w-4xl mx-auto w-full">
-        <div className="p-2 border-b border-border/30">
-          <AIPresetsSelector
-            onPresetChange={setActivePreset}
-            controlledPresetId={activePipeExecution ? activePreset?.id : undefined}
-            onControlledSelect={activePipeExecution ? (id) => {
-              const match = settings.aiPresets?.find((p) => p.id === id);
-              if (match) setActivePreset(match);
-            } : undefined}
-            showLoginCta={false}
-          />
+        <div className="p-2 border-b border-border/30 flex items-center gap-2">
+          <Popover open={appFilterOpen} onOpenChange={setAppFilterOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "shrink-0 flex items-center gap-1 px-2 h-10 text-[11px] font-mono border rounded-md transition-colors",
+                  hasActiveFilters
+                    ? "border-foreground text-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground"
+                )}
+                title="Search filters"
+              >
+                <Filter className="w-3 h-3" />
+                <span>filter</span>
+                {hasActiveFilters && (
+                  <span className="text-[10px] text-muted-foreground">
+                    ({(activeFilters.timeRanges.length > 0 ? 1 : 0) +
+                      (activeFilters.contentType ? 1 : 0) +
+                      (activeFilters.appName ? 1 : 0) +
+                      (activeFilters.speakerName ? 1 : 0)})
+                  </span>
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0 max-h-[360px] overflow-y-auto" align="start">
+              {/* Time filters */}
+              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50">
+                time
+              </div>
+              {STATIC_MENTION_SUGGESTIONS.filter((s) => s.category === "time").map((s) => {
+                const isActive = activeFilters.timeRanges.some((r) => r.label === s.description);
+                return (
+                  <button
+                    key={s.tag}
+                    type="button"
+                    onClick={() => {
+                      if (isActive) {
+                        removeFilter("time", s.description);
+                      } else {
+                        setInput((prev) => `${s.tag} ${prev.trim()}`.trim() + " ");
+                      }
+                      setAppFilterOpen(false);
+                    }}
+                    className={cn(
+                      "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
+                      isActive && "bg-muted"
+                    )}
+                  >
+                    <span>{s.tag}</span>
+                    <span className="text-[10px] text-muted-foreground">{s.description}</span>
+                  </button>
+                );
+              })}
+
+              {/* Content type filters */}
+              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50 border-t">
+                content type
+              </div>
+              {STATIC_MENTION_SUGGESTIONS.filter((s) => s.category === "content").map((s) => {
+                const contentTypeMap: Record<string, string> = { screen: "screen", audio: "audio", input: "input" };
+                const tagName = s.tag.slice(1);
+                const isActive = activeFilters.contentType === (contentTypeMap[tagName] || tagName);
+                return (
+                  <button
+                    key={s.tag}
+                    type="button"
+                    onClick={() => {
+                      if (isActive) {
+                        removeFilter("content");
+                      } else {
+                        if (activeFilters.contentType) removeFilter("content");
+                        setInput((prev) => `${s.tag} ${prev.trim()}`.trim() + " ");
+                      }
+                      setAppFilterOpen(false);
+                    }}
+                    className={cn(
+                      "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
+                      isActive && "bg-muted"
+                    )}
+                  >
+                    <span>{s.tag}</span>
+                    <span className="text-[10px] text-muted-foreground">{s.description}</span>
+                  </button>
+                );
+              })}
+
+              {/* App filters */}
+              <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50 border-t">
+                apps
+              </div>
+              {appMentionSuggestions.length === 0 ? (
+                <div className="px-3 py-2 text-[10px] text-muted-foreground">no apps detected yet</div>
+              ) : (
+                appMentionSuggestions.map((suggestion) => {
+                  const isActive = activeFilters.appName === suggestion.appName;
+                  return (
+                    <button
+                      key={`app-${suggestion.tag}`}
+                      type="button"
+                      onClick={() => {
+                        if (isActive) {
+                          removeFilter("app");
+                        } else {
+                          if (activeFilters.appName) removeFilter("app");
+                          setInput((prev) => `${suggestion.tag} ${prev.trim()}`.trim() + " ");
+                        }
+                        setAppFilterOpen(false);
+                      }}
+                      className={cn(
+                        "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
+                        isActive && "bg-muted"
+                      )}
+                    >
+                      <span>{suggestion.tag}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">{suggestion.description}</span>
+                    </button>
+                  );
+                })
+              )}
+
+              {/* Speakers */}
+              {recentSpeakers.length > 0 && (
+                <>
+                  <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-border/50 border-t">
+                    speakers
+                  </div>
+                  {recentSpeakers.map((s) => {
+                    const speakerName = s.tag.startsWith('@"') ? s.tag.slice(2, -1) : s.tag.slice(1);
+                    const isActive = activeFilters.speakerName === speakerName;
+                    return (
+                      <button
+                        key={`speaker-${s.tag}`}
+                        type="button"
+                        onClick={() => {
+                          if (isActive) {
+                            removeFilter("speaker");
+                          } else {
+                            if (activeFilters.speakerName) removeFilter("speaker");
+                            setInput((prev) => `${s.tag} ${prev.trim()}`.trim() + " ");
+                          }
+                          setAppFilterOpen(false);
+                        }}
+                        className={cn(
+                          "w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-muted/50 transition-colors flex items-center justify-between gap-2",
+                          isActive && "bg-muted"
+                        )}
+                      >
+                        <span>{s.tag}</span>
+                        <span className="text-[10px] text-muted-foreground">speaker</span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
+          <div className="flex-1 min-w-0">
+            <AIPresetsSelector
+              onPresetChange={setActivePreset}
+              controlledPresetId={activePipeExecution ? activePreset?.id : undefined}
+              onControlledSelect={activePipeExecution ? (id) => {
+                const match = settings.aiPresets?.find((p) => p.id === id);
+                if (match) setActivePreset(match);
+              } : undefined}
+              showLoginCta={false}
+            />
+          </div>
         </div>
 
         {/* Prefill context indicator from search */}

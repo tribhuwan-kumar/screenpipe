@@ -95,6 +95,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	const [showSearchModal, setShowSearchModal] = useState(false);
 
 	const containerRef = useRef<HTMLDivElement | null>(null);
+	const navBarRef = useRef<HTMLDivElement | null>(null);
 	const [startAndEndDates, setStartAndEndDates] = useState<TimeRange>(() => {
 		// Lazy init to avoid SSR/client hydration mismatch from new Date()
 		const now = new Date();
@@ -887,6 +888,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 							currentFrame={currentFrame}
 							allDeviceIds={allDeviceIds}
 							embedded={embedded}
+							navBarRef={navBarRef}
 							searchNavFrame={searchNavFrame}
 							onSearchNavComplete={() => setSearchNavFrame(false)}
 							isArrowNav={isArrowNav}
@@ -1034,7 +1036,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 				{!embedded && <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/10 via-black/2 to-transparent z-30 pointer-events-none" />}
 
 				{/* Top Controls */}
-				<div className={`absolute top-0 left-0 right-0 z-40 px-4 pb-4 ${embedded ? "pt-2" : "pt-[calc(env(safe-area-inset-top)+16px)]"}`}>
+				<div ref={navBarRef} className={`absolute top-0 left-0 right-0 z-40 px-4 pb-4 ${embedded ? "pt-2" : "pt-[calc(env(safe-area-inset-top)+16px)]"}`}>
 					<TimelineControls
 						currentDate={currentDate}
 						startAndEndDates={startAndEndDates}

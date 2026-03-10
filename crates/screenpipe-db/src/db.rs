@@ -29,7 +29,7 @@ use futures::future::try_join_all;
 use crate::{
     text_similarity::is_similar_transcription, AudioChunksResponse, AudioDevice, AudioEntry,
     AudioResult, AudioResultRaw, ContentType, DeviceType, Element, ElementRow, ElementSource,
-    FrameData, FrameRow, FrameRowLight, FrameWindowData, InsertUiEvent, MeetingRecord, OCREntry,
+    FrameData, FrameRow, FrameRowLight, FrameWindowData, InsertUiEvent, MeetingRecord, MemoryRecord, OCREntry,
     OCRResult, OCRResultRaw, OcrEngine, OcrTextBlock, Order, SearchMatch, SearchMatchGroup,
     SearchResult, Speaker, TagContentType, TextBounds, TextPosition, TimeSeriesChunk, UiContent,
     UiEventRecord, UiEventRow, VideoMetadata,
@@ -2079,6 +2079,23 @@ impl DatabaseManager {
                     .await?;
                 results.extend(input_results.into_iter().map(SearchResult::Input));
             }
+            ContentType::Memory => {
+                let start_str = start_time.map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+                let end_str = end_time.map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+                let memory_results = self
+                    .list_memories(
+                        Some(query).filter(|q| !q.is_empty()),
+                        None,
+                        None,
+                        None,
+                        start_str.as_deref(),
+                        end_str.as_deref(),
+                        limit,
+                        offset,
+                    )
+                    .await?;
+                results.extend(memory_results.into_iter().map(SearchResult::Memory));
+            }
         }
 
         // Sort results by timestamp in descending order
@@ -2088,12 +2105,14 @@ impl DatabaseManager {
                 SearchResult::Audio(audio) => audio.timestamp,
                 SearchResult::UI(ui) => ui.timestamp,
                 SearchResult::Input(input) => input.timestamp,
+                SearchResult::Memory(m) => m.created_at.parse::<DateTime<Utc>>().unwrap_or_default(),
             };
             let timestamp_b = match b {
                 SearchResult::OCR(ocr) => ocr.timestamp,
                 SearchResult::Audio(audio) => audio.timestamp,
                 SearchResult::UI(ui) => ui.timestamp,
                 SearchResult::Input(input) => input.timestamp,
+                SearchResult::Memory(m) => m.created_at.parse::<DateTime<Utc>>().unwrap_or_default(),
             };
             timestamp_b.cmp(&timestamp_a)
         });
@@ -2835,6 +2854,21 @@ impl DatabaseManager {
                     "audio_transcriptions_fts MATCH ?1"
                 }
             ),
+            ContentType::Memory => {
+                let start_str = start_time.map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+                let end_str = end_time.map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+                let count = self
+                    .count_memories(
+                        Some(query).filter(|q| !q.is_empty()),
+                        None,
+                        None,
+                        None,
+                        start_str.as_deref(),
+                        end_str.as_deref(),
+                    )
+                    .await?;
+                return Ok(count as usize);
+            }
             ContentType::Input => {
                 // Count ui_events using parameterized LIKE queries
                 let mut conditions = Vec::new();
@@ -5606,6 +5640,220 @@ LIMIT ? OFFSET ?
         .await?;
         Ok(meeting)
     }
+
+    // ========================================================================
+    // Memories
+    // ========================================================================
+
+    pub async fn insert_memory(
+        &self,
+        content: &str,
+        source: &str,
+        source_context: Option<&str>,
+        tags: Option<&str>,
+        importance: f64,
+    ) -> Result<i64, SqlxError> {
+        let mut tx = self.begin_immediate_with_retry().await?;
+        let id = sqlx::query(
+            "INSERT INTO memories (content, source, source_context, tags, importance) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .bind(content)
+        .bind(source)
+        .bind(source_context)
+        .bind(tags.unwrap_or("[]"))
+        .bind(importance)
+        .execute(&mut **tx.conn())
+        .await?
+        .last_insert_rowid();
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    pub async fn get_memory_by_id(&self, id: i64) -> Result<MemoryRecord, SqlxError> {
+        sqlx::query_as::<_, MemoryRecord>(
+            "SELECT id, content, source, source_context, tags, importance, \
+             created_at, updated_at \
+             FROM memories WHERE id = ?1",
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn update_memory(
+        &self,
+        id: i64,
+        content: Option<&str>,
+        tags: Option<&str>,
+        importance: Option<f64>,
+        source_context: Option<&str>,
+    ) -> Result<(), SqlxError> {
+        let mut tx = self.begin_immediate_with_retry().await?;
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+
+        let mut sets = vec!["updated_at = ?1"];
+        if content.is_some() {
+            sets.push("content = ?2");
+        }
+        if tags.is_some() {
+            sets.push("tags = ?3");
+        }
+        if importance.is_some() {
+            sets.push("importance = ?4");
+        }
+        if source_context.is_some() {
+            sets.push("source_context = ?5");
+        }
+
+        let sql = format!(
+            "UPDATE memories SET {} WHERE id = ?6",
+            sets.join(", ")
+        );
+
+        sqlx::query(&sql)
+            .bind(&now)
+            .bind(content)
+            .bind(tags)
+            .bind(importance)
+            .bind(source_context)
+            .bind(id)
+            .execute(&mut **tx.conn())
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn delete_memory(&self, id: i64) -> Result<(), SqlxError> {
+        let mut tx = self.begin_immediate_with_retry().await?;
+        sqlx::query("DELETE FROM memories WHERE id = ?1")
+            .bind(id)
+            .execute(&mut **tx.conn())
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn list_memories(
+        &self,
+        query: Option<&str>,
+        source: Option<&str>,
+        tags_filter: Option<&str>,
+        min_importance: Option<f64>,
+        start_time: Option<&str>,
+        end_time: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<MemoryRecord>, SqlxError> {
+        let use_fts = query.is_some_and(|q| !q.is_empty());
+
+        let mut sql = if use_fts {
+            String::from(
+                "SELECT m.id, m.content, m.source, m.source_context, m.tags, m.importance, \
+                 m.created_at, m.updated_at \
+                 FROM memories_fts fts \
+                 JOIN memories m ON m.id = fts.rowid \
+                 WHERE 1=1",
+            )
+        } else {
+            String::from(
+                "SELECT id, content, source, source_context, tags, importance, \
+                 created_at, updated_at \
+                 FROM memories WHERE 1=1",
+            )
+        };
+
+        if use_fts {
+            sql.push_str(" AND fts.memories_fts MATCH ?1");
+        }
+        if source.is_some() {
+            sql.push_str(" AND source = ?2");
+        }
+        if tags_filter.is_some() {
+            sql.push_str(" AND tags LIKE '%' || ?3 || '%'");
+        }
+        if min_importance.is_some() {
+            sql.push_str(" AND importance >= ?4");
+        }
+        if start_time.is_some() {
+            sql.push_str(" AND created_at >= ?5");
+        }
+        if end_time.is_some() {
+            sql.push_str(" AND created_at <= ?6");
+        }
+
+        sql.push_str(" ORDER BY importance DESC, created_at DESC LIMIT ?7 OFFSET ?8");
+
+        let fts_query = query.map(|q| crate::text_normalizer::sanitize_fts5_query(q));
+
+        sqlx::query_as::<_, MemoryRecord>(&sql)
+            .bind(fts_query.as_deref())
+            .bind(source)
+            .bind(tags_filter)
+            .bind(min_importance)
+            .bind(start_time)
+            .bind(end_time)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    pub async fn count_memories(
+        &self,
+        query: Option<&str>,
+        source: Option<&str>,
+        tags_filter: Option<&str>,
+        min_importance: Option<f64>,
+        start_time: Option<&str>,
+        end_time: Option<&str>,
+    ) -> Result<i64, SqlxError> {
+        let use_fts = query.is_some_and(|q| !q.is_empty());
+
+        let mut sql = if use_fts {
+            String::from(
+                "SELECT COUNT(*) FROM memories_fts fts \
+                 JOIN memories m ON m.id = fts.rowid \
+                 WHERE 1=1",
+            )
+        } else {
+            String::from("SELECT COUNT(*) FROM memories WHERE 1=1")
+        };
+
+        if use_fts {
+            sql.push_str(" AND fts.memories_fts MATCH ?1");
+        }
+        if source.is_some() {
+            sql.push_str(" AND source = ?2");
+        }
+        if tags_filter.is_some() {
+            sql.push_str(" AND tags LIKE '%' || ?3 || '%'");
+        }
+        if min_importance.is_some() {
+            sql.push_str(" AND importance >= ?4");
+        }
+        if start_time.is_some() {
+            sql.push_str(" AND created_at >= ?5");
+        }
+        if end_time.is_some() {
+            sql.push_str(" AND created_at <= ?6");
+        }
+
+        let fts_query = query.map(|q| crate::text_normalizer::sanitize_fts5_query(q));
+
+        sqlx::query_scalar::<_, i64>(&sql)
+            .bind(fts_query.as_deref())
+            .bind(source)
+            .bind(tags_filter)
+            .bind(min_importance)
+            .bind(start_time)
+            .bind(end_time)
+            .fetch_one(&self.pool)
+            .await
+    }
+
 }
 
 pub fn find_matching_positions(blocks: &[OcrTextBlock], query: &str) -> Vec<TextPosition> {
