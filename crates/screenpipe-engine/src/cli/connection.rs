@@ -31,7 +31,7 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                     .await
                     .is_ok();
             let wa_desc = if wa_connected {
-                "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}".to_string()
+                "WhatsApp messaging gateway. Endpoints at http://localhost:3035: GET /contacts (list contacts), GET /chats (recent chats), GET /messages?phone=+PHONE&limit=50 (read messages), POST /send {\"to\":\"+PHONE\",\"text\":\"MSG\"} (send message), GET /status.".to_string()
             } else if has_session {
                 "WhatsApp has a saved session but the gateway is not running. It should auto-reconnect on server restart.".to_string()
             } else {
@@ -87,7 +87,7 @@ pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::R
                     json!({
                         "id": "whatsapp",
                         "connected": true,
-                        "description": "WhatsApp messaging. First GET http://localhost:3035/contacts to resolve names to phone numbers, then POST http://localhost:3035/send with {\"to\":\"+PHONE\",\"text\":\"MSG\"}"
+                        "description": "WhatsApp messaging gateway. Endpoints at http://localhost:3035: GET /contacts (list contacts), GET /chats (recent chats), GET /messages?phone=+PHONE&limit=50 (read messages), POST /send {\"to\":\"+PHONE\",\"text\":\"MSG\"} (send message), GET /status."
                     })
                 } else if has_session {
                     json!({

@@ -56,7 +56,13 @@ async fn list_connections(State(state): State<ConnectionsState>) -> Json<Value> 
     );
     let wa_desc = if let Some(port) = wa_port {
         format!(
-            "WhatsApp messaging. First GET http://localhost:{}/contacts to resolve names to phone numbers, then POST http://localhost:{}/send with {{\"to\":\"+PHONE\",\"text\":\"MSG\"}}",
+            "WhatsApp messaging gateway on port {}. Endpoints: \
+            GET /contacts — list saved contacts (may be empty, ask user for phone number if needed). \
+            GET /chats — list recent chats with last message. \
+            GET /messages?phone=+PHONE&limit=50 — read recent messages from a chat. \
+            POST /send {{\"to\":\"+PHONE\",\"text\":\"MSG\"}} — send a message. \
+            GET /status — connection info. \
+            All endpoints are at http://localhost:{}.",
             port, port
         )
     } else {
