@@ -2270,10 +2270,21 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       }
     }
 
-    // Prevent sending while a previous message is still being processed
+    // If a previous message is still processing, abort it first
     if (piMessageIdRef.current) {
-      toast({ title: "Please wait", description: "Previous message is still being processed", variant: "destructive" });
-      return;
+      console.warn("[Pi] Aborting previous message before sending new one");
+      try {
+        await commands.piAbort(PI_CHAT_SESSION);
+      } catch (e) {
+        console.warn("[Pi] Failed to abort previous:", e);
+      }
+      piStreamingTextRef.current = "";
+      piMessageIdRef.current = null;
+      piContentBlocksRef.current = [];
+      setIsLoading(false);
+      setIsStreaming(false);
+      // Brief delay for the backend to clean up
+      await new Promise(r => setTimeout(r, 300));
     }
 
     const newUserMessage: Message = {
@@ -2327,7 +2338,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           )
         );
       }
-    }, 180000);
+    }, 60000);
 
     try {
       // Collect images (pasted image + prefill frame)
@@ -2402,16 +2413,15 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       );
 
       if (result.status === "error" && result.error.includes("already processing")) {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          console.warn(`[Pi] Already processing, retry ${attempt + 1}/3 after delay`);
-          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
-          result = await commands.piPrompt(
-            PI_CHAT_SESSION,
-            promptMessage,
-            piImages.length > 0 ? piImages : null,
-          );
-          if (result.status !== "error" || !result.error.includes("already processing")) break;
-        }
+        // Abort the stuck agent, then retry
+        console.warn("[Pi] Already processing — aborting and retrying");
+        try { await commands.piAbort(PI_CHAT_SESSION); } catch {}
+        await new Promise(r => setTimeout(r, 500));
+        result = await commands.piPrompt(
+          PI_CHAT_SESSION,
+          promptMessage,
+          piImages.length > 0 ? piImages : null,
+        );
       }
 
       if (result.status === "error") {
