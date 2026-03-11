@@ -53,9 +53,20 @@ const NotificationHandler: React.FC = () => {
         console.log(
           `notification requested ${event.payload.title} ${event.payload.body}`
         );
-        sendNotification({
+        // Use in-app notification panel instead of OS notifications
+        showNotificationPanel({
+          id: `legacy-${Date.now()}`,
+          type: "general",
           title: event.payload.title,
           body: event.payload.body,
+          actions: [],
+          autoDismissMs: 20000,
+        }).catch(() => {
+          // Fallback to OS notification if panel fails
+          sendNotification({
+            title: event.payload.title,
+            body: event.payload.body,
+          });
         });
       });
     };
