@@ -472,42 +472,26 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       return resp.ok ? resp.json() : [];
     };
 
-    // App facet (accessibility + OCR)
+    // App facet (single frames_fts query)
     fetchFacet(
-      `SELECT app, SUM(cnt) as cnt FROM (
-         SELECT a.app_name as app, COUNT(*) as cnt
-         FROM accessibility_fts af JOIN accessibility a ON a.id = af.rowid
-         WHERE af.text_content MATCH '${escaped}'
-         AND a.app_name IS NOT NULL AND a.app_name != ''
-         GROUP BY a.app_name
-         UNION ALL
-         SELECT f.app_name as app, COUNT(*) as cnt
-         FROM ocr_text_fts otf JOIN ocr_text o ON o.rowid = otf.rowid
-         JOIN frames f ON o.frame_id = f.id
-         WHERE otf.text MATCH '${escaped}'
-         AND f.app_name IS NOT NULL AND f.app_name != ''
-         GROUP BY f.app_name
-       ) GROUP BY app ORDER BY cnt DESC LIMIT 15`
+      `SELECT app_name as app, COUNT(*) as cnt
+       FROM frames_fts
+       WHERE frames_fts MATCH '${escaped}'
+       AND app_name != ''
+       GROUP BY app_name ORDER BY cnt DESC LIMIT 15`
     ).then((rows: { app: string; cnt: number }[]) => {
       if (!cancelled) setFacetApps(rows.map(r => [r.app, r.cnt]));
     }).catch(() => {}).finally(onFacetDone);
 
-    // Domain facet (accessibility + OCR)
+    // Domain facet (frames_fts joined with frames for browser_url)
+    // Note: FTS5 tables cannot be aliased, must use full table name in MATCH
     fetchFacet(
-      `SELECT url, SUM(cnt) as cnt FROM (
-         SELECT a.browser_url as url, COUNT(*) as cnt
-         FROM accessibility_fts af JOIN accessibility a ON a.id = af.rowid
-         WHERE af.text_content MATCH '${escaped}'
-         AND a.browser_url IS NOT NULL AND a.browser_url != ''
-         GROUP BY a.browser_url
-         UNION ALL
-         SELECT f.browser_url as url, COUNT(*) as cnt
-         FROM ocr_text_fts otf JOIN ocr_text o ON o.rowid = otf.rowid
-         JOIN frames f ON o.frame_id = f.id
-         WHERE otf.text MATCH '${escaped}'
-         AND f.browser_url IS NOT NULL AND f.browser_url != ''
-         GROUP BY f.browser_url
-       ) GROUP BY url ORDER BY cnt DESC LIMIT 200`
+      `SELECT f.browser_url as url, COUNT(*) as cnt
+       FROM frames_fts
+       JOIN frames f ON f.id = frames_fts.id
+       WHERE frames_fts MATCH '${escaped}'
+       AND f.browser_url IS NOT NULL AND f.browser_url != ''
+       GROUP BY f.browser_url ORDER BY cnt DESC LIMIT 200`
     ).then((rows: { url: string; cnt: number }[]) => {
       if (cancelled) return;
       // Aggregate by domain
@@ -521,20 +505,14 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       setFacetDomains([...domainMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8));
     }).catch(() => {}).finally(onFacetDone);
 
-    // Time facet — bucket by date (accessibility + OCR)
+    // Time facet — bucket by date (frames_fts)
     fetchFacet(
-      `SELECT d, MIN(ts) as ts, SUM(cnt) as cnt FROM (
-         SELECT DATE(a.timestamp) as d, MIN(a.timestamp) as ts, COUNT(*) as cnt
-         FROM accessibility_fts af JOIN accessibility a ON a.id = af.rowid
-         WHERE af.text_content MATCH '${escaped}'
-         GROUP BY DATE(a.timestamp)
-         UNION ALL
-         SELECT DATE(f.timestamp) as d, MIN(f.timestamp) as ts, COUNT(*) as cnt
-         FROM ocr_text_fts otf JOIN ocr_text o ON o.rowid = otf.rowid
-         JOIN frames f ON o.frame_id = f.id
-         WHERE otf.text MATCH '${escaped}'
-         GROUP BY DATE(f.timestamp)
-       ) GROUP BY d ORDER BY d DESC LIMIT 30`
+      `SELECT DATE(f.timestamp) as d, MIN(f.timestamp) as ts, COUNT(*) as cnt
+       FROM frames_fts
+       JOIN frames f ON f.id = frames_fts.id
+       WHERE frames_fts MATCH '${escaped}'
+       GROUP BY DATE(f.timestamp)
+       ORDER BY d DESC LIMIT 30`
     ).then((rows: { d: string; ts: string; cnt: number }[]) => {
       if (cancelled) return;
       setFacetTimeRanges(buildTimeRanges(rows.map(r => ({ dateKey: r.d, timestamp: r.ts, count: r.cnt }))));
@@ -604,7 +582,10 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
   // Derive app chips from time-filtered results so they stay consistent
   // when a date chip is active. Uses actual search result app_names to
   // guarantee the client-side filter (r.app_name === appFilter) matches.
+  // Use facet data (aggregated over ALL matches) when available,
+  // fall back to client-side counts from loaded results when facets haven't loaded yet
   const appCounts = useMemo(() => {
+    if (facetApps.length > 0 && !timeFilter) return facetApps;
     const source = timeFilter
       ? searchResults.filter(r => matchesTimeFilter(r.timestamp))
       : searchResults;
@@ -613,7 +594,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
       counts.set(r.app_name, (counts.get(r.app_name) || 0) + 1);
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [searchResults, timeFilter, matchesTimeFilter]);
+  }, [facetApps, searchResults, timeFilter, matchesTimeFilter]);
 
   const filteredResults = useMemo(() => {
     let results = searchResults;
@@ -947,12 +928,19 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     searchKeywords(debouncedQuery, opts).finally(() => setIsLoadingMore(false));
   }, [isLoadingMore, hasMoreOcr, debouncedQuery, ocrOffset, searchKeywords, timeFilter]);
 
-  // Track if we got fewer results than page size (= no more pages)
+  // Track if we got fewer results than page size (= no more pages).
+  // The server may filter results after fetching (e.g. app_name filter),
+  // so we only stop when we get zero new results — not just fewer than PAGE_SIZE.
+  const prevResultsLengthRef = useRef(0);
   useEffect(() => {
-    if (searchResults.length > 0 && searchResults.length < (ocrOffset + OCR_PAGE_SIZE)) {
+    const prevLen = prevResultsLengthRef.current;
+    const curLen = searchResults.length;
+    prevResultsLengthRef.current = curLen;
+    // After a load-more, if no new results were added, we've exhausted all pages
+    if (ocrOffset > 0 && curLen === prevLen && !isSearching) {
       setHasMoreOcr(false);
     }
-  }, [searchResults.length, ocrOffset]);
+  }, [searchResults.length, ocrOffset, isSearching]);
 
   // Load more speaker transcriptions
   const loadMoreTranscriptions = useCallback(async () => {
@@ -1109,12 +1097,14 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     };
   }, [isOpen, selectedSpeaker, onClose, onNavigateToTimestamp, handleSelectResult, handleSendToAI, handleBackFromSpeaker]);
 
-  // Scroll selected item into view
+  // Scroll selected item into view (only on arrow-key navigation, not on new page load)
+  const prevSelectedIndex = useRef(selectedIndex);
   useEffect(() => {
-    if (gridRef.current && filteredResults.length > 0) {
+    if (prevSelectedIndex.current !== selectedIndex && gridRef.current && filteredResults.length > 0) {
       const selectedEl = gridRef.current.querySelector(`[data-index="${selectedIndex}"]`);
       selectedEl?.scrollIntoView({ block: "nearest" });
     }
+    prevSelectedIndex.current = selectedIndex;
   }, [selectedIndex, filteredResults.length]);
 
   if (!isOpen) return null;
@@ -1505,6 +1495,60 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             </div>
           )}
 
+          {/* UI event results — shown above screen results so infinite scroll doesn't push them away */}
+          {uiEventResults.length > 0 && contentFilter !== "screen" && (
+            <div className={cn(contentFilter === "all" && "mb-4")}>
+              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
+                <Keyboard className="w-3 h-3" />
+                keyboard & clipboard
+              </p>
+              <div className="flex flex-col gap-2">
+                {(contentFilter === "all" ? uiEventResults.slice(0, 5) : uiEventResults).map((evt) => {
+                  const EvtIcon = evt.event_type === "clipboard" ? ClipboardCopy
+                    : evt.event_type === "app_switch" ? AppWindow
+                    : Keyboard;
+                  return (
+                    <div
+                      key={evt.id}
+                      onClick={() => {
+                        onNavigateToTimestamp(evt.timestamp);
+                        if (!embedded) onClose();
+                      }}
+                      className="cursor-pointer border border-border rounded p-3 hover:border-foreground/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <EvtIcon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs text-foreground line-clamp-2">
+                              {evt.text_content}
+                            </p>
+                            {(evt.app_name || evt.window_title) && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                {[evt.app_name, evt.window_title].filter(Boolean).join(" — ")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground font-mono flex-shrink-0">
+                          {formatRelativeTime(evt.timestamp)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {contentFilter === "all" && uiEventResults.length > 5 && (
+                <button
+                  onClick={() => setContentFilter("input")}
+                  className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  show all {uiEventResults.length} results
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Screen results grid */}
           {searchResults.length > 0 && contentFilter !== "input" && (
             <>
@@ -1706,7 +1750,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
               </div>
 
               {/* Load more indicator */}
-              {(isLoadingMore || (hasMoreOcr && filteredResults.length >= OCR_PAGE_SIZE)) && (
+              {(isLoadingMore || (hasMoreOcr && filteredResults.length > 0)) && (
                 <div className="flex justify-center py-4">
                   {isLoadingMore ? (
                     <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -1718,59 +1762,6 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             </>
           )}
 
-          {/* UI event results */}
-          {uiEventResults.length > 0 && contentFilter !== "screen" && (
-            <div className={cn(contentFilter === "all" && searchResults.length > 0 && "mt-6")}>
-              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
-                <Keyboard className="w-3 h-3" />
-                keyboard & clipboard
-              </p>
-              <div className="flex flex-col gap-2">
-                {(contentFilter === "all" ? uiEventResults.slice(0, 5) : uiEventResults).map((evt) => {
-                  const EvtIcon = evt.event_type === "clipboard" ? ClipboardCopy
-                    : evt.event_type === "app_switch" ? AppWindow
-                    : Keyboard;
-                  return (
-                    <div
-                      key={evt.id}
-                      onClick={() => {
-                        onNavigateToTimestamp(evt.timestamp);
-                        if (!embedded) onClose();
-                      }}
-                      className="cursor-pointer border border-border rounded p-3 hover:border-foreground/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 min-w-0">
-                          <EvtIcon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-foreground line-clamp-2">
-                              {evt.text_content}
-                            </p>
-                            {(evt.app_name || evt.window_title) && (
-                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                                {[evt.app_name, evt.window_title].filter(Boolean).join(" — ")}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <span className="text-[11px] text-muted-foreground font-mono flex-shrink-0">
-                          {formatRelativeTime(evt.timestamp)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {contentFilter === "all" && uiEventResults.length > 5 && (
-                <button
-                  onClick={() => setContentFilter("input")}
-                  className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                >
-                  show all {uiEventResults.length} results
-                </button>
-              )}
-            </div>
-          )}
 
           {/* Suggestions when no query */}
           {!debouncedQuery && !isSearching && (

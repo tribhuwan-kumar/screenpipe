@@ -237,14 +237,28 @@ pub async fn reconcile_untranscribed(
             }
         };
 
-        // Silent audio: delete all chunks in this batch so they don't zombie-loop
+        // Silent audio: delete chunks only if they're old enough (2+ hours) to avoid
+        // nuking audio from active calls where pauses produce empty transcriptions.
         if full_text.trim().is_empty() {
+            let min_age = chrono::Duration::hours(2);
+            let cutoff = chrono::Utc::now() - min_age;
+            let old_chunks: Vec<_> = valid_chunks
+                .iter()
+                .filter(|c| c.timestamp < cutoff)
+                .collect();
+            if old_chunks.is_empty() {
+                debug!(
+                    "reconciliation: batch for {} produced empty transcription, but chunks are too recent to delete — skipping",
+                    device_name
+                );
+                continue;
+            }
             debug!(
-                "reconciliation: batch for {} produced empty transcription, deleting {} silent chunks",
+                "reconciliation: batch for {} produced empty transcription, deleting {} silent chunks (>2h old)",
                 device_name,
-                valid_chunks.len()
+                old_chunks.len()
             );
-            for chunk in &valid_chunks {
+            for chunk in &old_chunks {
                 if let Err(e) = db.delete_audio_chunk(chunk.id).await {
                     warn!(
                         "reconciliation: failed to delete silent chunk {}: {}",
@@ -253,7 +267,7 @@ pub async fn reconcile_untranscribed(
                 }
                 let _ = std::fs::remove_file(&chunk.file_path);
             }
-            success_count += valid_chunks.len();
+            success_count += old_chunks.len();
             continue;
         }
 
