@@ -181,6 +181,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		selectedDomain,
 		selectedSpeaker,
 		selectedTag,
+		selectedMeeting,
 		matchingIndices,
 		resetFilters,
 		allDeviceIds,
@@ -190,6 +191,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		handleDomainChange,
 		handleSpeakerChange,
 		handleTagChange,
+		handleMeetingChange,
 		findNextDevice,
 		selectedDeviceIdRef,
 		selectedAppNameRef,
@@ -202,6 +204,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		setCurrentIndex,
 		setCurrentFrame,
 		tags,
+		meetings,
 	});
 
 	// Audio playback engine
@@ -1303,6 +1306,9 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 							onSpeakerChange={handleSpeakerChange}
 							selectedTag={selectedTag}
 							onTagChange={handleTagChange}
+							meetings={meetings}
+							selectedMeeting={selectedMeeting}
+							onMeetingChange={handleMeetingChange}
 							onRefresh={handleRefresh}
 						/>
 					) : (
