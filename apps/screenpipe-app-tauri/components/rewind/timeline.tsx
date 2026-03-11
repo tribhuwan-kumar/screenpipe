@@ -756,6 +756,19 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 		getStartDateAndSet();
 	}, []);
 
+	// Keep the end date fresh so the timeline doesn't get stuck at an old boundary
+	useEffect(() => {
+		const updateEnd = () => {
+			setStartAndEndDates((prev) => ({
+				...prev,
+				end: new Date(),
+			}));
+		};
+		// Update every minute
+		const interval = setInterval(updateEnd, 60_000);
+		return () => clearInterval(interval);
+	}, []);
+
 	const MAX_DATE_RETRIES = 7; // Don't walk back more than 7 days
 
 	useEffect(() => {

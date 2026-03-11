@@ -4,7 +4,7 @@
 import { StreamTimeSeriesResponse, TimeRange } from "@/components/rewind/timeline";
 import { useTimelineSelection } from "@/lib/hooks/use-timeline-selection";
 import { getStore, type ChatConversation } from "@/lib/hooks/use-settings";
-import { isAfter, subDays, format } from "date-fns";
+import { isAfter, subDays, addDays, startOfDay, format } from "date-fns";
 import { motion } from "framer-motion";
 import { ZoomIn, ZoomOut, Mic, Monitor, AppWindow, Globe, Hash, RotateCcw } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -287,7 +287,9 @@ export const TimelineSlider = ({
 }: TimelineSliderProps) => {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const observerTargetRef = useRef<HTMLDivElement>(null);
+	const forwardObserverTargetRef = useRef<HTMLDivElement>(null);
 	const lastFetchRef = useRef<Date | null>(null);
+	const lastForwardFetchRef = useRef<Date | null>(null);
 
 	const [hoveredTimestamp, setHoveredTimestamp] = useState<string | null>(null);
 	const [hoveredRect, setHoveredRect] = useState<{ x: number; y: number } | null>(null);
@@ -753,6 +755,40 @@ export const TimelineSlider = ({
 		return () => observer.disconnect();
 	}, [fetchNextDayData, currentDate, startAndEndDates]);
 
+	// Forward observer: fetch newer day's data when scrolling left (toward newer frames)
+	useEffect(() => {
+		const forwardTarget = forwardObserverTargetRef.current;
+		if (!forwardTarget) return;
+
+		const forwardObserver = new IntersectionObserver(
+			(entries) => {
+				const entry = entries[0];
+				if (!entry.isIntersecting) return;
+
+				const nextDate = addDays(currentDate, 1);
+				const today = startOfDay(new Date());
+				const now = new Date();
+				const canFetch =
+					!lastForwardFetchRef.current ||
+					now.getTime() - lastForwardFetchRef.current.getTime() > 1000;
+
+				// Don't fetch beyond today
+				if (!isAfter(startOfDay(nextDate), today) && canFetch) {
+					lastForwardFetchRef.current = now;
+					fetchNextDayData(nextDate);
+				}
+			},
+			{
+				root: containerRef.current,
+				threshold: 1.0,
+				rootMargin: "0px 0px 0px 20%",
+			},
+		);
+
+		forwardObserver.observe(forwardTarget);
+		return () => forwardObserver.disconnect();
+	}, [fetchNextDayData, currentDate]);
+
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container || !frames[currentIndex]) return;
@@ -1207,6 +1243,7 @@ export const TimelineSlider = ({
 					onMouseUp={handleDragEnd}
 					onMouseLeave={handleDragEnd}
 				>
+					<div ref={forwardObserverTargetRef} className="h-full w-1" />
 					{appGroups.map((group, groupIndex) => {
 						const groupWidth = getGroupWidth(group);
 						const showLabel = groupWidth > 60; // Only show label if group is wide enough

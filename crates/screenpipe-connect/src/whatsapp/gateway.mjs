@@ -30,6 +30,30 @@ const SESSION_DIR = process.env.WHATSAPP_SESSION_DIR || join(homedir(), ".screen
 const HTTP_PORT = parseInt(process.env.WHATSAPP_HTTP_PORT || "3035", 10);
 mkdirSync(SESSION_DIR, { recursive: true });
 
+// Self-terminate when parent process dies.
+// Two mechanisms: (1) stdin EOF — fires when parent closes pipes (normal exit),
+// (2) PPID polling — catches SIGKILL/crash where pipes aren't cleaned up.
+process.stdin.resume();
+process.stdin.on("end", () => {
+  process.exit(0);
+});
+process.stdin.on("error", () => {
+  process.exit(0);
+});
+
+const parentPid = process.ppid;
+if (parentPid && parentPid !== 1) {
+  setInterval(() => {
+    try {
+      // signal 0 checks if process exists without sending a signal
+      process.kill(parentPid, 0);
+    } catch {
+      // parent is gone
+      process.exit(0);
+    }
+  }, 5000);
+}
+
 let sock = null;
 // In-memory contact store — populated from contacts.update events
 const contactStore = {};
