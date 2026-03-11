@@ -715,9 +715,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
           CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX512=OFF -DGGML_AVX512_VBMI=OFF -DGGML_AVX512_VNNI=OFF -DGGML_AVX512_BF16=OFF
-          # Prevent linuxdeploy from running ldd on sidecar binaries (bun is statically linked)
           NO_STRIP: true
-        run: bunx tauri build --verbose --target ${{ matrix.target }} --features official-build
+        run: |
+          # Build without bundling first, then bundle deb only (skip AppImage which crashes on bun sidecar)
+          # The bun sidecar is statically linked (musl) and linuxdeploy's ldd scan crashes on it
+          bunx tauri build --verbose --target ${{ matrix.target }} --features official-build --bundles deb
 
       - name: Build (Windows)
         if: matrix.os_type == 'windows'
