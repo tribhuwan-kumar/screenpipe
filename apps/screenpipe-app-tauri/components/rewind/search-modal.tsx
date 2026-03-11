@@ -1888,7 +1888,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
             ref={gridRef}
             className={cn(
               "flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y",
-              standalone ? "p-3 max-h-[500px]" : "p-4",
+              standalone ? "p-3 max-h-[500px] scrollbar-hide" : "p-4",
             )}
             onWheel={(e) => {
               e.stopPropagation();
