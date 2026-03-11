@@ -2403,16 +2403,21 @@ async fn main() {
                     // Shut down embedded server (incl. audio manager / ggml Metal cleanup)
                     // MUST happen synchronously before exit() runs C++ static destructors,
                     // otherwise the ggml Metal device destructor hits a freed resource → SIGABRT.
+                    //
+                    // Run on a dedicated thread to avoid "Cannot start a runtime from within
+                    // a runtime" panic when the Exit event fires from a tokio async context.
                     let app_handle_shutdown = app_handle.app_handle().clone();
-                    let _ = tauri::async_runtime::block_on(async move {
-                        if let Some(recording_state) =
-                            app_handle_shutdown.try_state::<recording::RecordingState>()
-                        {
-                            if let Some(handle) = recording_state.handle.lock().await.take() {
-                                handle.shutdown_and_wait().await;
+                    let _ = std::thread::spawn(move || {
+                        tauri::async_runtime::block_on(async move {
+                            if let Some(recording_state) =
+                                app_handle_shutdown.try_state::<recording::RecordingState>()
+                            {
+                                if let Some(handle) = recording_state.handle.lock().await.take() {
+                                    handle.shutdown_and_wait().await;
+                                }
                             }
-                        }
-                    });
+                        })
+                    }).join();
 
                     // Cleanup Pi sidecar
                     let app_handle_pi = app_handle.app_handle().clone();
