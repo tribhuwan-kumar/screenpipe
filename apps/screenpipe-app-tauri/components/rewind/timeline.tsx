@@ -898,8 +898,12 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	// (order_out) so frames could be stale/empty. navigateDirectToDate does
 	// a fresh fetch and uses pendingNavigationRef to jump once frames arrive.
 	useEffect(() => {
+		let lastHandledTs = "";
 		const unlisten = listen<{ timestamp: string }>("search-navigate-to-timestamp", (event) => {
 			const timestamp = event.payload.timestamp;
+			// Deduplicate — Rust emits multiple times to survive mount race
+			if (timestamp === lastHandledTs) return;
+			lastHandledTs = timestamp;
 			const targetDate = new Date(timestamp);
 			setSeekingTimestamp(timestamp);
 			setSearchNavFrame(true);
