@@ -534,45 +534,15 @@ async fn apply_shortcuts(app: &AppHandle, config: &ShortcutConfig) -> Result<(),
     )
     .await?;
 
-    // Register search shortcut (global - opens overlay with search focused) (defer off event stack)
+    // Register search shortcut (global - opens floating Search bar only, hides timeline)
     register_shortcut(app, &config.search, config.is_disabled("search"), |app| {
         let app_for_closure = app.clone();
         let _ = app.run_on_main_thread(move || {
             let app = &app_for_closure;
             info!("search shortcut triggered");
-            let mut needed_show = false;
-            // Always show the overlay, then emit search event to focus the search input
-            {
-                use crate::store::SettingsStore;
-                use crate::window_api::main_label_for_mode;
-                let mode = SettingsStore::get(app)
-                    .unwrap_or_default()
-                    .unwrap_or_default()
-                    .overlay_mode;
-                let label = main_label_for_mode(&mode);
-                if let Some(window) = app.get_webview_window(label) {
-                    let needs_show = !window.is_visible().unwrap_or(false)
-                        || window.is_minimized().unwrap_or(false);
-                    if needs_show {
-                        show_main_window(app, false);
-                        needed_show = true;
-                    }
-                } else {
-                    show_main_window(app, false);
-                    needed_show = true;
-                }
-            }
-            if needed_show {
-                // Webview was just created/shown — the frontend listener hasn't
-                // mounted yet, so emit with a delay to let the page load.
-                let app_clone = app.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    let _ = app_clone.emit("open-search", ());
-                });
-            } else {
-                let _ = app.emit("open-search", ());
-            }
+            // Hide Main timeline if visible so only the search bar shows
+            hide_main_window(app);
+            let _ = ShowRewindWindow::Search { query: None }.show(app);
         });
     })
     .await?;
@@ -1346,6 +1316,7 @@ async fn main() {
                 commands::open_google_calendar_auth_window,
                 commands::ensure_webview_focus,
                 commands::close_window,
+                commands::resize_search_window,
                 commands::reset_main_window,
                 commands::set_window_size,
                 // Onboarding commands
@@ -1483,11 +1454,11 @@ async fn main() {
                 #[cfg(target_os = "windows")]
                 {
                     if window.label() == "home" {
-                        // Let the close proceed (don't prevent it)
-                        return;
-                    } else if window.label() == "main-window" {
+                        // Minimize instead of closing so the Home window stays in the
+                        // taskbar as the persistent app icon.
                         let _ = window.minimize();
                     } else {
+                        // Overlay and other windows: hide (they're skip_taskbar anyway)
                         let _ = window.hide();
                     }
                 }
@@ -1579,6 +1550,7 @@ async fn main() {
             commands::open_login_window,
             commands::ensure_webview_focus,
             commands::close_window,
+            commands::resize_search_window,
             commands::reset_main_window,
             commands::set_window_size,
             // Permission recovery commands

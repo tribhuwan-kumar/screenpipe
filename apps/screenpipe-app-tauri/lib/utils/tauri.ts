@@ -246,6 +246,17 @@ async closeWindow(window: ShowRewindWindow) : Promise<Result<null, string>> {
 }
 },
 /**
+ * Resize the Search NSPanel. Regular Tauri setSize doesn't work on NSPanels.
+ */
+async resizeSearchWindow(width: number, height: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("resize_search_window", { width, height }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Hide the Main panel so the next shortcut press reconfigures it for the new mode.
  */
 async resetMainWindow() : Promise<void> {

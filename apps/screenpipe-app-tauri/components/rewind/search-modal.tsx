@@ -6,6 +6,7 @@ import { useKeywordSearchStore, SearchMatch, UiEventResult } from "@/lib/hooks/u
 import { useSearchHighlight } from "@/lib/hooks/use-search-highlight";
 import { useSearchFocus } from "./hooks/use-search-focus";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { format, isToday, isYesterday } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,8 @@ interface SearchModalProps {
   onClose: () => void;
   onNavigateToTimestamp: (timestamp: string) => void;
   embedded?: boolean;
+  /** When true, this is rendered in its own Tauri window (no backdrop, always open) */
+  standalone?: boolean;
 }
 
 // stopwords to filter out from suggestions — keep this minimal so real
@@ -287,7 +290,47 @@ function formatRelativeTime(timestamp: string): string {
   return format(date, "MMM d") + " " + time;
 }
 
-export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded = false }: SearchModalProps) {
+/** Compact keyboard/clipboard result item — shows 1 line by default, expands on click */
+function UiEventItem({ evt, onNavigate }: { evt: UiEventResult; onNavigate: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const EvtIcon = evt.event_type === "clipboard" ? ClipboardCopy
+    : evt.event_type === "app_switch" ? AppWindow
+    : Keyboard;
+
+  return (
+    <div
+      className="cursor-pointer border border-border rounded p-2 hover:border-foreground/50 transition-colors"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className="flex items-start gap-2 min-w-0 flex-1"
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+        >
+          <EvtIcon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+          <div className="min-w-0">
+            <p className={cn("text-xs text-foreground", !expanded && "line-clamp-1")}>
+              {evt.text_content}
+            </p>
+            {(evt.app_name || evt.window_title) && (
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                {[evt.app_name, evt.window_title].filter(Boolean).join(" — ")}
+              </p>
+            )}
+          </div>
+        </div>
+        <span
+          className="text-[11px] text-muted-foreground font-mono flex-shrink-0 hover:text-foreground hover:underline"
+          onClick={onNavigate}
+          title="Go to timestamp"
+        >
+          {formatRelativeTime(evt.timestamp)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded = false, standalone = false }: SearchModalProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -1107,6 +1150,18 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     prevSelectedIndex.current = selectedIndex;
   }, [selectedIndex, filteredResults.length]);
 
+  // Standalone: resize Tauri window based on content state.
+  // DOM measurement fails because the small window viewport constrains layout.
+  const hasAnyResults = searchResults.length > 0 || speakerResults.length > 0 || tagResults.length > 0 || uiEventResults.length > 0;
+  const hasVisibleContent = hasAnyResults || (debouncedQuery && debouncedQuery.trim().length >= 2) || isSearching || isSearchingSpeakers || isSearchingTags || isSearchingUiEvents;
+  // input ~52px; footer ~28px; results up to ~380px
+  const standaloneTargetH = hasVisibleContent ? 580 : 80;
+
+  useEffect(() => {
+    if (!standalone || !isOpen) return;
+    invoke("resize_search_window", { width: 680, height: standaloneTargetH }).catch(() => {});
+  }, [standalone, isOpen, standaloneTargetH]);
+
   if (!isOpen) return null;
 
   const hasResults = searchResults.length > 0 || speakerResults.length > 0 || tagResults.length > 0 || uiEventResults.length > 0;
@@ -1503,40 +1558,16 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
                 keyboard & clipboard
               </p>
               <div className="flex flex-col gap-2">
-                {(contentFilter === "all" ? uiEventResults.slice(0, 5) : uiEventResults).map((evt) => {
-                  const EvtIcon = evt.event_type === "clipboard" ? ClipboardCopy
-                    : evt.event_type === "app_switch" ? AppWindow
-                    : Keyboard;
-                  return (
-                    <div
-                      key={evt.id}
-                      onClick={() => {
-                        onNavigateToTimestamp(evt.timestamp);
-                        if (!embedded) onClose();
-                      }}
-                      className="cursor-pointer border border-border rounded p-3 hover:border-foreground/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2 min-w-0">
-                          <EvtIcon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-foreground line-clamp-2">
-                              {evt.text_content}
-                            </p>
-                            {(evt.app_name || evt.window_title) && (
-                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                                {[evt.app_name, evt.window_title].filter(Boolean).join(" — ")}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <span className="text-[11px] text-muted-foreground font-mono flex-shrink-0">
-                          {formatRelativeTime(evt.timestamp)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                {(contentFilter === "all" ? uiEventResults.slice(0, 5) : uiEventResults).map((evt) => (
+                  <UiEventItem
+                    key={evt.id}
+                    evt={evt}
+                    onNavigate={() => {
+                      onNavigateToTimestamp(evt.timestamp);
+                      if (!embedded) onClose();
+                    }}
+                  />
+                ))}
               </div>
               {contentFilter === "all" && uiEventResults.length > 5 && (
                 <button
@@ -1801,12 +1832,21 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     </>
   );
 
-  if (embedded) {
+  if (standalone || embedded) {
+    const hasContent = hasResults || (debouncedQuery && debouncedQuery.trim().length >= 2) || isSearching || isSearchingSpeakers || isSearchingTags || isSearchingUiEvents;
     return (
-      <div className="flex flex-col h-full bg-card">
-        {/* Search Input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-          <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      <div className={cn(
+        "flex flex-col bg-card/95 backdrop-blur-xl",
+        standalone ? "rounded-xl border border-border/50 shadow-2xl overflow-hidden" : "h-full",
+      )}>
+        {/* Search Input — Raycast-style large input */}
+        <div className={cn(
+          "flex items-center gap-3 px-5 border-b border-border/50",
+          standalone ? "py-3.5" : "py-3 px-4",
+        )}
+        data-tauri-drag-region={standalone ? true : undefined}
+        >
+          <Search className="w-4.5 h-4.5 text-muted-foreground flex-shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -1821,8 +1861,11 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
                 setHasMoreTranscriptions(true);
               }
             }}
-            placeholder="Search your memory... (# tags, @ people)"
-            className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground text-sm outline-none"
+            placeholder="search your memory... (# tags, @ people)"
+            className={cn(
+              "flex-1 bg-transparent text-foreground placeholder:text-muted-foreground/60 outline-none",
+              standalone ? "text-base" : "text-sm",
+            )}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -1834,30 +1877,38 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
               onClick={() => setQuery("")}
               className="p-1 hover:bg-muted rounded"
             >
-              <X className="w-3 h-3 text-muted-foreground" />
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           )}
         </div>
 
-        {/* Results area — fills remaining space */}
-        <div
-          ref={gridRef}
-          className="flex-1 min-h-0 overflow-y-auto p-4 overscroll-contain touch-pan-y"
-          onWheel={(e) => {
-            e.stopPropagation();
-            const target = e.currentTarget;
-            const isAtTop = target.scrollTop === 0 && e.deltaY < 0;
-            const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight && e.deltaY > 0;
-            if (isAtTop || isAtBottom) e.preventDefault();
-          }}
-          onTouchMove={(e) => e.stopPropagation()}
-          onScroll={handleScroll}
-        >
-          {renderResults()}
-        </div>
+        {/* Results area — only shown when there's content */}
+        {hasContent && (
+          <div
+            ref={gridRef}
+            className={cn(
+              "flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y",
+              standalone ? "p-3 max-h-[500px]" : "p-4",
+            )}
+            onWheel={(e) => {
+              e.stopPropagation();
+              const target = e.currentTarget;
+              const isAtTop = target.scrollTop === 0 && e.deltaY < 0;
+              const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight && e.deltaY > 0;
+              if (isAtTop || isAtBottom) e.preventDefault();
+            }}
+            onTouchMove={(e) => e.stopPropagation()}
+            onScroll={handleScroll}
+          >
+            {renderResults()}
+          </div>
+        )}
 
-        {/* Footer */}
-        <div className="px-4 py-2 border-t border-border bg-muted/30 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+        {/* Footer — compact keyboard hints */}
+        <div className={cn(
+          "px-4 py-1.5 border-t border-border/50 flex items-center justify-between text-[10px] text-muted-foreground/70 font-mono",
+          standalone ? "bg-muted/20" : "bg-muted/30 py-2",
+        )}>
           <div className="flex items-center gap-4">
             {selectedSpeaker ? (
               <>
@@ -1870,13 +1921,13 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
                 <span>←→↑↓ navigate</span>
                 <span>⏎ go to timeline</span>
                 <span className="flex items-center gap-1">
-                  <MessageSquare className="w-3 h-3" />
+                  <MessageSquare className="w-2.5 h-2.5" />
                   ⌘⏎ ask AI
                 </span>
               </>
             )}
           </div>
-          <span>esc {selectedSpeaker ? "back" : "close"}</span>
+          <span>esc close</span>
         </div>
       </div>
     );
