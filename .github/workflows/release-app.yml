@@ -718,6 +718,18 @@ jobs:
             security find-identity -v -p codesigning "$BUILD_KC" 2>&1 | tail -3
           fi
 
+      - name: Build (Linux)
+        if: matrix.os_type == 'linux'
+        working-directory: apps/screenpipe-app-tauri
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: true
+          CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX512=OFF -DGGML_AVX512_VBMI=OFF -DGGML_AVX512_VNNI=OFF -DGGML_AVX512_BF16=OFF
+        run: bunx tauri build --verbose --target ${{ matrix.target }} --features official-build
+
       - name: Build (Windows)
         if: matrix.os_type == 'windows'
         working-directory: apps/screenpipe-app-tauri
@@ -1026,23 +1038,32 @@ jobs:
           R2_PREFIX="s3://screenpipe-releases/releases/${VERSION}/${TARGET}"
 
           echo "uploading Linux bundles for v${VERSION} to R2..."
+          echo "bundle dir contents:"
+          find "${BUNDLE_DIR}" -type f 2>/dev/null || echo "  (bundle dir not found)"
+
+          UPLOADED=0
 
           # Upload AppImage
           for f in "${BUNDLE_DIR}"/appimage/*.AppImage; do
-            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")"
+            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")" && UPLOADED=$((UPLOADED+1))
           done
 
           # Upload deb
           for f in "${BUNDLE_DIR}"/deb/*.deb; do
-            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")"
+            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")" && UPLOADED=$((UPLOADED+1))
           done
 
           # Upload updater artifacts (.tar.gz + .sig) if present
           for f in "${BUNDLE_DIR}"/appimage/*.tar.gz "${BUNDLE_DIR}"/appimage/*.sig; do
-            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")"
+            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")" && UPLOADED=$((UPLOADED+1))
           done
 
-          echo "R2 upload complete for Linux"
+          if [ "$UPLOADED" -eq 0 ]; then
+            echo "❌ No Linux artifacts found to upload!"
+            exit 1
+          fi
+
+          echo "R2 upload complete for Linux ($UPLOADED files)"
 
   generate-changelog:
     needs: [check_commit, publish-tauri]
