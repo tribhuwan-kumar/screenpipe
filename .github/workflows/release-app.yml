@@ -35,7 +35,6 @@ jobs:
       contents: read
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
-      # publish is now a separate workflow: publish-release.yml
       should_test: ${{ steps.check.outputs.should_test }}
       macos_arm_runner: ${{ steps.check-runner.outputs.macos_arm_runner }}
       windows_runner: ${{ steps.check-runner.outputs.windows_runner }}
@@ -237,12 +236,11 @@ jobs:
             tauri-args: "--target aarch64-pc-windows-msvc --features official-build"
             target: aarch64-pc-windows-msvc
             os_type: "windows"
-          # Linux disabled - too many bundling issues
-          # - platform: "ubuntu-22.04"
-          #   args: "--target x86_64-unknown-linux-gnu"
-          #   target: x86_64-unknown-linux-gnu
-          #   tauri-args: ""
-          #   os_type: "linux"
+          - platform: "ubuntu-22.04"
+            args: "--target x86_64-unknown-linux-gnu"
+            target: x86_64-unknown-linux-gnu
+            tauri-args: "--target x86_64-unknown-linux-gnu --features official-build"
+            os_type: "linux"
 
     runs-on: ${{ matrix.platform == 'macos-26' && fromJSON('["self-hosted", "macos-26"]') || matrix.platform == 'macos-test' && fromJSON('["self-hosted", "macos-test"]') || matrix.platform == 'windows-desktop-test' && fromJSON('["self-hosted", "windows-desktop-test"]') || matrix.platform }}
     timeout-minutes: 120
@@ -1013,6 +1011,38 @@ jobs:
 
           Write-Host "R2 upload complete for Windows"
 
+      - name: Upload to Cloudflare R2 (Linux)
+        if: matrix.os_type == 'linux'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          VERSION=$(grep '^version = ' apps/screenpipe-app-tauri/src-tauri/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          TARGET="${{ matrix.target }}"
+          BUNDLE_DIR="apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/bundle"
+          R2_PREFIX="s3://screenpipe-releases/releases/${VERSION}/${TARGET}"
+
+          echo "uploading Linux bundles for v${VERSION} to R2..."
+
+          # Upload AppImage
+          for f in "${BUNDLE_DIR}"/appimage/*.AppImage; do
+            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")"
+          done
+
+          # Upload deb
+          for f in "${BUNDLE_DIR}"/deb/*.deb; do
+            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")"
+          done
+
+          # Upload updater artifacts (.tar.gz + .sig) if present
+          for f in "${BUNDLE_DIR}"/appimage/*.tar.gz "${BUNDLE_DIR}"/appimage/*.sig; do
+            [ -f "$f" ] && aws s3 cp "$f" "${R2_PREFIX}/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" && echo "  ✅ $(basename "$f")"
+          done
+
+          echo "R2 upload complete for Linux"
 
   generate-changelog:
     needs: [check_commit, publish-tauri]
