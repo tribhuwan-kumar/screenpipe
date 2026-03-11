@@ -717,9 +717,19 @@ jobs:
           CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX512=OFF -DGGML_AVX512_VBMI=OFF -DGGML_AVX512_VNNI=OFF -DGGML_AVX512_BF16=OFF
           NO_STRIP: true
         run: |
-          # Build without bundling first, then bundle deb only (skip AppImage which crashes on bun sidecar)
-          # The bun sidecar is statically linked (musl) and linuxdeploy's ldd scan crashes on it
-          bunx tauri build --verbose --target ${{ matrix.target }} --features official-build --bundles deb
+          # Wrap ldd so linuxdeploy doesn't crash on the statically-linked bun sidecar.
+          # bun is built with musl and ldd exits 1 on it, which kills linuxdeploy's GTK plugin.
+          sudo mv /usr/bin/ldd /usr/bin/ldd.real
+          sudo tee /usr/bin/ldd > /dev/null << 'WRAPPER'
+          #!/bin/bash
+          if [[ "$1" == *"/bun"* ]] || [[ "$1" == *"bun-"* ]]; then
+            echo "	statically linked"
+            exit 0
+          fi
+          exec /usr/bin/ldd.real "$@"
+          WRAPPER
+          sudo chmod +x /usr/bin/ldd
+          bunx tauri build --verbose --target ${{ matrix.target }} --features official-build
 
       - name: Build (Windows)
         if: matrix.os_type == 'windows'
