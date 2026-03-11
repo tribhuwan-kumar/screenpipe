@@ -6,16 +6,13 @@
 
 import { useCallback, useEffect } from "react";
 import { SearchModal } from "@/components/rewind/search-modal";
-import { emit } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { commands } from "@/lib/utils/tauri";
 
 export default function SearchPage() {
 	const handleNavigate = useCallback(async (timestamp: string) => {
-		await commands.showWindow("Main");
-		setTimeout(() => {
-			emit("search-navigate-to-timestamp", { timestamp });
-			commands.closeWindow({ Search: { query: null } });
-		}, 200);
+		// Rust command: shows Main, emits navigation event from app handle, closes Search
+		invoke("search_navigate_to_timeline", { timestamp }).catch(console.error);
 	}, []);
 
 	const handleClose = useCallback(async () => {

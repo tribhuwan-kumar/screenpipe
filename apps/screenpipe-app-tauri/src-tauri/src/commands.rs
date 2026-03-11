@@ -45,35 +45,41 @@ pub fn write_browser_logs(entries: Vec<BrowserLogEntry>) {
 #[tauri::command]
 #[specta::specta]
 pub fn set_tray_unhealth_icon(app_handle: tauri::AppHandle) {
-    if let Some(main_tray) = app_handle.tray_by_id("screenpipe_main") {
-        match tauri::image::Image::from_path("icons/screenpipe-logo-tray-failed.png") {
-            Ok(icon) => {
-                if let Err(e) = crate::safe_icon::safe_set_icon(&main_tray, icon) {
-                    error!("failed to set tray unhealthy icon: {}", e);
+    let app = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(main_tray) = app.tray_by_id("screenpipe_main") {
+            match tauri::image::Image::from_path("icons/screenpipe-logo-tray-failed.png") {
+                Ok(icon) => {
+                    if let Err(e) = crate::safe_icon::safe_set_icon(&main_tray, icon) {
+                        error!("failed to set tray unhealthy icon: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("failed to load tray unhealthy icon: {}", e);
                 }
             }
-            Err(e) => {
-                error!("failed to load tray unhealthy icon: {}", e);
-            }
         }
-    }
+    });
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn set_tray_health_icon(app_handle: tauri::AppHandle) {
-    if let Some(main_tray) = app_handle.tray_by_id("screenpipe_main") {
-        match tauri::image::Image::from_path("icons/screenpipe-logo-tray-black.png") {
-            Ok(icon) => {
-                if let Err(e) = crate::safe_icon::safe_set_icon(&main_tray, icon) {
-                    error!("failed to set tray healthy icon: {}", e);
+    let app = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(main_tray) = app.tray_by_id("screenpipe_main") {
+            match tauri::image::Image::from_path("icons/screenpipe-logo-tray-black.png") {
+                Ok(icon) => {
+                    if let Err(e) = crate::safe_icon::safe_set_icon(&main_tray, icon) {
+                        error!("failed to set tray healthy icon: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("failed to load tray healthy icon: {}", e);
                 }
             }
-            Err(e) => {
-                error!("failed to load tray healthy icon: {}", e);
-            }
         }
-    }
+    });
 }
 
 #[tauri::command]
@@ -528,6 +534,30 @@ pub async fn ensure_webview_focus(app_handle: tauri::AppHandle) -> Result<(), St
     Ok(())
 }
 
+/// Navigate from Search to a timestamp on the Main timeline.
+/// Shows Main, emits the navigation event from the app handle (not a webview),
+/// then closes the Search window.
+#[tauri::command]
+#[specta::specta]
+pub async fn search_navigate_to_timeline(
+    app_handle: tauri::AppHandle,
+    timestamp: String,
+) -> Result<(), String> {
+    // Show the Main timeline
+    ShowRewindWindow::Main.show(&app_handle).map_err(|e| e.to_string())?;
+
+    // Small delay for the Main webview to restore focus and process events
+    let app = app_handle.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+        let _ = app.emit("search-navigate-to-timestamp", serde_json::json!({ "timestamp": timestamp }));
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        let _ = ShowRewindWindow::Search { query: None }.close(&app);
+    });
+
+    Ok(())
+}
+
 /// Resize the Search NSPanel. Regular Tauri setSize doesn't work on NSPanels.
 #[tauri::command]
 #[specta::specta]
@@ -544,6 +574,10 @@ pub async fn resize_search_window(
         let app = app_handle.clone();
         run_on_main_thread_safe(&app_handle, move || {
             let label = RewindWindowId::Search.label();
+            // Check window still exists before touching the panel
+            if app.get_webview_window(&label).is_none() {
+                return;
+            }
             if let Ok(panel) = app.get_webview_panel(&label) {
                 unsafe {
                     use objc::{msg_send, sel, sel_impl};
@@ -558,7 +592,8 @@ pub async fn resize_search_window(
                         NSPoint::new(frame.origin.x, new_y),
                         NSSize::new(width, new_h),
                     );
-                    let _: () = msg_send![&*panel, setFrame: new_frame display: true animate: true];
+                    // animate: false (NO) to avoid use-after-free if panel closes mid-animation
+                    let _: () = msg_send![&*panel, setFrame: new_frame display: true animate: false];
                 }
             } else {
                 // Fallback: try as regular window

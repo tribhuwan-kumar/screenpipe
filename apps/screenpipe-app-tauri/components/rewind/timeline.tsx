@@ -894,28 +894,19 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	};
 
 	// Listen for cross-window search navigation (from separate Search window)
+	// Always use navigateDirectToDate — the Main panel may have been hidden
+	// (order_out) so frames could be stale/empty. navigateDirectToDate does
+	// a fresh fetch and uses pendingNavigationRef to jump once frames arrive.
 	useEffect(() => {
 		const unlisten = listen<{ timestamp: string }>("search-navigate-to-timestamp", (event) => {
 			const timestamp = event.payload.timestamp;
 			const targetDate = new Date(timestamp);
 			setSeekingTimestamp(timestamp);
-			if (!isSameDay(targetDate, currentDate)) {
-				navigateDirectToDate(targetDate);
-			} else {
-				pendingNavigationRef.current = targetDate;
-				const hasTargetDayFrames = frames.some(f =>
-					isSameDay(new Date(f.timestamp), targetDate)
-				);
-				if (hasTargetDayFrames) {
-					setSearchNavFrame(true);
-					jumpToTime(targetDate);
-					pendingNavigationRef.current = null;
-					setSeekingTimestamp(null);
-				}
-			}
+			setSearchNavFrame(true);
+			navigateDirectToDate(targetDate);
 		});
 		return () => { unlisten.then(fn => fn()); };
-	}, [currentDate, frames, navigateDirectToDate, jumpToTime]);
+	}, [navigateDirectToDate]);
 
 	// The same Timeline component is used in both overlay and window mode.
 	// The window sizing/decoration is handled by Rust (window_api.rs).
