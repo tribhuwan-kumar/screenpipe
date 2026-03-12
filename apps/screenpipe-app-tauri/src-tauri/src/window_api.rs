@@ -428,6 +428,13 @@ pub unsafe fn make_nswindow_webview_first_responder(ns_win: tauri_nspanel::cocoa
         // Also schedule on the next run-loop tick to win the race against any
         // deferred responder-chain reset triggered by makeKeyAndOrderFront.
         // Same pattern as make_webview_first_responder for NSPanel.
+        //
+        // SAFETY: retain both objects so they survive until the callback fires.
+        // Without this, hiding/closing the panel between now and the next tick
+        // would leave dangling pointers → use-after-free → SIGSEGV in
+        // objc_autoreleasePoolPop.
+        let _: () = msg_send![ns_win, retain];
+        let _: () = msg_send![wk_view, retain];
         let win_id = ns_win as usize;
         let wk_id = wk_view as usize;
         extern "C" {
@@ -444,10 +451,15 @@ pub unsafe fn make_nswindow_webview_first_responder(ns_win: tauri_nspanel::cocoa
         }
         extern "C" fn set_responder(ctx: *mut std::ffi::c_void) {
             with_autorelease_pool(|| unsafe {
+                use objc::{msg_send, sel, sel_impl};
+                use tauri_nspanel::cocoa::base::id;
                 let ctx = Box::from_raw(ctx as *mut Ctx);
                 let window: id = ctx.win_id as id;
                 let wk: id = ctx.wk_id as id;
                 let _: () = msg_send![window, makeFirstResponder: wk];
+                // Balance the retains from when we scheduled this callback
+                let _: () = msg_send![window, release];
+                let _: () = msg_send![wk, release];
             });
         }
         let ctx = Box::into_raw(Box::new(Ctx { win_id, wk_id }));
@@ -514,7 +526,13 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
     // deferred responder-chain reset triggered by make_key_window().
     // We use dispatch_async(main_queue) so our call lands after AppKit's
     // deferred responder chain updates from the current event.
+    //
+    // SAFETY: retain both objects so they survive until the callback fires.
+    // Without this, hiding/closing the panel between now and the next tick
+    // would leave dangling pointers → use-after-free → SIGSEGV.
     let window: id = msg_send![panel.content_view(), window];
+    let _: () = msg_send![window, retain];
+    let _: () = msg_send![wk_view, retain];
     let panel_id = window as usize;
     let wk_id = wk_view as usize;
     extern "C" {
@@ -533,10 +551,15 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
     }
     extern "C" fn set_responder(ctx: *mut std::ffi::c_void) {
         with_autorelease_pool(|| unsafe {
+            use objc::{msg_send, sel, sel_impl};
+            use tauri_nspanel::cocoa::base::id;
             let ctx = Box::from_raw(ctx as *mut Ctx);
             let window: id = ctx.panel_id as id;
             let wk: id = ctx.wk_id as id;
             let _: () = msg_send![window, makeFirstResponder: wk];
+            // Balance the retains from when we scheduled this callback
+            let _: () = msg_send![window, release];
+            let _: () = msg_send![wk, release];
         });
     }
     let ctx = Box::into_raw(Box::new(Ctx { panel_id, wk_id }));
