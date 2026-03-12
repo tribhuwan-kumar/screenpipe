@@ -24,6 +24,40 @@ use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::time::interval;
 
+use std::sync::OnceLock;
+
+static IS_MACOS_ADMIN: OnceLock<bool> = OnceLock::new();
+
+pub fn is_macos_admin() -> bool {
+    *IS_MACOS_ADMIN.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(output) = std::process::Command::new("id").arg("-Gn").output() {
+                if let Ok(groups) = String::from_utf8(output.stdout) {
+                    return groups.split_whitespace().any(|g| g == "admin");
+                }
+            }
+            false
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            true
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_macos_admin_executes() {
+        // Just verify it doesn't panic
+        let is_admin = is_macos_admin();
+        println!("is_macos_admin: {}", is_admin);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Rollback: download a specific older version from R2 via the website API
 // ---------------------------------------------------------------------------
@@ -68,6 +102,10 @@ pub async fn install_specific_version(app: &tauri::AppHandle, version: &str) -> 
         })?;
 
     info!("rollback: downloading v{}", version);
+
+    if !is_macos_admin() {
+        return Err("rollback requires admin privileges on macOS. please run screenpipe as admin to rollback.".to_string());
+    }
 
     update
         .download_and_install(|_, _| {}, || {})
@@ -247,6 +285,34 @@ impl UpdatesManager {
         }
         if let Some(update) = check_result? {
             *self.update_available.lock().await = true;
+
+            if !is_macos_admin() {
+                warn!("skipping auto-update: user is not a macOS admin");
+                let _ = self.app.emit(
+                    "update-needs-admin",
+                    serde_json::json!({
+                        "version": update.version
+                    }),
+                );
+
+                let app_notif = self.app.clone();
+                let version_str = update.version.clone();
+                let _ = std::thread::spawn(move || {
+                    let _ = app_notif
+                        .notification()
+                        .builder()
+                        .title("screenpipe update available")
+                        .body(format!("update v{} available — ask your admin to install it", version_str))
+                        .show();
+                });
+
+                if let Some(ref item) = self.update_menu_item {
+                    item.set_enabled(false)?;
+                    item.set_text(&format!("ask admin to update v{}", update.version))?;
+                }
+
+                return Ok(false);
+            }
 
             // Emit "update-downloading" immediately so user sees feedback
             let download_info = serde_json::json!({
