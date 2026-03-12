@@ -7,8 +7,8 @@ use std::{path::PathBuf, str::FromStr, sync::Mutex};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, Wry,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder, Wry,
 };
 #[cfg(target_os = "macos")]
 use tauri_nspanel::ManagerExt;
@@ -936,31 +936,52 @@ impl ShowRewindWindow {
             }
 
             if id.label() == RewindWindowId::Search.label() {
-                if let Some(query) = self.metadata() {
-                    let _ = window
-                        .eval(&format!("window.location.replace(`/search/{}`);", query))
-                        .ok();
+                // Navigate to /search to reset state (clear previous results)
+                let nav_url = if let Some(query) = self.metadata() {
+                    format!("/search/{}", query)
+                } else {
+                    "/search".to_string()
+                };
+                let _ = window
+                    .eval(&format!("window.location.replace(`{}`);", nav_url))
+                    .ok();
+
+                // Reposition to center of primary monitor
+                if let Ok(Some(monitor)) = app.primary_monitor() {
+                    let logical: LogicalSize<f64> = monitor.size().to_logical(monitor.scale_factor());
+                    let pos = monitor.position();
+                    let scale = monitor.scale_factor();
+                    let origin_x = pos.x as f64 / scale;
+                    let origin_y = pos.y as f64 / scale;
+                    let bar_w = 680.0_f64.min(logical.width - 40.0);
+                    let bar_h = 80.0;
+                    let x = origin_x + (logical.width - bar_w) / 2.0;
+                    let y = origin_y + logical.height * 0.22;
+                    window.set_size(Size::Logical(LogicalSize::new(bar_w, bar_h))).ok();
+                    window.set_position(Position::Logical(LogicalPosition::new(x, y))).ok();
                 }
-                // Bring Search panel to front above Main (level 1002)
+
+                // Bring to front with high level (already class-swizzled to NSPanel)
                 #[cfg(target_os = "macos")]
                 {
                     let window_clone = window.clone();
                     run_on_main_thread_safe(app, move || {
                         use objc::{msg_send, sel, sel_impl};
-                        if let Ok(panel) = window_clone.to_panel() {
-                            panel.set_level(1002);
-                            panel.order_front_regardless();
+                        use tauri_nspanel::cocoa::base::id;
+                        if let Ok(ns_win) = window_clone.ns_window() {
+                            let ns_win = ns_win as id;
                             unsafe {
-                                let _: () = msg_send![&*panel, makeKeyWindow];
+                                let _: () = msg_send![ns_win, setLevel: 1002_i64];
+                                let _: () = msg_send![ns_win, orderFrontRegardless];
+                                let _: () = msg_send![ns_win, makeKeyWindow];
                             }
-                        } else {
-                            let _ = window_clone.show();
                         }
                     });
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
                     window.show().ok();
+                    window.set_focus().ok();
                 }
                 return Ok(window);
             }
@@ -1739,6 +1760,7 @@ impl ShowRewindWindow {
                 .decorations(false)
                 .transparent(true)
                 .always_on_top(true)
+                .visible_on_all_workspaces(true)
                 .inner_size(bar_w, bar_h)
                 .min_inner_size(400.0, 56.0)
                 .position(x, y)
@@ -1747,52 +1769,50 @@ impl ShowRewindWindow {
 
                 let window = builder.build()?;
 
-                // Convert to NSPanel at level 1002 so it floats above Main (1001)
+                // Skip NSPanel conversion for search — it causes SIGSEGV crashes
+                // in objc_autoreleasePoolPop on macOS 26. Use raw NSWindow level
+                // instead to float above fullscreen apps without NSPanel.
                 #[cfg(target_os = "macos")]
                 {
-                    if let Ok(_panel) = window.to_panel() {
-                        info!("search window converted to panel");
-                    }
                     let window_clone = window.clone();
                     run_on_main_thread_safe(app, move || {
-                        use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
                         use objc::{msg_send, sel, sel_impl};
-
-                        if let Ok(panel) = window_clone.to_panel() {
-                            // Level 1002 — above Main timeline (1001)
-                            panel.set_level(1002);
-
-                            // NSNonactivatingPanelMask (128) — critical for appearing
-                            // over fullscreen apps without triggering Space switch
+                        use tauri_nspanel::cocoa::base::id;
+                        use tauri_nspanel::objc_foundation::INSObject;
+                        use tauri_nspanel::raw_nspanel::object_setClass;
+                        if let Ok(ns_win) = window_clone.ns_window() {
+                            let ns_win = ns_win as id;
                             unsafe {
-                                let current: i32 = msg_send![&*panel, styleMask];
-                                panel.set_style_mask(current | 128);
+                                // Swizzle NSWindow → NSPanel class for non-activating behavior
+                                // Do NOT use to_panel() — its Id::from_retained_ptr causes
+                                // use-after-free on window.close() → SIGSEGV
+                                let nspanel_class: id = msg_send![
+                                    tauri_nspanel::raw_nspanel::RawNSPanel::class(), class
+                                ];
+                                object_setClass(ns_win, nspanel_class);
+
+                                // Level 1002 — above fullscreen (CGShieldingWindowLevel+2)
+                                let _: () = msg_send![ns_win, setLevel: 1002_i64];
+
+                                // NSNonactivatingPanelMask (128) — appear over fullscreen
+                                // without triggering Space switch
+                                let current: i32 = msg_send![ns_win, styleMask];
+                                let _: () = msg_send![ns_win, setStyleMask: current | 128];
+
+                                // CanJoinAllSpaces (1) + FullScreenAuxiliary (256)
+                                let _: () = msg_send![ns_win, setCollectionBehavior: 257_u64];
+
+                                let _: () = msg_send![ns_win, setHidesOnDeactivate: false];
+                                let _: () = msg_send![ns_win, orderFrontRegardless];
+                                let _: () = msg_send![ns_win, makeKeyWindow];
                             }
-
-                            panel.set_hides_on_deactivate(false);
-
-                            // Full-screen + move-to-active-space behaviors
-                            panel.set_collection_behaviour(
-                                NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
-                                | NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary,
-                            );
-
-                            panel.order_front_regardless();
-
-                            // Make the panel key so the search input receives keyboard focus
-                            unsafe {
-                                let _: () = msg_send![&*panel, makeKeyWindow];
-                            }
-                        } else {
-                            info!("search panel conversion failed, showing as regular window");
-                            let _ = window_clone.show();
                         }
                     });
                 }
-
                 #[cfg(not(target_os = "macos"))]
                 {
                     let _ = window.show();
+                    window.set_focus().ok();
                 }
 
                 window
@@ -1860,47 +1880,47 @@ impl ShowRewindWindow {
 
                             if let Ok(panel) = window_clone.to_panel() {
                                 let chat_on_top = SettingsStore::get(window_clone.app_handle())
-                                    .unwrap_or_default()
-                                    .unwrap_or_default()
-                                    .chat_always_on_top;
+                                .unwrap_or_default()
+                                .unwrap_or_default()
+                                .chat_always_on_top;
 
-                                if chat_on_top {
-                                    // Level 1001 to appear above fullscreen apps
-                                    panel.set_level(1001);
-                                    // NonActivatingPanel (128) so clicking the chat doesn't
-                                    // activate the app (which would switch Spaces away from
-                                    // fullscreen apps). Preserve existing style bits.
-                                    unsafe {
-                                        let current: i32 = msg_send![&*panel, styleMask];
-                                        panel.set_style_mask(current | 128);
-                                    }
-                                } else {
-                                    panel.set_level(0);
+                            if chat_on_top {
+                                // Level 1001 to appear above fullscreen apps
+                                panel.set_level(1001);
+                                // NonActivatingPanel (128) so clicking the chat doesn't
+                                // activate the app (which would switch Spaces away from
+                                // fullscreen apps). Preserve existing style bits.
+                                unsafe {
+                                    let current: i32 = msg_send![&*panel, styleMask];
+                                    panel.set_style_mask(current | 128);
                                 }
+                            } else {
+                                panel.set_level(0);
+                            }
 
-                                // Don't hide when app deactivates
-                                panel.set_hides_on_deactivate(false);
+                            // Don't hide when app deactivates
+                            panel.set_hides_on_deactivate(false);
 
-                                // Enable dragging by clicking anywhere on the window background
-                                let _: () = unsafe {
-                                    msg_send![&*panel, setMovableByWindowBackground: true]
-                                };
+                            // Enable dragging by clicking anywhere on the window background
+                            let _: () = unsafe {
+                                msg_send![&*panel, setMovableByWindowBackground: true]
+                            };
 
-                                // NSWindowSharingNone=0 hides from screen recorders, NSWindowSharingReadOnly=1 allows capture
-                                let capturable = SettingsStore::get(window_clone.app_handle())
-                                    .unwrap_or_default()
-                                    .unwrap_or_default()
-                                    .show_overlay_in_screen_recording;
-                                let sharing: u64 = if capturable { 1 } else { 0 };
-                                let _: () = unsafe { msg_send![&*panel, setSharingType: sharing] };
+                            // NSWindowSharingNone=0 hides from screen recorders, NSWindowSharingReadOnly=1 allows capture
+                            let capturable = SettingsStore::get(window_clone.app_handle())
+                                .unwrap_or_default()
+                                .unwrap_or_default()
+                                .show_overlay_in_screen_recording;
+                            let sharing: u64 = if capturable { 1 } else { 0 };
+                            let _: () = unsafe { msg_send![&*panel, setSharingType: sharing] };
 
-                                // MoveToActiveSpace so show_existing can pull
-                                // it to any Space (including fullscreen).
-                                panel.set_collection_behaviour(
-                                    NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace |
-                                    NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle |
-                                    NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
-                                );
+                            // MoveToActiveSpace so show_existing can pull
+                            // it to any Space (including fullscreen).
+                            panel.set_collection_behaviour(
+                                NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace |
+                                NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle |
+                                NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary
+                            );
                             }
                         });
                     }
