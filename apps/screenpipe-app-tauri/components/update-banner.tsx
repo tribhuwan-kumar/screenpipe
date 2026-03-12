@@ -30,10 +30,6 @@ interface AuthRequiredInfo {
   message: string;
 }
 
-interface NeedsAdminInfo {
-  version: string;
-}
-
 interface UpdateBannerState {
   isVisible: boolean;
   updateInfo: UpdateInfo | null;
@@ -42,7 +38,6 @@ interface UpdateBannerState {
   downloadProgress: DownloadProgress | null;
   pendingUpdate: Update | null;
   authRequired: AuthRequiredInfo | null;
-  needsAdmin: NeedsAdminInfo | null;
   setIsVisible: (visible: boolean) => void;
   setUpdateInfo: (info: UpdateInfo | null) => void;
   setIsInstalling: (installing: boolean) => void;
@@ -50,7 +45,6 @@ interface UpdateBannerState {
   setDownloadProgress: (progress: DownloadProgress | null) => void;
   setPendingUpdate: (update: Update | null) => void;
   setAuthRequired: (info: AuthRequiredInfo | null) => void;
-  setNeedsAdmin: (info: NeedsAdminInfo | null) => void;
 }
 
 export const useUpdateBanner = create<UpdateBannerState>((set) => ({
@@ -61,7 +55,6 @@ export const useUpdateBanner = create<UpdateBannerState>((set) => ({
   downloadProgress: null,
   pendingUpdate: null,
   authRequired: null,
-  needsAdmin: null,
   setIsVisible: (visible) => set({ isVisible: visible }),
   setUpdateInfo: (info) => set({ updateInfo: info }),
   setIsInstalling: (installing) => set({ isInstalling: installing }),
@@ -69,7 +62,6 @@ export const useUpdateBanner = create<UpdateBannerState>((set) => ({
   setDownloadProgress: (progress) => set({ downloadProgress: progress }),
   setPendingUpdate: (update) => set({ pendingUpdate: update }),
   setAuthRequired: (info) => set({ authRequired: info }),
-  setNeedsAdmin: (info) => set({ needsAdmin: info }),
 }));
 
 interface UpdateBannerProps {
@@ -79,7 +71,7 @@ interface UpdateBannerProps {
 
 export function UpdateBanner({ className, compact = false }: UpdateBannerProps) {
   const isEnterprise = useIsEnterpriseBuild();
-  const { isVisible, updateInfo, isInstalling, isDownloading, downloadProgress, setIsVisible, setIsInstalling, pendingUpdate, authRequired, setAuthRequired, needsAdmin, setNeedsAdmin } = useUpdateBanner();
+  const { isVisible, updateInfo, isInstalling, isDownloading, downloadProgress, setIsVisible, setIsInstalling, pendingUpdate, authRequired, setAuthRequired } = useUpdateBanner();
   const { toast } = useToast();
 
   if (isEnterprise) return null;
@@ -189,41 +181,6 @@ export function UpdateBanner({ className, compact = false }: UpdateBannerProps) 
             size="sm"
             className="h-7 w-7 p-0"
             onClick={() => setAuthRequired(null)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Show needs-admin state — macOS non-admin users need admin to install
-  if (needsAdmin) {
-    if (compact) {
-      return (
-        <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}>
-          <Sparkles className="h-3 w-3 text-primary" />
-          <span>v{needsAdmin.version} available (admin needed)</span>
-        </div>
-      );
-    }
-    return (
-      <div className={cn(
-        "flex items-center justify-between gap-3 px-3 py-2 bg-muted/50 border-b text-sm",
-        className
-      )}>
-        <div className="flex items-center gap-2 flex-1">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span>
-            screenpipe <span className="font-medium">v{needsAdmin.version}</span> is available — ask your admin to install it
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            onClick={() => setNeedsAdmin(null)}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -342,7 +299,7 @@ export function UpdateBanner({ className, compact = false }: UpdateBannerProps) 
 
 // Hook to listen for update events from Rust
 export function useUpdateListener() {
-  const { setIsVisible, setUpdateInfo, setIsDownloading, setDownloadProgress, setAuthRequired, setNeedsAdmin } = useUpdateBanner();
+  const { setIsVisible, setUpdateInfo, setIsDownloading, setDownloadProgress, setAuthRequired } = useUpdateBanner();
 
   useEffect(() => {
     let unlistenAvailable: (() => void) | undefined;
@@ -350,7 +307,6 @@ export function useUpdateListener() {
     let unlistenDownloading: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
     let unlistenAuth: (() => void) | undefined;
-    let unlistenNeedsAdmin: (() => void) | undefined;
 
     const setupListeners = async () => {
       // Listen for download starting (shows banner immediately)
@@ -384,12 +340,6 @@ export function useUpdateListener() {
         setIsDownloading(false);
         setDownloadProgress(null);
       });
-
-      unlistenNeedsAdmin = await listen<NeedsAdminInfo>("update-needs-admin", (event) => {
-        setNeedsAdmin(event.payload);
-        setIsDownloading(false);
-        setDownloadProgress(null);
-      });
     };
 
     setupListeners();
@@ -400,7 +350,6 @@ export function useUpdateListener() {
       unlistenDownloading?.();
       unlistenProgress?.();
       unlistenAuth?.();
-      unlistenNeedsAdmin?.();
     };
-  }, [setIsVisible, setUpdateInfo, setIsDownloading, setDownloadProgress, setAuthRequired, setNeedsAdmin]);
+  }, [setIsVisible, setUpdateInfo, setIsDownloading, setDownloadProgress, setAuthRequired]);
 }
