@@ -1499,7 +1499,8 @@ export const TimelineSlider = ({
 										frameDate <= selectionRange.end;
 
 									const hasAudio = frame?.devices?.some((d) => d.audio?.some((a) => a.transcription?.trim()));
-									const isCurrent = frameIndex === currentIndex;
+									const isCurrent = frameIndex === currentIndex
+										&& frame.devices?.[0]?.device_id === frames[currentIndex]?.devices?.[0]?.device_id;
 									const matchesDevice = selectedDeviceId === "all" || frame.devices.some((d) => d.device_id === selectedDeviceId);
 									const matchesApp = selectedAppName === "all" || frame.devices.some((d) => d.metadata?.app_name === selectedAppName);
 									const matchesDomain = selectedDomain === "all" || frame.devices.some((d) => {
@@ -1510,7 +1511,9 @@ export const TimelineSlider = ({
 									const frameIdForTag = frame.devices?.[0]?.frame_id || '';
 									const frameTagsForFilter = frameIdForTag ? (tags[frameIdForTag] || []) : [];
 									const matchesTag = selectedTag === "all" || frameTagsForFilter.includes(selectedTag);
-									const matchesFilter = matchesDevice && matchesApp && matchesDomain && matchesSpeaker && matchesTag;
+									const activeMeeting = selectedMeeting !== "all" ? meetings.find((m) => m.id === selectedMeeting) : null;
+									const matchesMeeting = !activeMeeting || (frameIndex >= activeMeeting.frameIndexRange.first && frameIndex <= activeMeeting.frameIndexRange.last);
+									const matchesFilter = matchesDevice && matchesApp && matchesDomain && matchesSpeaker && matchesTag && matchesMeeting;
 
 									// Show time marker on first frame of each hour
 									const showTimeMarker = timeMarkers.some(

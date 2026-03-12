@@ -346,6 +346,9 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 					// Pause any active playback
 					pausePlayback();
 
+					// Reset filters so stale selections don't persist across open/close
+					resetFilters();
+
 					// Reset position to latest (index 0 = newest frame)
 					// Window is hidden/shown not destroyed, so old position persists
 					setCurrentIndex(0);
@@ -367,7 +370,7 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 			if (debounceTimer) clearTimeout(debounceTimer);
 			unlisten.then((fn) => fn());
 		};
-	}, [onWindowFocus, frames, setCurrentFrame, pausePlayback, seekingTimestamp, searchNavFrame]);
+	}, [onWindowFocus, frames, setCurrentFrame, pausePlayback, seekingTimestamp, searchNavFrame, resetFilters]);
 
 	// Pause audio when page becomes hidden (covers embedded mode + browser tab switch)
 	useEffect(() => {
