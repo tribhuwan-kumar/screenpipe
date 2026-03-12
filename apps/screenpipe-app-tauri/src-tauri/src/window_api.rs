@@ -1069,11 +1069,16 @@ impl ShowRewindWindow {
             }
 
             if id.label() == RewindWindowId::Search.label() {
-                if let Some(query) = self.metadata() {
-                    let _ = window
-                        .eval(&format!("window.location.replace(`/search/{}`);", query))
-                        .ok();
-                }
+                // Always navigate to /search (with optional query) to reset state
+                // when re-showing a hidden panel
+                let search_url = if let Some(query) = self.metadata() {
+                    format!("/search/{}", query)
+                } else {
+                    "/search".to_string()
+                };
+                let _ = window
+                    .eval(&format!("window.location.replace(`{}`);", search_url))
+                    .ok();
                 // Bring Search panel to front above Main (level 1002)
                 #[cfg(target_os = "macos")]
                 {
@@ -2181,6 +2186,25 @@ impl ShowRewindWindow {
                 window.minimize().ok();
                 return Ok(());
             }
+
+            // On macOS, hide the Search panel with order_out instead of
+            // destroying it. Closing/destroying an NSPanel triggers dealloc
+            // of ObjC objects while the main event loop's autorelease pool
+            // may still reference them, causing SIGBUS in
+            // objc_autoreleasePoolPop. Hiding preserves the panel for reuse
+            // (the show path at line ~1071 handles re-showing).
+            #[cfg(target_os = "macos")]
+            if id.label() == RewindWindowId::Search.label() {
+                let window_clone = window.clone();
+                run_on_main_thread_safe(app, move || {
+                    use objc::{msg_send, sel, sel_impl};
+                    if let Ok(panel) = window_clone.to_panel() {
+                        panel.order_out(None);
+                    }
+                });
+                return Ok(());
+            }
+
             window.close().ok();
         }
         Ok(())
