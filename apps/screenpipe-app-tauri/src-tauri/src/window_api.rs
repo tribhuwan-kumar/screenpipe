@@ -198,16 +198,16 @@ unsafe fn attach_magnify_gesture_to_view(view: tauri_nspanel::cocoa::base::id) {
 /// the process (Rust panics inside `run_on_main_thread` cross the Obj-C FFI
 /// boundary in `tao::send_event`, which is `nounwind` → calls `abort()`).
 ///
-/// The closure is wrapped in its own `NSAutoreleasePool` so that any
-/// autoreleased ObjC objects created inside are drained immediately,
-/// rather than accumulating in the main event-loop pool (where a
-/// use-after-free causes `objc_autoreleasePoolPop` to SIGSEGV).
+/// Runs `f` on the main thread with panic safety. Does NOT create a
+/// manual autorelease pool — `[NSApplication run]` already drains its
+/// own pool each event-loop iteration. Wrapping in an extra pool caused
+/// objects to be released prematurely (before AppKit was done with them),
+/// leading to SIGSEGV in `objc_autoreleasePoolPop` when the outer pool
+/// tried to drain already-freed objects.
 #[cfg(target_os = "macos")]
 pub fn run_on_main_thread_safe<F: FnOnce() + Send + 'static>(app: &AppHandle, f: F) {
     let _ = app.run_on_main_thread(move || {
-        if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            with_autorelease_pool(f);
-        })) {
+        if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
             error!("panic caught in run_on_main_thread: {:?}", e);
         }
     });
@@ -1069,33 +1069,12 @@ impl ShowRewindWindow {
             }
 
             if id.label() == RewindWindowId::Search.label() {
-                // Navigate to /search to reset state (panel may have been
-                // hidden with alpha=0 from a previous close)
-                let search_url = if let Some(query) = self.metadata() {
-                    format!("/search/{}", query)
-                } else {
-                    "/search".to_string()
-                };
-                let _ = window
-                    .eval(&format!("window.location.replace(`{}`);", search_url))
-                    .ok();
-
-                // Reposition to center of primary monitor (panel was left
-                // wherever it was when hidden)
-                if let Ok(Some(monitor)) = app.primary_monitor() {
-                    let logical: LogicalSize<f64> = monitor.size().to_logical(monitor.scale_factor());
-                    let pos = monitor.position();
-                    let scale = monitor.scale_factor();
-                    let origin_x = pos.x as f64 / scale;
-                    let origin_y = pos.y as f64 / scale;
-                    let bar_w = 680.0_f64.min(logical.width - 40.0);
-                    let x = origin_x + (logical.width - bar_w) / 2.0;
-                    let y = origin_y + logical.height * 0.22;
-                    let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
-                    let _ = window.set_size(Size::Logical(LogicalSize::new(bar_w, 80.0)));
+                if let Some(query) = self.metadata() {
+                    let _ = window
+                        .eval(&format!("window.location.replace(`/search/{}`);", query))
+                        .ok();
                 }
-
-                // Restore alpha and level, bring to front
+                // Bring Search panel to front above Main (level 1002)
                 #[cfg(target_os = "macos")]
                 {
                     let window_clone = window.clone();
@@ -1103,9 +1082,6 @@ impl ShowRewindWindow {
                         use objc::{msg_send, sel, sel_impl};
                         if let Ok(panel) = window_clone.to_panel() {
                             panel.set_level(1002);
-                            unsafe {
-                                let _: () = msg_send![&*panel, setAlphaValue: 1.0f64];
-                            }
                             panel.order_front_regardless();
                             unsafe {
                                 let _: () = msg_send![&*panel, makeKeyWindow];
@@ -1388,7 +1364,7 @@ impl ShowRewindWindow {
                                     // Synchronous alpha=0 — no order_out (which
                                     // causes focus-fight loops when restored).
                                     #[cfg(target_os = "macos")]
-                                    with_autorelease_pool(|| {
+                                    {
                                         use objc::{msg_send, sel, sel_impl};
                                         if let Ok(panel) = app_clone.get_webview_panel("main-window") {
                                             unsafe {
@@ -1396,7 +1372,7 @@ impl ShowRewindWindow {
                                             }
                                         }
                                         MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
-                                    });
+                                    }
                                     focus_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                     let cancel = focus_cancel.clone();
                                     let app = app_clone.clone();
@@ -1411,18 +1387,16 @@ impl ShowRewindWindow {
                                         {
                                             let app2 = app.clone();
                                             let _ = app.run_on_main_thread(move || {
-                                                with_autorelease_pool(|| {
-                                                    // Conditional restore: if focus moved to another
-                                                    // screenpipe window (Settings, Chat), just clear.
-                                                    // Only activate previous external app if our app
-                                                    // is no longer active.
-                                                    restore_frontmost_app_if_external_with_app(Some(&app2));
-                                                    // order_out removes the invisible panel from
-                                                    // the screen so it can't receive stray clicks.
-                                                    if let Ok(panel) = app2.get_webview_panel("main-window") {
-                                                        panel.order_out(None);
-                                                    }
-                                                });
+                                                // Conditional restore: if focus moved to another
+                                                // screenpipe window (Settings, Chat), just clear.
+                                                // Only activate previous external app if our app
+                                                // is no longer active.
+                                                restore_frontmost_app_if_external_with_app(Some(&app2));
+                                                // order_out removes the invisible panel from
+                                                // the screen so it can't receive stray clicks.
+                                                if let Ok(panel) = app2.get_webview_panel("main-window") {
+                                                    panel.order_out(None);
+                                                }
                                             });
                                         }
                                         // Unregister window shortcuts on focus loss (#2219)
@@ -1435,7 +1409,7 @@ impl ShowRewindWindow {
                                 } else {
                                     focus_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                                     #[cfg(target_os = "macos")]
-                                    with_autorelease_pool(|| {
+                                    {
                                         use objc::{msg_send, sel, sel_impl};
                                         use tauri_nspanel::cocoa::base::id;
                                         if let Ok(panel) = app_clone.get_webview_panel("main-window") {
@@ -1455,7 +1429,7 @@ impl ShowRewindWindow {
                                             unsafe { make_webview_first_responder(&panel); }
                                         }
                                         MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
-                                    });
+                                    }
                                     // Re-register window shortcuts on focus gain
                                     let app_reg = app_clone.clone();
                                     std::thread::spawn(move || {
@@ -1726,7 +1700,7 @@ impl ShowRewindWindow {
                                 // Synchronous alpha=0 — panel stays in window list
                                 // but is invisible. No order_out (causes focus loops).
                                 #[cfg(target_os = "macos")]
-                                with_autorelease_pool(|| {
+                                {
                                     use objc::{msg_send, sel, sel_impl};
                                     let lbl = {
                                         let mode = MAIN_CREATED_MODE.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -1738,7 +1712,7 @@ impl ShowRewindWindow {
                                         }
                                     }
                                     MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
-                                });
+                                }
                                 focus_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                 let cancel = focus_cancel.clone();
                                 let app = app_clone.clone();
@@ -1759,17 +1733,15 @@ impl ShowRewindWindow {
                                             main_label_for_mode(&mode).to_string()
                                         };
                                         let _ = app.run_on_main_thread(move || {
-                                            with_autorelease_pool(|| {
-                                                // Conditional restore: if focus moved to another
-                                                // screenpipe window, just clear. Only activate
-                                                // previous external app if ours is inactive.
-                                                restore_frontmost_app_if_external_with_app(Some(&app2));
-                                                // order_out removes the invisible panel so it
-                                                // can't receive stray clicks at alpha=0.
-                                                if let Ok(panel) = app2.get_webview_panel(&lbl) {
-                                                    panel.order_out(None);
-                                                }
-                                            });
+                                            // Conditional restore: if focus moved to another
+                                            // screenpipe window, just clear. Only activate
+                                            // previous external app if ours is inactive.
+                                            restore_frontmost_app_if_external_with_app(Some(&app2));
+                                            // order_out removes the invisible panel so it
+                                            // can't receive stray clicks at alpha=0.
+                                            if let Ok(panel) = app2.get_webview_panel(&lbl) {
+                                                panel.order_out(None);
+                                            }
                                         });
                                     }
                                     // Unregister window-specific shortcuts (arrows, Escape)
@@ -1784,7 +1756,7 @@ impl ShowRewindWindow {
                                 // Cancel any pending hide, restore alpha
                                 focus_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                                 #[cfg(target_os = "macos")]
-                                with_autorelease_pool(|| {
+                                {
                                     use objc::{msg_send, sel, sel_impl};
                                     let lbl = {
                                         let mode = MAIN_CREATED_MODE.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -1801,7 +1773,7 @@ impl ShowRewindWindow {
                                         unsafe { make_webview_first_responder(&panel); }
                                     }
                                     MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
-                                });
+                                }
                                 // Re-register window-specific shortcuts on focus gain
                                 let app_reg = app_clone.clone();
                                 std::thread::spawn(move || {
@@ -2203,29 +2175,6 @@ impl ShowRewindWindow {
             #[cfg(target_os = "windows")]
             if id.label() == RewindWindowId::Home.label() {
                 window.minimize().ok();
-                return Ok(());
-            }
-
-            // On macOS, hide the Search panel with alpha=0 instead of
-            // destroying it. Destroying an NSPanel deallocates ObjC objects
-            // while the main event loop's autorelease pool may still
-            // reference them, causing SIGBUS in objc_autoreleasePoolPop.
-            // We can't use order_out either — WKWebView suspends rendering
-            // and shows a black frame on re-show. Alpha=0 keeps the webview
-            // alive but invisible.
-            #[cfg(target_os = "macos")]
-            if id.label() == RewindWindowId::Search.label() {
-                let window_clone = window.clone();
-                run_on_main_thread_safe(app, move || {
-                    use objc::{msg_send, sel, sel_impl};
-                    if let Ok(panel) = window_clone.to_panel() {
-                        unsafe {
-                            let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
-                        }
-                        // Move offscreen so it doesn't intercept clicks at alpha=0
-                        panel.set_level(0);
-                    }
-                });
                 return Ok(());
             }
 
