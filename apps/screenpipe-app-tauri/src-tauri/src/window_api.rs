@@ -213,17 +213,21 @@ pub fn run_on_main_thread_safe<F: FnOnce() + Send + 'static>(app: &AppHandle, f:
     });
 }
 
-/// Execute `f` inside a fresh `NSAutoreleasePool`.
-/// This scopes any autoreleased ObjC objects so they are drained
-/// immediately rather than leaking into the caller's pool.
+/// Execute `f` inside a scoped autorelease pool.
+/// Uses the modern `objc_autoreleasePoolPush/Pop` C API (what the compiler
+/// generates for `@autoreleasepool {}`) instead of the deprecated
+/// `NSAutoreleasePool` class.  This avoids creating an extra ObjC object
+/// and is the recommended API on modern macOS.
 #[cfg(target_os = "macos")]
 pub fn with_autorelease_pool<R, F: FnOnce() -> R>(f: F) -> R {
-    use objc::{class, msg_send, sel, sel_impl};
-    use tauri_nspanel::cocoa::base::id;
+    extern "C" {
+        fn objc_autoreleasePoolPush() -> *mut std::ffi::c_void;
+        fn objc_autoreleasePoolPop(pool: *mut std::ffi::c_void);
+    }
     unsafe {
-        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let pool = objc_autoreleasePoolPush();
         let result = f();
-        let _: () = msg_send![pool, drain];
+        objc_autoreleasePoolPop(pool);
         result
     }
 }
@@ -1447,7 +1451,7 @@ impl ShowRewindWindow {
                                     // Synchronous alpha=0 — no order_out (which
                                     // causes focus-fight loops when restored).
                                     #[cfg(target_os = "macos")]
-                                    {
+                                    with_autorelease_pool(|| {
                                         use objc::{msg_send, sel, sel_impl};
                                         if let Ok(panel) = app_clone.get_webview_panel("main-window") {
                                             unsafe {
@@ -1455,7 +1459,7 @@ impl ShowRewindWindow {
                                             }
                                         }
                                         MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
-                                    }
+                                    });
                                     focus_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                     let cancel = focus_cancel.clone();
                                     let app = app_clone.clone();
@@ -1494,7 +1498,7 @@ impl ShowRewindWindow {
                                 } else {
                                     focus_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                                     #[cfg(target_os = "macos")]
-                                    {
+                                    with_autorelease_pool(|| {
                                         use objc::{msg_send, sel, sel_impl};
                                         use tauri_nspanel::cocoa::base::id;
                                         if let Ok(panel) = app_clone.get_webview_panel("main-window") {
@@ -1514,7 +1518,7 @@ impl ShowRewindWindow {
                                             unsafe { make_webview_first_responder(&panel); }
                                         }
                                         MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
-                                    }
+                                    });
                                     // Re-register window shortcuts on focus gain
                                     let app_reg = app_clone.clone();
                                     std::thread::spawn(move || {
@@ -1785,7 +1789,7 @@ impl ShowRewindWindow {
                                 // Synchronous alpha=0 — panel stays in window list
                                 // but is invisible. No order_out (causes focus loops).
                                 #[cfg(target_os = "macos")]
-                                {
+                                with_autorelease_pool(|| {
                                     use objc::{msg_send, sel, sel_impl};
                                     let lbl = {
                                         let mode = MAIN_CREATED_MODE.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -1797,7 +1801,7 @@ impl ShowRewindWindow {
                                         }
                                     }
                                     MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
-                                }
+                                });
                                 focus_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                 let cancel = focus_cancel.clone();
                                 let app = app_clone.clone();
@@ -1843,7 +1847,7 @@ impl ShowRewindWindow {
                                 // Cancel any pending hide, restore alpha
                                 focus_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                                 #[cfg(target_os = "macos")]
-                                {
+                                with_autorelease_pool(|| {
                                     use objc::{msg_send, sel, sel_impl};
                                     let lbl = {
                                         let mode = MAIN_CREATED_MODE.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -1860,7 +1864,7 @@ impl ShowRewindWindow {
                                         unsafe { make_webview_first_responder(&panel); }
                                     }
                                     MAIN_PANEL_SHOWN.store(true, std::sync::atomic::Ordering::SeqCst);
-                                }
+                                });
                                 // Re-register window-specific shortcuts on focus gain
                                 let app_reg = app_clone.clone();
                                 std::thread::spawn(move || {
