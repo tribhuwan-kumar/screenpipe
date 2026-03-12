@@ -1069,8 +1069,8 @@ impl ShowRewindWindow {
             }
 
             if id.label() == RewindWindowId::Search.label() {
-                // Always navigate to /search (with optional query) to reset state
-                // when re-showing a hidden panel
+                // Navigate to /search to reset state (panel may have been
+                // hidden with alpha=0 from a previous close)
                 let search_url = if let Some(query) = self.metadata() {
                     format!("/search/{}", query)
                 } else {
@@ -1079,7 +1079,23 @@ impl ShowRewindWindow {
                 let _ = window
                     .eval(&format!("window.location.replace(`{}`);", search_url))
                     .ok();
-                // Bring Search panel to front above Main (level 1002)
+
+                // Reposition to center of primary monitor (panel was left
+                // wherever it was when hidden)
+                if let Ok(Some(monitor)) = app.primary_monitor() {
+                    let logical: LogicalSize<f64> = monitor.size().to_logical(monitor.scale_factor());
+                    let pos = monitor.position();
+                    let scale = monitor.scale_factor();
+                    let origin_x = pos.x as f64 / scale;
+                    let origin_y = pos.y as f64 / scale;
+                    let bar_w = 680.0_f64.min(logical.width - 40.0);
+                    let x = origin_x + (logical.width - bar_w) / 2.0;
+                    let y = origin_y + logical.height * 0.22;
+                    let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
+                    let _ = window.set_size(Size::Logical(LogicalSize::new(bar_w, 80.0)));
+                }
+
+                // Restore alpha and level, bring to front
                 #[cfg(target_os = "macos")]
                 {
                     let window_clone = window.clone();
@@ -1087,6 +1103,9 @@ impl ShowRewindWindow {
                         use objc::{msg_send, sel, sel_impl};
                         if let Ok(panel) = window_clone.to_panel() {
                             panel.set_level(1002);
+                            unsafe {
+                                let _: () = msg_send![&*panel, setAlphaValue: 1.0f64];
+                            }
                             panel.order_front_regardless();
                             unsafe {
                                 let _: () = msg_send![&*panel, makeKeyWindow];
@@ -2187,19 +2206,24 @@ impl ShowRewindWindow {
                 return Ok(());
             }
 
-            // On macOS, hide the Search panel with order_out instead of
-            // destroying it. Closing/destroying an NSPanel triggers dealloc
-            // of ObjC objects while the main event loop's autorelease pool
-            // may still reference them, causing SIGBUS in
-            // objc_autoreleasePoolPop. Hiding preserves the panel for reuse
-            // (the show path at line ~1071 handles re-showing).
+            // On macOS, hide the Search panel with alpha=0 instead of
+            // destroying it. Destroying an NSPanel deallocates ObjC objects
+            // while the main event loop's autorelease pool may still
+            // reference them, causing SIGBUS in objc_autoreleasePoolPop.
+            // We can't use order_out either — WKWebView suspends rendering
+            // and shows a black frame on re-show. Alpha=0 keeps the webview
+            // alive but invisible.
             #[cfg(target_os = "macos")]
             if id.label() == RewindWindowId::Search.label() {
                 let window_clone = window.clone();
                 run_on_main_thread_safe(app, move || {
                     use objc::{msg_send, sel, sel_impl};
                     if let Ok(panel) = window_clone.to_panel() {
-                        panel.order_out(None);
+                        unsafe {
+                            let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
+                        }
+                        // Move offscreen so it doesn't intercept clicks at alpha=0
+                        panel.set_level(0);
                     }
                 });
                 return Ok(());
