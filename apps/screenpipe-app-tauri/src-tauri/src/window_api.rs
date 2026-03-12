@@ -4,7 +4,6 @@
 
 use std::{path::PathBuf, str::FromStr, sync::Mutex};
 
-use axum::{extract::State, http::StatusCode, Json};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -236,10 +235,7 @@ pub fn with_autorelease_pool<R, F: FnOnce() -> R>(f: F) -> R {
     }
 }
 
-use crate::{
-    store::{OnboardingStore, SettingsStore},
-    ServerState,
-};
+use crate::store::{OnboardingStore, SettingsStore};
 
 /// Stores the previously frontmost application so we can re-activate it
 /// when the overlay hides. This prevents macOS from switching Spaces when
@@ -555,135 +551,6 @@ pub fn reset_to_regular_and_refresh_tray(app: &AppHandle) {
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
 }
 
-#[derive(Deserialize, Debug)]
-pub struct OpenLocalPathPayload {
-    path: String,
-    port: u16,
-    title: String,
-    width: f64,
-    height: f64,
-    x: Option<i32>,
-    y: Option<i32>,
-    always_on_top: Option<bool>,
-    transparent: Option<bool>,
-    decorations: Option<bool>,
-    #[allow(dead_code)] // read only on macOS
-    hidden_title: Option<bool>,
-    is_focused: Option<bool>,
-    visible_on_all_workspaces: Option<bool>,
-}
-
-#[derive(Serialize)]
-pub struct ApiResponse {
-    success: bool,
-    message: String,
-}
-
-pub async fn show_specific_window(
-    State(state): State<ServerState>,
-    Json(payload): Json<OpenLocalPathPayload>,
-) -> Result<Json<ApiResponse>, (StatusCode, String)> {
-    info!("opening local path: {}", payload.path);
-
-    // Close existing window if it exists
-    if let Some(existing_window) = state.app_handle.get_webview_window(&payload.title) {
-        if let Err(e) = existing_window.destroy() {
-            error!("failed to close existing window: {}", e);
-        }
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    }
-    // NOTE: Accessory mode removed — it hides dock icon and tray on notched MacBooks
-    let url = format!("http://localhost:{}{}", payload.port, payload.path);
-    #[allow(unused_mut)]
-    let mut builder = tauri::WebviewWindowBuilder::new(
-        &state.app_handle,
-        &payload.title,
-        tauri::WebviewUrl::External(url.parse().unwrap()),
-    )
-    .title(&payload.title)
-    .transparent(payload.transparent.unwrap_or(true))
-    .decorations(payload.decorations.unwrap_or(false))
-    .focused(payload.is_focused.unwrap_or(true))
-    .inner_size(payload.width, payload.height)
-    .always_on_top(payload.always_on_top.unwrap_or(true))
-    .visible_on_all_workspaces(payload.visible_on_all_workspaces.unwrap_or(true));
-
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder.hidden_title(payload.hidden_title.unwrap_or(true));
-    }
-
-    let window = builder.build();
-
-    match window {
-        Ok(window) => {
-            // Set position if provided
-            if let (Some(x), Some(y)) = (payload.x, payload.y) {
-                let _ = window
-                    .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
-            }
-
-            // Add event handler to reset activation policy when window closes
-            #[cfg(target_os = "macos")]
-            {
-                // No longer toggling activation policy — panel uses nonactivating mask
-            }
-
-            if let Err(e) = window.show() {
-                error!("failed to show window: {}", e);
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("failed to show window: {}", e),
-                ));
-            }
-
-            Ok(Json(ApiResponse {
-                success: true,
-                message: "window opened successfully".to_string(),
-            }))
-        }
-        Err(e) => {
-            error!("failed to create window: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to create window: {}", e),
-            ))
-        }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct CloseWindowPayload {
-    title: String,
-}
-
-pub async fn close_window(
-    State(state): State<ServerState>,
-    Json(payload): Json<CloseWindowPayload>,
-) -> Result<Json<ApiResponse>, (StatusCode, String)> {
-    info!("received window close request: {:?}", payload);
-
-    if let Some(window) = state.app_handle.get_webview_window(&payload.title) {
-        match window.destroy() {
-            Ok(_) => Ok(Json(ApiResponse {
-                success: true,
-                message: "window closed successfully".to_string(),
-            })),
-            Err(e) => {
-                error!("failed to close window: {}", e);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("failed to close window: {}", e),
-                ))
-            }
-        }
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            format!("window with title '{}' not found", payload.title),
-        ))
-    }
-}
 
 #[derive(PartialEq)]
 pub enum RewindWindowId {
