@@ -910,10 +910,12 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	// a fresh fetch and uses pendingNavigationRef to jump once frames arrive.
 	useEffect(() => {
 		let lastHandledTs = "";
-		const unlisten = listen<{ timestamp: string; frame_id?: number; search_terms?: string[] }>("search-navigate-to-timestamp", (event) => {
+		const unlisten = listen<{ timestamp: string; frame_id?: number; search_terms?: string[]; search_results_json?: string; search_query?: string }>("search-navigate-to-timestamp", (event) => {
 			const timestamp = event.payload.timestamp;
 			const frameId = event.payload.frame_id;
 			const searchTerms = event.payload.search_terms;
+			const searchResultsJson = event.payload.search_results_json;
+			const searchQuery = event.payload.search_query;
 			// Deduplicate — Rust emits multiple times to survive mount race
 			if (timestamp === lastHandledTs) return;
 			lastHandledTs = timestamp;
@@ -921,10 +923,31 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 			// Set highlight in Main window's store (fixes yellow highlight for standalone search)
 			if (searchTerms && searchTerms.length > 0 && frameId) {
 				setHighlight(searchTerms, frameId);
-				// Kick off a background search to populate Main's keyword search store
-				// (enables bottom nav bar for cycling through results)
-				const query = searchTerms.join(" ");
-				useKeywordSearchStore.getState().searchKeywords(query);
+			}
+
+			// Populate Main's keyword search store with results from Search window
+			// (enables bottom nav bar for cycling through results)
+			if (searchResultsJson && searchQuery) {
+				try {
+					const results = JSON.parse(searchResultsJson);
+					// Directly set the store state instead of re-running the search
+					useKeywordSearchStore.setState({
+						searchResults: results,
+						searchQuery: searchQuery,
+						searchGroups: results.map((m: any) => ({
+							representative: m,
+							group_size: 1,
+							start_time: m.timestamp,
+							end_time: m.timestamp,
+							frame_ids: [m.frame_id],
+						})),
+						currentResultIndex: results.findIndex((r: any) => r.frame_id === frameId),
+						isSearching: false,
+						error: null,
+					});
+				} catch (e) {
+					console.error("failed to parse search results from event", e);
+				}
 			}
 
 			const targetDate = new Date(timestamp);
