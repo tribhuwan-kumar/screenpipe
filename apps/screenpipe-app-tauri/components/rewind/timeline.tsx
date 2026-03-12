@@ -910,20 +910,45 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	// a fresh fetch and uses pendingNavigationRef to jump once frames arrive.
 	useEffect(() => {
 		let lastHandledTs = "";
-		const unlisten = listen<{ timestamp: string; frame_id?: number }>("search-navigate-to-timestamp", (event) => {
+		const unlisten = listen<{ timestamp: string; frame_id?: number; search_terms?: string[] }>("search-navigate-to-timestamp", (event) => {
 			const timestamp = event.payload.timestamp;
 			const frameId = event.payload.frame_id;
+			const searchTerms = event.payload.search_terms;
 			// Deduplicate — Rust emits multiple times to survive mount race
 			if (timestamp === lastHandledTs) return;
 			lastHandledTs = timestamp;
+
+			// Set highlight in Main window's store (fixes yellow highlight for standalone search)
+			if (searchTerms && searchTerms.length > 0 && frameId) {
+				setHighlight(searchTerms, frameId);
+				// Kick off a background search to populate Main's keyword search store
+				// (enables bottom nav bar for cycling through results)
+				const query = searchTerms.join(" ");
+				useKeywordSearchStore.getState().searchKeywords(query);
+			}
+
 			const targetDate = new Date(timestamp);
 			lastSearchNavRef.current = Date.now();
 			setSeekingTimestamp(timestamp);
 			setSearchNavFrame(true);
+
+			// Same-day optimization: use jumpToTime for instant navigation
+			if (isSameDay(targetDate, currentDate)) {
+				pendingNavigationRef.current = targetDate;
+				const hasTargetDayFrames = frames.some(f =>
+					isSameDay(new Date(f.timestamp), targetDate)
+				);
+				if (hasTargetDayFrames) {
+					jumpToTime(targetDate, frameId);
+					pendingNavigationRef.current = null;
+					setSeekingTimestamp(null);
+					return;
+				}
+			}
 			navigateDirectToDate(targetDate, frameId);
 		});
 		return () => { unlisten.then(fn => fn()); };
-	}, [navigateDirectToDate]);
+	}, [navigateDirectToDate, currentDate, frames, jumpToTime, setHighlight]);
 
 	// The same Timeline component is used in both overlay and window mode.
 	// The window sizing/decoration is handled by Rust (window_api.rs).
