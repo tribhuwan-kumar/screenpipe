@@ -1046,9 +1046,9 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
     const idx = searchResults.findIndex((r) => r.frame_id === result.frame_id);
     if (idx >= 0) setCurrentResultIndex(idx);
     const resultsJson = JSON.stringify(searchResults);
-    onNavigateToTimestamp(result.timestamp, result.frame_id, queryTokens, resultsJson, searchQuery);
+    onNavigateToTimestamp(result.timestamp, result.frame_id, queryTokens, resultsJson, query);
     onClose();
-  }, [onNavigateToTimestamp, onClose, queryTokens, setHighlight, searchResults, searchQuery, setCurrentResultIndex]);
+  }, [onNavigateToTimestamp, onClose, queryTokens, setHighlight, searchResults, query, setCurrentResultIndex]);
 
   // Keyboard navigation — uses refs for data arrays to avoid re-mounting when results change
   useEffect(() => {
@@ -1380,7 +1380,7 @@ export function SearchModal({ isOpen, onClose, onNavigateToTimestamp, embedded =
                   key={frame.frame_id}
                   onClick={() => {
                     const resultsJson = JSON.stringify(searchResults);
-                    onNavigateToTimestamp(frame.timestamp, frame.frame_id, queryTokens, resultsJson, searchQuery);
+                    onNavigateToTimestamp(frame.timestamp, frame.frame_id, queryTokens, resultsJson, query);
                     if (!embedded) onClose();
                   }}
                   className="cursor-pointer rounded overflow-hidden border border-border hover:border-foreground/50 transition-all duration-150"
