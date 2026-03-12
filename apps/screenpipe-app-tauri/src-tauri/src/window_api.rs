@@ -426,8 +426,17 @@ pub unsafe fn make_nswindow_webview_first_responder(ns_win: tauri_nspanel::cocoa
         // Attach pinch-to-zoom gesture recognizer (same as NSPanel overlay)
         attach_magnify_gesture_to_view(wk_view);
 
-        // Set first responder immediately
+        // Set first responder immediately (handles the common case)
         let _: () = msg_send![ns_win, makeFirstResponder: wk_view];
+
+        // Also schedule on the next run-loop tick to win the race against any
+        // deferred responder-chain reset triggered by makeKeyAndOrderFront.
+        // Uses performSelector:withObject:afterDelay: which automatically retains
+        // both receiver and argument — no manual retain/release needed, so no
+        // risk of SIGBUS from zombie objects if the window closes in between.
+        let _: () = msg_send![ns_win, performSelector: sel!(makeFirstResponder:)
+                                           withObject: wk_view
+                                           afterDelay: 0.0f64];
     }
     }); // with_autorelease_pool
 }
@@ -479,8 +488,18 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
     // before WebKit's internal multi-process routing claims them.
     attach_magnify_gesture_to_view(wk_view);
 
-    // Set first responder immediately
+    // Set first responder immediately (handles the common case)
     panel.make_first_responder(Some(wk_view));
+
+    // Also schedule on the next run-loop tick to win the race against any
+    // deferred responder-chain reset triggered by make_key_window().
+    // Uses performSelector:withObject:afterDelay: which automatically retains
+    // both receiver and argument — no manual retain/release needed, so no
+    // risk of SIGBUS from zombie objects if the panel closes in between.
+    let window: id = msg_send![panel.content_view(), window];
+    let _: () = msg_send![window, performSelector: sel!(makeFirstResponder:)
+                                       withObject: wk_view
+                                       afterDelay: 0.0f64];
     }); // with_autorelease_pool
 }
 
