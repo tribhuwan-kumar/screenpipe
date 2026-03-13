@@ -56,7 +56,6 @@ mod permissions;
 mod pi;
 mod pipe_suggestions_scheduler;
 mod recording;
-mod reminders;
 mod remote_sync_commands;
 mod server;
 #[cfg(target_os = "macos")]
@@ -1375,18 +1374,6 @@ async fn main() {
                 chatgpt_oauth::chatgpt_oauth_get_token,
                 chatgpt_oauth::chatgpt_oauth_logout,
                 chatgpt_oauth::chatgpt_oauth_models,
-                // Reminders commands
-                reminders::reminders_status,
-                reminders::reminders_authorize,
-                reminders::reminders_list,
-                reminders::reminders_create,
-                reminders::reminders_scan,
-                reminders::reminders_start_scheduler,
-                reminders::reminders_stop_scheduler,
-                reminders::reminders_get_custom_prompt,
-                reminders::reminders_set_custom_prompt,
-                reminders::reminders_get_audio_only,
-                reminders::reminders_set_audio_only,
                 // Pipe suggestions scheduler commands
                 pipe_suggestions_scheduler::pipe_suggestions_get_settings,
                 pipe_suggestions_scheduler::pipe_suggestions_update_settings,
@@ -1415,9 +1402,6 @@ async fn main() {
             .typ::<sync::SyncStatusResponse>()
             .typ::<sync::SyncDeviceInfo>()
             .typ::<sync::SyncConfig>()
-            .typ::<reminders::RemindersStatus>()
-            .typ::<reminders::ReminderItem>()
-            .typ::<reminders::ScanResult>()
             .typ::<calendar::CalendarStatus>()
             .typ::<calendar::CalendarEventItem>()
             .typ::<store::IcsCalendarEntry>()
@@ -1439,7 +1423,6 @@ async fn main() {
         is_starting: Arc::new(AtomicBool::new(false)),
     };
     let pi_state = pi::PiState(Arc::new(tokio::sync::Mutex::new(pi::PiPool::new())));
-    let reminders_state = reminders::RemindersState::new();
     let suggestions_state = suggestions::SuggestionsState::new();
     let pipe_suggestions_state = pipe_suggestions_scheduler::PipeSuggestionsState::new();
     #[allow(clippy::single_match)]
@@ -1525,7 +1508,6 @@ async fn main() {
 
     let app = app.manage(recording_state)
         .manage(pi_state)
-        .manage(reminders_state)
         .manage(suggestions_state)
         .manage(pipe_suggestions_state)
         .invoke_handler(tauri::generate_handler![
@@ -1622,18 +1604,6 @@ async fn main() {
             chatgpt_oauth::chatgpt_oauth_get_token,
             chatgpt_oauth::chatgpt_oauth_logout,
             chatgpt_oauth::chatgpt_oauth_models,
-            // Reminders commands
-            reminders::reminders_status,
-            reminders::reminders_authorize,
-            reminders::reminders_list,
-            reminders::reminders_create,
-            reminders::reminders_scan,
-            reminders::reminders_start_scheduler,
-            reminders::reminders_stop_scheduler,
-            reminders::reminders_get_custom_prompt,
-            reminders::reminders_set_custom_prompt,
-            reminders::reminders_get_audio_only,
-            reminders::reminders_set_audio_only,
             // Pipe suggestions scheduler commands
             pipe_suggestions_scheduler::pipe_suggestions_get_settings,
             pipe_suggestions_scheduler::pipe_suggestions_update_settings,
@@ -2288,17 +2258,6 @@ async fn main() {
             };
             tauri::async_runtime::spawn(async move {
                 suggestions::auto_start_scheduler(&suggestions_state_clone).await;
-            });
-
-            // Auto-start reminders scheduler if it was enabled
-            let app_handle_clone = app_handle.clone();
-            let reminders_state = app_handle.state::<reminders::RemindersState>();
-            let reminders_state_clone = reminders::RemindersState {
-                scheduler_handle: reminders_state.scheduler_handle.clone(),
-            };
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_secs(8)).await;
-                reminders::auto_start_scheduler(app_handle_clone, &reminders_state_clone).await;
             });
 
             // Auto-start pipe suggestions scheduler if enabled
