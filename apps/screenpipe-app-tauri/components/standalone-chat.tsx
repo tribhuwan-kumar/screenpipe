@@ -377,8 +377,8 @@ function ToolCallRailItem({ toolCall, isLast }: { toolCall: ToolCall; isLast: bo
             // Pulsing hollow dot for running
             <motion.div
               className="w-2 h-2 border border-foreground"
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1, repeat: Infinity, ease: "steps(2)" }}
+              animate={{ opacity: [1, 1, 0.3, 0.3, 1] }}
+              transition={{ duration: 1, repeat: Infinity, times: [0, 0.25, 0.25, 0.75, 0.75], ease: "linear" }}
             />
           ) : toolCall.isError ? (
             // X mark for error
@@ -663,8 +663,8 @@ function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
           {hasRunning ? (
             <motion.span
               className="inline-block"
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1, repeat: Infinity, ease: "steps(2)" }}
+              animate={{ opacity: [1, 1, 0.3, 0.3, 1] }}
+              transition={{ duration: 1, repeat: Infinity, times: [0, 0.25, 0.25, 0.75, 0.75], ease: "linear" }}
             >
               [{doneCount}/{total}]
             </motion.span>
