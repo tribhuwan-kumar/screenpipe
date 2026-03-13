@@ -511,26 +511,11 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
 /// fire on an invisible panel — potentially re-activating it or blocking hide.
 /// Call this in every hide/close path **before** `setAlphaValue:0` / `order_out`.
 #[cfg(target_os = "macos")]
-unsafe fn cancel_deferred_first_responder(panel: &tauri_nspanel::raw_nspanel::RawNSPanel) {
-    use objc::{class, msg_send, sel, sel_impl};
-    use tauri_nspanel::cocoa::base::{id, nil};
-    let content_view: id = panel.content_view();
-    if content_view == nil {
-        return;
-    }
-    let window: id = msg_send![content_view, window];
-    if window == nil {
-        return;
-    }
-    let ns_object_class: id = msg_send![class!(NSObject), class];
-    let _: () = msg_send![ns_object_class,
-        cancelPreviousPerformRequestsWithTarget: window
-                                       selector: sel!(makeFirstResponder:)
-                                         object: std::ptr::null::<objc::runtime::Object>()];
-    // Also cancel with any non-nil object (the WKWebView) — Apple matches
-    // (target, selector, object) exactly, so we need a blanket cancel.
-    // The simplest approach: cancel all pending performs on the window.
-    let _: () = msg_send![window, cancelPreviousPerformRequestsWithTarget: window];
+unsafe fn cancel_deferred_first_responder(_panel: &tauri_nspanel::raw_nspanel::RawNSPanel) {
+    // no-op: the previous implementation crashed because ObjC exceptions
+    // from deallocated panels can't be caught across FFI in nounwind contexts.
+    // The deferred makeFirstResponder on a hidden panel is harmless — worst
+    // case it briefly sets first responder on an invisible panel.
 }
 
 /// Shared panel visibility sequence — the single source of truth for making an
