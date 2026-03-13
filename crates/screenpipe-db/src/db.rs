@@ -101,20 +101,36 @@ impl ImmediateTx {
 impl Drop for ImmediateTx {
     fn drop(&mut self) {
         if !self.committed {
-            if let Some(conn) = self.conn.take() {
-                // Detach the connection immediately so it never returns to the pool
-                // with an open transaction. The previous approach (spawning an async
-                // ROLLBACK) had a race: if the rollback task hadn't completed before
-                // the connection was reused, the next caller would see
-                // "cannot start a transaction within a transaction" → stuck transaction
-                // cascade → pool exhaustion.
+            if let Some(mut conn) = self.conn.take() {
+                // We must ROLLBACK before returning the connection to the pool,
+                // otherwise the next caller gets "cannot start a transaction within
+                // a transaction" → stuck transaction cascade → pool exhaustion.
                 //
-                // Detaching drops the raw connection (SQLite auto-rollbacks on close).
-                // This "leaks" one pool slot temporarily, but the pool creates a
-                // replacement connection on next acquire(). Much safer than risking
-                // a stuck transaction that poisons the entire pool.
-                warn!("ImmediateTx dropped without commit — detaching connection");
-                let _raw = conn.detach();
+                // Previous approach: detach the connection (SQLite auto-rollbacks on
+                // close). Problem: detach permanently removes the slot from the pool.
+                // After ~30 detaches the pool is dead and all writes fail with
+                // PoolTimedOut.
+                //
+                // New approach: spawn an async ROLLBACK task that owns the connection.
+                // The connection is returned to the pool only after ROLLBACK completes.
+                // If ROLLBACK fails, we detach as a last resort (better to leak one
+                // slot than poison the pool with a stuck transaction).
+                warn!("ImmediateTx dropped without commit — rolling back");
+                tokio::spawn(async move {
+                    match sqlx::query("ROLLBACK").execute(&mut *conn).await {
+                        Ok(_) => {
+                            // Connection is clean — it returns to the pool when `conn`
+                            // drops at the end of this block.
+                            debug!("ImmediateTx rollback succeeded, connection returned to pool");
+                        }
+                        Err(e) => {
+                            // ROLLBACK failed — connection is likely broken.
+                            // Detach as last resort so it doesn't poison the pool.
+                            warn!("ImmediateTx rollback failed ({}), detaching connection", e);
+                            let _raw = conn.detach();
+                        }
+                    }
+                });
                 // Release the write permit so other writers can proceed
             }
         }
