@@ -210,59 +210,70 @@ pub async fn get_cpal_device_and_config(
         }
     } else {
         #[cfg(target_os = "macos")]
-        if is_output_device && device_name == MACOS_OUTPUT_AUDIO_DEVICE_NAME {
-            // "System Audio" is a virtual device — try ALL available SCK displays.
-            // The audio content is identical regardless of which display anchors
-            // the SCK stream, so pick the first one that's available.
-            let found = match get_screen_capture_host().await {
-                Ok(screen_capture_host) => {
-                    let mut result = None;
-                    for candidate in screen_capture_host.input_devices()? {
-                        if let Ok(name) = candidate.name() {
-                            tracing::debug!(
-                                "System Audio: trying SCK display '{}' as anchor",
-                                name
-                            );
-                            // Verify the device actually has valid configs
-                            if candidate.supported_input_configs().is_ok() {
-                                result = Some(candidate);
-                                break;
+        {
+            if is_output_device && device_name == MACOS_OUTPUT_AUDIO_DEVICE_NAME {
+                // "System Audio" is a virtual device — try ALL available SCK displays.
+                // The audio content is identical regardless of which display anchors
+                // the SCK stream, so pick the first one that's available.
+                let found = match get_screen_capture_host().await {
+                    Ok(screen_capture_host) => {
+                        let mut result = None;
+                        for candidate in screen_capture_host.input_devices()? {
+                            if let Ok(name) = candidate.name() {
+                                tracing::debug!(
+                                    "System Audio: trying SCK display '{}' as anchor",
+                                    name
+                                );
+                                // Verify the device actually has valid configs
+                                if candidate.supported_input_configs().is_ok() {
+                                    result = Some(candidate);
+                                    break;
+                                }
                             }
                         }
-                    }
-                    result
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "ScreenCaptureKit unavailable for System Audio: {}",
-                        e
-                    );
-                    None
-                }
-            };
-            found
-        } else {
-            let mut devices = match audio_device.device_type {
-                DeviceType::Input => host.input_devices()?,
-                DeviceType::Output => host.output_devices()?,
-            };
-
-            #[cfg(target_os = "macos")]
-            if is_output_device {
-                match get_screen_capture_host().await {
-                    Ok(screen_capture_host) => {
-                        devices = screen_capture_host.input_devices()?;
+                        result
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "ScreenCaptureKit unavailable for output device '{}': {} — \
-                             device lookup may fail",
-                            device_name,
+                            "ScreenCaptureKit unavailable for System Audio: {}",
                             e
                         );
+                        None
+                    }
+                };
+                found
+            } else {
+                let mut devices = match audio_device.device_type {
+                    DeviceType::Input => host.input_devices()?,
+                    DeviceType::Output => host.output_devices()?,
+                };
+
+                if is_output_device {
+                    match get_screen_capture_host().await {
+                        Ok(screen_capture_host) => {
+                            devices = screen_capture_host.input_devices()?;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "ScreenCaptureKit unavailable for output device '{}': {} — \
+                                 device lookup may fail",
+                                device_name,
+                                e
+                            );
+                        }
                     }
                 }
+
+                devices.find(|x| x.name().map(|y| y == device_name).unwrap_or(false))
             }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let devices = match audio_device.device_type {
+                DeviceType::Input => host.input_devices()?,
+                DeviceType::Output => host.output_devices()?,
+            };
 
             devices.find(|x| x.name().map(|y| y == device_name).unwrap_or(false))
         }
