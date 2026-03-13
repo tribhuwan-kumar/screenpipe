@@ -431,9 +431,10 @@ pub unsafe fn make_nswindow_webview_first_responder(ns_win: tauri_nspanel::cocoa
 
         // Also schedule on the next run-loop tick to win the race against any
         // deferred responder-chain reset triggered by makeKeyAndOrderFront.
-        // Only schedule if panel is currently shown — prevents re-activating
-        // a panel that was hidden between now and the next tick.
-        if MAIN_PANEL_SHOWN.load(std::sync::atomic::Ordering::SeqCst) {
+        // Only schedule if the window is currently visible — prevents
+        // re-activating a window that was hidden between now and the next tick.
+        let is_visible: bool = msg_send![ns_win, isVisible];
+        if is_visible {
             let _: () = msg_send![ns_win, performSelector: sel!(makeFirstResponder:)
                                                withObject: wk_view
                                                afterDelay: 0.0f64];
@@ -494,13 +495,9 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
 
     // Also schedule on the next run-loop tick to win the race against any
     // deferred responder-chain reset triggered by make_key_window().
-    // Uses performSelector:afterDelay: but ONLY if the panel is currently
-    // shown. The deferred call itself is safe (AppKit retains both objects),
-    // and the cancel_deferred_first_responder no-op means the deferred call
-    // may fire on a hidden panel — but MAIN_PANEL_SHOWN is set to false
-    // BEFORE hide, so we only schedule the deferred call when we know the
-    // panel is actively being shown right now.
-    if MAIN_PANEL_SHOWN.load(std::sync::atomic::Ordering::SeqCst) {
+    // Only schedule if the panel is currently visible — prevents re-activating
+    // a panel that was hidden between now and the next tick.
+    if panel.is_visible() {
         let window: id = msg_send![panel.content_view(), window];
         let _: () = msg_send![window, performSelector: sel!(makeFirstResponder:)
                                            withObject: wk_view
