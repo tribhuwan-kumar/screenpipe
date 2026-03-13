@@ -503,6 +503,29 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
     }); // with_autorelease_pool
 }
 
+/// Cancel any pending deferred `makeFirstResponder:` calls on the given panel.
+///
+/// `make_webview_first_responder` and `make_nswindow_webview_first_responder`
+/// use `performSelector:withObject:afterDelay:` to win the first-responder race.
+/// If the panel is hidden before the next run-loop tick, the deferred call would
+/// fire on an invisible panel — potentially re-activating it or blocking hide.
+/// Call this in every hide/close path **before** `setAlphaValue:0` / `order_out`.
+#[cfg(target_os = "macos")]
+unsafe fn cancel_deferred_first_responder(panel: &tauri_nspanel::raw_nspanel::RawNSPanel) {
+    use objc::{class, msg_send, sel, sel_impl};
+    use tauri_nspanel::cocoa::base::id;
+    let ns_object_class: id = msg_send![class!(NSObject), class];
+    let window: id = msg_send![panel.content_view(), window];
+    let _: () = msg_send![ns_object_class,
+        cancelPreviousPerformRequestsWithTarget: window
+                                       selector: sel!(makeFirstResponder:)
+                                         object: std::ptr::null::<objc::runtime::Object>()];
+    // Also cancel with any non-nil object (the WKWebView) — Apple matches
+    // (target, selector, object) exactly, so we need a blanket cancel.
+    // The simplest approach: cancel all pending performs on the window.
+    let _: () = msg_send![window, cancelPreviousPerformRequestsWithTarget: window];
+}
+
 /// Shared panel visibility sequence — the single source of truth for making an
 /// NSPanel visible and interactive. Call this **on the main thread** after any
 /// mode-specific pre-show setup (collection behavior, screen positioning, etc.).
@@ -932,6 +955,7 @@ impl ShowRewindWindow {
                     let app_clone = app.clone();
                     run_on_main_thread_safe(app, move || {
                         if let Ok(panel) = app_clone.get_webview_panel(other_label) {
+                            unsafe { cancel_deferred_first_responder(&panel); }
                             panel.order_out(None);
                         }
                     });
@@ -1275,6 +1299,7 @@ impl ShowRewindWindow {
                                         use objc::{msg_send, sel, sel_impl};
                                         if let Ok(panel) = app_clone.get_webview_panel("main-window") {
                                             unsafe {
+                                                cancel_deferred_first_responder(&panel);
                                                 let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
                                             }
                                         }
@@ -1615,6 +1640,7 @@ impl ShowRewindWindow {
                                     };
                                     if let Ok(panel) = app_clone.get_webview_panel(&lbl) {
                                         unsafe {
+                                            cancel_deferred_first_responder(&panel);
                                             let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
                                         }
                                     }
@@ -2028,6 +2054,11 @@ impl ShowRewindWindow {
                     for label in &["main", "main-window"] {
                         if let Ok(panel) = app_clone.get_webview_panel(label) {
                             if panel.is_visible() {
+                                // Cancel any pending deferred makeFirstResponder
+                                // that could re-activate the panel after hide.
+                                unsafe {
+                                    cancel_deferred_first_responder(&panel);
+                                }
                                 // Alpha=0 first for instant visual hide
                                 unsafe {
                                     use objc::{msg_send, sel, sel_impl};
