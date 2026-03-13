@@ -836,7 +836,7 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=b44e94e#b44e94e290241586ddff16d7b689ac87aad27045"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=4ceceb0#4ceceb04ed8c0939cfca904bd8b649e8537bc316"
 dependencies = [
  "hf-hub 0.4.3",
  "qwen3-asr-sys",
@@ -4668,7 +4668,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -8228,7 +8228,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -8265,7 +8265,7 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -8288,7 +8288,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=b44e94e#b44e94e290241586ddff16d7b689ac87aad27045"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=4ceceb0#4ceceb04ed8c0939cfca904bd8b649e8537bc316"
 dependencies = [
  "cc",
  "cmake",
