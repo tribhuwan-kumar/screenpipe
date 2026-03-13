@@ -22,7 +22,9 @@ export const ThumbnailHighlightOverlay = memo(function ThumbnailHighlightOverlay
 	frameId,
 	highlightTerms,
 }: ThumbnailHighlightOverlayProps) {
-	const { textPositions } = useFrameOcrData(frameId);
+	const { textPositions } = useFrameOcrData(frameId, {
+		query: highlightTerms.length > 0 ? highlightTerms.join(" ") : undefined,
+	});
 
 	const highlights = useMemo(() => {
 		if (!highlightTerms.length || !textPositions.length) return [];

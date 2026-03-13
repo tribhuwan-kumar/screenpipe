@@ -27,6 +27,8 @@ interface UseFrameOcrDataOptions {
 	autoFetch?: boolean;
 	/** Cache size limit (number of frames to cache) */
 	cacheSize?: number;
+	/** Search query — when provided, only positions matching this term are returned */
+	query?: string;
 }
 
 interface UseFrameOcrDataReturn {
@@ -98,7 +100,7 @@ export function useFrameOcrData(
 	frameId: number | null,
 	options: UseFrameOcrDataOptions = {}
 ): UseFrameOcrDataReturn {
-	const { autoFetch = true } = options;
+	const { autoFetch = true, query } = options;
 
 	const [textPositions, setTextPositions] = useState<TextPosition[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -116,8 +118,9 @@ export function useFrameOcrData(
 			return;
 		}
 
-		// Check cache first
-		const cached = globalOcrCache.get(frameId);
+		// Use a composite cache key: frameId + query (so filtered and unfiltered results are cached separately)
+		const cacheKey = query ? frameId * 100000 + query.length : frameId;
+		const cached = globalOcrCache.get(cacheKey);
 		if (cached !== undefined) {
 			setTextPositions(cached);
 			setError(null);
@@ -143,10 +146,10 @@ export function useFrameOcrData(
 
 		try {
 			// Step 1: GET — check if OCR data already exists in DB
-			const response = await fetch(
-				`http://localhost:3030/frames/${frameId}/ocr`,
-				{ signal: controller.signal }
-			);
+			const ocrUrl = query
+				? `http://localhost:3030/frames/${frameId}/ocr?query=${encodeURIComponent(query)}`
+				: `http://localhost:3030/frames/${frameId}/ocr`;
+			const response = await fetch(ocrUrl, { signal: controller.signal });
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({}));
@@ -159,7 +162,7 @@ export function useFrameOcrData(
 
 			if (data.text_positions.length > 0) {
 				// OCR data exists — use it directly
-				globalOcrCache.set(frameId, data.text_positions);
+				globalOcrCache.set(cacheKey, data.text_positions);
 				if (!controller.signal.aborted) {
 					setTextPositions(data.text_positions);
 					lastFetchedRef.current = frameId;
@@ -193,7 +196,7 @@ export function useFrameOcrData(
 					}
 
 					const ocrData: FrameOcrResponse = await ocrResponse.json();
-					globalOcrCache.set(capturedFrameId, ocrData.text_positions);
+					globalOcrCache.set(cacheKey, ocrData.text_positions);
 
 					if (!controller.signal.aborted) {
 						setTextPositions(ocrData.text_positions);
@@ -225,7 +228,7 @@ export function useFrameOcrData(
 				setIsLoading(false);
 			}
 		}
-	}, [frameId]);
+	}, [frameId, query]);
 
 	// Auto-fetch when frameId changes
 	useEffect(() => {

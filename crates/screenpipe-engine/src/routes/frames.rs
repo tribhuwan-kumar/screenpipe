@@ -643,6 +643,14 @@ pub struct FrameOcrResponse {
     pub text_positions: Vec<TextPosition>,
 }
 
+/// Optional query parameter for filtering text positions by search term.
+#[derive(Debug, Deserialize, OaSchema)]
+pub struct FrameOcrQuery {
+    /// When provided, only return text positions matching this search term.
+    /// Without this, the a11y fallback returns ALL text nodes (hundreds of them).
+    pub query: Option<String>,
+}
+
 /// Get OCR text positions with bounding boxes for a specific frame.
 /// Falls back to accessibility tree node bounds when no OCR data exists.
 /// Both OCR and accessibility bounds are normalized to 0-1 relative to the
@@ -651,6 +659,7 @@ pub struct FrameOcrResponse {
 pub async fn get_frame_ocr_data(
     State(state): State<Arc<AppState>>,
     Path(frame_id): Path<i64>,
+    Query(params): Query<FrameOcrQuery>,
 ) -> Result<JsonResponse<FrameOcrResponse>, (StatusCode, JsonResponse<Value>)> {
     // Get OCR data (bounding boxes from Apple Vision)
     let mut text_positions = match state.db.get_frame_text_positions(frame_id).await {
@@ -706,10 +715,16 @@ pub async fn get_frame_ocr_data(
         }
     }
 
-    // Pure a11y fallback for frames with no OCR — grab all text nodes with bounds
+    // Pure a11y fallback for frames with no OCR — use accessibility tree bounding boxes.
+    // When a query param is provided, only return nodes matching the search term.
+    // Without a query, return all nodes (for text selection overlay).
     if text_positions.is_empty() {
         if let Ok((_, Some(tree_json))) = state.db.get_frame_accessibility_data(frame_id).await {
-            if let Ok(nodes) = serde_json::from_str::<Vec<serde_json::Value>>(&tree_json) {
+            if let Some(query) = &params.query {
+                // Filtered: use the same matching logic as keyword search
+                text_positions = screenpipe_db::find_matching_a11y_positions(&tree_json, query);
+            } else if let Ok(nodes) = serde_json::from_str::<Vec<serde_json::Value>>(&tree_json) {
+                // Unfiltered: return all nodes (existing behavior for text selection)
                 text_positions = nodes
                     .iter()
                     .filter_map(|n| {
