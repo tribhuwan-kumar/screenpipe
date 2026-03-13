@@ -222,7 +222,7 @@ function relativeDate(dateStr: string): string {
 // --- Main Unified Component ---
 
 export function PipeStoreView() {
-  const [activeTab, setActiveTab] = useState<"discover" | "my-pipes">("discover");
+  const [activeTab, setActiveTab] = useState<"discover" | "my-pipes">("my-pipes");
 
   return (
     <div className="space-y-0">
@@ -325,7 +325,8 @@ function DiscoverView() {
       const res = await fetch(`http://localhost:3030/pipes/store?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setPipes(data.pipes || data || []);
+      const list = data.data || data.pipes || (Array.isArray(data) ? data : []);
+      setPipes(list);
     } catch (err) {
       console.error("failed to fetch pipe store:", err);
       setPipes([]);
@@ -479,7 +480,7 @@ function DiscoverView() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight">discover pipes</h3>
+          <h3 className="text-xl font-semibold tracking-tight">Discover Pipes</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
             browse, install, and review community pipes
           </p>
@@ -578,7 +579,7 @@ function DiscoverView() {
       ) : pipes.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            <p className="text-sm">no pipes found</p>
+            <p className="text-sm">No pipes found</p>
             {debouncedQuery && (
               <p className="text-xs mt-1.5">try a different search term</p>
             )}
@@ -1187,6 +1188,11 @@ function PublishDialog({
     if (!selectedPipe || !title) return;
     setPublishing(true);
     try {
+      // Get pipe content from local pipes list
+      const pipe = localPipes.find((p: any) => p.name === selectedPipe);
+      const sourceMd = pipe?.raw_content;
+      if (!sourceMd) throw new Error("could not read pipe content");
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -1195,7 +1201,7 @@ function PublishDialog({
         method: "POST",
         headers,
         body: JSON.stringify({
-          pipe_name: selectedPipe,
+          source_md: sourceMd,
           title,
           description,
           icon,

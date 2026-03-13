@@ -959,7 +959,7 @@ export function PipesSection() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">my pipes</h3>
+          <h3 className="text-lg font-medium">My Pipes</h3>
           <p className="text-sm text-muted-foreground">
             scheduled agents that run on your screen data
             {" · "}
