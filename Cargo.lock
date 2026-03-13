@@ -526,7 +526,7 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=9fcfc6876c73dea0ac27b0992e68f5b536f55be1#9fcfc6876c73dea0ac27b0992e68f5b536f55be1"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=b44e94e#b44e94e290241586ddff16d7b689ac87aad27045"
 dependencies = [
  "hf-hub 0.4.3",
  "qwen3-asr-sys",
@@ -1259,7 +1259,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -3161,7 +3161,7 @@ dependencies = [
  "hyper",
  "libc",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -5667,7 +5667,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5704,7 +5704,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -5727,7 +5727,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=9fcfc6876c73dea0ac27b0992e68f5b536f55be1#9fcfc6876c73dea0ac27b0992e68f5b536f55be1"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=b44e94e#b44e94e290241586ddff16d7b689ac87aad27045"
 dependencies = [
  "cc",
  "cmake",
@@ -9208,7 +9208,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
