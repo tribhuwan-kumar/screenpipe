@@ -270,7 +270,7 @@ pub async fn get_cpal_device_and_config(
 
         #[cfg(not(target_os = "macos"))]
         {
-            let devices = match audio_device.device_type {
+            let mut devices = match audio_device.device_type {
                 DeviceType::Input => host.input_devices()?,
                 DeviceType::Output => host.output_devices()?,
             };
