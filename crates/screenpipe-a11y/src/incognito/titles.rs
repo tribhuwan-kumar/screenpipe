@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn test_case_insensitivity_english() {
         assert!(is_title_private("INCOGNITO - Chrome"));
-        assert!(is_title_private("Private Browsing"));
+        assert!(is_title_private("PRIVATE BROWSING - Firefox"));
         assert!(is_title_private("INPRIVATE - Edge"));
     }
 
@@ -330,15 +330,17 @@ mod tests {
     fn test_partial_title_with_keyword() {
         assert!(is_title_private("Some Page (Incognito)"));
         assert!(is_title_private("(InPrivate) Bing"));
+        assert!(is_title_private("Some Page (Private Browsing)"));
     }
 
-    // ---- False positive awareness ----
-    // These are acceptable false positives — "private" in a page title
-    // is rare and skipping is safer than recording.
+    // ---- Former false positives now correctly handled ----
 
     #[test]
-    fn test_acceptable_false_positive_private_in_title() {
-        // A page titled "Private API docs" would be skipped — this is by design.
-        assert!(is_title_private("Private API docs - Chrome"));
+    fn test_no_false_positive_private_in_title() {
+        // Normal pages with "private" in title should NOT be flagged.
+        assert!(!is_title_private("Private API docs - Chrome"));
+        assert!(!is_title_private("Secret Santa Planning - Firefox"));
+        assert!(!is_title_private("Enter Password - Chrome"));
+        assert!(!is_title_private("My Private Repository - GitHub"));
     }
 }
