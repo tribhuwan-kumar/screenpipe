@@ -50,6 +50,16 @@ pub struct HealthCheckResponse {
     pub audio_pipeline: Option<AudioPipelineHealthInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accessibility: Option<TreeWalkerSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pool_stats: Option<PoolHealthInfo>,
+}
+
+#[derive(Serialize, OaSchema, Deserialize)]
+pub struct PoolHealthInfo {
+    pub read_pool_size: u32,
+    pub read_pool_idle: u32,
+    pub write_pool_size: u32,
+    pub write_pool_idle: u32,
 }
 
 #[derive(Serialize, OaSchema, Deserialize)]
@@ -541,6 +551,15 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
             })
         } else {
             None
+        },
+        pool_stats: {
+            let (rs, ri, ws, wi) = state.db.pool_stats();
+            Some(PoolHealthInfo {
+                read_pool_size: rs,
+                read_pool_idle: ri,
+                write_pool_size: ws,
+                write_pool_idle: wi,
+            })
         },
     })
 }

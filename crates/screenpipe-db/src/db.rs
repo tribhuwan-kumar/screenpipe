@@ -138,7 +138,15 @@ impl Drop for ImmediateTx {
 }
 
 pub struct DatabaseManager {
+    /// Read-only pool (27 connections). Used for all SELECT queries.
+    /// Separated from writes so read bursts (search, timeline, API) can never
+    /// starve the write pipeline.
     pub pool: SqlitePool,
+    /// Dedicated write pool (3 connections). Used exclusively by
+    /// begin_immediate_with_retry(). Small pool is fine because writes are
+    /// serialized by write_semaphore anyway — the extra connections handle
+    /// the rare case of connection detach without killing the pool.
+    write_pool: SqlitePool,
     /// Serializes write transactions. Writers queue in Rust memory (zero overhead)
     /// instead of each holding a pool connection while waiting for SQLite's busy_timeout.
     /// With FTS handled by inline triggers (not the removed background indexer),
@@ -147,7 +155,7 @@ pub struct DatabaseManager {
     /// Limits concurrent heavy read queries (e.g. find_video_chunks) to 2.
     /// These queries can take 60+ seconds on large DBs with legacy data,
     /// starving the pool for writes and fast reads. By capping at 2 concurrent
-    /// heavy reads, we guarantee 28+ connections remain available for normal ops.
+    /// heavy reads, we guarantee 25+ connections remain available for normal ops.
     heavy_read_semaphore: Arc<Semaphore>,
 }
 
@@ -194,17 +202,28 @@ impl DatabaseManager {
             // Crash recovery: ~200ms replay at most.
             .pragma("wal_autocheckpoint", "4000");
 
-        let pool = SqlitePoolOptions::new()
-            // Pool handles both read and write concurrency. Writes are serialized
-            // by SQLite's WAL mode + busy_timeout(5s).
-            .max_connections(30)
-            .min_connections(5) // Minimum number of idle connections
+        // Read pool: handles all SELECT queries (search, timeline, API, pipes).
+        // 27 connections — large enough to handle read bursts without starving.
+        let read_pool = SqlitePoolOptions::new()
+            .max_connections(27)
+            .min_connections(3)
+            .acquire_timeout(Duration::from_secs(5))
+            .connect_with(connect_options.clone())
+            .await?;
+
+        // Write pool: dedicated to INSERT/UPDATE/DELETE via begin_immediate_with_retry().
+        // 3 connections — writes are serialized by write_semaphore so only 1 is active
+        // at a time; extras absorb connection detach without killing the pool.
+        let write_pool = SqlitePoolOptions::new()
+            .max_connections(3)
+            .min_connections(1)
             .acquire_timeout(Duration::from_secs(10))
             .connect_with(connect_options)
             .await?;
 
         let db_manager = DatabaseManager {
-            pool,
+            pool: read_pool,
+            write_pool,
             write_semaphore: Arc::new(Semaphore::new(1)),
             heavy_read_semaphore: Arc::new(Semaphore::new(2)),
         };
@@ -441,7 +460,7 @@ impl DatabaseManager {
         let mut last_error = None;
         for attempt in 1..=max_retries {
             let mut conn =
-                match tokio::time::timeout(Duration::from_secs(3), self.pool.acquire()).await {
+                match tokio::time::timeout(Duration::from_secs(3), self.write_pool.acquire()).await {
                     Ok(Ok(conn)) => conn,
                     Ok(Err(e)) => return Err(e),
                     Err(_) => return Err(sqlx::Error::PoolTimedOut),
@@ -480,6 +499,17 @@ impl DatabaseManager {
         }
         // All retries exhausted
         Err(last_error.unwrap_or_else(|| sqlx::Error::PoolTimedOut))
+    }
+
+    /// Returns pool statistics for health monitoring.
+    /// (read_size, read_idle, write_size, write_idle)
+    pub fn pool_stats(&self) -> (u32, u32, u32, u32) {
+        (
+            self.pool.size(),
+            self.pool.num_idle() as u32,
+            self.write_pool.size(),
+            self.write_pool.num_idle() as u32,
+        )
     }
 
     /// Check if the error indicates a stuck/nested transaction on the connection.
