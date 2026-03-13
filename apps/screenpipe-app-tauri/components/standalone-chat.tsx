@@ -303,23 +303,73 @@ function GridDissolveLoader({
   );
 }
 
+// Human-friendly label for a tool call (no JSON, no raw paths)
+function friendlyToolLabel(toolCall: ToolCall): string {
+  const fileName = (p: string) => p.split("/").pop() || p;
+  switch (toolCall.toolName) {
+    case "bash":
+      return `Ran ${toolCall.args.command ? `\`${String(toolCall.args.command).slice(0, 60)}${String(toolCall.args.command).length > 60 ? "…" : ""}\`` : "command"}`;
+    case "read":
+      return `Read ${fileName(toolCall.args.path || "")}`;
+    case "edit":
+      return `Edited ${fileName(toolCall.args.path || "")}`;
+    case "write":
+      return `Wrote ${fileName(toolCall.args.path || "")}`;
+    case "grep":
+      return `Searched for \`${toolCall.args.pattern || "pattern"}\``;
+    case "find":
+    case "ls":
+      return `Listed files`;
+    default:
+      return `${toolCall.toolName}`;
+  }
+}
+
+// Render friendly expanded details instead of raw JSON
+function FriendlyToolDetails({ toolCall }: { toolCall: ToolCall }) {
+  if (toolCall.toolName === "edit" && toolCall.args.old_string && toolCall.args.new_string) {
+    return (
+      <div className="px-3 py-2 text-xs font-mono space-y-0.5">
+        {String(toolCall.args.old_string).split("\n").map((line: string, i: number) => (
+          <div key={`old-${i}`} className="text-red-400/80">- {line}</div>
+        ))}
+        {String(toolCall.args.new_string).split("\n").map((line: string, i: number) => (
+          <div key={`new-${i}`} className="text-green-400/80">+ {line}</div>
+        ))}
+      </div>
+    );
+  }
+  if (toolCall.toolName === "bash" && toolCall.args.command) {
+    return (
+      <div className="px-3 py-2">
+        <pre className="whitespace-pre-wrap break-words text-neutral-100 text-xs font-mono max-h-[200px] overflow-y-auto overflow-x-hidden max-w-full">
+          {toolCall.args.command}
+        </pre>
+      </div>
+    );
+  }
+  // Fallback: show args as key-value pairs, not raw JSON
+  const entries = Object.entries(toolCall.args).filter(([k]) => k !== "path" && k !== "command");
+  if (entries.length === 0) return null;
+  return (
+    <div className="px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+      {entries.map(([key, val]) => (
+        <div key={key} className="truncate">
+          <span className="text-neutral-500">{key}:</span>{" "}
+          <span className="text-neutral-300">{typeof val === "string" ? val.slice(0, 200) : JSON.stringify(val).slice(0, 200)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ToolCallBlock({ toolCall }: { toolCall: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
   const icon = TOOL_ICONS[toolCall.toolName] || "🔧";
-
-  // Format args for display
-  const argsPreview = toolCall.toolName === "bash"
-    ? toolCall.args.command || ""
-    : toolCall.toolName === "read"
-      ? toolCall.args.path || ""
-      : toolCall.toolName === "edit"
-        ? toolCall.args.path || ""
-        : toolCall.toolName === "write"
-          ? toolCall.args.path || ""
-          : JSON.stringify(toolCall.args).slice(0, 100);
+  const label = friendlyToolLabel(toolCall);
 
   return (
-    <div className="rounded-lg border border-border/50 bg-background/50 text-xs font-mono overflow-hidden w-full min-w-0">
+    <div className="rounded-lg border border-border/50 bg-background/50 text-xs overflow-hidden w-full min-w-0">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 transition-colors text-left min-w-0"
@@ -332,27 +382,17 @@ function ToolCallBlock({ toolCall }: { toolCall: ToolCall }) {
           <span className="text-green-500 flex-shrink-0">✓</span>
         )}
         <span className="text-muted-foreground flex-shrink-0">{icon}</span>
-        <span className="font-semibold flex-shrink-0">{toolCall.toolName}</span>
-        <span className="text-muted-foreground truncate flex-1">{argsPreview}</span>
+        <span className="truncate flex-1">{label}</span>
         <span className="text-muted-foreground flex-shrink-0">{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
-        <div className="border-t border-border/50">
-          {/* Args */}
-          <div className="px-3 py-2 bg-neutral-900 dark:bg-neutral-950 text-neutral-300">
-            <div className="text-[10px] uppercase tracking-wider text-neutral-500 mb-1">input</div>
-            <pre className="whitespace-pre-wrap break-words text-neutral-100 max-h-[200px] overflow-y-auto overflow-x-hidden max-w-full">
-              {toolCall.toolName === "bash" ? toolCall.args.command : JSON.stringify(toolCall.args, null, 2)}
-            </pre>
-          </div>
+        <div className="border-t border-border/50 bg-neutral-900/50 dark:bg-neutral-950/50">
+          <FriendlyToolDetails toolCall={toolCall} />
           {/* Result */}
           {toolCall.result !== undefined && (
-            <div className="px-3 py-2 bg-neutral-900/80 dark:bg-neutral-950/80 text-neutral-300 border-t border-neutral-800">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-500 mb-1">
-                {toolCall.isError ? "error" : "output"}
-              </div>
+            <div className="px-3 py-2 text-neutral-300 border-t border-neutral-800/50">
               <pre className={cn(
-                "whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto overflow-x-hidden max-w-full",
+                "whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto overflow-x-hidden max-w-full text-xs",
                 toolCall.isError ? "text-red-400" : "text-neutral-100"
               )}>
                 {toolCall.result}
@@ -543,41 +583,67 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   return result;
 }
 
-function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
-  const [expanded, setExpanded] = useState(false);
+// Build natural-language summary of completed tool calls
+function buildToolSummary(toolCalls: ToolCall[]): string {
+  const counts: Record<string, number> = {};
+  for (const tc of toolCalls) {
+    const action = tc.toolName === "bash" ? "ran" : tc.toolName === "read" ? "read" : tc.toolName === "edit" ? "edited" : tc.toolName === "write" ? "wrote" : tc.toolName === "grep" ? "searched" : tc.toolName;
+    counts[action] = (counts[action] || 0) + 1;
+  }
+  const parts = Object.entries(counts).map(([action, count]) => {
+    if (action === "read") return `read ${count} file${count > 1 ? "s" : ""}`;
+    if (action === "edited") return `edited ${count} file${count > 1 ? "s" : ""}`;
+    if (action === "wrote") return `wrote ${count} file${count > 1 ? "s" : ""}`;
+    if (action === "ran") return `ran ${count} command${count > 1 ? "s" : ""}`;
+    if (action === "searched") return `${count} search${count > 1 ? "es" : ""}`;
+    return `${count} ${action}`;
+  });
+  return parts.join(", ");
+}
 
-  // For 1-2 tool calls, render individually (not worth collapsing)
-  if (toolCalls.length <= 2) {
+function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
+  const [manualExpand, setManualExpand] = useState<boolean | null>(null);
+
+  const hasRunning = toolCalls.some((tc) => tc.isRunning);
+  const hasError = toolCalls.some((tc) => tc.isError);
+  const allDone = !hasRunning;
+  const doneCount = toolCalls.filter((tc) => !tc.isRunning).length;
+  const total = toolCalls.length;
+
+  // Auto-collapse: expanded while running, collapsed when done (unless user overrides)
+  const isExpanded = manualExpand !== null ? manualExpand : hasRunning;
+
+  const activeCall = toolCalls.find((tc) => tc.isRunning);
+  const activeLabel = activeCall ? friendlyToolLabel(activeCall) : "";
+  const summary = allDone ? buildToolSummary(toolCalls) : "";
+
+  // For a single completed tool, show just a compact inline summary
+  if (toolCalls.length === 1 && allDone) {
     return (
-      <>
-        {toolCalls.map((tc) => (
-          <ToolCallBlock key={tc.id} toolCall={tc} />
-        ))}
-      </>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground py-1 px-1">
+        {hasError ? (
+          <span className="text-destructive">✗</span>
+        ) : (
+          <span className="text-green-500">✓</span>
+        )}
+        <span>{friendlyToolLabel(toolCalls[0])}</span>
+        <button onClick={() => setManualExpand(manualExpand === null ? true : !manualExpand)} className="ml-auto text-muted-foreground/60 hover:text-muted-foreground">▸</button>
+        {manualExpand && (
+          <div className="w-full mt-1">
+            <ToolCallBlock toolCall={toolCalls[0]} />
+          </div>
+        )}
+      </div>
     );
   }
 
-  const doneCount = toolCalls.filter((tc) => !tc.isRunning).length;
-  const total = toolCalls.length;
-  const hasRunning = toolCalls.some((tc) => tc.isRunning);
-  const hasError = toolCalls.some((tc) => tc.isError);
-  const activeCall = toolCalls.find((tc) => tc.isRunning);
-
-  // Build a short preview of the active tool call
-  const activePreview = activeCall
-    ? `${activeCall.toolName} ${
-        activeCall.toolName === "bash"
-          ? activeCall.args.command || ""
-          : activeCall.toolName === "read" || activeCall.toolName === "edit" || activeCall.toolName === "write"
-            ? activeCall.args.path || ""
-            : ""
-      }`.trim()
-    : "";
-
   return (
-    <div className="rounded-lg border border-border/50 bg-background/50 text-xs font-mono overflow-hidden w-full min-w-0">
+    <div className={cn(
+      "rounded-lg border bg-background/50 text-xs overflow-hidden w-full min-w-0 transition-colors duration-700",
+      hasRunning ? "border-blue-400/30" : "border-border/50"
+    )}>
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setManualExpand(isExpanded ? false : true)}
         className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 transition-colors text-left min-w-0"
       >
         {hasRunning ? (
@@ -587,16 +653,19 @@ function ToolCallGroup({ toolCalls }: { toolCalls: ToolCall[] }) {
         ) : (
           <span className="text-green-500 flex-shrink-0">✓</span>
         )}
-        <span className="font-semibold flex-shrink-0">
-          {total} steps{hasRunning ? ` (${doneCount}/${total})` : ""}
-        </span>
-        {!expanded && activePreview && (
-          <span className="text-muted-foreground truncate flex-1">{activePreview}</span>
+        {hasRunning ? (
+          <>
+            <span className="text-muted-foreground flex-shrink-0">{doneCount}/{total}</span>
+            <span className="truncate flex-1 text-muted-foreground">{activeLabel}</span>
+          </>
+        ) : (
+          <span className="truncate flex-1 text-muted-foreground">
+            {summary || `${total} steps`}
+          </span>
         )}
-        {!activePreview && <span className="flex-1" />}
-        <span className="text-muted-foreground flex-shrink-0">{expanded ? "▾" : "▸"}</span>
+        <span className="text-muted-foreground flex-shrink-0">{isExpanded ? "▾" : "▸"}</span>
       </button>
-      {expanded && (
+      {isExpanded && (
         <div className="border-t border-border/50 space-y-1 p-2">
           {toolCalls.map((tc) => (
             <ToolCallBlock key={tc.id} toolCall={tc} />
