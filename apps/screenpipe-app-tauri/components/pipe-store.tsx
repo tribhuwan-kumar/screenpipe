@@ -33,8 +33,6 @@ import {
   Star,
   Download,
   Shield,
-  ShieldCheck,
-  ShieldAlert,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
@@ -44,18 +42,22 @@ import {
   Mic,
   Keyboard,
   Database,
-  Monitor,
   Image,
   Plug,
   Clock,
   BadgeCheck,
   Upload,
   AlertTriangle,
+  ArrowLeft,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { useToast } from "@/components/ui/use-toast";
+import { MemoizedReactMarkdown } from "@/components/markdown";
+import remarkGfm from "remark-gfm";
 import posthog from "posthog-js";
+import { PipesSection } from "@/components/settings/pipes-section";
 
 // --- Types ---
 
@@ -137,7 +139,6 @@ function getPermissionStatus(perms: PipePermissions, key: string): "allowed" | "
 }
 
 function isUnrestricted(perms: PipePermissions): boolean {
-  // unrestricted if no deny_* fields and allow_raw_sql/allow_frames not explicitly false
   return (
     !perms.deny_ocr &&
     !perms.deny_audio &&
@@ -145,6 +146,14 @@ function isUnrestricted(perms: PipePermissions): boolean {
     perms.allow_raw_sql !== false &&
     perms.allow_frames !== false
   );
+}
+
+function getReadmeFromPipeMd(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("---")) return trimmed;
+  const end = trimmed.indexOf("---", 3);
+  if (end === -1) return trimmed;
+  return trimmed.slice(end + 3).trim();
 }
 
 function StarRating({
@@ -208,9 +217,47 @@ function relativeDate(dateStr: string): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-// --- Main Component ---
+// --- Main Unified Component ---
 
-export function PipeStore({ onClose }: { onClose?: () => void }) {
+export function PipeStoreView() {
+  const [activeTab, setActiveTab] = useState<"discover" | "my-pipes">("discover");
+
+  return (
+    <div className="space-y-0">
+      {/* Tab bar */}
+      <div className="flex items-center gap-6 border-b border-border pb-0 mb-6">
+        {([
+          { key: "discover" as const, label: "Discover" },
+          { key: "my-pipes" as const, label: "My Pipes" },
+        ]).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={cn(
+              "pb-3 text-sm font-medium transition-colors duration-150 border-b-2 -mb-px",
+              activeTab === key
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === "discover" ? (
+        <DiscoverView />
+      ) : (
+        <PipesSection />
+      )}
+    </div>
+  );
+}
+
+// --- Discover View ---
+
+function DiscoverView() {
   const { settings } = useSettings();
   const { toast } = useToast();
   const token = settings.user?.token;
@@ -223,10 +270,10 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("popular");
 
-  // Detail dialog
+  // Detail view
   const [selectedPipe, setSelectedPipe] = useState<PipeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
 
   // Install state
   const [installing, setInstalling] = useState<string | null>(null);
@@ -243,6 +290,20 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
 
   // Publish dialog
   const [publishOpen, setPublishOpen] = useState(false);
+
+  // Installed pipe names (for "Installed" badge)
+  const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
+
+  // Fetch installed pipes
+  useEffect(() => {
+    fetch("http://localhost:3030/pipes")
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data.data || data.pipes || [];
+        setInstalledNames(new Set(list.map((p: any) => p.config?.name || p.name)));
+      })
+      .catch(() => {});
+  }, [showDetail]);
 
   // Debounce search
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -277,7 +338,7 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
 
   // Open detail
   const openDetail = async (slug: string) => {
-    setDetailOpen(true);
+    setShowDetail(true);
     setDetailLoading(true);
     setSourceReviewed(false);
     setReviewExpanded(false);
@@ -295,7 +356,7 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
         title: "failed to load pipe details",
         variant: "destructive",
       });
-      setDetailOpen(false);
+      setShowDetail(false);
     } finally {
       setDetailLoading(false);
     }
@@ -316,10 +377,11 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       posthog.capture("pipe_installed_from_store", { slug });
       toast({
-        title: `pipe "${data.name || slug}" installed`,
-        description: "go to pipes section to enable it",
+        title: `"${data.name || slug}" installed`,
+        description: "switch to my pipes to configure and run it",
       });
-      setDetailOpen(false);
+      // Refresh installed names
+      setInstalledNames((prev) => new Set([...prev, data.name || slug]));
     } catch (err: any) {
       toast({
         title: "failed to install pipe",
@@ -351,7 +413,6 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       toast({ title: "review submitted" });
-      // Refresh detail
       openDetail(selectedPipe.slug);
       setReviewExpanded(false);
     } catch (err: any) {
@@ -365,75 +426,127 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
     }
   };
 
+  // If showing detail view, render full-width detail panel
+  if (showDetail) {
+    return (
+      <div className="space-y-6">
+        <button
+          onClick={() => {
+            setShowDetail(false);
+            setSelectedPipe(null);
+          }}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          back to discover
+        </button>
+
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : selectedPipe ? (
+          <PipeDetailPanel
+            pipe={selectedPipe}
+            installing={installing}
+            sourceReviewed={sourceReviewed}
+            onSourceReviewedChange={setSourceReviewed}
+            onInstall={handleInstall}
+            isInstalled={installedNames.has(selectedPipe.slug)}
+            reviewExpanded={reviewExpanded}
+            onToggleReview={() => setReviewExpanded(!reviewExpanded)}
+            reviewRating={reviewRating}
+            onReviewRatingChange={setReviewRating}
+            reviewComment={reviewComment}
+            onReviewCommentChange={setReviewComment}
+            submittingReview={submittingReview}
+            onSubmitReview={handleSubmitReview}
+            sourceExpanded={sourceExpanded}
+            onToggleSource={() => setSourceExpanded(!sourceExpanded)}
+            token={token}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
   const featuredPipes = pipes.filter((p) => p.featured);
-  const gridPipes = pipes;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">pipe store</h3>
-          <p className="text-sm text-muted-foreground">
+          <h3 className="text-xl font-semibold tracking-tight">discover pipes</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
             browse, install, and review community pipes
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPublishOpen(true)}>
-            <Upload className="h-4 w-4 mr-1" />
-            publish your pipe
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => setPublishOpen(true)}>
+          <Upload className="h-4 w-4 mr-1.5" />
+          publish
+        </Button>
       </div>
 
       {/* Search & Filters */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="search pipes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="search pipes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-9"
+            />
+          </div>
+          <Select value={sort} onValueChange={setSort}>
+            <SelectTrigger className="w-[130px] h-9 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-[130px] h-8 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger className="w-[120px] h-8 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        {/* Category pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {CATEGORIES.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap",
+                category === c
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Featured Section */}
       {featuredPipes.length > 0 && !debouncedQuery && category === "All" && (
         <div>
-          <h4 className="text-sm font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+          <h4 className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-widest">
             Featured
           </h4>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+          <div className="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x">
             {featuredPipes.map((pipe) => (
               <FeaturedCard
                 key={pipe.slug}
                 pipe={pipe}
+                isInstalled={installedNames.has(pipe.slug)}
+                onInstall={() => handleInstall(pipe.slug)}
+                installing={installing === pipe.slug}
                 onClick={() => openDetail(pipe.slug)}
               />
             ))}
@@ -443,67 +556,46 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
 
       {/* Pipe Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4 space-y-3">
-                <Skeleton className="h-4 w-2/3" />
+            <Card key={i} className="overflow-hidden">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <div className="space-y-1.5 flex-1">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                </div>
                 <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-3/4" />
               </CardContent>
             </Card>
           ))}
         </div>
-      ) : gridPipes.length === 0 ? (
+      ) : pipes.length === 0 ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            <p>no pipes found</p>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <p className="text-sm">no pipes found</p>
             {debouncedQuery && (
-              <p className="text-sm mt-1">try a different search term</p>
+              <p className="text-xs mt-1.5">try a different search term</p>
             )}
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {gridPipes.map((pipe) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {pipes.map((pipe) => (
             <PipeCard
               key={pipe.slug}
               pipe={pipe}
+              isInstalled={installedNames.has(pipe.slug)}
+              onInstall={() => handleInstall(pipe.slug)}
+              installing={installing === pipe.slug}
               onClick={() => openDetail(pipe.slug)}
             />
           ))}
         </div>
       )}
-
-      {/* Detail Dialog */}
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          {detailLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : selectedPipe ? (
-            <PipeDetailContent
-              pipe={selectedPipe}
-              installing={installing}
-              sourceReviewed={sourceReviewed}
-              onSourceReviewedChange={setSourceReviewed}
-              onInstall={handleInstall}
-              reviewExpanded={reviewExpanded}
-              onToggleReview={() => setReviewExpanded(!reviewExpanded)}
-              reviewRating={reviewRating}
-              onReviewRatingChange={setReviewRating}
-              reviewComment={reviewComment}
-              onReviewCommentChange={setReviewComment}
-              submittingReview={submittingReview}
-              onSubmitReview={handleSubmitReview}
-              sourceExpanded={sourceExpanded}
-              onToggleSource={() => setSourceExpanded(!sourceExpanded)}
-              token={token}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
 
       {/* Publish Dialog */}
       <PublishDialog
@@ -523,57 +615,98 @@ export function PipeStore({ onClose }: { onClose?: () => void }) {
 
 function FeaturedCard({
   pipe,
+  isInstalled,
+  onInstall,
+  installing,
   onClick,
 }: {
   pipe: StorePipe;
+  isInstalled: boolean;
+  onInstall: () => void;
+  installing: boolean;
   onClick: () => void;
 }) {
   return (
-    <button
+    <div
+      className="flex-shrink-0 w-[300px] snap-start group cursor-pointer"
       onClick={onClick}
-      className="flex-shrink-0 w-[260px] border border-border bg-card hover:bg-card/80 transition-colors p-4 text-left space-y-2"
     >
-      <div className="flex items-start gap-2">
-        <span className="text-2xl">{pipe.icon || "🔧"}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium truncate">{pipe.title}</span>
-            {pipe.featured && (
-              <Badge variant="secondary" className="text-[9px] px-1 py-0">
-                featured
-              </Badge>
-            )}
+      <div className="border border-border bg-card hover:bg-accent/50 transition-all duration-200 rounded-xl p-5 space-y-3 h-full">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <div className="text-3xl bg-muted rounded-xl h-12 w-12 flex items-center justify-center flex-shrink-0">
+              {pipe.icon || "🔧"}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold truncate">{pipe.title}</span>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                <span className="truncate">{pipe.author}</span>
+                {pipe.author_verified && (
+                  <BadgeCheck className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                )}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="truncate">{pipe.author}</span>
-            {pipe.author_verified && (
-              <BadgeCheck className="h-3 w-3 text-blue-500 flex-shrink-0" />
+          <Button
+            size="sm"
+            variant={isInstalled ? "outline" : "default"}
+            className={cn(
+              "h-7 px-3 text-xs font-semibold rounded-full flex-shrink-0",
+              isInstalled && "pointer-events-none"
             )}
+            disabled={installing || isInstalled}
+            onClick={(e) => {
+              e.stopPropagation();
+              onInstall();
+            }}
+          >
+            {installing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : isInstalled ? (
+              "Installed"
+            ) : (
+              "Get"
+            )}
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+          {pipe.description}
+        </p>
+
+        <div className="flex items-center justify-between">
+          <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-normal rounded-full">
+            {pipe.category}
+          </Badge>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <StarRating rating={pipe.rating} />
+              <span>{pipe.rating.toFixed(1)}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Download className="h-3 w-3" />
+              {formatCount(pipe.install_count)}
+            </span>
           </div>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground line-clamp-2">
-        {pipe.description}
-      </p>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <StarRating rating={pipe.rating} />
-          <span>{pipe.rating.toFixed(1)}</span>
-        </span>
-        <span className="flex items-center gap-1">
-          <Download className="h-3 w-3" />
-          {formatCount(pipe.install_count)}
-        </span>
-      </div>
-    </button>
+    </div>
   );
 }
 
 function PipeCard({
   pipe,
+  isInstalled,
+  onInstall,
+  installing,
   onClick,
 }: {
   pipe: StorePipe;
+  isInstalled: boolean;
+  onInstall: () => void;
+  installing: boolean;
   onClick: () => void;
 }) {
   const permissionPills = PERMISSION_LABELS.filter((p) => {
@@ -582,40 +715,75 @@ function PipeCard({
   });
 
   return (
-    <button
+    <div
       onClick={onClick}
-      className="border border-border bg-card hover:bg-card/80 transition-colors p-4 text-left space-y-2.5"
+      className="border border-border bg-card hover:bg-accent/50 transition-all duration-200 rounded-xl p-5 cursor-pointer group"
     >
-      <div className="flex items-start gap-2.5">
-        <span className="text-xl">{pipe.icon || "🔧"}</span>
+      <div className="flex items-start gap-3">
+        <div className="text-2xl bg-muted rounded-xl h-11 w-11 flex items-center justify-center flex-shrink-0">
+          {pipe.icon || "🔧"}
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium truncate">{pipe.title}</div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="truncate">{pipe.author}</span>
-            {pipe.author_verified && (
-              <BadgeCheck className="h-3 w-3 text-blue-500 flex-shrink-0" />
-            )}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">{pipe.title}</div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                <span className="truncate">{pipe.author}</span>
+                {pipe.author_verified && (
+                  <BadgeCheck className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant={isInstalled ? "outline" : "default"}
+              className={cn(
+                "h-7 px-3 text-xs font-semibold rounded-full flex-shrink-0",
+                isInstalled && "pointer-events-none"
+              )}
+              disabled={installing || isInstalled}
+              onClick={(e) => {
+                e.stopPropagation();
+                onInstall();
+              }}
+            >
+              {installing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : isInstalled ? (
+                "Installed"
+              ) : (
+                "Get"
+              )}
+            </Button>
           </div>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground line-clamp-2">
+
+      <p className="text-xs text-muted-foreground line-clamp-2 mt-3 leading-relaxed">
         {pipe.description}
       </p>
+
       {permissionPills.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {permissionPills.map((p) => (
+        <div className="flex flex-wrap gap-1 mt-2.5">
+          {permissionPills.slice(0, 3).map((p) => (
             <Badge
               key={p.key}
               variant="outline"
-              className="text-[10px] px-1.5 py-0 gap-0.5 font-normal"
+              className="text-[10px] px-1.5 py-0 gap-0.5 font-normal rounded-full"
             >
               {p.icon}
               {p.label}
             </Badge>
           ))}
+          {permissionPills.length > 3 && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal rounded-full">
+              +{permissionPills.length - 3}
+            </Badge>
+          )}
         </div>
       )}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+
+      <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <StarRating rating={pipe.rating} />
           <span>{pipe.rating.toFixed(1)}</span>
@@ -625,16 +793,19 @@ function PipeCard({
           {formatCount(pipe.install_count)}
         </span>
       </div>
-    </button>
+    </div>
   );
 }
 
-function PipeDetailContent({
+// --- Pipe Detail Panel (full-width, inline) ---
+
+function PipeDetailPanel({
   pipe,
   installing,
   sourceReviewed,
   onSourceReviewedChange,
   onInstall,
+  isInstalled,
   reviewExpanded,
   onToggleReview,
   reviewRating,
@@ -652,6 +823,7 @@ function PipeDetailContent({
   sourceReviewed: boolean;
   onSourceReviewedChange: (v: boolean) => void;
   onInstall: (slug: string) => void;
+  isInstalled: boolean;
   reviewExpanded: boolean;
   onToggleReview: () => void;
   reviewRating: number;
@@ -667,150 +839,208 @@ function PipeDetailContent({
   const unrestricted = isUnrestricted(pipe.permissions);
   const needsReview = unrestricted && !pipe.author_verified;
 
+  const readmeContent = pipe.source ? getReadmeFromPipeMd(pipe.source) : (pipe.full_description || pipe.description);
+
   return (
-    <>
-      <DialogHeader>
-        <div className="flex items-start gap-3">
-          <span className="text-3xl">{pipe.icon || "🔧"}</span>
-          <div className="min-w-0 flex-1">
-            <DialogTitle className="text-base">{pipe.title}</DialogTitle>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span>{pipe.author}</span>
-                {pipe.author_verified && (
-                  <BadgeCheck className="h-3 w-3 text-blue-500" />
-                )}
+    <div className="space-y-8">
+      {/* Hero header */}
+      <div className="flex items-start gap-4">
+        <div className="text-4xl bg-muted rounded-2xl h-16 w-16 flex items-center justify-center flex-shrink-0">
+          {pipe.icon || "🔧"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">{pipe.title}</h2>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <span>{pipe.author}</span>
+                  {pipe.author_verified && (
+                    <BadgeCheck className="h-3.5 w-3.5 text-blue-500" />
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground/50">·</span>
+                <span className="text-xs text-muted-foreground">v{pipe.version}</span>
+                <span className="text-xs text-muted-foreground/50">·</span>
+                <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-normal rounded-full">
+                  {pipe.category}
+                </Badge>
               </div>
-              <span className="text-xs text-muted-foreground">
-                v{pipe.version}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                updated {relativeDate(pipe.updated_at)}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <StarRating rating={pipe.rating} />
-                <span>
-                  {pipe.rating.toFixed(1)} ({pipe.review_count}{" "}
-                  {pipe.review_count === 1 ? "review" : "reviews"})
+              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <StarRating rating={pipe.rating} size="md" />
+                  <span>
+                    {pipe.rating.toFixed(1)} ({pipe.review_count}{" "}
+                    {pipe.review_count === 1 ? "review" : "reviews"})
+                  </span>
                 </span>
-              </span>
-              <span className="flex items-center gap-1">
-                <Download className="h-3 w-3" />
-                {formatCount(pipe.install_count)} installs
-              </span>
-            </div>
-          </div>
-        </div>
-      </DialogHeader>
-
-      {/* Description */}
-      <div className="text-sm text-foreground/90 whitespace-pre-wrap">
-        {pipe.full_description || pipe.description}
-      </div>
-
-      {/* Data Access / Permissions */}
-      <div className="border border-border p-3 space-y-2">
-        <div className="flex items-center gap-1.5 text-sm font-medium">
-          <Shield className="h-4 w-4" />
-          data access
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {PERMISSION_LABELS.map((perm) => {
-            const status = getPermissionStatus(pipe.permissions, perm.key);
-            return (
-              <div
-                key={perm.key}
-                className="flex items-center gap-2 text-xs py-1"
-              >
-                {status === "allowed" ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                ) : status === "denied" ? (
-                  <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                ) : (
-                  <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
-                )}
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  {perm.icon}
-                  {perm.label}
+                <span className="flex items-center gap-1">
+                  <Download className="h-3.5 w-3.5" />
+                  {formatCount(pipe.install_count)} installs
+                </span>
+                <span className="text-xs">
+                  updated {relativeDate(pipe.updated_at)}
                 </span>
               </div>
-            );
-          })}
-        </div>
-        {pipe.permissions.time_range && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1 border-t border-border">
-            <Clock className="h-3 w-3" />
-            time range: {pipe.permissions.time_range}
-          </div>
-        )}
-        {pipe.permissions.day_restrictions &&
-          pipe.permissions.day_restrictions.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="h-3 w-3" />
-              days: {pipe.permissions.day_restrictions.join(", ")}
             </div>
-          )}
+
+            <Button
+              size="sm"
+              variant={isInstalled ? "outline" : "default"}
+              className={cn(
+                "h-9 px-5 text-sm font-semibold rounded-full flex-shrink-0",
+                isInstalled && "pointer-events-none"
+              )}
+              disabled={
+                installing === pipe.slug || isInstalled || (needsReview && !sourceReviewed)
+              }
+              onClick={() => onInstall(pipe.slug)}
+            >
+              {installing === pipe.slug ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                  installing...
+                </>
+              ) : isInstalled ? (
+                "Installed"
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-1.5" />
+                  Get
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Unrestricted warning */}
-      {unrestricted && (
-        <div className="border border-orange-500/50 bg-orange-500/10 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-orange-600 dark:text-orange-400">
-            <AlertTriangle className="h-4 w-4" />
-            unrestricted data access
-          </div>
-          <p className="text-xs text-muted-foreground">
-            this pipe has no data access restrictions. it can access all your
-            screen text, audio, keyboard input, and raw database queries.
-          </p>
-          {needsReview && (
-            <div className="flex items-center gap-2 pt-1">
-              <Checkbox
-                id="source-reviewed"
-                checked={sourceReviewed}
-                onCheckedChange={(v) => onSourceReviewedChange(v === true)}
-              />
-              <Label htmlFor="source-reviewed" className="text-xs">
-                I have reviewed the source code below
-              </Label>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Source section */}
-      <div className="border border-border">
-        <button
-          onClick={onToggleSource}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
-        >
-          {sourceExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5" />
+      {/* README section */}
+      <div className="space-y-3">
+        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+          README
+        </h4>
+        <div className="border border-border rounded-xl p-6">
+          {readmeContent ? (
+            <MemoizedReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              className="prose prose-sm dark:prose-invert max-w-none"
+              components={{
+                a: ({ href, children }) => (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    {children}
+                  </a>
+                ),
+                code: ({ className, children, ...props }) => {
+                  const isInline = !className;
+                  return isInline ? (
+                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs" {...props}>
+                      {children}
+                    </code>
+                  ) : (
+                    <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    </pre>
+                  );
+                },
+              }}
+            >
+              {readmeContent}
+            </MemoizedReactMarkdown>
           ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
+            <p className="text-sm text-muted-foreground">no description available</p>
           )}
-          source (pipe.md)
-        </button>
-        {sourceExpanded && pipe.source && (
-          <pre className="px-3 pb-3 text-[11px] leading-relaxed whitespace-pre-wrap font-mono max-h-64 overflow-y-auto border-t border-border">
-            {pipe.source}
-          </pre>
+        </div>
+      </div>
+
+      {/* Permissions */}
+      <div className="space-y-3">
+        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+          Permissions
+        </h4>
+        <div className="border border-border rounded-xl p-5 space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {PERMISSION_LABELS.map((perm) => {
+              const status = getPermissionStatus(pipe.permissions, perm.key);
+              return (
+                <div
+                  key={perm.key}
+                  className="flex items-center gap-2 text-sm py-1.5"
+                >
+                  {status === "allowed" ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  ) : status === "denied" ? (
+                    <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
+                  )}
+                  <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                    {perm.icon}
+                    {perm.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {pipe.permissions.time_range && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-2 border-t border-border">
+              <Clock className="h-3.5 w-3.5" />
+              time range: {pipe.permissions.time_range}
+            </div>
+          )}
+          {pipe.permissions.day_restrictions &&
+            pipe.permissions.day_restrictions.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                days: {pipe.permissions.day_restrictions.join(", ")}
+              </div>
+            )}
+        </div>
+
+        {/* Unrestricted warning */}
+        {unrestricted && (
+          <div className="border border-orange-500/50 bg-orange-500/5 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-orange-600 dark:text-orange-400">
+              <AlertTriangle className="h-4 w-4" />
+              unrestricted data access
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              this pipe has no data access restrictions. it can access all your
+              screen text, audio, keyboard input, and raw database queries.
+            </p>
+            {needsReview && (
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id="source-reviewed"
+                  checked={sourceReviewed}
+                  onCheckedChange={(v) => onSourceReviewedChange(v === true)}
+                />
+                <Label htmlFor="source-reviewed" className="text-xs">
+                  I have reviewed the source code below
+                </Label>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
       {/* Reviews */}
       <div className="space-y-3">
-        <h4 className="text-sm font-medium">
-          reviews ({pipe.review_count})
+        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+          Reviews ({pipe.review_count})
         </h4>
-        {pipe.reviews && pipe.reviews.length > 0 ? (
-          <div className="space-y-2">
-            {pipe.reviews.map((review) => (
+        <div className="space-y-3">
+          {pipe.reviews && pipe.reviews.length > 0 ? (
+            pipe.reviews.map((review) => (
               <div
                 key={review.id}
-                className="border border-border p-3 space-y-1"
+                className="border border-border rounded-xl p-4 space-y-1.5"
               >
                 <div className="flex items-center gap-2">
                   <StarRating rating={review.rating} />
@@ -820,94 +1050,94 @@ function PipeDetailContent({
                   </span>
                 </div>
                 {review.comment && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
                     {review.comment}
                   </p>
                 )}
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">no reviews yet</p>
-        )}
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">no reviews yet</p>
+          )}
 
-        {/* Write review */}
-        {token ? (
-          <div>
-            <button
-              onClick={onToggleReview}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-            >
-              {reviewExpanded ? "cancel review" : "write a review"}
-            </button>
-            {reviewExpanded && (
-              <div className="mt-2 space-y-2 border border-border p-3">
-                <div>
-                  <Label className="text-xs">rating</Label>
-                  <StarRating
-                    rating={reviewRating}
-                    size="md"
-                    interactive
-                    onChange={onReviewRatingChange}
-                  />
+          {/* Write review */}
+          {token ? (
+            <div>
+              <button
+                onClick={onToggleReview}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              >
+                {reviewExpanded ? "cancel review" : "write a review"}
+              </button>
+              {reviewExpanded && (
+                <div className="mt-3 space-y-3 border border-border rounded-xl p-4">
+                  <div>
+                    <Label className="text-xs">rating</Label>
+                    <div className="mt-1">
+                      <StarRating
+                        rating={reviewRating}
+                        size="md"
+                        interactive
+                        onChange={onReviewRatingChange}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">comment (optional)</Label>
+                    <Textarea
+                      value={reviewComment}
+                      onChange={(e) => onReviewCommentChange(e.target.value)}
+                      placeholder="your experience with this pipe..."
+                      className="text-sm min-h-[80px] mt-1"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={onSubmitReview}
+                    disabled={reviewRating === 0 || submittingReview}
+                  >
+                    {submittingReview ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                        submitting...
+                      </>
+                    ) : (
+                      "submit review"
+                    )}
+                  </Button>
                 </div>
-                <div>
-                  <Label className="text-xs">comment (optional)</Label>
-                  <Textarea
-                    value={reviewComment}
-                    onChange={(e) => onReviewCommentChange(e.target.value)}
-                    placeholder="your experience with this pipe..."
-                    className="text-xs min-h-[60px] mt-1"
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  onClick={onSubmitReview}
-                  disabled={reviewRating === 0 || submittingReview}
-                  className="text-xs"
-                >
-                  {submittingReview ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      submitting...
-                    </>
-                  ) : (
-                    "submit review"
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            sign in to write a review
-          </p>
-        )}
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              sign in to write a review
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* Install button */}
-      <DialogFooter>
-        <Button
-          onClick={() => onInstall(pipe.slug)}
-          disabled={
-            installing === pipe.slug || (needsReview && !sourceReviewed)
-          }
-          className="text-xs"
+      {/* Source */}
+      <div className="space-y-3">
+        <button
+          onClick={onToggleSource}
+          className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-widest hover:text-foreground transition-colors"
         >
-          {installing === pipe.slug ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              installing...
-            </>
+          {sourceExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
           ) : (
-            <>
-              <Download className="h-3 w-3 mr-1" />
-              install
-            </>
+            <ChevronRight className="h-3.5 w-3.5" />
           )}
-        </Button>
-      </DialogFooter>
-    </>
+          Source (pipe.md)
+        </button>
+        {sourceExpanded && pipe.source && (
+          <div className="border border-border rounded-xl overflow-hidden">
+            <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap font-mono max-h-80 overflow-y-auto bg-muted/50">
+              {pipe.source}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -934,15 +1164,14 @@ function PublishDialog({
   const [publishCategory, setPublishCategory] = useState("Other");
   const [publishing, setPublishing] = useState(false);
 
-  // Fetch local pipes when dialog opens
   useEffect(() => {
     if (!open) return;
     setLoadingPipes(true);
     fetch("http://localhost:3030/pipes")
       .then((r) => r.json())
       .then((data) => {
-        const list = Array.isArray(data) ? data : data.pipes || [];
-        setLocalPipes(list);
+        const list = Array.isArray(data) ? data : data.data || data.pipes || [];
+        setLocalPipes(list.map((p: any) => ({ name: p.config?.name || p.name, ...p })));
       })
       .catch(() => setLocalPipes([]))
       .finally(() => setLoadingPipes(false));
@@ -974,7 +1203,6 @@ function PublishDialog({
       posthog.capture("pipe_published_to_store", { pipe: selectedPipe });
       onPublished();
       onOpenChange(false);
-      // Reset form
       setSelectedPipe("");
       setTitle("");
       setDescription("");
@@ -1121,7 +1349,7 @@ export function PermissionsReview({
 
   return (
     <div className="space-y-3">
-      <div className="border border-border p-3 space-y-2">
+      <div className="border border-border rounded-xl p-4 space-y-2">
         <div className="flex items-center gap-1.5 text-sm font-medium">
           <Shield className="h-4 w-4" />
           data access
@@ -1152,7 +1380,7 @@ export function PermissionsReview({
       </div>
 
       {unrestricted && (
-        <div className="border border-orange-500/50 bg-orange-500/10 p-3">
+        <div className="border border-orange-500/50 bg-orange-500/5 rounded-xl p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-orange-600 dark:text-orange-400">
             <AlertTriangle className="h-3.5 w-3.5" />
             unrestricted data access — this pipe can read all your data
