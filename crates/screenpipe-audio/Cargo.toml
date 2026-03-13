@@ -82,7 +82,7 @@ ort-sys = "=2.0.0-rc.6"
 knf-rs = "0.3.2"
 futures = "0.3.31"
 deepgram = "0.6.4"
-audiopipe = { git = "https://github.com/screenpipe/audiopipe.git", rev = "1785a66884a6a9a42826b1a0fbf5a17f7b5c53f4", default-features = false, features = ["qwen3-asr-ggml"], optional = true }
+audiopipe = { git = "https://github.com/screenpipe/audiopipe.git", rev = "9fcfc6876c73dea0ac27b0992e68f5b536f55be1", default-features = false, features = ["qwen3-asr-ggml"], optional = true }
 bytes = { version = "1.9.0", features = ["serde"] }
 rand = "0.9.0"
 

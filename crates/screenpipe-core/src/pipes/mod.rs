@@ -388,7 +388,17 @@ fn resolve_preset(pipes_dir: &Path, preset_id: &str) -> Option<ResolvedPreset> {
 // Structured error parsing from stderr
 // ---------------------------------------------------------------------------
 
-/// Parse structured error types from agent stderr output.
+/// Parse structured error types from agent output (checks both stderr and stdout).
+fn parse_error_type_from_output(stderr: &str, stdout: &str) -> (Option<String>, Option<String>) {
+    let (et, em) = parse_error_type(stderr);
+    if et.is_some() {
+        return (et, em);
+    }
+    // Fallback: check stdout too — Pi may stream API errors through JSON stdout
+    parse_error_type(stdout)
+}
+
+/// Parse structured error types from a single output string.
 fn parse_error_type(stderr: &str) -> (Option<String>, Option<String>) {
     let lower = stderr.to_lowercase();
     if lower.contains("rate limit") || lower.contains("429") || lower.contains("rate_limit") {
@@ -417,6 +427,15 @@ fn parse_error_type(stderr: &str) -> (Option<String>, Option<String>) {
         return (
             Some("network".to_string()),
             Some("network error — check connectivity".to_string()),
+        );
+    }
+    if lower.contains("prompt is too long")
+        || lower.contains("context_length_exceeded")
+        || lower.contains("maximum context length")
+    {
+        return (
+            Some("context_overflow".to_string()),
+            Some("prompt exceeded model context window".to_string()),
         );
     }
     (None, None)
@@ -450,6 +469,9 @@ async fn setup_pipe_permissions(
 ) -> Option<String> {
     if let Err(e) = PiExecutor::ensure_permissions_extension(pipe_dir, config) {
         warn!("failed to install permissions extension: {}", e);
+    }
+    if let Err(e) = PiExecutor::ensure_context_pruning_extension(pipe_dir) {
+        warn!("failed to install context-pruning extension: {}", e);
     }
     if let Err(e) = PiExecutor::ensure_screenpipe_skill_filtered(pipe_dir, config) {
         warn!("failed to install filtered skills: {}", e);
@@ -1096,8 +1118,9 @@ impl PipeManager {
 
             let (log, cb_error_type): (PipeRunLog, Option<String>) = match run_result {
                 Ok(Ok(output)) => {
+                    let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                     let (error_type, error_message) = if !output.success {
-                        parse_error_type(&output.stderr)
+                        parse_error_type_from_output(&output.stderr, &filtered_stdout)
                     } else {
                         (None, None)
                     };
@@ -1106,7 +1129,6 @@ impl PipeManager {
                     } else {
                         "failed"
                     };
-                    let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                     if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {
                         let _ = store
                             .finish_execution(
@@ -1220,6 +1242,16 @@ impl PipeManager {
                 &log_file,
                 serde_json::to_string_pretty(&log).unwrap_or_default(),
             );
+
+            // Auto-clear Pi session on context overflow so the next run starts fresh
+            if cb_error_type.as_deref() == Some("context_overflow") {
+                let pipe_dir = pipes_dir_for_log.join(&pipe_name);
+                if let Err(e) = delete_pi_sessions(&pipe_dir) {
+                    warn!("failed to clear Pi session after context overflow for '{}': {}", pipe_name, e);
+                } else {
+                    info!("cleared Pi session for '{}' after context overflow — next run starts fresh", pipe_name);
+                }
+            }
 
             // Append to in-memory logs
             let duration_secs = (finished_at - started_at).num_milliseconds() as f64 / 1000.0;
@@ -1459,8 +1491,9 @@ impl PipeManager {
         let log = match run_result {
             Ok(Ok(output)) => {
                 // Normal completion
+                let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                 let (error_type, error_message) = if !output.success {
-                    parse_error_type(&output.stderr)
+                    parse_error_type_from_output(&output.stderr, &filtered_stdout)
                 } else {
                     (None, None)
                 };
@@ -1470,7 +1503,6 @@ impl PipeManager {
                 } else {
                     "failed"
                 };
-                let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                 if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
                     let _ = store
                         .finish_execution(
@@ -2148,8 +2180,9 @@ impl PipeManager {
 
                         let (log, cb_error_type): (PipeRunLog, Option<String>) = match run_result {
                             Ok(Ok(output)) => {
+                                let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                                 let (error_type, error_message) = if !output.success {
-                                    parse_error_type(&output.stderr)
+                                    parse_error_type_from_output(&output.stderr, &filtered_stdout)
                                 } else {
                                     (None, None)
                                 };
@@ -2158,8 +2191,6 @@ impl PipeManager {
                                 } else {
                                     "failed"
                                 };
-
-                                let filtered_stdout = filter_ndjson_stdout(&output.stdout);
                                 if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {
                                     let _ = store
                                         .finish_execution(
@@ -2286,6 +2317,16 @@ impl PipeManager {
                             &log_file,
                             serde_json::to_string_pretty(&log).unwrap_or_default(),
                         );
+
+                        // Auto-clear Pi session on context overflow so the next run starts fresh
+                        if cb_error_type.as_deref() == Some("context_overflow") {
+                            let pipe_dir = pipes_dir_for_log.join(&pipe_name);
+                            if let Err(e) = delete_pi_sessions(&pipe_dir) {
+                                warn!("failed to clear Pi session after context overflow for '{}': {}", pipe_name, e);
+                            } else {
+                                info!("cleared Pi session for '{}' after context overflow — next run starts fresh", pipe_name);
+                            }
+                        }
 
                         // Append to in-memory logs
                         let duration_secs =
