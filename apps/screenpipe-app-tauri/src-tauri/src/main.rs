@@ -1725,10 +1725,6 @@ async fn main() {
                 // recognizer callback (in window_api.rs) can emit Tauri events.
                 crate::window_api::init_magnify_handler(app.handle().clone());
 
-                // Register NSWindowDidBecomeKeyNotification observer for first-responder fix.
-                // This replaces performSelector:afterDelay: which leaked deferred calls.
-                #[cfg(target_os = "macos")]
-                crate::window_api::register_become_key_observer();
             }
 
             // Logging setup
@@ -1975,14 +1971,16 @@ async fn main() {
                         info!("Pre-creating chat panel for fullscreen Space support");
                         match ShowRewindWindow::Chat.show(&app_handle_chat) {
                             Ok(_window) => {
-                                // The show() call makes the panel visible (order_front +
-                                // make_key). Hide it immediately so it's pre-created but
-                                // not visible. Without this, is_visible() returns true
-                                // and the chat shortcut toggle always hides instead of shows.
-                                use tauri_nspanel::ManagerExt;
-                                if let Ok(panel) = app_handle_chat.get_webview_panel("chat") {
-                                    panel.order_out(None);
-                                }
+                                // The show() call dispatches panel config to the main
+                                // thread. We must also hide on the main thread, AND
+                                // wait for the show() config to complete first.
+                                let app_for_hide = app_handle_chat.clone();
+                                let _ = app_handle_chat.run_on_main_thread(move || {
+                                    use tauri_nspanel::ManagerExt;
+                                    if let Ok(panel) = app_for_hide.get_webview_panel("chat") {
+                                        panel.order_out(None);
+                                    }
+                                });
                                 info!("Chat panel pre-created (hidden, panel configured)");
                             }
                             Err(e) => {
