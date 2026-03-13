@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 // ---------------------------------------------------------------------------
@@ -517,8 +517,6 @@ pub struct PipeManager {
     running: Arc<Mutex<HashMap<String, ExecutionHandle>>>,
     /// Currently running execution IDs (for stop API).
     running_execution_ids: Arc<Mutex<HashMap<String, i64>>>,
-    /// Global concurrency limit — only one pipe runs at a time.
-    semaphore: Arc<Semaphore>,
     /// Shutdown signal for the scheduler.
     shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
     /// Optional callback fired after each scheduled pipe run.
@@ -551,7 +549,6 @@ impl PipeManager {
             logs: Arc::new(Mutex::new(HashMap::new())),
             running: Arc::new(Mutex::new(HashMap::new())),
             running_execution_ids: Arc::new(Mutex::new(HashMap::new())),
-            semaphore: Arc::new(Semaphore::new(1)),
             shutdown_tx: None,
             on_run_complete: None,
             on_output_line: None,
@@ -1040,7 +1037,6 @@ impl PipeManager {
         let running_ref = self.running.clone();
         let running_exec_ids_ref = self.running_execution_ids.clone();
         let logs_ref = self.logs.clone();
-        let semaphore = self.semaphore.clone();
         let store_ref = self.store.clone();
         let on_complete = self.on_run_complete.clone();
         let on_output = self.on_output_line.clone();
@@ -1050,7 +1046,6 @@ impl PipeManager {
 
         // Spawn the actual execution in a background task
         tokio::spawn(async move {
-            let _permit = semaphore.acquire().await;
             let started_at = Utc::now();
             let timeout_duration = std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS);
 
@@ -1364,9 +1359,6 @@ impl PipeManager {
 
         // Create a channel so the executor can report PID immediately
         let (pid_tx, pid_rx) = tokio::sync::oneshot::channel::<u32>();
-
-        // Acquire semaphore (one pipe at a time)
-        let _permit = self.semaphore.acquire().await?;
 
         // Mark as running in DB
         if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
@@ -1880,7 +1872,6 @@ impl PipeManager {
         let logs = self.logs.clone();
         let running = self.running.clone();
         let running_execution_ids = self.running_execution_ids.clone();
-        let semaphore = self.semaphore.clone();
         let executors = self.executors.clone();
         let pipes_dir = self.pipes_dir.clone();
         let on_run_complete = self.on_run_complete.clone();
@@ -2045,7 +2036,6 @@ impl PipeManager {
                     let logs_ref = logs.clone();
                     let running_ref = running.clone();
                     let running_exec_ids_ref = running_execution_ids.clone();
-                    let sem = semaphore.clone();
                     let pipes_dir_for_log = pipes_dir.clone();
                     let on_complete = on_run_complete.clone();
                     let on_output = on_output_line.clone();
@@ -2077,8 +2067,6 @@ impl PipeManager {
                         } else {
                             None
                         };
-
-                        let _permit = sem.acquire().await;
 
                         // Mark running in DB
                         if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {

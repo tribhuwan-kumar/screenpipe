@@ -1655,6 +1655,7 @@ async fn main() {
             livetext::livetext_is_available,
             livetext::livetext_init,
             livetext::livetext_analyze,
+            livetext::livetext_prefetch,
             livetext::livetext_update_position,
             livetext::livetext_highlight,
             livetext::livetext_clear_highlights,

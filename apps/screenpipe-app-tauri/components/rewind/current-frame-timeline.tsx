@@ -277,6 +277,7 @@ export const CurrentFrameTimeline: FC<CurrentFrameTimelineProps> = ({
 		windowLabel: liveTextWindowLabel,
 		navBarRef,
 		guardRefs,
+		adjacentFrames,
 	});
 
 	if (!frameId) {
