@@ -395,16 +395,6 @@ function createSettingsStore() {
 			needsUpdate = true;
 		}
 
-		// Migration: Switch default pi-agent preset from claude-haiku to gemini-3.1-pro
-		const piPresetToMigrate = settings.aiPresets?.find(
-			(p: any) => p.id === "pi-agent" && p.provider === "pi" && p.model === "claude-haiku-4-5"
-		);
-		if (piPresetToMigrate) {
-			(piPresetToMigrate as any).model = "gemini-3.1-pro";
-			(piPresetToMigrate as any).maxContextChars = 1000000;
-			needsUpdate = true;
-		}
-
 		// Migration: Add chat history for existing users
 		if (!settings.chatHistory) {
 			settings.chatHistory = {
