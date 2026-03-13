@@ -218,7 +218,24 @@ public func ltInit(_ windowPtr: UInt64) -> Int32 {
             contentView.addSubview(overlay)
             mgr.overlayView = overlay
         }
-        let _ = mgr.ensureAnalyzer()
+        let analyzer = mgr.ensureAnalyzer()
+
+        // Warm up VisionKit by running a tiny dummy analysis in the background.
+        // The first real analyze() call triggers Apple's ML model loading which
+        // can take several seconds. By doing it here the models are ready by
+        // the time the user navigates to a frame.
+        Task.detached {
+            autoreleasepool {
+                let size = NSSize(width: 1, height: 1)
+                let img = NSImage(size: size)
+                img.lockFocus()
+                NSColor.white.setFill()
+                NSRect(origin: .zero, size: size).fill()
+                img.unlockFocus()
+                let config = ImageAnalyzer.Configuration([.text])
+                let _ = try? await analyzer.analyze(img, orientation: .up, configuration: config)
+            }
+        }
 
         return 0
     }

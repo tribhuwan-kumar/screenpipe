@@ -55,11 +55,21 @@ pub fn is_title_private(window_title: &str) -> bool {
 /// English keywords — covers Chrome, Firefox, Edge, Brave, Safari.
 /// These are checked against the lowercased title.
 ///
-/// Order matters: more specific strings first avoids misleading matches.
-/// "private" is intentionally broad — it catches "Private Browsing",
-/// "Brave Private", and any variation.  A title like "Private API docs"
-/// would be a false positive, but skipping is safer than recording.
-const ENGLISH_KEYWORDS: &[&str] = &["incognito", "inprivate", "private", "password", "secret"];
+/// We use specific phrases instead of bare words like "private" to avoid
+/// false positives on normal windows (e.g. "Private API docs", "Secret
+/// Santa Planning").  Browser incognito indicators always appear in
+/// specific patterns like "(Private Browsing)" or "- Brave Private".
+const ENGLISH_KEYWORDS: &[&str] = &[
+    "incognito",
+    "inprivate",
+    // Specific "private" phrases used by browsers
+    "private browsing",
+    "private window",
+    "private mode",
+    "- private",
+    "(private)",
+    "brave private",
+];
 
 /// Localized incognito / private-browsing strings from Chromium and Firefox
 /// translation files.  All entries are lowercase.
@@ -186,13 +196,13 @@ mod tests {
     }
 
     #[test]
-    fn test_password_window() {
-        assert!(is_title_private("Enter Password - Chrome"));
+    fn test_brave_private() {
+        assert!(is_title_private("New Tab - Brave Private"));
     }
 
     #[test]
-    fn test_secret_window() {
-        assert!(is_title_private("Secret Notes - Notepad"));
+    fn test_private_window() {
+        assert!(is_title_private("Safari — Private Window"));
     }
 
     // ---- German ----
