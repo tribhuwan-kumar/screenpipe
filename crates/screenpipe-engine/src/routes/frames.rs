@@ -102,6 +102,27 @@ pub async fn get_frame_data(
         // If not in cache or cache disabled, get from database
         match state.db.get_frame(frame_id).await {
             Ok(Some((file_path, offset_index, is_snapshot))) => {
+                // Synced frame from another device — no local file exists.
+                // Return metadata (OCR text, app/window context) instead of 410.
+                if file_path.starts_with("cloud://") {
+                    let ocr_text = state.db.get_frame_ocr_text_json(frame_id).await.ok().flatten();
+                    let timestamp = state.db.get_frame_timestamp(frame_id).await.ok().flatten();
+                    let (acc_text, _) = state.db.get_frame_accessibility_data(frame_id).await.unwrap_or((None, None));
+
+                    let metadata = json!({
+                        "error": "Frame is on a remote device",
+                        "error_type": "remote_device",
+                        "frame_id": frame_id,
+                        "timestamp": timestamp,
+                        "ocr_text": ocr_text,
+                        "accessibility_text": acc_text,
+                    });
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        JsonResponse(metadata),
+                    ));
+                }
+
                 if is_snapshot {
                     // Snapshot frame — serve JPEG directly (no ffmpeg needed)
                     if query.redact_pii {

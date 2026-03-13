@@ -9329,7 +9329,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.131"
+version = "2.2.132"
 dependencies = [
  "anyhow",
  "arboard",

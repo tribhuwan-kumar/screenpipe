@@ -3953,6 +3953,89 @@ impl DatabaseManager {
         })
     }
 
+    /// Delete all locally-stored data that was synced from a specific remote device.
+    /// Uses JOINs to find related OCR/transcription records since those tables
+    /// lack a direct machine_id column.
+    pub async fn delete_by_machine_id(
+        &self,
+        machine_id: &str,
+    ) -> Result<DeleteTimeRangeResult, sqlx::Error> {
+        let mut tx = self.begin_immediate_with_retry().await?;
+
+        // 1. Delete ocr_text for frames from this machine
+        let ocr_result = sqlx::query(
+            "DELETE FROM ocr_text WHERE frame_id IN (SELECT id FROM frames WHERE machine_id = ?1)",
+        )
+        .bind(machine_id)
+        .execute(&mut **tx.conn())
+        .await?;
+        let ocr_deleted = ocr_result.rows_affected();
+
+        // 2. Delete frames from this machine (vision_tags CASCADE automatically)
+        let frames_result = sqlx::query("DELETE FROM frames WHERE machine_id = ?1")
+            .bind(machine_id)
+            .execute(&mut **tx.conn())
+            .await?;
+        let frames_deleted = frames_result.rows_affected();
+
+        // 3. Delete orphaned video_chunks (cloud:// placeholders from sync)
+        let video_chunks_result = sqlx::query(
+            "DELETE FROM video_chunks WHERE machine_id = ?1 AND id NOT IN (SELECT DISTINCT video_chunk_id FROM frames)",
+        )
+        .bind(machine_id)
+        .execute(&mut **tx.conn())
+        .await?;
+        let video_chunks_deleted = video_chunks_result.rows_affected();
+
+        // 4. Delete audio_transcriptions for audio_chunks from this machine
+        let audio_transcriptions_result = sqlx::query(
+            "DELETE FROM audio_transcriptions WHERE audio_chunk_id IN (SELECT id FROM audio_chunks WHERE machine_id = ?1)",
+        )
+        .bind(machine_id)
+        .execute(&mut **tx.conn())
+        .await?;
+        let audio_transcriptions_deleted = audio_transcriptions_result.rows_affected();
+
+        // 5. Delete orphaned audio_chunks from this machine (audio_tags CASCADE automatically)
+        let audio_chunks_result = sqlx::query(
+            "DELETE FROM audio_chunks WHERE machine_id = ?1 AND id NOT IN (SELECT DISTINCT audio_chunk_id FROM audio_transcriptions)",
+        )
+        .bind(machine_id)
+        .execute(&mut **tx.conn())
+        .await?;
+        let audio_chunks_deleted = audio_chunks_result.rows_affected();
+
+        // 6. Delete ui_events from this machine
+        let ui_events_result = sqlx::query("DELETE FROM ui_events WHERE machine_id = ?1")
+            .bind(machine_id)
+            .execute(&mut **tx.conn())
+            .await?;
+        let ui_events_deleted = ui_events_result.rows_affected();
+
+        tx.commit().await.map_err(|e| {
+            error!("failed to commit delete_by_machine_id transaction: {}", e);
+            e
+        })?;
+
+        debug!(
+            "delete_by_machine_id({}) committed: frames={}, ocr={}, audio_transcriptions={}, audio_chunks={}, video_chunks={}, ui_events={}",
+            machine_id, frames_deleted, ocr_deleted, audio_transcriptions_deleted, audio_chunks_deleted, video_chunks_deleted, ui_events_deleted
+        );
+
+        Ok(DeleteTimeRangeResult {
+            frames_deleted,
+            ocr_deleted,
+            audio_transcriptions_deleted,
+            audio_chunks_deleted,
+            video_chunks_deleted,
+            accessibility_deleted: 0,
+            ui_events_deleted,
+            video_files: vec![],
+            audio_files: vec![],
+            snapshot_files: vec![],
+        })
+    }
+
     // =========================================================================
     // Cloud archive media upload tracking
     // =========================================================================
