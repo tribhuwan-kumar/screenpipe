@@ -229,8 +229,8 @@ export function PipeStoreView() {
       {/* Tab bar */}
       <div className="flex items-center gap-6 border-b border-border pb-0 mb-6">
         {([
-          { key: "discover" as const, label: "Discover" },
           { key: "my-pipes" as const, label: "My Pipes" },
+          { key: "discover" as const, label: "Discover" },
         ]).map(({ key, label }) => (
           <button
             key={key}
