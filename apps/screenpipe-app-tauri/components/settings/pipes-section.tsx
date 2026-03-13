@@ -59,6 +59,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import posthog from "posthog-js";
+import { PipeStore } from "@/components/pipe-store";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 
 const PIPE_CREATION_PROMPT = `create a screenpipe pipe that does the following.
 
@@ -500,6 +505,7 @@ export function PipesSection() {
   const isTeamAdmin = !!team.team && team.role === "admin";
   const [sharingPipe, setSharingPipe] = useState<string | null>(null);
   const [sharingPublic, setSharingPublic] = useState<string | null>(null);
+  const [storeOpen, setStoreOpen] = useState(false);
   const [pipeFilter, setPipeFilter] = useState<"all" | "personal" | "team">(() => {
     if (typeof window !== "undefined") {
       return (localStorage.getItem("pipes-pipe-filter") as "all" | "personal" | "team") || "all";
@@ -963,15 +969,12 @@ export function PipesSection() {
           <p className="text-sm text-muted-foreground">
             scheduled agents that run on your screen data
             {" · "}
-            <a
-              href="https://screenpi.pe/pipes"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => setStoreOpen(true)}
               className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
             >
               pipe store
-              <ExternalLink className="h-3 w-3" />
-            </a>
+            </button>
             {" · "}
             <a
               href="https://docs.screenpi.pe/pipes"
@@ -1753,6 +1756,13 @@ export function PipesSection() {
         reason="daily_limit"
         source="pipes"
       />
+
+      {/* Pipe Store Dialog */}
+      <Dialog open={storeOpen} onOpenChange={setStoreOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto" hideCloseButton>
+          <PipeStore onClose={() => setStoreOpen(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
