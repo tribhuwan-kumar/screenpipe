@@ -16,7 +16,6 @@ pub mod core;
 pub mod logging;
 pub mod pipe_permissions_middleware;
 pub mod pipe_store;
-pub mod pipe_store_api;
 pub mod pipes_api;
 pub mod recording_config;
 pub mod routes;

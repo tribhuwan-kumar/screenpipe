@@ -601,23 +601,23 @@ impl SCServer {
                 // Store/registry routes (nested under /pipes/store)
                 .route(
                     "/store",
-                    axum::routing::get(crate::pipe_store_api::pipe_store_search),
+                    axum::routing::get(crate::routes::pipe_store::pipe_store_search),
                 )
                 .route(
                     "/store/publish",
-                    axum::routing::post(crate::pipe_store_api::pipe_store_publish),
+                    axum::routing::post(crate::routes::pipe_store::pipe_store_publish),
                 )
                 .route(
                     "/store/install",
-                    axum::routing::post(crate::pipe_store_api::pipe_store_install),
+                    axum::routing::post(crate::routes::pipe_store::pipe_store_install),
                 )
                 .route(
                     "/store/:slug",
-                    axum::routing::get(crate::pipe_store_api::pipe_store_detail),
+                    axum::routing::get(crate::routes::pipe_store::pipe_store_detail),
                 )
                 .route(
                     "/store/:slug/review",
-                    axum::routing::post(crate::pipe_store_api::pipe_store_review),
+                    axum::routing::post(crate::routes::pipe_store::pipe_store_review),
                 )
                 .with_state(pm.clone());
             router.nest("/pipes", pipe_routes)
