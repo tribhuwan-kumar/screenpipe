@@ -513,9 +513,16 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
 #[cfg(target_os = "macos")]
 unsafe fn cancel_deferred_first_responder(panel: &tauri_nspanel::raw_nspanel::RawNSPanel) {
     use objc::{class, msg_send, sel, sel_impl};
-    use tauri_nspanel::cocoa::base::id;
+    use tauri_nspanel::cocoa::base::{id, nil};
+    let content_view: id = panel.content_view();
+    if content_view == nil {
+        return;
+    }
+    let window: id = msg_send![content_view, window];
+    if window == nil {
+        return;
+    }
     let ns_object_class: id = msg_send![class!(NSObject), class];
-    let window: id = msg_send![panel.content_view(), window];
     let _: () = msg_send![ns_object_class,
         cancelPreviousPerformRequestsWithTarget: window
                                        selector: sel!(makeFirstResponder:)
