@@ -426,19 +426,10 @@ pub unsafe fn make_nswindow_webview_first_responder(ns_win: tauri_nspanel::cocoa
         // Attach pinch-to-zoom gesture recognizer (same as NSPanel overlay)
         attach_magnify_gesture_to_view(wk_view);
 
-        // Set first responder immediately (handles the common case)
+        // Set first responder immediately (handles the common case).
+        // The deferred retry is handled globally by NSWindowDidBecomeKeyNotification
+        // (see `register_become_key_observer`).
         let _: () = msg_send![ns_win, makeFirstResponder: wk_view];
-
-        // Also schedule on the next run-loop tick to win the race against any
-        // deferred responder-chain reset triggered by makeKeyAndOrderFront.
-        // Only schedule if the window is currently visible — prevents
-        // re-activating a window that was hidden between now and the next tick.
-        let is_visible: bool = msg_send![ns_win, isVisible];
-        if is_visible {
-            let _: () = msg_send![ns_win, performSelector: sel!(makeFirstResponder:)
-                                               withObject: wk_view
-                                               afterDelay: 0.0f64];
-        }
     }
     }); // with_autorelease_pool
 }
@@ -490,35 +481,98 @@ pub unsafe fn make_webview_first_responder(panel: &tauri_nspanel::raw_nspanel::R
     // before WebKit's internal multi-process routing claims them.
     attach_magnify_gesture_to_view(wk_view);
 
-    // Set first responder immediately (handles the common case)
+    // Set first responder immediately (handles the common case).
+    // The deferred retry is handled globally by the NSWindowDidBecomeKeyNotification
+    // observer (see `register_become_key_observer`) which fires AFTER AppKit finishes
+    // its own responder-chain setup — no performSelector:afterDelay: needed.
     panel.make_first_responder(Some(wk_view));
 
-    // Also schedule on the next run-loop tick to win the race against any
-    // deferred responder-chain reset triggered by make_key_window().
-    // Only schedule if the panel is currently visible — prevents re-activating
-    // a panel that was hidden between now and the next tick.
-    if panel.is_visible() {
-        let window: id = msg_send![panel.content_view(), window];
-        let _: () = msg_send![window, performSelector: sel!(makeFirstResponder:)
-                                           withObject: wk_view
-                                           afterDelay: 0.0f64];
-    }
     }); // with_autorelease_pool
 }
 
-/// Cancel any pending deferred `makeFirstResponder:` calls on the given panel.
+/// Register a global `NSWindowDidBecomeKeyNotification` observer that sets the
+/// WKWebView as first responder whenever any of our windows becomes key.
 ///
-/// `make_webview_first_responder` and `make_nswindow_webview_first_responder`
-/// use `performSelector:withObject:afterDelay:` to win the first-responder race.
-/// If the panel is hidden before the next run-loop tick, the deferred call would
-/// fire on an invisible panel — potentially re-activating it or blocking hide.
-/// Call this in every hide/close path **before** `setAlphaValue:0` / `order_out`.
+/// This replaces the old `performSelector:afterDelay:` approach which leaked
+/// deferred calls on every show/hide cycle, eventually breaking panel toggling.
+///
+/// Why this works:
+/// - AppKit fires `NSWindowDidBecomeKeyNotification` AFTER it finishes its own
+///   responder-chain setup — no race condition
+/// - No deferred calls to leak or cancel
+/// - No raw pointer capture — we find the WKWebView fresh each time
+/// - The observer lives on NSNotificationCenter, not the panel, so no
+///   deallocation crash
 #[cfg(target_os = "macos")]
-unsafe fn cancel_deferred_first_responder(_panel: &tauri_nspanel::raw_nspanel::RawNSPanel) {
-    // no-op: the previous implementation crashed because ObjC exceptions
-    // from deallocated panels can't be caught across FFI in nounwind contexts.
-    // The deferred makeFirstResponder on a hidden panel is harmless — worst
-    // case it briefly sets first responder on an invisible panel.
+pub fn register_become_key_observer() {
+    use block::ConcreteBlock;
+    use objc::{class, msg_send, sel, sel_impl};
+    use tauri_nspanel::cocoa::base::{id, nil};
+    use tauri_nspanel::cocoa::foundation::{NSArray, NSString};
+
+    unsafe {
+        let center: id = msg_send![class!(NSNotificationCenter), defaultCenter];
+        let name = NSString::alloc(nil).init_str("NSWindowDidBecomeKeyNotification");
+
+        let block = ConcreteBlock::new(move |notification: id| {
+            with_autorelease_pool(|| {
+                let window: id = msg_send![notification, object];
+                if window == nil {
+                    return;
+                }
+
+                // Only act on visible windows (alpha > 0) to avoid re-activating
+                // panels that are in the process of being hidden.
+                let alpha: f64 = msg_send![window, alphaValue];
+                if alpha < 0.5 {
+                    return;
+                }
+
+                // Find WKWebView in the window's content view
+                let content_view: id = msg_send![window, contentView];
+                if content_view == nil {
+                    return;
+                }
+
+                let wk_class: *const objc::runtime::Class = class!(WKWebView);
+                let mut wk_view: id = nil;
+                let mut queue: Vec<id> = vec![content_view];
+                while let Some(view) = queue.pop() {
+                    let is_wk: bool = msg_send![view, isKindOfClass: wk_class];
+                    if is_wk {
+                        wk_view = view;
+                        break;
+                    }
+                    let subviews: id = msg_send![view, subviews];
+                    if subviews != nil {
+                        let count: u64 = NSArray::count(subviews);
+                        for i in 0..count {
+                            let child: id = NSArray::objectAtIndex(subviews, i);
+                            queue.push(child);
+                        }
+                    }
+                }
+
+                if wk_view != nil {
+                    let _: () = msg_send![window, makeFirstResponder: wk_view];
+                }
+            });
+        });
+        let block = block.copy();
+
+        let _: id = msg_send![
+            center,
+            addObserverForName: name
+            object: nil
+            queue: nil
+            usingBlock: &*block
+        ];
+
+        // Leak the block intentionally — observer lives for app lifetime
+        std::mem::forget(block);
+    }
+
+    info!("NSWindowDidBecomeKeyNotification observer registered for first-responder fix");
 }
 
 /// Shared panel visibility sequence — the single source of truth for making an
@@ -950,7 +1004,6 @@ impl ShowRewindWindow {
                     let app_clone = app.clone();
                     run_on_main_thread_safe(app, move || {
                         if let Ok(panel) = app_clone.get_webview_panel(other_label) {
-                            unsafe { cancel_deferred_first_responder(&panel); }
                             panel.order_out(None);
                         }
                     });
@@ -1294,7 +1347,6 @@ impl ShowRewindWindow {
                                         use objc::{msg_send, sel, sel_impl};
                                         if let Ok(panel) = app_clone.get_webview_panel("main-window") {
                                             unsafe {
-                                                cancel_deferred_first_responder(&panel);
                                                 let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
                                             }
                                         }
@@ -1635,7 +1687,6 @@ impl ShowRewindWindow {
                                     };
                                     if let Ok(panel) = app_clone.get_webview_panel(&lbl) {
                                         unsafe {
-                                            cancel_deferred_first_responder(&panel);
                                             let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
                                         }
                                     }
@@ -2049,11 +2100,6 @@ impl ShowRewindWindow {
                     for label in &["main", "main-window"] {
                         if let Ok(panel) = app_clone.get_webview_panel(label) {
                             if panel.is_visible() {
-                                // Cancel any pending deferred makeFirstResponder
-                                // that could re-activate the panel after hide.
-                                unsafe {
-                                    cancel_deferred_first_responder(&panel);
-                                }
                                 // Alpha=0 first for instant visual hide
                                 unsafe {
                                     use objc::{msg_send, sel, sel_impl};
