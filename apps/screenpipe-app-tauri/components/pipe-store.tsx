@@ -1208,8 +1208,8 @@ function PublishDialog({
           category: publishCategory.toLowerCase(),
         }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       posthog.capture("pipe_published_to_store", { pipe: selectedPipe });
@@ -1273,6 +1273,8 @@ function PublishDialog({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="my awesome pipe"
                 className="h-8 text-sm mt-1"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
             <div>
@@ -1282,6 +1284,8 @@ function PublishDialog({
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="what does this pipe do?"
                 className="text-xs min-h-[60px] mt-1"
+                spellCheck={false}
+                autoCorrect="off"
               />
             </div>
             <div className="flex gap-3">
