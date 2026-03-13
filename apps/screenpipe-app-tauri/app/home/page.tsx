@@ -27,6 +27,7 @@ import {
   Volume2,
   PanelLeftClose,
   PanelLeftOpen,
+  Phone,
 } from "lucide-react";
 import { useOverlayData } from "@/app/shortcut-reminder/use-overlay-data";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ import { TeamSection } from "@/components/settings/team-section";
 import { DisplaySection } from "@/components/settings/display-section";
 import { PrivacySection } from "@/components/settings/privacy-section";
 import { StorageSection } from "@/components/settings/storage-section";
+import { MeetingsSection } from "@/components/settings/meetings-section";
 import { StandaloneChat } from "@/components/standalone-chat";
 import Timeline from "@/components/rewind/timeline";
 import { useQueryState } from "nuqs";
@@ -71,6 +73,7 @@ type SettingsModalSection =
   | "connections"
   | "privacy"
   | "storage"
+  | "meetings"
   | "team"
   | "referral";
 
@@ -78,14 +81,14 @@ type SettingsModalSection =
 const ALL_SECTIONS = [
   "home", "timeline", "pipes", "help",
   "account", "recording", "ai", "general", "display", "shortcuts",
-  "connections", "privacy", "storage", "team", "referral",
+  "connections", "privacy", "storage", "meetings", "team", "referral",
   "feedback", // backwards compat → maps to "help"
   "disk-usage", "cloud-archive", "cloud-sync", // backwards compat → maps to "storage"
 ];
 
 const MODAL_SECTIONS = new Set<string>([
   "account", "recording", "ai", "general", "display", "shortcuts",
-  "connections", "privacy", "storage", "team", "referral",
+  "connections", "privacy", "storage", "meetings", "team", "referral",
 ]);
 
 function SettingsPageContent() {
@@ -242,6 +245,8 @@ function SettingsPageContent() {
         return <PrivacySection />;
       case "storage":
         return <StorageSection />;
+      case "meetings":
+        return <MeetingsSection />;
       case "connections":
         return <ConnectionsSection />;
       case "team":
@@ -268,6 +273,7 @@ function SettingsPageContent() {
     { id: "privacy", label: "Privacy", icon: <Shield className="h-4 w-4" />, group: "data" },
     { id: "storage", label: "Storage", icon: <HardDrive className="h-4 w-4" />, group: "data" },
     { id: "connections", label: "Connections", icon: <Plug className="h-4 w-4" />, group: "data" },
+    { id: "meetings", label: "Meetings", icon: <Phone className="h-4 w-4" />, group: "data" },
     ...(!isEnterprise ? [{ id: "account" as SettingsModalSection, label: "Account", icon: <User className="h-4 w-4" />, group: "account" }] : []),
     { id: "team", label: "Team", icon: <Users className="h-4 w-4" />, group: "account" },
     ...(!isEnterprise ? [{ id: "referral" as SettingsModalSection, label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" }] : []),

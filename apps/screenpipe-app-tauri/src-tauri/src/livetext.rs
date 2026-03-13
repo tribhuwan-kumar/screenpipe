@@ -104,6 +104,7 @@ pub async fn livetext_init(app: tauri::AppHandle, window_label: String) -> Resul
 #[tauri::command]
 pub async fn livetext_analyze(
     image_path: String,
+    frame_id: String,
     x: f64,
     y: f64,
     w: f64,
@@ -129,6 +130,8 @@ pub async fn livetext_analyze(
 
                 let path_c =
                     CString::new(image_path.clone()).map_err(|e| format!("invalid path: {}", e))?;
+                let frame_id_c =
+                    CString::new(frame_id.clone()).map_err(|e| format!("invalid frame_id: {}", e))?;
 
                 let mut out_text: *mut std::os::raw::c_char = std::ptr::null_mut();
                 let mut out_error: *mut std::os::raw::c_char = std::ptr::null_mut();
@@ -136,6 +139,7 @@ pub async fn livetext_analyze(
                 let status = unsafe {
                     livetext_ffi::lt_analyze_image(
                         path_c.as_ptr(),
+                        frame_id_c.as_ptr(),
                         x,
                         y,
                         w,
@@ -194,11 +198,12 @@ pub async fn livetext_prefetch(paths: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn livetext_update_position(x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
+pub async fn livetext_update_position(frame_id: String, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
+        let frame_id_c = CString::new(frame_id).map_err(|e| format!("invalid frame_id: {}", e))?;
         let status = crate::window_api::with_autorelease_pool(|| unsafe {
-            livetext_ffi::lt_update_position(x, y, w, h)
+            livetext_ffi::lt_update_position(frame_id_c.as_ptr(), x, y, w, h)
         });
         if status != 0 {
             return Err(format!("lt_update_position error: {}", status));
@@ -207,7 +212,7 @@ pub async fn livetext_update_position(x: f64, y: f64, w: f64, h: f64) -> Result<
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (x, y, w, h);
+        let _ = (frame_id, x, y, w, h);
         Err("live text is only available on macOS".to_string())
     }
 }

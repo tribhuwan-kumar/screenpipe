@@ -5594,6 +5594,16 @@ LIMIT ? OFFSET ?
         Ok(())
     }
 
+    pub async fn reopen_meeting(&self, id: i64) -> Result<(), SqlxError> {
+        let mut tx = self.begin_immediate_with_retry().await?;
+        sqlx::query("UPDATE meetings SET meeting_end = NULL WHERE id = ?1")
+            .bind(id)
+            .execute(&mut **tx.conn())
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn close_orphaned_meetings(&self) -> Result<u64, SqlxError> {
         let mut tx = self.begin_immediate_with_retry().await?;
         let now = chrono::Utc::now()
@@ -5658,6 +5668,171 @@ LIMIT ? OFFSET ?
         )
         .bind(id)
         .fetch_one(&self.pool)
+        .await?;
+        Ok(meeting)
+    }
+
+    pub async fn delete_meeting(&self, id: i64) -> Result<u64, SqlxError> {
+        let mut tx = self.begin_immediate_with_retry().await?;
+        let rows = sqlx::query("DELETE FROM meetings WHERE id = ?1")
+            .bind(id)
+            .execute(&mut **tx.conn())
+            .await?
+            .rows_affected();
+        tx.commit().await?;
+        Ok(rows)
+    }
+
+    pub async fn update_meeting(
+        &self,
+        id: i64,
+        meeting_start: Option<&str>,
+        meeting_end: Option<&str>,
+        title: Option<&str>,
+        attendees: Option<&str>,
+        meeting_app: Option<&str>,
+    ) -> Result<(), SqlxError> {
+        let mut sets: Vec<&str> = Vec::new();
+        if meeting_start.is_some() {
+            sets.push("meeting_start = ?");
+        }
+        if meeting_end.is_some() {
+            sets.push("meeting_end = ?");
+        }
+        if title.is_some() {
+            sets.push("title = ?");
+        }
+        if attendees.is_some() {
+            sets.push("attendees = ?");
+        }
+        if meeting_app.is_some() {
+            sets.push("meeting_app = ?");
+        }
+        if sets.is_empty() {
+            return Ok(());
+        }
+        // Build positional placeholders: ?1, ?2, ...
+        let set_clauses: Vec<String> = sets
+            .iter()
+            .enumerate()
+            .map(|(i, col)| col.replace('?', &format!("?{}", i + 1)))
+            .collect();
+        let sql = format!(
+            "UPDATE meetings SET {} WHERE id = ?{}",
+            set_clauses.join(", "),
+            sets.len() + 1
+        );
+        let mut tx = self.begin_immediate_with_retry().await?;
+        let mut query = sqlx::query(&sql);
+        if let Some(v) = meeting_start {
+            query = query.bind(v);
+        }
+        if let Some(v) = meeting_end {
+            query = query.bind(v);
+        }
+        if let Some(v) = title {
+            query = query.bind(v);
+        }
+        if let Some(v) = attendees {
+            query = query.bind(v);
+        }
+        if let Some(v) = meeting_app {
+            query = query.bind(v);
+        }
+        query.bind(id).execute(&mut **tx.conn()).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn merge_meetings(&self, ids: &[i64]) -> Result<MeetingRecord, SqlxError> {
+        if ids.is_empty() {
+            return Err(SqlxError::RowNotFound);
+        }
+        let mut tx = self.begin_immediate_with_retry().await?;
+        // Determine surviving id (lowest)
+        let survivor_id = *ids.iter().min().unwrap();
+        // Build placeholder list for IN clause
+        let placeholders: Vec<String> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
+        let in_clause = placeholders.join(", ");
+        // Compute merged start/end across all ids
+        let agg_sql = format!(
+            "SELECT MIN(meeting_start) AS ms, MAX(COALESCE(meeting_end, meeting_start)) AS me \
+             FROM meetings WHERE id IN ({})",
+            in_clause
+        );
+        let mut agg_query = sqlx::query(&agg_sql);
+        for id in ids.iter() {
+            agg_query = agg_query.bind(*id);
+        }
+        let row = agg_query.fetch_one(&mut **tx.conn()).await?;
+        let merged_start: Option<String> = row.try_get("ms")?;
+        let merged_end: Option<String> = row.try_get("me")?;
+        // Update the survivor row
+        let update_sql = format!(
+            "UPDATE meetings SET meeting_start = ?1, meeting_end = ?2 WHERE id = ?3"
+        );
+        sqlx::query(&update_sql)
+            .bind(&merged_start)
+            .bind(&merged_end)
+            .bind(survivor_id)
+            .execute(&mut **tx.conn())
+            .await?;
+        // Delete the non-survivor rows
+        let delete_placeholders: Vec<String> = ids
+            .iter()
+            .enumerate()
+            .filter(|(_, &id)| id != survivor_id)
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
+        if !delete_placeholders.is_empty() {
+            let delete_sql = format!(
+                "DELETE FROM meetings WHERE id IN ({})",
+                delete_placeholders.join(", ")
+            );
+            let mut del_query = sqlx::query(&delete_sql);
+            for &id in ids.iter().filter(|&&id| id != survivor_id) {
+                del_query = del_query.bind(id);
+            }
+            del_query.execute(&mut **tx.conn()).await?;
+        }
+        tx.commit().await?;
+        // Fetch and return the surviving record
+        let meeting = sqlx::query_as::<_, MeetingRecord>(
+            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, \
+             detection_source, created_at FROM meetings WHERE id = ?1",
+        )
+        .bind(survivor_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(meeting)
+    }
+
+    pub async fn find_recent_meeting_for_app(
+        &self,
+        app: &str,
+        within_secs: i64,
+    ) -> Result<Option<MeetingRecord>, SqlxError> {
+        let cutoff = (chrono::Utc::now() - chrono::Duration::seconds(within_secs))
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let meeting = sqlx::query_as::<_, MeetingRecord>(
+            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, \
+             detection_source, created_at \
+             FROM meetings \
+             WHERE meeting_app = ?1 \
+               AND meeting_end IS NOT NULL \
+               AND meeting_end >= ?2 \
+             ORDER BY meeting_end DESC \
+             LIMIT 1",
+        )
+        .bind(app)
+        .bind(&cutoff)
+        .fetch_optional(&self.pool)
         .await?;
         Ok(meeting)
     }
