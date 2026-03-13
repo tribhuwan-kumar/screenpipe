@@ -27,7 +27,7 @@ use crate::{
         data::delete_time_range_handler,
         elements::{get_frame_elements, search_elements},
         frames::{
-            get_frame_context, get_frame_data, get_frame_metadata, get_frame_ocr_data,
+            get_frame_context, get_frame_data, get_frame_metadata, get_frame_text_data,
             get_next_valid_frame, run_frame_ocr,
         },
         health::{
@@ -450,8 +450,10 @@ impl SCServer {
             .post("/tags/:content_type/:id", add_tags)
             .delete("/tags/:content_type/:id", remove_tags)
             .get("/frames/:frame_id", get_frame_data)
-            .get("/frames/:frame_id/ocr", get_frame_ocr_data)
-            .post("/frames/:frame_id/ocr", run_frame_ocr)
+            .get("/frames/:frame_id/text", get_frame_text_data)
+            .get("/frames/:frame_id/ocr", get_frame_text_data) // deprecated alias
+            .post("/frames/:frame_id/text", run_frame_ocr)
+            .post("/frames/:frame_id/ocr", run_frame_ocr) // deprecated alias
             .get("/frames/:frame_id/context", get_frame_context)
             .get("/frames/:frame_id/metadata", get_frame_metadata)
             .get("/frames/next-valid", get_next_valid_frame)

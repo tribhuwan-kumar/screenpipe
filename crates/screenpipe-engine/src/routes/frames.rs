@@ -638,14 +638,14 @@ fn extract_urls_regex(text: &str) -> Vec<String> {
 
 /// Response type for frame OCR data endpoint
 #[derive(OaSchema, Serialize)]
-pub struct FrameOcrResponse {
+pub struct FrameTextResponse {
     pub frame_id: i64,
     pub text_positions: Vec<TextPosition>,
 }
 
 /// Optional query parameter for filtering text positions by search term.
 #[derive(Debug, Deserialize, OaSchema)]
-pub struct FrameOcrQuery {
+pub struct FrameTextQuery {
     /// When provided, only return text positions matching this search term.
     /// Without this, the a11y fallback returns ALL text nodes (hundreds of them).
     pub query: Option<String>,
@@ -656,11 +656,11 @@ pub struct FrameOcrQuery {
 /// Both OCR and accessibility bounds are normalized to 0-1 relative to the
 /// monitor (full-screen capture), so they align correctly with the screenshot.
 #[oasgen]
-pub async fn get_frame_ocr_data(
+pub async fn get_frame_text_data(
     State(state): State<Arc<AppState>>,
     Path(frame_id): Path<i64>,
-    Query(params): Query<FrameOcrQuery>,
-) -> Result<JsonResponse<FrameOcrResponse>, (StatusCode, JsonResponse<Value>)> {
+    Query(params): Query<FrameTextQuery>,
+) -> Result<JsonResponse<FrameTextResponse>, (StatusCode, JsonResponse<Value>)> {
     // Get OCR data (bounding boxes from Apple Vision)
     let mut text_positions = match state.db.get_frame_text_positions(frame_id).await {
         Ok(tp) => tp,
@@ -756,7 +756,7 @@ pub async fn get_frame_ocr_data(
         }
     }
 
-    Ok(JsonResponse(FrameOcrResponse {
+    Ok(JsonResponse(FrameTextResponse {
         frame_id,
         text_positions,
     }))
@@ -770,11 +770,11 @@ pub async fn get_frame_ocr_data(
 pub async fn run_frame_ocr(
     State(state): State<Arc<AppState>>,
     Path(frame_id): Path<i64>,
-) -> Result<JsonResponse<FrameOcrResponse>, (StatusCode, JsonResponse<Value>)> {
+) -> Result<JsonResponse<FrameTextResponse>, (StatusCode, JsonResponse<Value>)> {
     // Check if OCR data already exists — avoid redundant work
     match state.db.get_frame_text_positions(frame_id).await {
         Ok(existing) if !existing.is_empty() => {
-            return Ok(JsonResponse(FrameOcrResponse {
+            return Ok(JsonResponse(FrameTextResponse {
                 frame_id,
                 text_positions: existing,
             }));
@@ -908,7 +908,7 @@ pub async fn run_frame_ocr(
         .await
         .unwrap_or_default();
 
-    Ok(JsonResponse(FrameOcrResponse {
+    Ok(JsonResponse(FrameTextResponse {
         frame_id,
         text_positions,
     }))
