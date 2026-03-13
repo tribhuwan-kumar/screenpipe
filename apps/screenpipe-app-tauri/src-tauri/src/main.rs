@@ -10,7 +10,7 @@ use serde_json::json;
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
@@ -1421,6 +1421,7 @@ async fn main() {
     let recording_state = RecordingState {
         handle: Arc::new(tokio::sync::Mutex::new(None)),
         is_starting: Arc::new(AtomicBool::new(false)),
+        last_spawn_epoch: Arc::new(AtomicU64::new(0)),
     };
     let pi_state = pi::PiState(Arc::new(tokio::sync::Mutex::new(pi::PiPool::new())));
     let suggestions_state = suggestions::SuggestionsState::new();
