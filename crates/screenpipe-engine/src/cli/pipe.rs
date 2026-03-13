@@ -131,6 +131,9 @@ pub async fn handle_pipe_command(command: &PipeCommand) -> anyhow::Result<()> {
         PipeCommand::Info { slug } => {
             handle_info_command(slug).await?;
         }
+        PipeCommand::Status { slug } => {
+            handle_status_command(slug).await?;
+        }
     }
 
     Ok(())
@@ -179,6 +182,17 @@ async fn handle_publish_command(
 
     let source_md = std::fs::read_to_string(&pipe_md_path)?;
 
+    // Check for README.md alongside pipe.md
+    let readme_md_path = pipe_dir.join("README.md");
+    let readme_md = if readme_md_path.exists() {
+        let content = std::fs::read_to_string(&readme_md_path)?;
+        println!("including README.md");
+        Some(content)
+    } else {
+        println!("no README.md found, pipe.md body will be used as description");
+        None
+    };
+
     // Parse YAML frontmatter if present (between --- delimiters)
     let (title, description, icon, category) = parse_frontmatter(&source_md);
 
@@ -200,6 +214,7 @@ async fn handle_publish_command(
         "description": description,
         "icon": icon,
         "category": category,
+        "readme_md": readme_md,
     });
 
     let url = format!("{}/api/pipes/store/publish", base);
@@ -399,6 +414,79 @@ async fn handle_info_command(slug: &str) -> anyhow::Result<()> {
 
     println!();
     println!("install with: screenpipe pipe install {}", slug);
+
+    Ok(())
+}
+
+/// Check the publish/review status of a pipe you own.
+async fn handle_status_command(slug: &str) -> anyhow::Result<()> {
+    let token = get_auth_token().ok_or_else(|| {
+        anyhow::anyhow!(
+            "no auth token found. set SCREENPIPE_API_KEY env var or create ~/.screenpipe/auth.json"
+        )
+    })?;
+
+    let base = api_base_url();
+    let client = reqwest::Client::new();
+
+    let url = format!("{}/api/pipes/store/{}", base, slug);
+    let resp = client.get(&url).bearer_auth(&token).send().await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("pipe '{}' not found in the registry", slug);
+    }
+
+    let body: Value = resp.json().await?;
+    let pipe = body.get("data").unwrap_or(&body);
+
+    let title = pipe.get("title").and_then(|v| v.as_str()).unwrap_or(slug);
+    let version = pipe
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-");
+    let review_status = pipe
+        .get("review_status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let installs = pipe
+        .get("install_count")
+        .or_else(|| pipe.get("installs"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let rating = pipe
+        .get("average_rating")
+        .or_else(|| pipe.get("rating"))
+        .and_then(|v| v.as_f64());
+
+    println!("{}", title);
+    println!("{}", "=".repeat(title.len()));
+    println!();
+    println!("slug:           {}", slug);
+    println!("version:        {}", version);
+    println!("review_status:  {}", review_status);
+    println!("install_count:  {}", installs);
+    if let Some(r) = rating {
+        println!("avg_rating:     {:.1}/5", r);
+    }
+
+    match review_status {
+        "rejected" => {
+            if let Some(note) = pipe.get("review_note").and_then(|v| v.as_str()) {
+                println!();
+                println!("rejection reason: {}", note);
+            }
+        }
+        "pending" => {
+            if let Some(flags) = pipe.get("ai_review_flags") {
+                println!();
+                println!("ai review flags: {}", flags);
+            }
+            if let Some(reason) = pipe.get("ai_review_reason").and_then(|v| v.as_str()) {
+                println!("ai review reason: {}", reason);
+            }
+        }
+        _ => {}
+    }
 
     Ok(())
 }

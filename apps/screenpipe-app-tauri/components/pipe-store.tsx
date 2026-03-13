@@ -77,6 +77,7 @@ interface StorePipe {
   featured: boolean;
   permissions: PipePermissions;
   source?: string;
+  readme_md?: string;
 }
 
 interface PipePermissions {
@@ -104,6 +105,7 @@ interface PipeReview {
 interface PipeDetail extends StorePipe {
   full_description: string;
   reviews: PipeReview[];
+  readme_md?: string;
 }
 
 interface LocalPipe {
@@ -839,7 +841,11 @@ function PipeDetailPanel({
   const unrestricted = isUnrestricted(pipe.permissions);
   const needsReview = unrestricted && !pipe.author_verified;
 
-  const readmeContent = pipe.source ? getReadmeFromPipeMd(pipe.source) : (pipe.full_description || pipe.description);
+  const readmeContent = pipe.readme_md
+    ? pipe.readme_md
+    : pipe.source
+      ? getReadmeFromPipeMd(pipe.source)
+      : (pipe.full_description || pipe.description);
 
   return (
     <div className="space-y-8">

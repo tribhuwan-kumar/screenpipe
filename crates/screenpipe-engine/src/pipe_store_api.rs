@@ -55,6 +55,7 @@ pub struct StorePublishRequest {
     pub description: String,
     pub icon: Option<String>,
     pub category: Option<String>,
+    pub readme_md: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +141,7 @@ pub async fn pipe_store_publish(
         "description": body.description,
         "icon": body.icon,
         "category": body.category,
+        "readme_md": body.readme_md,
     });
 
     let url = format!("{}/api/pipes/store/publish", base);

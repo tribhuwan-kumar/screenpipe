@@ -430,6 +430,11 @@ pub enum PipeCommand {
         /// Pipe slug (registry identifier)
         slug: String,
     },
+    /// Check publish/review status of a pipe you own
+    Status {
+        /// Pipe slug (registry identifier)
+        slug: String,
+    },
 }
 
 #[derive(Subcommand)]
