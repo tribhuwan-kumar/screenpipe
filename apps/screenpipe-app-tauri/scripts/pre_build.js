@@ -204,43 +204,35 @@ async function copyBunBinary() {
 		bunDest1 = path.join(cwd, `bun-${bunTripleSuffix}.exe`)
 		console.log('copying bun from:', bunSrc);
 		console.log('copying bun to:', bunDest1);
-	} else if (platform === 'macos' || platform === 'linux') {
-		if (platform === 'macos') {
-			bunDest1 = path.join(cwd, 'bun-aarch64-apple-darwin');
-			bunDest2 = path.join(cwd, 'bun-x86_64-apple-darwin');
-		} else {
-			bunDest1 = path.join(cwd, 'bun-x86_64-unknown-linux-gnu');
-		}
+	} else if (platform === 'linux') {
+		bunDest1 = path.join(cwd, 'bun-x86_64-unknown-linux-gnu');
 
 		if (await fs.exists(bunDest1)) {
 			console.log('bun binary already exists for tauri.');
 			return;
 		}
 
-		// On Linux, download the baseline bun variant for broader glibc compatibility
+		// Download the baseline bun variant for broader glibc compatibility
 		// (the standard variant is built on Ubuntu 24.04 and crashes on older glibc distros)
-		if (platform === 'linux') {
-			const bunVersion = '1.3.10';
-			const baselineUrl = `https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-linux-x64-baseline.zip`;
-			console.log(`downloading bun baseline v${bunVersion} for linux...`);
-			const tmpZip = path.join(cwd, 'bun-baseline.zip');
-			try {
-				await $`curl -L -o ${tmpZip} ${baselineUrl}`;
-				await $`unzip -o ${tmpZip} -d ${cwd}/bun-baseline-tmp`;
-				const extractedBun = path.join(cwd, 'bun-baseline-tmp', 'bun-linux-x64-baseline', 'bun');
-				await copyFile(extractedBun, bunDest1);
-				console.log(`bun baseline binary installed to ${bunDest1}`);
-				// cleanup
-				await fs.rm(tmpZip, { force: true });
-				await fs.rm(path.join(cwd, 'bun-baseline-tmp'), { recursive: true, force: true });
-			} catch (error) {
-				console.error('failed to download bun baseline:', error);
-				process.exit(1);
-			}
-			return;
+		const bunVersion = '1.3.10';
+		const baselineUrl = `https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/bun-linux-x64-baseline.zip`;
+		console.log(`downloading bun baseline v${bunVersion} for linux...`);
+		const tmpZip = path.join(cwd, 'bun-baseline.zip');
+		try {
+			await $`curl -L -o ${tmpZip} ${baselineUrl}`;
+			await $`unzip -o ${tmpZip} -d ${cwd}/bun-baseline-tmp`;
+			const extractedBun = path.join(cwd, 'bun-baseline-tmp', 'bun-linux-x64-baseline', 'bun');
+			await copyFile(extractedBun, bunDest1);
+			console.log(`bun baseline binary installed to ${bunDest1}`);
+			// cleanup
+			await fs.rm(tmpZip, { force: true });
+			await fs.rm(path.join(cwd, 'bun-baseline-tmp'), { recursive: true, force: true });
+		} catch (error) {
+			console.error('failed to download bun baseline:', error);
+			process.exit(1);
 		}
-
-		// macOS: copy from local installation
+		return;
+	} else if (platform === 'macos') {
 		const possibleBunPaths = [
 			path.join(os.homedir(), '.bun', 'bin', 'bun'),
 		];
@@ -271,18 +263,28 @@ async function copyBunBinary() {
 			throw new Error('Could not find bun binary. Please check if bun is installed correctly');
 		}
 
-		try {
-			await fs.access(bunSrc);
-			await copyFile(bunSrc, bunDest1);
-			console.log(`bun binary copied successfully from ${bunSrc} to ${bunDest1}`);
+		bunDest1 = path.join(cwd, 'bun-aarch64-apple-darwin');
+		bunDest2 = path.join(cwd, 'bun-x86_64-apple-darwin');
+	}
 
+	if (await fs.exists(bunDest1)) {
+		console.log('bun binary already exists for tauri.');
+		return;
+	}
+
+	try {
+		await fs.access(bunSrc);
+		await copyFile(bunSrc, bunDest1);
+		console.log(`bun binary copied successfully from ${bunSrc} to ${bunDest1}`);
+
+		if (platform === 'macos') {
 			await copyFile(bunSrc, bunDest2);
 			console.log(`bun binary also copied to ${bunDest2}`);
-		} catch (error) {
-			console.error('failed to copy bun binary:', error);
-			console.error('source path:', bunSrc);
-			process.exit(1);
 		}
+	} catch (error) {
+		console.error('failed to copy bun binary:', error);
+		console.error('source path:', bunSrc);
+		process.exit(1);
 	}
 }
 
