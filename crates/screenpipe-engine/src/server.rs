@@ -600,6 +600,27 @@ impl SCServer {
                     "/:id/history",
                     axum::routing::delete(crate::pipes_api::clear_pipe_history),
                 )
+                // Store/registry routes (nested under /pipes/store)
+                .route(
+                    "/store",
+                    axum::routing::get(crate::routes::pipe_store::pipe_store_search),
+                )
+                .route(
+                    "/store/publish",
+                    axum::routing::post(crate::routes::pipe_store::pipe_store_publish),
+                )
+                .route(
+                    "/store/install",
+                    axum::routing::post(crate::routes::pipe_store::pipe_store_install),
+                )
+                .route(
+                    "/store/:slug",
+                    axum::routing::get(crate::routes::pipe_store::pipe_store_detail),
+                )
+                .route(
+                    "/store/:slug/review",
+                    axum::routing::post(crate::routes::pipe_store::pipe_store_review),
+                )
                 .with_state(pm.clone());
             router.nest("/pipes", pipe_routes)
         } else {
