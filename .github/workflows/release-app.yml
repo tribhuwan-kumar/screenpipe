@@ -837,6 +837,11 @@ jobs:
           TARGET="${{ matrix.target }}"
           BUNDLE_DIR="apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/bundle"
 
+          # Clean stale bundle artifacts from cache — prevents old .deb/.AppImage
+          # files from accumulating and being uploaded alongside the current version
+          echo "Cleaning stale bundle artifacts..."
+          rm -rf "${BUNDLE_DIR}" 2>/dev/null || true
+
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "=== Build attempt $attempt/$MAX_ATTEMPTS ==="
 
