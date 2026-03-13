@@ -2071,21 +2071,6 @@ impl ShowRewindWindow {
                 return Ok(());
             }
 
-            // Chat panel: order_out instead of close to preserve the pre-created
-            // panel. close() destroys the window, then the shortcut handler tries
-            // to re-create it in a broken state. order_out just hides it.
-            #[cfg(target_os = "macos")]
-            if id.label() == RewindWindowId::Chat.label() {
-                let app_clone = app.clone();
-                run_on_main_thread_safe(app, move || {
-                    use tauri_nspanel::ManagerExt;
-                    if let Ok(panel) = app_clone.get_webview_panel(RewindWindowId::Chat.label()) {
-                        panel.order_out(None);
-                    }
-                });
-                return Ok(());
-            }
-
             window.close().ok();
         }
         Ok(())

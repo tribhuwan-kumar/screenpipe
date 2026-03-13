@@ -1971,16 +1971,6 @@ async fn main() {
                         info!("Pre-creating chat panel for fullscreen Space support");
                         match ShowRewindWindow::Chat.show(&app_handle_chat) {
                             Ok(_window) => {
-                                // The show() call dispatches panel config to the main
-                                // thread. We must also hide on the main thread, AND
-                                // wait for the show() config to complete first.
-                                let app_for_hide = app_handle_chat.clone();
-                                let _ = app_handle_chat.run_on_main_thread(move || {
-                                    use tauri_nspanel::ManagerExt;
-                                    if let Ok(panel) = app_for_hide.get_webview_panel("chat") {
-                                        panel.order_out(None);
-                                    }
-                                });
                                 info!("Chat panel pre-created (hidden, panel configured)");
                             }
                             Err(e) => {
