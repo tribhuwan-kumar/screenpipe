@@ -361,6 +361,7 @@ impl RecordArgs {
             vocabulary: vec![],
             ignore_incognito_windows: true,
             batch_max_duration_secs: None,
+            power_mode: None,
         }
     }
 }

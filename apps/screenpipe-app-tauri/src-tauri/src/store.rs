@@ -749,6 +749,11 @@ impl SettingsStore {
                 .get("batchMaxDurationSecs")
                 .and_then(|v| v.as_u64())
                 .filter(|&v| v > 0),
+            power_mode: self
+                .extra
+                .get("powerMode")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         }
     }
 

@@ -137,6 +137,8 @@ export type Settings = SettingsStore & {
 	pipeSuggestionsEnabled?: boolean;
 	/** Hours between pipe suggestion notifications (default: 24) */
 	pipeSuggestionFrequencyHours?: number;
+	/** User's power mode preference — persisted so it survives app restarts */
+	powerMode?: "auto" | "performance" | "battery_saver";
 }
 
 export function getEffectiveFilters(settings: Settings) {
