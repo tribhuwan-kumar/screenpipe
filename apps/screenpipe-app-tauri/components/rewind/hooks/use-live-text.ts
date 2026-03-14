@@ -45,6 +45,11 @@ export function useLiveText(opts: {
 	const [nativeLiveTextActive, setNativeLiveTextActive] = useState(false);
 	const liveTextInitRef = useRef(false);
 
+	// Track consecutive failures to decide when to fall back to web mode.
+	// Only permanent errors (XPC, helper app) trigger immediate fallback.
+	// Transient errors (missing file, skipped) are tolerated — the counter
+	// resets on every successful analyze so a single good frame keeps
+	// native mode alive.
 	const analyzeFailCountRef = useRef(0);
 
 	// Get absolute position within the window (accounts for sidebar, titlebar, etc.)
@@ -129,19 +134,34 @@ export function useLiveText(opts: {
 			}).catch((e: unknown) => {
 				if (cancelled) return;
 				const msg = String(e);
+
+				// Permanent errors — VisionKit itself is broken, no point retrying
 				if (msg.includes("helper application") || msg.includes("XPC")) {
 					console.warn("[livetext] VisionKit unavailable (code signing?), falling back to web mode");
 					setNativeLiveTextActive(false);
 					return;
 				}
-				// After 3 consecutive failures, fall back to web mode
+
+				// Transient errors — file missing, skipped due to newer request, etc.
+				// These are expected during fast scrolling or when snapshot files
+				// haven't been written yet. Don't count them toward the fatal limit.
+				const isTransient =
+					msg.includes("failed to load image") ||
+					msg.includes("skipped") ||
+					msg.includes("not found");
+				if (isTransient) {
+					console.debug("[livetext] transient error (will retry on next frame):", msg);
+					return;
+				}
+
+				// Unknown errors — count consecutive failures, fall back after 5
 				analyzeFailCountRef.current++;
-				if (analyzeFailCountRef.current >= 3) {
-					console.warn("[livetext] too many failures, falling back to web mode");
+				if (analyzeFailCountRef.current >= 5) {
+					console.warn("[livetext] too many consecutive failures, falling back to web mode");
 					setNativeLiveTextActive(false);
 					return;
 				}
-				console.warn("live text analyze failed:", e);
+				console.warn("[livetext] analyze failed:", e);
 			});
 		}, 50);
 		return () => { cancelled = true; clearTimeout(timer); };
@@ -182,7 +202,7 @@ export function useLiveText(opts: {
 	useEffect(() => {
 		if (!nativeLiveTextActive || !renderedImageInfo || !debouncedFrame?.frameId) return;
 		const pos = getAbsolutePosition(renderedImageInfo);
-		invoke("livetext_update_position", { frameId: debouncedFrame.frameId, ...pos }).catch(() => {});
+		invoke("livetext_update_position", { frameId: String(debouncedFrame.frameId), ...pos }).catch(() => {});
 	}, [nativeLiveTextActive, debouncedFrame?.frameId, renderedImageInfo?.offsetX, renderedImageInfo?.offsetY, renderedImageInfo?.width, renderedImageInfo?.height]);
 
 	// Place click guards over UI elements so VisionKit hit regions
@@ -254,7 +274,7 @@ export function useLiveText(opts: {
 			const imagePath = isSnapshotFrame && debouncedFrame.filePath
 				? debouncedFrame.filePath
 				: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
-			const fid = debouncedFrame.frameId;
+			const fid = String(debouncedFrame.frameId);
 			invoke("livetext_analyze", {
 				imagePath,
 				frameId: fid,

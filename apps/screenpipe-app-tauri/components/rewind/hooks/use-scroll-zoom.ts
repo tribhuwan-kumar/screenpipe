@@ -59,6 +59,15 @@ export function useScrollZoom(opts: {
 	const isZoomingRef = useRef(false);
 	const zoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Track mouse position for native-scroll hit-testing (no DOM target available)
+	const lastMouseX = useRef(0);
+	const lastMouseY = useRef(0);
+	useEffect(() => {
+		const onMove = (e: MouseEvent) => { lastMouseX.current = e.clientX; lastMouseY.current = e.clientY; };
+		document.addEventListener("mousemove", onMove);
+		return () => document.removeEventListener("mousemove", onMove);
+	}, []);
+
 	// Smooth zoom animation — zoomLevel is read only via the setter callback
 	// to avoid re-running the effect on every intermediate frame.
 	useEffect(() => {
@@ -253,9 +262,18 @@ export function useScrollZoom(opts: {
 		}>("native-scroll", (event) => {
 			const { deltaX, deltaY, ctrlKey, metaKey } = event.payload;
 
-			// Don't intercept scroll when search modal is open — SearchModal
-			// has its own native-scroll listener for scrolling results
+			// Don't intercept scroll when a modal/panel is open
 			if (showSearchModal) return;
+
+			// Check if cursor is over a panel/dialog — let those scroll natively
+			const target = document.elementFromPoint(lastMouseX.current, lastMouseY.current);
+			if (target) {
+				const isOverExcluded =
+					document.querySelector(".audio-transcript-panel")?.contains(target) ||
+					document.querySelector(".ai-panel")?.contains(target) ||
+					document.querySelector('[role="dialog"]')?.contains(target);
+				if (isOverExcluded) return;
+			}
 
 			pausePlayback();
 

@@ -48,6 +48,9 @@ struct NotificationPayload {
     auto_dismiss_ms: Option<u64>,
     /// timeout in ms (alias for autoDismissMs)
     timeout: Option<u64>,
+    /// action buttons shown in the notification panel
+    #[serde(default)]
+    actions: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -317,7 +320,7 @@ async fn send_notification(
         "type": payload.notification_type.unwrap_or_else(|| "pipe".to_string()),
         "title": payload.title,
         "body": payload.body,
-        "actions": [],
+        "actions": payload.actions,
         "autoDismissMs": dismiss_ms,
     });
 

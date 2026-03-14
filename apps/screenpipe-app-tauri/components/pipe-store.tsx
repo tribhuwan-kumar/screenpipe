@@ -685,8 +685,8 @@ function FeaturedCard({
           </Badge>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <StarRating rating={pipe.rating} />
-              <span>{pipe.rating.toFixed(1)}</span>
+              <StarRating rating={pipe.rating ?? 0} />
+              <span>{(pipe.rating ?? 0).toFixed(1)}</span>
             </span>
             <span className="flex items-center gap-1">
               <Download className="h-3 w-3" />
@@ -788,8 +788,8 @@ function PipeCard({
 
       <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <StarRating rating={pipe.rating} />
-          <span>{pipe.rating.toFixed(1)}</span>
+          <StarRating rating={pipe.rating ?? 0} />
+          <span>{(pipe.rating ?? 0).toFixed(1)}</span>
         </span>
         <span className="flex items-center gap-1">
           <Download className="h-3 w-3" />
@@ -875,9 +875,9 @@ function PipeDetailPanel({
               </div>
               <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <StarRating rating={pipe.rating} size="md" />
+                  <StarRating rating={pipe.rating ?? 0} size="md" />
                   <span>
-                    {pipe.rating.toFixed(1)} ({pipe.review_count}{" "}
+                    {(pipe.rating ?? 0).toFixed(1)} ({pipe.review_count}{" "}
                     {pipe.review_count === 1 ? "review" : "reviews"})
                   </span>
                 </span>
