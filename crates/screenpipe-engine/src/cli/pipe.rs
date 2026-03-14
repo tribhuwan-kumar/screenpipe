@@ -12,10 +12,7 @@ use std::sync::Arc;
 
 /// Handle pipe subcommands (standalone — does NOT require a running server).
 pub async fn handle_pipe_command(command: &PipeCommand) -> anyhow::Result<()> {
-    let pipes_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("could not find home directory"))?
-        .join(".screenpipe")
-        .join("pipes");
+    let pipes_dir = screenpipe_core::paths::default_screenpipe_data_dir().join("pipes");
     std::fs::create_dir_all(&pipes_dir)?;
 
     let user_token = std::env::var("SCREENPIPE_API_KEY").ok();
@@ -150,7 +147,7 @@ fn get_auth_token() -> Option<String> {
     if let Ok(key) = std::env::var("SCREENPIPE_API_KEY") {
         return Some(key);
     }
-    let auth_path = dirs::home_dir()?.join(".screenpipe").join("auth.json");
+    let auth_path = screenpipe_core::paths::default_screenpipe_data_dir().join("auth.json");
     if auth_path.exists() {
         let content = std::fs::read_to_string(&auth_path).ok()?;
         let parsed: Value = serde_json::from_str(&content).ok()?;
@@ -493,10 +490,7 @@ async fn handle_status_command(slug: &str) -> anyhow::Result<()> {
 
 /// Handle model subcommands — reads presets from store.bin.
 pub fn handle_model_command(command: &ModelCommand) -> anyhow::Result<()> {
-    let store_path = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("could not find home directory"))?
-        .join(".screenpipe")
-        .join("store.bin");
+    let store_path = screenpipe_core::paths::default_screenpipe_data_dir().join("store.bin");
 
     let presets = if store_path.exists() {
         let content = std::fs::read_to_string(&store_path)?;

@@ -16,10 +16,7 @@ use tokio::task::JoinSet;
 
 /// Open the real production DB in read-only mode
 async fn open_real_db() -> Arc<DatabaseManager> {
-    let db_path = dirs::home_dir()
-        .unwrap()
-        .join(".screenpipe")
-        .join("db.sqlite");
+    let db_path = screenpipe_core::paths::default_screenpipe_data_dir().join("db.sqlite");
 
     if !db_path.exists() {
         panic!("No DB found at {:?} — skip this test", db_path);

@@ -624,8 +624,8 @@ pub fn start_update_check(
     let updates_manager = Arc::new(UpdatesManager::new(app, interval_minutes)?);
 
     // Clean up old rollback directory if it exists (legacy, no longer needed)
-    if let Some(home) = dirs::home_dir() {
-        let rollback_dir = home.join(".screenpipe").join("rollback");
+    {
+        let rollback_dir = screenpipe_core::paths::default_screenpipe_data_dir().join("rollback");
         if rollback_dir.exists() {
             let _ = std::fs::remove_dir_all(&rollback_dir);
             info!("rollback: cleaned up legacy rollback directory");

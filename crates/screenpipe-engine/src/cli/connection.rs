@@ -8,9 +8,7 @@ use serde_json::{json, Map, Value};
 
 /// Handle connection subcommands (standalone — does NOT require a running server).
 pub async fn handle_connection_command(command: &ConnectionCommand) -> anyhow::Result<()> {
-    let screenpipe_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("could not find home directory"))?
-        .join(".screenpipe");
+    let screenpipe_dir = screenpipe_core::paths::default_screenpipe_data_dir();
 
     let cm = ConnectionManager::new(screenpipe_dir.clone());
 

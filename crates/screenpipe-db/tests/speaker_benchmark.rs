@@ -527,10 +527,7 @@ mod speaker_benchmark {
     }
 
     async fn load_benchmark_data() -> Option<BenchmarkData> {
-        let db_path = dirs::home_dir()
-            .unwrap()
-            .join(".screenpipe")
-            .join("db.sqlite");
+        let db_path = screenpipe_core::paths::default_screenpipe_data_dir().join("db.sqlite");
 
         if !db_path.exists() {
             println!("SKIP: no DB at {}", db_path.display());

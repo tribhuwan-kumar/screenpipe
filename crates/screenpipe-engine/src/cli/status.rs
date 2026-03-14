@@ -1,4 +1,4 @@
-use dirs::home_dir;
+use screenpipe_core::paths;
 use serde_json::json;
 use sqlx::Row;
 use std::path::PathBuf;
@@ -83,9 +83,7 @@ pub async fn handle_status_command(
 }
 
 fn get_base_dir(custom_path: &Option<String>) -> anyhow::Result<PathBuf> {
-    let default_path = home_dir()
-        .ok_or_else(|| anyhow::anyhow!("failed to get home directory"))?
-        .join(".screenpipe");
+    let default_path = paths::default_screenpipe_data_dir();
 
     Ok(custom_path
         .as_ref()

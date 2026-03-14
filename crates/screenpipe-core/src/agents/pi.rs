@@ -1008,9 +1008,9 @@ pub fn find_bun_executable() -> Option<String> {
     paths.into_iter().find(|p| std::path::Path::new(p).exists())
 }
 
-/// Returns the screenpipe-managed pi install directory (`~/.screenpipe/pi-agent/`).
+/// Returns the screenpipe-managed pi install directory (`~/.screenpipe/pi-agent/` or SCREENPIPE_DATA_DIR/pi-agent).
 fn pi_local_install_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".screenpipe").join("pi-agent"))
+    Some(crate::paths::default_screenpipe_data_dir().join("pi-agent"))
 }
 
 /// Check whether the locally-installed Pi version matches `PI_PACKAGE`.

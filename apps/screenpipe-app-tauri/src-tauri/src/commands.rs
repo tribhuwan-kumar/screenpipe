@@ -348,9 +348,7 @@ pub async fn get_disk_usage(
 ) -> Result<serde_json::Value, String> {
     let screenpipe_dir_path = match data_dir {
         Some(d) if !d.is_empty() && d != "default" => std::path::PathBuf::from(d),
-        _ => dirs::home_dir()
-            .ok_or_else(|| "Could not get home directory".to_string())?
-            .join(".screenpipe"),
+        _ => screenpipe_core::paths::default_screenpipe_data_dir(),
     };
 
     match crate::disk_usage::disk_usage(&screenpipe_dir_path, force_refresh.unwrap_or(false)).await
