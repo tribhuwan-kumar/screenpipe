@@ -1302,8 +1302,8 @@ export const TimelineSlider = ({
 				{/* Collapse/expand filters toggle */}
 				<button
 					className={cn(
-						"p-1.5 rounded-md transition-colors shrink-0",
-						"bg-background/80 backdrop-blur-sm border border-border",
+						"p-1.5 rounded-md transition-colors shrink-0 cursor-pointer",
+						"bg-background/80 backdrop-blur-sm border border-border hover:bg-accent",
 					)}
 					onClick={() => setFiltersCollapsed((prev) => !prev)}
 					title={filtersCollapsed ? "Show filters" : "Hide filters"}
