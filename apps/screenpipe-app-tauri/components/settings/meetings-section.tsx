@@ -67,6 +67,7 @@ export function MeetingsSection() {
   });
   const [savingId, setSavingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [merging, setMerging] = useState(false);
 
   const fetchMeetings = useCallback(async () => {
@@ -146,8 +147,8 @@ export function MeetingsSection() {
   };
 
   const deleteMeeting = async (id: number) => {
-    if (!window.confirm("delete this meeting?")) return;
     setDeletingId(id);
+    setConfirmDeleteId(null);
     try {
       const res = await fetch(`http://localhost:3030/meetings/${id}`, {
         method: "DELETE",
@@ -379,20 +380,48 @@ export function MeetingsSection() {
                       >
                         <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => deleteMeeting(meeting.id)}
-                        disabled={isDeleting}
-                        title="delete"
-                      >
-                        {isDeleting ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        )}
-                      </Button>
+                      {confirmDeleteId === meeting.id ? (
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={() => deleteMeeting(meeting.id)}
+                            disabled={isDeleting}
+                            title="confirm delete"
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5 text-destructive" />
+                            )}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={() => setConfirmDeleteId(null)}
+                            title="cancel"
+                          >
+                            <X className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => setConfirmDeleteId(meeting.id)}
+                          disabled={isDeleting}
+                          title="delete"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          )}
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>

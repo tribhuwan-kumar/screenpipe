@@ -5,7 +5,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, RefreshCw, CalendarIcon, Search, Play, Pause, Loader2, Mic, Volume2, Phone, PhoneOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, CalendarIcon, Search, Play, Pause, Loader2, Mic, Volume2 } from "lucide-react";
 import {
 	format,
 	isAfter,
@@ -14,7 +14,7 @@ import {
 	subDays,
 } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { usePlatform } from "@/lib/hooks/use-platform";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { Calendar } from "@/components/ui/calendar";
@@ -132,30 +132,6 @@ export function TimelineControls({
 	const { isMac } = usePlatform();
 	const { settings } = useSettings();
 	const [calendarOpen, setCalendarOpen] = useState(false);
-	const [manualMeeting, setManualMeeting] = useState(false);
-	const [meetingLoading, setMeetingLoading] = useState(false);
-
-	const toggleMeeting = useCallback(async () => {
-		setMeetingLoading(true);
-		try {
-			if (manualMeeting) {
-				await fetch("http://localhost:3030/meetings/stop", { method: "POST" });
-				setManualMeeting(false);
-			} else {
-				await fetch("http://localhost:3030/meetings/start", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ app: "manual" }),
-				});
-				setManualMeeting(true);
-			}
-		} catch (e) {
-			console.error("meeting toggle failed:", e);
-		} finally {
-			setMeetingLoading(false);
-		}
-	}, [manualMeeting]);
-
 	const searchShortcutDisplay = useMemo(
 		() => formatShortcutForDisplay(settings.searchShortcut || (isMac ? "Control+Super+K" : "Alt+K"), isMac),
 		[settings.searchShortcut, isMac]
@@ -338,34 +314,6 @@ export function TimelineControls({
 						)}
 					</div>
 				)}
-
-				<button
-					type="button"
-					onClick={toggleMeeting}
-					disabled={meetingLoading}
-					className={cn(
-						"flex items-center h-10 gap-1.5 border px-3 font-mono text-xs transition-colors duration-150 cursor-pointer",
-						manualMeeting
-							? "bg-red-500/10 border-red-500/30 text-red-600 hover:bg-red-500/20"
-							: "bg-background border-border text-foreground hover:bg-foreground hover:text-background"
-					)}
-					title={manualMeeting ? "Stop meeting" : "Start meeting"}
-				>
-					{meetingLoading ? (
-						<Loader2 className="h-3 w-3 animate-spin" />
-					) : manualMeeting ? (
-						<>
-							<span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-							<PhoneOff className="h-3 w-3" />
-							<span>stop</span>
-						</>
-					) : (
-						<>
-							<Phone className="h-3 w-3" />
-							<span>meeting</span>
-						</>
-					)}
-				</button>
 
 				{onSearchClick && (
 					embedded ? (

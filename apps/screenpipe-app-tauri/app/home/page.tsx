@@ -177,6 +177,51 @@ function SettingsPageContent() {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
+  // Manual meeting toggle state — synced with server
+  const [manualMeeting, setManualMeeting] = useState(false);
+  const [meetingLoading, setMeetingLoading] = useState(false);
+
+  // Poll server for active manual meeting on mount + interval
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      fetch("http://localhost:3030/meetings?limit=5")
+        .then((r) => r.ok ? r.json() : [])
+        .then((meetings: { meeting_end: string | null; detection_source: string }[]) => {
+          if (cancelled) return;
+          const hasActive = meetings.some(
+            (m) => m.meeting_end === null && m.detection_source === "manual"
+          );
+          setManualMeeting(hasActive);
+        })
+        .catch(() => {});
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const toggleMeeting = useCallback(async () => {
+    setMeetingLoading(true);
+    try {
+      if (manualMeeting) {
+        await fetch("http://localhost:3030/meetings/stop", { method: "POST" });
+        setManualMeeting(false);
+      } else {
+        await fetch("http://localhost:3030/meetings/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ app: "manual" }),
+        });
+        setManualMeeting(true);
+      }
+    } catch (e) {
+      console.error("meeting toggle failed:", e);
+    } finally {
+      setMeetingLoading(false);
+    }
+  }, [manualMeeting]);
+
   // Watch pipe: navigate to chat when user clicks "watch" on a running pipe
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -345,6 +390,17 @@ function SettingsPageContent() {
                     </span>
                   ));
                 })()}
+                <button
+                  onClick={toggleMeeting}
+                  disabled={meetingLoading}
+                  className="relative flex items-center justify-center h-5 w-5 text-muted-foreground hover:text-foreground transition-colors"
+                  title={manualMeeting ? "stop meeting" : "start meeting"}
+                >
+                  {manualMeeting && (
+                    <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                  )}
+                  <Phone className="h-3.5 w-3.5" />
+                </button>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
