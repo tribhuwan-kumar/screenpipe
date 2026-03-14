@@ -1002,6 +1002,20 @@ pub async fn show_shortcut_reminder(
 pub async fn hide_shortcut_reminder(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("shortcut-reminder") {
         let _ = window.hide();
+
+        // On macOS, window.hide() alone doesn't remove NSPanel from the hit-test
+        // hierarchy when NSNonactivatingPanelMask is set. order_out ensures the
+        // panel is fully removed so it can't intercept clicks on other apps.
+        #[cfg(target_os = "macos")]
+        {
+            use tauri_nspanel::ManagerExt;
+            let app_clone = app_handle.clone();
+            let _ = app_handle.run_on_main_thread(move || {
+                if let Ok(panel) = app_clone.get_webview_panel("shortcut-reminder") {
+                    panel.order_out(None);
+                }
+            });
+        }
     }
     Ok(())
 }
@@ -1185,6 +1199,20 @@ pub async fn show_notification_panel(
 pub async fn hide_notification_panel(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("notification-panel") {
         let _ = window.hide();
+
+        // On macOS, window.hide() alone doesn't remove NSPanel from the hit-test
+        // hierarchy when NSNonactivatingPanelMask is set. order_out ensures the
+        // panel is fully removed so it can't intercept clicks on other apps.
+        #[cfg(target_os = "macos")]
+        {
+            use tauri_nspanel::ManagerExt;
+            let app_clone = app_handle.clone();
+            let _ = app_handle.run_on_main_thread(move || {
+                if let Ok(panel) = app_clone.get_webview_panel("notification-panel") {
+                    panel.order_out(None);
+                }
+            });
+        }
     }
     Ok(())
 }
