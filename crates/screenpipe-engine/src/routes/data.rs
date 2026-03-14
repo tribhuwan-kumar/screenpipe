@@ -95,6 +95,36 @@ pub(crate) async fn delete_time_range_handler(
     }))
 }
 
+#[derive(Serialize)]
+pub struct DeviceStorageEntry {
+    pub machine_id: String,
+    pub frames: i64,
+    pub audio_chunks: i64,
+}
+
+/// Get record counts per synced device.
+pub(crate) async fn device_storage_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<JsonResponse<Vec<DeviceStorageEntry>>, (StatusCode, JsonResponse<Value>)> {
+    let counts = state.db.count_by_machine_id().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            JsonResponse(json!({"error": format!("failed to count device storage: {}", e)})),
+        )
+    })?;
+
+    Ok(JsonResponse(
+        counts
+            .into_iter()
+            .map(|(machine_id, frames, audio_chunks)| DeviceStorageEntry {
+                machine_id,
+                frames,
+                audio_chunks,
+            })
+            .collect(),
+    ))
+}
+
 #[derive(Deserialize)]
 pub struct DeleteDeviceDataRequest {
     pub machine_id: String,

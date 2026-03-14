@@ -459,6 +459,21 @@ function ActiveSyncSettings({
       ? (status.storageUsed / status.storageLimit) * 100
       : 0;
 
+  // Fetch local record counts per device
+  const [deviceCounts, setDeviceCounts] = useState<Record<string, { frames: number; audioChunks: number }>>({});
+  useEffect(() => {
+    fetch("http://localhost:3030/data/device-storage")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: { machine_id: string; frames: number; audio_chunks: number }[]) => {
+        const map: Record<string, { frames: number; audioChunks: number }> = {};
+        for (const d of data) {
+          map[d.machine_id] = { frames: d.frames, audioChunks: d.audio_chunks };
+        }
+        setDeviceCounts(map);
+      })
+      .catch(() => {});
+  }, [devices]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -599,7 +614,12 @@ function ActiveSyncSettings({
                         <p className="text-xs text-muted-foreground">
                           {device.deviceOs}
                           {device.lastSyncAt &&
-                            ` - last synced ${formatRelativeTime(device.lastSyncAt)}`}
+                            ` · synced ${formatRelativeTime(device.lastSyncAt)}`}
+                          {deviceCounts[device.deviceId] && (
+                            <span className="ml-1">
+                              · {deviceCounts[device.deviceId].frames.toLocaleString()} frames
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>

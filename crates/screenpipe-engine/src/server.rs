@@ -24,7 +24,7 @@ use crate::{
             add_tags, add_to_database, execute_raw_sql, get_tags_batch, merge_frames_handler,
             remove_tags, validate_media_handler,
         },
-        data::{delete_device_data_handler, delete_time_range_handler},
+        data::{delete_device_data_handler, delete_time_range_handler, device_storage_handler},
         elements::{get_frame_elements, search_elements},
         frames::{
             get_frame_context, get_frame_data, get_frame_metadata, get_frame_text_data,
@@ -569,6 +569,10 @@ impl SCServer {
             .route(
                 "/data/delete-device",
                 axum::routing::post(delete_device_data_handler),
+            )
+            .route(
+                "/data/device-storage",
+                axum::routing::get(device_storage_handler),
             )
             .route(
                 "/audio/retranscribe",
