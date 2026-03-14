@@ -454,7 +454,7 @@ pub async fn event_driven_capture_loop(
                             );
                         } else {
                             // Content dedup or window filter — capture skipped
-                            info!(
+                            debug!(
                                 "capture skipped DB write for monitor {} (trigger={})",
                                 monitor_id,
                                 trigger.as_str()
@@ -632,7 +632,7 @@ async fn do_capture(
     let tree_snapshot = match tree_walk_result {
         TreeWalkResult::Found(snap) => Some(snap),
         TreeWalkResult::Skipped(reason) => {
-            warn!(
+            debug!(
                 "skipping capture: window filtered ({}) on monitor {}",
                 reason, monitor_id
             );

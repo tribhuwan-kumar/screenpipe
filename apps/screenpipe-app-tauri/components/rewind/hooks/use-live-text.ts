@@ -100,9 +100,7 @@ export function useLiveText(opts: {
 
 		// For snapshot frames, use the local file path directly (instant).
 		// For video-chunk frames, fall back to HTTP endpoint (requires ffmpeg extraction).
-		const imagePath = isSnapshotFrame && debouncedFrame.filePath
-			? debouncedFrame.filePath
-			: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+		const imagePath = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 
 		// Position is managed exclusively by livetext_update_position.
 		// The analyze call only sets the analysis + shows the overlay.

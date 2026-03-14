@@ -224,7 +224,31 @@ async fn compact_chunk(
                 break;
             }
         }
-        dims.ok_or_else(|| anyhow::anyhow!("no readable JPEG found in chunk"))?
+        match dims {
+            Some(d) => d,
+            None => {
+                // All JPEGs gone/unreadable — clear stale DB pointers so we don't retry
+                let ids: Vec<i64> = frames.iter().map(|(id, _, _)| *id).collect();
+                debug!(
+                    "snapshot compaction: clearing {} stale snapshot_path entries for {} (files missing)",
+                    ids.len(),
+                    device_name
+                );
+                for batch in ids.chunks(100) {
+                    let placeholders: Vec<&str> = batch.iter().map(|_| "?").collect();
+                    let sql = format!(
+                        "UPDATE frames SET snapshot_path = NULL WHERE id IN ({})",
+                        placeholders.join(",")
+                    );
+                    let mut query = sqlx::query(&sql);
+                    for id in batch {
+                        query = query.bind(id);
+                    }
+                    let _ = query.execute(&db.pool).await;
+                }
+                return Ok(None);
+            }
+        }
     };
 
     debug!(
@@ -253,7 +277,11 @@ async fn compact_chunk(
     for (frame_id, snapshot_path, _) in frames {
         let jpeg_path = Path::new(snapshot_path);
         if !jpeg_path.exists() {
-            warn!("snapshot file missing, skipping: {}", snapshot_path);
+            debug!("snapshot file missing, clearing DB pointer: {}", snapshot_path);
+            let _ = sqlx::query("UPDATE frames SET snapshot_path = NULL WHERE id = ?")
+                .bind(frame_id)
+                .execute(&db.pool)
+                .await;
             continue;
         }
 

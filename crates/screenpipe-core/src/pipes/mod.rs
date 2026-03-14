@@ -747,10 +747,10 @@ impl PipeManager {
                         pipes.insert(dir_name, (config, body, content));
                     }
                     Err(e) => {
-                        warn!("failed to parse {:?}: {}", pipe_md, e);
+                        debug!("failed to parse {:?}: {}", pipe_md, e);
                     }
                 },
-                Err(e) => warn!("failed to read {:?}: {}", pipe_md, e),
+                Err(e) => debug!("failed to read {:?}: {}", pipe_md, e),
             }
         }
 

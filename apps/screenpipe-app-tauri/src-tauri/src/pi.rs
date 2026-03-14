@@ -1400,7 +1400,7 @@ pub async fn pi_start_inner(
             info!("Pi readiness signal received (pid: {})", pid);
         }
         _ = tokio::time::sleep(PI_READY_TIMEOUT) => {
-            warn!("Pi readiness timeout after {:?} (pid: {}), checking if alive", PI_READY_TIMEOUT, pid);
+            debug!("Pi readiness timeout after {:?} (pid: {}), checking if alive", PI_READY_TIMEOUT, pid);
         }
     }
     {
