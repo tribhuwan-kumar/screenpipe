@@ -374,6 +374,7 @@ export function useTeam() {
       configs: [],
       inviteLink: null,
       invitePassphrase: null,
+      missingKey: false,
       loading: false,
       error: null,
     });
@@ -403,6 +404,7 @@ export function useTeam() {
       configs: [],
       inviteLink: null,
       invitePassphrase: null,
+      missingKey: false,
       loading: false,
       error: null,
     });
