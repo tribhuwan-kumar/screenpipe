@@ -54,6 +54,8 @@ interface TeamState {
   configs: TeamConfig[];
   inviteLink: string | null;
   invitePassphrase: string | null;
+  /** True when user is in a team but encryption key is not on this device */
+  missingKey: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -104,6 +106,7 @@ export function useTeam() {
     configs: [],
     inviteLink: null,
     invitePassphrase: null,
+    missingKey: false,
     loading: true,
     error: null,
   });
@@ -148,6 +151,7 @@ export function useTeam() {
       // load team key from storage
       const key = await loadTeamKeyFromStore(data.team.id);
       teamKeyRef.current = key;
+      const missingKey = !key;
 
       // generate invite link if admin and has key
       // the invite is now a web URL with the AES key in the URL fragment
@@ -185,6 +189,7 @@ export function useTeam() {
         role: data.role,
         inviteLink,
         invitePassphrase,
+        missingKey,
         loading: false,
       }));
 

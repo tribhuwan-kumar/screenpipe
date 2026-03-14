@@ -179,11 +179,34 @@ export function TeamSection() {
   const handleJoinFromLink = async () => {
     if (!inviteInput.trim()) return;
     try {
-      const parsed = new URL(inviteInput.trim());
-      const teamId = parsed.searchParams.get("team_id");
-      const inviteToken = parsed.searchParams.get("invite_token");
-      const claimToken = parsed.searchParams.get("claim");
-      const base64Key = parsed.searchParams.get("key");
+      const input = inviteInput.trim();
+      let teamId: string | null = null;
+      let inviteToken: string | null = null;
+      let claimToken: string | null = null;
+      let base64Key: string | null = null;
+
+      // Handle web URL format: https://screenpi.pe/join/TOKEN#key=BASE64
+      const webMatch = input.match(/screenpi\.pe\/join\/([^#?]+)/);
+      if (webMatch) {
+        inviteToken = webMatch[1];
+        const hashMatch = input.match(/#key=(.+)/);
+        if (hashMatch) base64Key = hashMatch[1];
+
+        // Fetch team_id from server
+        const infoRes = await fetch(`https://screenpi.pe/api/team/join/info?token=${encodeURIComponent(inviteToken)}`);
+        if (!infoRes.ok) throw new Error("invalid or expired invite link");
+        const info = await infoRes.json();
+        if (info.expired) throw new Error("invite link expired");
+        if (info.used) throw new Error("invite link already used");
+        teamId = info.team_id;
+      } else {
+        // Legacy format: screenpipe://join-team?team_id=X&invite_token=Y&key=Z
+        const parsed = new URL(input);
+        teamId = parsed.searchParams.get("team_id");
+        inviteToken = parsed.searchParams.get("invite_token");
+        claimToken = parsed.searchParams.get("claim");
+        base64Key = parsed.searchParams.get("key");
+      }
 
       if (!teamId) throw new Error("invalid invite link — missing team_id");
 
@@ -476,7 +499,7 @@ export function TeamSection() {
           {showJoinInput ? (
             <div className="flex gap-2">
               <Input
-                placeholder="screenpipe://join-team?team_id=...&key=..."
+                placeholder="paste invite link (https://screenpi.pe/join/... or screenpipe://...)"
                 value={inviteInput}
                 onChange={(e) => setInviteInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleJoinFromLink()}
@@ -549,6 +572,32 @@ export function TeamSection() {
           </Badge>
         </div>
       </div>
+
+      {/* Missing encryption key — need invite link to sync */}
+      {team.missingKey && (
+        <Card className="p-4 border-yellow-500/50 bg-yellow-500/5">
+          <div className="flex items-center gap-2 mb-2">
+            <Lock className="h-4 w-4 text-yellow-600" />
+            <h3 className="text-sm font-medium text-yellow-600">encryption key missing on this device</h3>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            you&apos;re in the team but the encryption key isn&apos;t on this device.
+            paste the team invite link to sync the key.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="paste invite link (https://screenpi.pe/join/...)"
+              value={inviteInput}
+              onChange={(e) => setInviteInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleJoinFromLink()}
+              className="h-8 text-xs font-mono"
+            />
+            <Button size="sm" onClick={handleJoinFromLink} disabled={joining || !inviteInput.trim()}>
+              {joining ? <Loader2 className="h-3 w-3 animate-spin" /> : "sync key"}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Invite link (admin only) */}
       {isAdmin && team.inviteLink && (
