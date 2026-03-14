@@ -479,17 +479,19 @@ export const TimelineSlider = ({
 	// recomputing groups and killing the popover / selection.
 	const isUserInteracting = isDragging || activePopoverGroup !== null || selectionRange !== null;
 
-	// Adjust visible frames based on zoom - zoomed out shows more frames
-	// Use a stable window size to prevent jumpy behavior
+	// Visible frames window: sized to what actually fits on screen.
+	// Uses container width + frame size so filters (speakers, apps, etc.)
+	// only show items from the actual viewport, not a fixed 800-frame window.
 	const latestVisibleFrames = useMemo(() => {
 		if (!frames || frames.length === 0) return [];
-		// Fixed window centered on current index - zoom affects frame SIZE, not count
-		// This prevents jumpy behavior when zooming
-		const visibleCount = 400; // Fixed window
-		const start = Math.max(0, currentIndex - visibleCount);
-		const end = Math.min(frames.length, currentIndex + visibleCount);
+		const containerWidth = containerRef.current?.clientWidth ?? 1200;
+		const framesPerScreen = Math.ceil(containerWidth / Math.max(1, frameWidth + frameMargin));
+		// Small buffer (20%) to avoid pop-in at edges, but not the old 400-frame over-fetch
+		const halfWindow = Math.ceil(framesPerScreen * 0.6);
+		const start = Math.max(0, currentIndex - halfWindow);
+		const end = Math.min(frames.length, currentIndex + halfWindow);
 		return frames.slice(start, end);
-	}, [frames, currentIndex]);
+	}, [frames, currentIndex, frameWidth, frameMargin]);
 
 	// Freeze visible frames while user is interacting to prevent
 	// WebSocket pushes from recomputing appGroups and losing popover/selection
