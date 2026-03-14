@@ -13,12 +13,16 @@ use tracing::{debug, error, info};
 
 use crate::store::{OnboardingStore, SettingsStore};
 
+#[cfg(target_os = "macos")]
 use super::first_responder::{make_nswindow_webview_first_responder, make_webview_first_responder};
+#[cfg(target_os = "macos")]
 use super::focus::{restore_frontmost_app, restore_frontmost_app_if_external_with_app};
-use super::panel::{
-    main_label_for_mode, show_panel_visible, MAIN_CREATED_MODE, MAIN_PANEL_SHOWN,
-};
-use super::util::{run_on_main_thread_safe, screen_aware_size};
+use super::panel::{main_label_for_mode, MAIN_CREATED_MODE};
+#[cfg(target_os = "macos")]
+use super::panel::{show_panel_visible, MAIN_PANEL_SHOWN};
+use super::util::screen_aware_size;
+#[cfg(target_os = "macos")]
+use super::util::run_on_main_thread_safe;
 
 #[cfg(target_os = "macos")]
 use tauri_nspanel::ManagerExt;

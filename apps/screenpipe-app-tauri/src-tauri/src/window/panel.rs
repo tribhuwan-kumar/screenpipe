@@ -5,11 +5,16 @@
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
+#[cfg(target_os = "macos")]
 use tauri::AppHandle;
+#[cfg(target_os = "macos")]
 use tracing::info;
 
+#[cfg(target_os = "macos")]
 use super::first_responder::make_webview_first_responder;
+#[cfg(target_os = "macos")]
 use super::focus::save_frontmost_app;
+#[cfg(target_os = "macos")]
 use super::util::with_autorelease_pool;
 
 /// Shared panel visibility sequence — the single source of truth for making an

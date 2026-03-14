@@ -16,7 +16,9 @@
 // JS timeline code listens for.
 // ---------------------------------------------------------------------------
 
+#[cfg(target_os = "macos")]
 use super::util::with_autorelease_pool;
+#[cfg(target_os = "macos")]
 use tracing::info;
 
 #[cfg(target_os = "macos")]
