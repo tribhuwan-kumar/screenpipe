@@ -371,22 +371,11 @@ public func ltUpdatePosition(_ frameId: UnsafePointer<CChar>?, _ x: Double, _ y:
         let contentHeight = contentView.frame.height
         let appKitY = contentHeight - (y + h)
 
-        let requestedFrameId = frameId != nil ? String(cString: frameId!) : ""
-
         // Apply pending analysis AFTER setting the frame so VisionKit
         // computes hit regions against the correct geometry.
-        // Only apply if the pending analysis belongs to the requested frame —
-        // prevents stale analysis from an adjacent frame being applied.
-        var pending: ImageAnalysis? = nil
-        if let pendingId = mgr.pendingFrameId, pendingId == requestedFrameId {
-            pending = mgr.pendingAnalysis
-            mgr.pendingAnalysis = nil
-            mgr.pendingFrameId = nil
-        } else if mgr.pendingAnalysis != nil {
-            // Stale pending analysis — discard it
-            mgr.pendingAnalysis = nil
-            mgr.pendingFrameId = nil
-        }
+        let pending = mgr.pendingAnalysis
+        mgr.pendingAnalysis = nil
+        mgr.pendingFrameId = nil
 
         mainThreadPreservingFocus(contentView) {
             MainActor.assumeIsolated {
