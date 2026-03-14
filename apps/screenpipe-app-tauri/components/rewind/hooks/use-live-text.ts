@@ -45,11 +45,6 @@ export function useLiveText(opts: {
 	const [nativeLiveTextActive, setNativeLiveTextActive] = useState(false);
 	const liveTextInitRef = useRef(false);
 
-	// Track consecutive failures to decide when to fall back to web mode.
-	// Only permanent errors (XPC, helper app) trigger immediate fallback.
-	// Transient errors (missing file, skipped) are tolerated — the counter
-	// resets on every successful analyze so a single good frame keeps
-	// native mode alive.
 	const analyzeFailCountRef = useRef(0);
 
 	// Get absolute position within the window (accounts for sidebar, titlebar, etc.)
@@ -111,9 +106,9 @@ export function useLiveText(opts: {
 
 		// Position is managed exclusively by livetext_update_position.
 		// The analyze call only sets the analysis + shows the overlay.
-		// Debounce: 50ms — short enough to feel near-instant, long enough to skip
-		// rapid arrow key presses. The 80ms frame-loading debounce already handles
-		// fast scrolling; generation counter in Swift cancels stale requests.
+		// Debounce: 150ms — short enough to feel responsive, long enough to skip
+		// intermediate frames during fast scroll. Generation counter in Swift
+		// handles cancellation of stale in-flight requests.
 		let cancelled = false;
 		const currentFrameId = String(debouncedFrame.frameId);
 		const timer = setTimeout(() => {
@@ -126,7 +121,6 @@ export function useLiveText(opts: {
 				analyzeFailCountRef.current = 0;
 				// Analysis is stored as pending in Swift — send position update
 				// to apply it with correct geometry for hit-region computation.
-				// Pass frameId so Swift validates the pending analysis matches.
 				if (!cancelled && renderedImageInfo) {
 					const pos = getAbsolutePosition(renderedImageInfo);
 					invoke("livetext_update_position", { frameId: currentFrameId, ...pos }).catch(() => {});
@@ -134,36 +128,21 @@ export function useLiveText(opts: {
 			}).catch((e: unknown) => {
 				if (cancelled) return;
 				const msg = String(e);
-
-				// Permanent errors — VisionKit itself is broken, no point retrying
 				if (msg.includes("helper application") || msg.includes("XPC")) {
 					console.warn("[livetext] VisionKit unavailable (code signing?), falling back to web mode");
 					setNativeLiveTextActive(false);
 					return;
 				}
-
-				// Transient errors — file missing, skipped due to newer request, etc.
-				// These are expected during fast scrolling or when snapshot files
-				// haven't been written yet. Don't count them toward the fatal limit.
-				const isTransient =
-					msg.includes("failed to load image") ||
-					msg.includes("skipped") ||
-					msg.includes("not found");
-				if (isTransient) {
-					console.debug("[livetext] transient error (will retry on next frame):", msg);
-					return;
-				}
-
-				// Unknown errors — count consecutive failures, fall back after 5
+				// After 3 consecutive failures, fall back to web mode
 				analyzeFailCountRef.current++;
-				if (analyzeFailCountRef.current >= 5) {
-					console.warn("[livetext] too many consecutive failures, falling back to web mode");
+				if (analyzeFailCountRef.current >= 3) {
+					console.warn("[livetext] too many failures, falling back to web mode");
 					setNativeLiveTextActive(false);
 					return;
 				}
-				console.warn("[livetext] analyze failed:", e);
+				console.warn("live text analyze failed:", e);
 			});
-		}, 50);
+		}, 150);
 		return () => { cancelled = true; clearTimeout(timer); };
 	}, [nativeLiveTextActive, debouncedFrame?.frameId, isSnapshotFrame]);
 
@@ -183,7 +162,6 @@ export function useLiveText(opts: {
 			const lower = filePath?.toLowerCase() ?? "";
 			const isSnapshot = lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png");
 
-			// Use local file for snapshots, HTTP for video chunks
 			const imagePath = isSnapshot && filePath
 				? filePath
 				: `http://localhost:3030/frames/${dev.frame_id}`;
@@ -207,11 +185,9 @@ export function useLiveText(opts: {
 
 	// Place click guards over UI elements so VisionKit hit regions
 	// don't intercept clicks on navigation controls, filters, scrubber, etc.
-	// Uses ResizeObserver + MutationObserver to track layout changes.
 	useEffect(() => {
 		if (!nativeLiveTextActive) return;
 
-		// Collect all named guard refs: navBarRef as "navbar" + any extra guardRefs
 		const allGuards: Record<string, React.RefObject<HTMLDivElement | null>> = {
 			...(navBarRef ? { navbar: navBarRef } : {}),
 			...guardRefs,
@@ -235,16 +211,13 @@ export function useLiveText(opts: {
 			}
 		};
 
-		// Initial update
 		updateAll();
 
-		// Watch for layout changes with ResizeObserver
 		const ro = new ResizeObserver(() => updateAll());
 		for (const ref of Object.values(allGuards)) {
 			if (ref.current) ro.observe(ref.current);
 		}
 
-		// Also update on window resize (catches zoom, fullscreen, etc.)
 		window.addEventListener("resize", updateAll);
 
 		return () => {

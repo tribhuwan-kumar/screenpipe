@@ -100,6 +100,15 @@ export default function Timeline({ embedded = false }: { embedded?: boolean }) {
 	const scrubberRef = useRef<HTMLDivElement | null>(null);
 	// Stable guardRefs object for Live Text click guards — refs are stable, so useMemo with empty deps is fine
 	const guardRefs = useMemo(() => ({ filters: filtersRef, scrubber: scrubberRef }), []);
+
+	// Force guard rect refresh when inner timeline mounts/unmounts
+	useEffect(() => {
+		// Slight delay to let DOM layout settle after inner timeline renders
+		const timer = setTimeout(() => {
+			window.dispatchEvent(new Event("resize"));
+		}, 500);
+		return () => clearTimeout(timer);
+	}, [frames.length]);
 	const [startAndEndDates, setStartAndEndDates] = useState<TimeRange>(() => {
 		// Lazy init to avoid SSR/client hydration mismatch from new Date()
 		const now = new Date();
