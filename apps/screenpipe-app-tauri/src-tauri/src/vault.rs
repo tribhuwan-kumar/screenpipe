@@ -10,12 +10,8 @@ use tauri::Manager;
 /// Check vault lock state from filesystem (no server needed).
 #[tauri::command]
 #[specta::specta]
-pub async fn vault_status(app: AppHandle) -> Result<String, String> {
-    let data_dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(".screenpipe");
+pub async fn vault_status(_app: AppHandle) -> Result<String, String> {
+    let data_dir = screenpipe_core::paths::default_screenpipe_data_dir();
     if !data_dir.join("vault.meta").exists() {
         return Ok("none".to_string());
     }
@@ -37,14 +33,10 @@ pub async fn vault_status(app: AppHandle) -> Result<String, String> {
 /// Data files are decrypted in background — server can start immediately.
 #[tauri::command]
 #[specta::specta]
-pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), String> {
+pub async fn vault_unlock(_app: AppHandle, password: String) -> Result<(), String> {
     use screenpipe_vault::crypto;
 
-    let screenpipe_dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(".screenpipe");
+    let screenpipe_dir = screenpipe_core::paths::default_screenpipe_data_dir();
 
     // Read vault metadata and verify password
     let meta_path = screenpipe_dir.join("vault.meta");

@@ -356,7 +356,8 @@ fn resolve_preset(pipes_dir: &Path, preset_id: &str) -> Option<ResolvedPreset> {
 
     // ChatGPT OAuth: read token from stored file (no apiKey in preset)
     if provider.as_deref() == Some("openai-chatgpt") && api_key.is_none() {
-        let token_path = dirs::home_dir().map(|h| h.join(".screenpipe").join("chatgpt-oauth.json"));
+        let token_path =
+            Some(crate::paths::default_screenpipe_data_dir().join("chatgpt-oauth.json"));
         if let Some(path) = token_path {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(token_data) = serde_json::from_str::<serde_json::Value>(&content) {

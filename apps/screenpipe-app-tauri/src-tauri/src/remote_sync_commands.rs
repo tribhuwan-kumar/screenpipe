@@ -6,9 +6,7 @@ use screenpipe_connect::remote_sync::{self, DiscoveredHost, SyncConfig, SyncResu
 use std::path::PathBuf;
 
 fn default_screenpipe_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".screenpipe")
+    screenpipe_core::paths::default_screenpipe_data_dir()
 }
 
 #[tauri::command]

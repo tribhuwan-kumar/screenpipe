@@ -343,10 +343,9 @@ async fn main() {
     }
 
     // Check if telemetry is disabled via store setting (analyticsEnabled)
-    // Use ~/.screenpipe to match CLI default data directory
-    let telemetry_disabled = dirs::home_dir()
-        .map(|dir| dir.join(".screenpipe").join("store.bin"))
-        .and_then(|path| std::fs::read_to_string(&path).ok())
+    let store_path = screenpipe_core::paths::default_screenpipe_data_dir().join("store.bin");
+    let telemetry_disabled = std::fs::read_to_string(&store_path)
+        .ok()
         .and_then(|contents| serde_json::from_str::<serde_json::Value>(&contents).ok())
         .and_then(|data| data.get("analyticsEnabled").and_then(|v| v.as_bool()))
         .map(|enabled| !enabled)
@@ -432,14 +431,13 @@ async fn main() {
         // Write to a crash log file — this survives abort() since we fsync
         // Critical for diagnosing panics inside tao's extern "C" callbacks
         // (send_event, did_finish_launching) where panic_cannot_unwind → abort()
-        if let Some(log_dir) = dirs::home_dir().map(|d| d.join(".screenpipe")) {
-            let crash_path = log_dir.join("last-panic.log");
-            if let Ok(mut f) = std::fs::File::create(&crash_path) {
-                use std::io::Write;
-                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                let _ = writeln!(f, "[{}] {}", timestamp, crash_msg);
-                let _ = f.sync_all(); // fsync before abort() kills us
-            }
+        let log_dir = screenpipe_core::paths::default_screenpipe_data_dir();
+        let crash_path = log_dir.join("last-panic.log");
+        if let Ok(mut f) = std::fs::File::create(&crash_path) {
+            use std::io::Write;
+            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+            let _ = writeln!(f, "[{}] {}", timestamp, crash_msg);
+            let _ = f.sync_all(); // fsync before abort() kills us
         }
 
         // Also report to Sentry if initialized
@@ -940,18 +938,12 @@ async fn main() {
             let base_dir = get_base_dir(app_handle, None)
                 .unwrap_or_else(|e| {
                     eprintln!("Failed to get base dir, using fallback: {}", e);
-                    dirs::home_dir()
-                        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                        .join(".screenpipe")
+                    screenpipe_core::paths::default_screenpipe_data_dir()
                 });
 
             // Set up rolling file appender
             let log_dir = get_screenpipe_data_dir(app.handle())
-                .unwrap_or_else(|_| {
-                    dirs::home_dir()
-                        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                        .join(".screenpipe")
-                });
+                .unwrap_or_else(|_| screenpipe_core::paths::default_screenpipe_data_dir());
             let file_appender = RollingFileAppender::builder()
                 .rotation(Rotation::DAILY)
                 .filename_prefix("screenpipe-app")

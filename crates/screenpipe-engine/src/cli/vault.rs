@@ -9,9 +9,7 @@ use screenpipe_vault::{VaultManager, VaultState};
 use serde_json::json;
 
 fn screenpipe_dir() -> anyhow::Result<std::path::PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("no home dir"))?
-        .join(".screenpipe"))
+    Ok(screenpipe_core::paths::default_screenpipe_data_dir())
 }
 
 pub async fn handle_vault_command(command: &VaultCommand) -> anyhow::Result<()> {

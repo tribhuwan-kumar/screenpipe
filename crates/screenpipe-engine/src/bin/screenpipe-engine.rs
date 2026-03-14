@@ -5,7 +5,6 @@
 use clap::Parser;
 #[allow(unused_imports)]
 use colored::Colorize;
-use dirs::home_dir;
 use futures::pin_mut;
 use port_check::is_local_ipv4_port_free;
 use screenpipe_audio::{
@@ -14,6 +13,7 @@ use screenpipe_audio::{
 };
 use screenpipe_core::agents::AgentExecutor;
 use screenpipe_core::find_ffmpeg_path;
+use screenpipe_core::paths;
 use screenpipe_db::DatabaseManager;
 use screenpipe_engine::{
     analytics,
@@ -120,9 +120,7 @@ const DISPLAY: &str = r"
 ";
 
 fn get_base_dir(custom_path: &Option<String>) -> anyhow::Result<PathBuf> {
-    let default_path = home_dir()
-        .ok_or_else(|| anyhow::anyhow!("failed to get home directory"))?
-        .join(".screenpipe");
+    let default_path = paths::default_screenpipe_data_dir();
 
     let base_dir = custom_path
         .as_ref()

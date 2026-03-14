@@ -1,5 +1,5 @@
 use anyhow::Result;
-use dirs::{self, home_dir};
+use screenpipe_core::paths;
 use screenpipe_core::Language;
 use screenpipe_engine::video_utils::extract_frames_from_video;
 use screenpipe_screen::capture_screenshot_by_window::CapturedWindow;
@@ -18,10 +18,7 @@ async fn setup_test_env() -> Result<()> {
 }
 
 async fn create_test_video() -> Result<PathBuf> {
-    let screenpipe_dir = dirs::home_dir()
-        .expect("couldn't find home dir")
-        .join(".screenpipe")
-        .join("data");
+    let screenpipe_dir = paths::default_screenpipe_data_dir().join("data");
 
     info!("looking for monitor video in {}", screenpipe_dir.display());
 

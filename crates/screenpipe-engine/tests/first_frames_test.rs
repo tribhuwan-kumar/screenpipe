@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use dirs::home_dir;
+use screenpipe_core::paths;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -17,9 +17,7 @@ async fn setup_test_env() -> Result<Arc<DatabaseManager>> {
 
     let db = Arc::new(
         DatabaseManager::new(
-            home_dir()
-                .unwrap()
-                .join(".screenpipe")
+            paths::default_screenpipe_data_dir()
                 .join("db.sqlite")
                 .to_str()
                 .unwrap(),

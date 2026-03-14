@@ -10,10 +10,9 @@
 //! # Usage
 //! ```no_run
 //! use screenpipe_vault::VaultManager;
-//! use std::path::PathBuf;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let vault = VaultManager::new(PathBuf::from("~/.screenpipe"));
+//! let vault = VaultManager::new(screenpipe_core::paths::default_screenpipe_data_dir());
 //! vault.setup("my-password").await?;
 //! vault.lock().await?;
 //! vault.unlock("my-password").await?;

@@ -5,15 +5,13 @@
 use std::{fs, path::PathBuf};
 use tracing::warn;
 
+use screenpipe_core::paths::default_screenpipe_data_dir;
+
 pub fn get_base_dir(
     _app: &tauri::AppHandle,
     custom_path: Option<String>,
 ) -> anyhow::Result<PathBuf> {
-    // Use $HOME/.screenpipe to match CLI default
-    let default_path = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not get home directory"))?
-        .join(".screenpipe");
-
+    let default_path = default_screenpipe_data_dir();
     let local_data_dir = custom_path.map(PathBuf::from).unwrap_or(default_path);
 
     fs::create_dir_all(local_data_dir.join("data"))?;
@@ -23,11 +21,9 @@ pub fn get_base_dir(
 /// Resolve the recording data directory from the store's `data_dir` setting.
 ///
 /// Returns `(resolved_path, fell_back)` where `fell_back` is true when the
-/// custom path was unusable and we silently fell back to `~/.screenpipe`.
+/// custom path was unusable and we silently fell back to default (~/.screenpipe or SCREENPIPE_DATA_DIR).
 pub fn resolve_data_dir(data_dir_setting: &str) -> (PathBuf, bool) {
-    let default_path = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".screenpipe");
+    let default_path = default_screenpipe_data_dir();
 
     // "default" or empty → use ~/.screenpipe
     if data_dir_setting.is_empty() || data_dir_setting == "default" {

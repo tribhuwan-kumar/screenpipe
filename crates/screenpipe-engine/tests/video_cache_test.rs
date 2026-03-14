@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use dirs::home_dir;
+use screenpipe_core::paths;
 use std::sync::Arc;
 use tracing::{debug, error};
 
@@ -13,18 +13,13 @@ async fn setup_test_env() -> Result<(FrameCache, Arc<DatabaseManager>)> {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let screenpipe_dir = home_dir()
-        .expect("couldn't find home dir")
-        .join(".screenpipe")
-        .join("data");
+    let screenpipe_dir = paths::default_screenpipe_data_dir().join("data");
 
     debug!("using real screenpipe data dir: {:?}", screenpipe_dir);
 
     let db = Arc::new(
         DatabaseManager::new(
-            home_dir()
-                .unwrap()
-                .join(".screenpipe")
+            paths::default_screenpipe_data_dir()
                 .join("db.sqlite")
                 .to_str()
                 .unwrap(),
