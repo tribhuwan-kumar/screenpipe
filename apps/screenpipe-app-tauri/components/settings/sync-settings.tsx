@@ -625,14 +625,28 @@ function ActiveSyncSettings({
                     </div>
                     {!device.isCurrent && (
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onDeleteDeviceLocalData(device.deviceId)}
-                          title="delete synced data from this device"
-                        >
-                          <span className="text-xs text-muted-foreground">clean local data</span>
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" title="delete synced data from this device">
+                              <span className="text-xs text-muted-foreground">clean local data</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Clean local data?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will delete all data synced from {device.deviceName || device.deviceId} on this machine.
+                                To re-sync, disable and re-enable cloud sync.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => onDeleteDeviceLocalData(device.deviceId)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1168,13 +1182,6 @@ export function SyncSettings() {
   };
 
   const handleDeleteDeviceLocalData = async (deviceId: string) => {
-    const confirmed = window.confirm(
-      "this will delete all data synced from this device on your local machine.\n\n" +
-      "to re-sync, disable and re-enable cloud sync.\n\n" +
-      "continue?"
-    );
-    if (!confirmed) return;
-
     try {
       const result = await invoke("delete_device_local_data", { machineId: deviceId });
       const parsed = typeof result === "string" ? JSON.parse(result) : result;

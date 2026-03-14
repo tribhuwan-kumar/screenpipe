@@ -795,6 +795,7 @@ async fn main() {
             sync::update_sync_config,
             sync::get_sync_devices,
             sync::remove_sync_device,
+            sync::delete_device_local_data,
             sync::init_sync,
             sync::lock_sync,
             sync::delete_cloud_data,
