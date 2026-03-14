@@ -110,7 +110,7 @@ export function useLiveText(opts: {
 		// rapid arrow key presses. The 80ms frame-loading debounce already handles
 		// fast scrolling; generation counter in Swift cancels stale requests.
 		let cancelled = false;
-		const currentFrameId = debouncedFrame.frameId;
+		const currentFrameId = String(debouncedFrame.frameId);
 		const timer = setTimeout(() => {
 			if (cancelled) return;
 			invoke("livetext_analyze", {
