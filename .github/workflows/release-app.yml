@@ -983,21 +983,24 @@ jobs:
             local r2_key="${bucket_path#*/}"
             local bucket="${bucket_path%%/*}"
 
-            # Try aws cli first (2 attempts)
-            for attempt in 1 2; do
-              if aws s3 cp "$src" "$dst" --endpoint-url "$R2_ENDPOINT" 2>&1; then
+            # Try aws cli with high multipart threshold to avoid chunked TLS issues
+            for attempt in 1 2 3; do
+              if AWS_MAX_ATTEMPTS=3 aws s3 cp "$src" "$dst" \
+                  --endpoint-url "$R2_ENDPOINT" \
+                  --expected-size "$(stat -f%z "$src" 2>/dev/null || stat -c%s "$src" 2>/dev/null)" \
+                  --cli-read-timeout 120 --cli-connect-timeout 30 2>&1; then
                 echo "  ✅ $(basename "$src") (aws)"
                 return 0
               fi
               echo "  ⚠️ aws attempt $attempt failed for $(basename "$src")"
-              sleep 5
+              sleep $((attempt * 5))
             done
 
-            # Fallback: presigned URL + curl (macOS SecureTransport TLS)
+            # Fallback: presigned URL + curl (uses macOS SecureTransport, more reliable TLS)
             echo "  🔄 falling back to curl for $(basename "$src")..."
             for attempt in 1 2 3; do
-              PRESIGNED=$(aws s3 presign "$dst" --endpoint-url "$R2_ENDPOINT" --expires-in 3600 2>/dev/null)
-              if [ -n "$PRESIGNED" ] && curl --retry 3 --retry-delay 5 -sf -T "$src" "$PRESIGNED" 2>&1; then
+              PRESIGNED=$(AWS_MAX_ATTEMPTS=2 aws s3 presign "$dst" --endpoint-url "$R2_ENDPOINT" --expires-in 3600 2>/dev/null)
+              if [ -n "$PRESIGNED" ] && curl --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300 -sf -T "$src" "$PRESIGNED" 2>&1; then
                 echo "  ✅ $(basename "$src") (curl)"
                 return 0
               fi
