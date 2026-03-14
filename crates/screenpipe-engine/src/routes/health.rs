@@ -202,8 +202,17 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
         "stale"
     };
 
+    // Cross-check: if audio is enabled, uptime > 2 min, but zero chunks were ever
+    // sent, the audio pipeline never started capturing (e.g. device retry loop).
+    // The per-device timestamp fallback would mask this as "ok", so override here.
+    let audio_never_captured = !state.audio_disabled
+        && audio_snap.uptime_secs > 120.0
+        && audio_snap.chunks_sent == 0;
+
     let audio_status = if state.audio_disabled {
         "disabled".to_string()
+    } else if audio_never_captured {
+        "not_started".to_string()
     } else if global_audio_active {
         "ok".to_string()
     } else if last_audio_ts == 0 {
