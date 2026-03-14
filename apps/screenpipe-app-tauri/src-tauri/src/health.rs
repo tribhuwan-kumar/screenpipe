@@ -421,7 +421,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                 // (NSStatusBar operations crash if called from a tokio thread)
                 let app_clone = app.clone();
                 let _ = app.run_on_main_thread(move || {
-                    crate::window_api::with_autorelease_pool(|| {
+                    crate::window::with_autorelease_pool(|| {
                         if let Some(main_tray) = app_clone.tray_by_id("screenpipe_main") {
                             if let Err(e) =
                                 crate::safe_icon::safe_set_icon_as_template(&main_tray, image)

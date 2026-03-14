@@ -40,7 +40,7 @@ static ANALYZE_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 pub async fn livetext_is_available() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
-        let result = crate::window_api::with_autorelease_pool(|| unsafe { livetext_ffi::lt_is_available() });
+        let result = crate::window::with_autorelease_pool(|| unsafe { livetext_ffi::lt_is_available() });
         info!(
             "livetext_is_available: lt_is_available() returned {}",
             result
@@ -62,7 +62,7 @@ pub async fn livetext_init(app: tauri::AppHandle, window_label: String) -> Resul
         let app_clone = app.clone();
 
         info!("livetext_init called for window '{}'", window_label);
-        crate::window_api::run_on_main_thread_safe(&app, move || {
+        crate::window::run_on_main_thread_safe(&app, move || {
             let result = (|| -> Result<(), String> {
                 // Try NSPanel first (overlay/window timeline), fall back to regular WebviewWindow (settings)
                 let ns_window_ptr: u64 =
@@ -122,7 +122,7 @@ pub async fn livetext_analyze(
         std::thread::spawn(move || {
             // Wrap in autorelease pool — Swift FFI may create autoreleased
             // ObjC objects internally, and this thread has no default pool.
-            let result = crate::window_api::with_autorelease_pool(|| -> Result<String, String> {
+            let result = crate::window::with_autorelease_pool(|| -> Result<String, String> {
                 // Check if a newer request has already been issued
                 if ANALYZE_GENERATION.load(std::sync::atomic::Ordering::SeqCst) != gen {
                     return Err("skipped: newer analyze request pending".to_string());
@@ -185,7 +185,7 @@ pub async fn livetext_prefetch(paths: Vec<String>) -> Result<(), String> {
         let json_c = CString::new(json).map_err(|e| format!("invalid json: {}", e))?;
         // Fire-and-forget: lt_prefetch dispatches work to a background queue
         // and returns immediately. We don't need to spawn a thread here.
-        crate::window_api::with_autorelease_pool(|| unsafe {
+        crate::window::with_autorelease_pool(|| unsafe {
             livetext_ffi::lt_prefetch(json_c.as_ptr());
         });
         return Ok(());
@@ -202,7 +202,7 @@ pub async fn livetext_update_position(frame_id: String, x: f64, y: f64, w: f64, 
     #[cfg(target_os = "macos")]
     {
         let frame_id_c = CString::new(frame_id).map_err(|e| format!("invalid frame_id: {}", e))?;
-        let status = crate::window_api::with_autorelease_pool(|| unsafe {
+        let status = crate::window::with_autorelease_pool(|| unsafe {
             livetext_ffi::lt_update_position(frame_id_c.as_ptr(), x, y, w, h)
         });
         if status != 0 {
@@ -223,7 +223,7 @@ pub async fn livetext_highlight(terms: Vec<String>) -> Result<i32, String> {
     {
         let json = serde_json::to_string(&terms).map_err(|e| format!("json error: {}", e))?;
         let json_c = CString::new(json).map_err(|e| format!("invalid json: {}", e))?;
-        let count = crate::window_api::with_autorelease_pool(|| unsafe {
+        let count = crate::window::with_autorelease_pool(|| unsafe {
             livetext_ffi::lt_highlight_ranges(json_c.as_ptr())
         });
         return Ok(count);
@@ -239,7 +239,7 @@ pub async fn livetext_highlight(terms: Vec<String>) -> Result<i32, String> {
 pub async fn livetext_clear_highlights() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        crate::window_api::with_autorelease_pool(|| unsafe { livetext_ffi::lt_clear_highlights() });
+        crate::window::with_autorelease_pool(|| unsafe { livetext_ffi::lt_clear_highlights() });
         return Ok(());
     }
     #[cfg(not(target_os = "macos"))]
@@ -250,7 +250,7 @@ pub async fn livetext_clear_highlights() -> Result<(), String> {
 pub async fn livetext_hide() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        crate::window_api::with_autorelease_pool(|| unsafe { livetext_ffi::lt_hide() });
+        crate::window::with_autorelease_pool(|| unsafe { livetext_ffi::lt_hide() });
         return Ok(());
     }
     #[cfg(not(target_os = "macos"))]
@@ -272,7 +272,7 @@ pub async fn livetext_set_guard_rect(
     #[cfg(target_os = "macos")]
     {
         let key_c = CString::new(key).map_err(|e| format!("invalid key: {}", e))?;
-        let status = crate::window_api::with_autorelease_pool(|| unsafe {
+        let status = crate::window::with_autorelease_pool(|| unsafe {
             livetext_ffi::lt_set_guard_rect(key_c.as_ptr(), x, y, w, h)
         });
         if status != 0 {
