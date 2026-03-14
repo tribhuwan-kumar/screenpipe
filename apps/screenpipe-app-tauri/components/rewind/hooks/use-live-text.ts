@@ -142,7 +142,7 @@ export function useLiveText(opts: {
 			});
 		}, 150);
 		return () => { cancelled = true; clearTimeout(timer); };
-	}, [nativeLiveTextActive, debouncedFrame?.frameId, isSnapshotFrame]);
+	}, [nativeLiveTextActive, debouncedFrame?.frameId]);
 
 	// Prefetch VisionKit analysis for adjacent frames so scrolling is instant.
 	// Fire-and-forget: Swift caches results in an LRU for future hits.
@@ -242,9 +242,7 @@ export function useLiveText(opts: {
 		} else if (debouncedFrame?.frameId) {
 			// Re-analyze to show overlay again, then send position update
 			// to apply the pending analysis with correct geometry.
-			const imagePath = isSnapshotFrame && debouncedFrame.filePath
-				? debouncedFrame.filePath
-				: `http://localhost:3030/frames/${debouncedFrame.frameId}`;
+			const imagePath = `http://localhost:3030/frames/${debouncedFrame.frameId}`;
 			const fid = String(debouncedFrame.frameId);
 			invoke("livetext_analyze", {
 				imagePath,
