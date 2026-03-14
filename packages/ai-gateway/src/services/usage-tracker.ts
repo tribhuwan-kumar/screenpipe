@@ -165,7 +165,7 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
     ],
   },
   subscribed: {
-    dailyQueries: 1000,
+    dailyQueries: 5000,
     rpm: 60,
     allowedModels: ['*'], // all models
   },
