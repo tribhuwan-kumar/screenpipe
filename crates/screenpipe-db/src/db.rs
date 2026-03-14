@@ -3821,8 +3821,14 @@ impl DatabaseManager {
     }
 
     pub async fn search_speakers(&self, name_prefix: &str) -> Result<Vec<Speaker>, sqlx::Error> {
+        // Group by name so duplicate names (e.g. multiple "Louis" rows from
+        // separate voice embeddings) appear as a single entry in the dropdown.
+        // Pick the lowest id per name so reassignment targets a stable speaker.
         sqlx::query_as::<_, Speaker>(
-            "SELECT DISTINCT * FROM speakers WHERE name LIKE ? || '%' AND hallucination = 0",
+            "SELECT MIN(id) as id, name, metadata FROM speakers \
+             WHERE name LIKE ? || '%' AND hallucination = 0 AND name IS NOT NULL AND name != '' \
+             GROUP BY name \
+             ORDER BY name",
         )
         .bind(name_prefix)
         .fetch_all(&self.pool)
@@ -4080,6 +4086,31 @@ impl DatabaseManager {
             audio_files: vec![],
             snapshot_files: vec![],
         })
+    }
+
+    /// Count synced records per machine_id. Returns (machine_id, frames, audio_transcriptions).
+    pub async fn count_by_machine_id(&self) -> Result<Vec<(String, i64, i64)>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, (String, i64)>(
+            "SELECT machine_id, COUNT(*) FROM frames WHERE machine_id IS NOT NULL GROUP BY machine_id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let audio_rows = sqlx::query_as::<_, (String, i64)>(
+            "SELECT machine_id, COUNT(*) FROM audio_chunks WHERE machine_id IS NOT NULL GROUP BY machine_id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut map: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+        for (mid, count) in rows {
+            map.entry(mid).or_default().0 = count;
+        }
+        for (mid, count) in audio_rows {
+            map.entry(mid).or_default().1 = count;
+        }
+
+        Ok(map.into_iter().map(|(mid, (f, a))| (mid, f, a)).collect())
     }
 
     // =========================================================================
@@ -5118,9 +5149,13 @@ LIMIT ? OFFSET ?
                 None => return Err(sqlx::Error::RowNotFound),
             };
 
-            // 2. Find or create the target speaker
+            // 2. Find or create the target speaker (pick the one with most embeddings
+            //    to act as canonical when duplicates exist)
             let target_speaker: Speaker = match sqlx::query_as::<_, Speaker>(
-                "SELECT id, name, metadata FROM speakers WHERE name = ? AND hallucination = 0",
+                "SELECT s.id, s.name, s.metadata FROM speakers s \
+                 LEFT JOIN speaker_embeddings se ON se.speaker_id = s.id \
+                 WHERE s.name = ? AND s.hallucination = 0 \
+                 GROUP BY s.id ORDER BY COUNT(se.id) DESC LIMIT 1",
             )
             .bind(new_speaker_name)
             .fetch_optional(&mut **tx.conn())
