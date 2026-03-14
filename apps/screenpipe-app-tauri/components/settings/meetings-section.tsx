@@ -38,7 +38,7 @@ function formatDuration(start: string, end: string | null): string {
   return `${hours}h ${minutes}m`;
 }
 
-function formatDateTime(iso: string): string {
+function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
     month: "short",
@@ -50,7 +50,6 @@ function formatDateTime(iso: string): string {
 
 function toDatetimeLocal(iso: string): string {
   const d = new Date(iso);
-  // format as YYYY-MM-DDTHH:mm
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -99,14 +98,6 @@ export function MeetingsSection() {
       else next.add(id);
       return next;
     });
-  };
-
-  const toggleSelectAll = () => {
-    if (selected.size === meetings.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(meetings.map((m) => m.id)));
-    }
   };
 
   const startEdit = (meeting: MeetingRecord) => {
@@ -205,13 +196,8 @@ export function MeetingsSection() {
     }
   };
 
-  const allSelected =
-    meetings.length > 0 && selected.size === meetings.length;
-  const someSelected = selected.size > 0 && selected.size < meetings.length;
-
   return (
-    <div className="space-y-5">
-      {/* Header */}
+    <div className="space-y-4 h-full flex flex-col">
       <div className="space-y-1">
         <h1 className="text-xl font-bold tracking-tight text-foreground">
           Meetings
@@ -222,8 +208,8 @@ export function MeetingsSection() {
       </div>
 
       {/* Bulk actions */}
-      <div className="flex items-center gap-2 min-h-[32px]">
-        {selected.size >= 2 && (
+      {selected.size >= 2 && (
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -238,15 +224,10 @@ export function MeetingsSection() {
             )}
             merge {selected.size} selected
           </Button>
-        )}
-        {selected.size > 0 && selected.size < 2 && (
-          <span className="text-xs text-muted-foreground">
-            select 2+ to merge
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Table */}
+      {/* List */}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -255,210 +236,169 @@ export function MeetingsSection() {
       ) : meetings.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8">no meetings found</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-muted-foreground">
-                <th className="px-3 py-2 text-left w-8">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someSelected;
-                    }}
-                    onChange={toggleSelectAll}
-                    className="cursor-pointer"
-                  />
-                </th>
-                <th className="px-3 py-2 text-left font-medium">App</th>
-                <th className="px-3 py-2 text-left font-medium">Title</th>
-                <th className="px-3 py-2 text-left font-medium">Start</th>
-                <th className="px-3 py-2 text-left font-medium">End</th>
-                <th className="px-3 py-2 text-left font-medium">Duration</th>
-                <th className="px-3 py-2 text-left font-medium">Source</th>
-                <th className="px-3 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {meetings.map((meeting) => {
-                const isEditing = editingId === meeting.id;
-                const isSaving = savingId === meeting.id;
-                const isDeleting = deletingId === meeting.id;
+        <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+          {meetings.map((meeting) => {
+            const isEditing = editingId === meeting.id;
+            const isSaving = savingId === meeting.id;
+            const isDeleting = deletingId === meeting.id;
 
-                return (
-                  <tr
-                    key={meeting.id}
-                    className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
-                  >
-                    {/* Checkbox */}
-                    <td className="px-3 py-2">
+            return (
+              <div
+                key={meeting.id}
+                className={`group flex items-start gap-2 rounded-md border p-2.5 transition-colors ${
+                  selected.has(meeting.id)
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-border hover:bg-muted/30"
+                }`}
+              >
+                {/* Checkbox */}
+                <input
+                  type="checkbox"
+                  checked={selected.has(meeting.id)}
+                  onChange={() => toggleSelect(meeting.id)}
+                  className="cursor-pointer mt-1 shrink-0"
+                />
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  {isEditing ? (
+                    <div className="space-y-2">
                       <input
-                        type="checkbox"
-                        checked={selected.has(meeting.id)}
-                        onChange={() => toggleSelect(meeting.id)}
-                        className="cursor-pointer"
+                        type="text"
+                        value={editState.title}
+                        onChange={(e) =>
+                          setEditState((s) => ({ ...s, title: e.target.value }))
+                        }
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="title"
                       />
-                    </td>
-
-                    {/* App */}
-                    <td className="px-3 py-2 text-foreground">
-                      {meeting.meeting_app || "—"}
-                    </td>
-
-                    {/* Title */}
-                    <td className="px-3 py-2 max-w-[200px]">
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editState.title}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              title: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded border border-border bg-background px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="untitled"
-                        />
-                      ) : (
-                        <span className="truncate block text-foreground">
-                          {meeting.title || (
-                            <span className="text-muted-foreground italic">
-                              untitled
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Start */}
-                    <td className="px-3 py-2 whitespace-nowrap text-foreground">
-                      {isEditing ? (
-                        <input
-                          type="datetime-local"
-                          value={editState.meeting_start}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              meeting_start: e.target.value,
-                            }))
-                          }
-                          className="rounded border border-border bg-background px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      ) : (
-                        formatDateTime(meeting.meeting_start)
-                      )}
-                    </td>
-
-                    {/* End */}
-                    <td className="px-3 py-2 whitespace-nowrap text-foreground">
-                      {isEditing ? (
-                        <input
-                          type="datetime-local"
-                          value={editState.meeting_end}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              meeting_end: e.target.value,
-                            }))
-                          }
-                          className="rounded border border-border bg-background px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      ) : meeting.meeting_end ? (
-                        formatDateTime(meeting.meeting_end)
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">
-                          ongoing
-                        </Badge>
-                      )}
-                    </td>
-
-                    {/* Duration */}
-                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                      {isEditing
-                        ? editState.meeting_end
-                          ? formatDuration(
-                              new Date(editState.meeting_start).toISOString(),
-                              new Date(editState.meeting_end).toISOString()
-                            )
-                          : "—"
-                        : formatDuration(
-                            meeting.meeting_start,
-                            meeting.meeting_end
-                          )}
-                    </td>
-
-                    {/* Source */}
-                    <td className="px-3 py-2">
-                      <Badge variant="outline" className="text-xs font-normal">
-                        {meeting.detection_source}
-                      </Badge>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {isEditing ? (
-                          <>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => saveEdit(meeting.id)}
-                              disabled={isSaving}
-                              title="save"
-                            >
-                              {isSaving ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Check className="h-3.5 w-3.5 text-green-600" />
-                              )}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={cancelEdit}
-                              disabled={isSaving}
-                              title="cancel"
-                            >
-                              <X className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => startEdit(meeting)}
-                              title="edit"
-                            >
-                              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => deleteMeeting(meeting.id)}
-                              disabled={isDeleting}
-                              title="delete"
-                            >
-                              {isDeleting ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                              )}
-                            </Button>
-                          </>
-                        )}
+                      <div className="flex gap-2 flex-wrap">
+                        <label className="text-xs text-muted-foreground">
+                          start
+                          <input
+                            type="datetime-local"
+                            value={editState.meeting_start}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                meeting_start: e.target.value,
+                              }))
+                            }
+                            className="ml-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </label>
+                        <label className="text-xs text-muted-foreground">
+                          end
+                          <input
+                            type="datetime-local"
+                            value={editState.meeting_end}
+                            onChange={(e) =>
+                              setEditState((s) => ({
+                                ...s,
+                                meeting_end: e.target.value,
+                              }))
+                            }
+                            className="ml-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </label>
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {meeting.title || meeting.meeting_app}
+                        </span>
+                        {meeting.title && (
+                          <span className="text-xs text-muted-foreground">
+                            {meeting.meeting_app}
+                          </span>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1 py-0 font-normal"
+                        >
+                          {meeting.detection_source}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {formatTime(meeting.meeting_start)}
+                        {" — "}
+                        {meeting.meeting_end ? (
+                          formatTime(meeting.meeting_end)
+                        ) : (
+                          <span className="text-primary font-medium">
+                            ongoing
+                          </span>
+                        )}
+                        <span className="ml-1.5 text-muted-foreground/60">
+                          ({formatDuration(meeting.meeting_start, meeting.meeting_end)})
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {isEditing ? (
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => saveEdit(meeting.id)}
+                        disabled={isSaving}
+                        title="save"
+                      >
+                        {isSaving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5 text-green-600" />
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={cancelEdit}
+                        disabled={isSaving}
+                        title="cancel"
+                      >
+                        <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => startEdit(meeting)}
+                        title="edit"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => deleteMeeting(meeting.id)}
+                        disabled={isDeleting}
+                        title="delete"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
