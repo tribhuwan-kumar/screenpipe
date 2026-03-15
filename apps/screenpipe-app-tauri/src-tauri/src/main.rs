@@ -1014,6 +1014,12 @@ async fn main() {
             });
             app.manage(store.clone());
 
+            // Set Chinese HuggingFace mirror early — before any model downloads
+            if store.use_chinese_mirror {
+                std::env::set_var("HF_ENDPOINT", "https://hf-mirror.com");
+                info!("Chinese HuggingFace mirror enabled (HF_ENDPOINT set early)");
+            }
+
             // Resolve data directory from user setting (custom dir or ~/.screenpipe)
             let (data_dir, data_dir_fell_back) = config::resolve_data_dir(&store.data_dir);
             info!("Recording data directory: {}", data_dir.display());
