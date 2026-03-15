@@ -55,6 +55,12 @@ pub struct HealthCheckResponse {
     pub accessibility: Option<TreeWalkerSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pool_stats: Option<PoolHealthInfo>,
+    /// True when vision capture loop is alive but DB writes have stopped (pool exhaustion).
+    #[serde(default)]
+    pub vision_db_write_stalled: bool,
+    /// True when audio devices are active but DB writes have stopped (pool exhaustion).
+    #[serde(default)]
+    pub audio_db_write_stalled: bool,
 }
 
 #[derive(Serialize, OaSchema, Deserialize)]
@@ -590,6 +596,8 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
                 write_pool_idle: wi,
             })
         },
+        vision_db_write_stalled,
+        audio_db_write_stalled,
     })
 }
 

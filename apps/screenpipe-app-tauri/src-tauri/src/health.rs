@@ -138,6 +138,12 @@ struct HealthCheckResponse {
     /// Audio pipeline metrics for stall detection
     #[serde(default)]
     audio_pipeline: Option<AudioPipelineInfo>,
+    /// Vision capture alive but DB writes stopped (pool exhaustion)
+    #[serde(default)]
+    vision_db_write_stalled: bool,
+    /// Audio devices active but DB writes stopped (pool exhaustion)
+    #[serde(default)]
+    audio_db_write_stalled: bool,
 }
 
 /// Decide recording status based on health check result and time since startup.
@@ -458,8 +464,9 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         })
                         .unwrap_or(false);
 
-                    // Audio stall tracking
-                    if audio_bad && !audio_excused {
+                    // Audio stall tracking — also trigger on DB write stalls
+                    let audio_db_stalled = health.audio_db_write_stalled;
+                    if (audio_bad || audio_db_stalled) && !audio_excused {
                         consecutive_audio_stall = consecutive_audio_stall.saturating_add(1);
                     } else {
                         if consecutive_audio_stall >= CAPTURE_STALL_THRESHOLD {
@@ -468,8 +475,10 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         consecutive_audio_stall = 0;
                     }
 
-                    // Vision stall tracking
-                    if vision_bad {
+                    // Vision stall tracking — also trigger on DB write stalls
+                    // (capture loop alive but pool exhaustion blocking writes)
+                    let vision_db_stalled = health.vision_db_write_stalled;
+                    if vision_bad || vision_db_stalled {
                         consecutive_vision_stall = consecutive_vision_stall.saturating_add(1);
                     } else {
                         if consecutive_vision_stall >= CAPTURE_STALL_THRESHOLD {
@@ -516,9 +525,10 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                             .map(|t| now_instant.duration_since(t) >= NOTIFICATION_COOLDOWN)
                             .unwrap_or(true);
                         if cooldown_ok {
+                            let reason = if vision_db_stalled { "db write stall" } else { "capture stall" };
                             warn!(
-                                "vision capture stalled for {}s, showing restart notification",
-                                CAPTURE_STALL_THRESHOLD
+                                "vision {} for {}s, showing restart notification",
+                                reason, CAPTURE_STALL_THRESHOLD
                             );
                             last_vision_notification = Some(now_instant);
                             let _ = show_capture_stall_notification(&app, "screen").await;
