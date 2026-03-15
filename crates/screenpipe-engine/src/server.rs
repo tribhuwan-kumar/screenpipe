@@ -641,7 +641,8 @@ impl SCServer {
                 )
                 .route(
                     "/store/:slug",
-                    axum::routing::get(crate::routes::pipe_store::pipe_store_detail),
+                    axum::routing::get(crate::routes::pipe_store::pipe_store_detail)
+                        .delete(crate::routes::pipe_store::pipe_store_unpublish),
                 )
                 .route(
                     "/store/:slug/review",

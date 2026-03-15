@@ -105,14 +105,49 @@ pub async fn pipe_store_search(Query(query): Query<StoreSearchQuery>) -> Json<Va
 /// GET /pipes/store/:slug
 ///
 /// Get a single pipe's detail from the registry.
-pub async fn pipe_store_detail(Path(slug): Path<String>) -> Json<Value> {
+pub async fn pipe_store_detail(headers: HeaderMap, Path(slug): Path<String>) -> Json<Value> {
     let base = api_base_url();
     let client = reqwest::Client::new();
 
     let url = format!("{}/api/pipes/store/{}", base, slug);
-    match client.get(&url).send().await {
+    let mut req = client.get(&url);
+    if let Some(token) = extract_auth_token(&headers) {
+        req = req.bearer_auth(&token);
+    }
+    match req.send().await {
         Ok(resp) => match resp.json::<Value>().await {
             Ok(body) => Json(body),
+            Err(e) => Json(json!({ "error": format!("failed to parse registry response: {}", e) })),
+        },
+        Err(e) => Json(json!({ "error": format!("failed to reach registry: {}", e) })),
+    }
+}
+
+/// DELETE /pipes/store/:slug
+///
+/// Unpublish a pipe from the registry. Requires auth (Bearer token).
+/// Only the pipe's author can unpublish it.
+pub async fn pipe_store_unpublish(
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> Json<Value> {
+    let token = match extract_auth_token(&headers) {
+        Some(t) => t,
+        None => return Json(json!({ "error": "authorization required" })),
+    };
+
+    let base = api_base_url();
+    let client = reqwest::Client::new();
+
+    let url = format!("{}/api/pipes/store/{}", base, slug);
+    match client
+        .delete(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+    {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(resp_body) => Json(resp_body),
             Err(e) => Json(json!({ "error": format!("failed to parse registry response: {}", e) })),
         },
         Err(e) => Json(json!({ "error": format!("failed to reach registry: {}", e) })),
