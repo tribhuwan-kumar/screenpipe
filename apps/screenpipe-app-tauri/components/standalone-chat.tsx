@@ -548,7 +548,7 @@ function MarkdownBlock({ text, isUser }: { text: string; isUser: boolean }) {
         },
         pre({ children, ...props }) {
           return (
-            <pre className="overflow-x-auto rounded-lg bg-muted text-foreground p-3 my-2 text-xs max-w-full" {...props}>
+            <pre className="overflow-x-auto rounded-lg bg-neutral-900 dark:bg-neutral-950 p-3 my-2 text-xs max-w-full not-prose" {...props}>
               {children}
             </pre>
           );
@@ -570,14 +570,14 @@ function MarkdownBlock({ text, isUser }: { text: string; isUser: boolean }) {
 
           if (isCodeBlock) {
             return (
-              <code className="font-mono text-xs block whitespace-pre-wrap break-all text-neutral-100" {...props}>
+              <code className="font-mono text-xs block whitespace-pre-wrap break-all text-neutral-200" {...props}>
                 {content}
               </code>
             );
           }
 
           return (
-            <code className="px-1.5 py-0.5 rounded bg-neutral-800 dark:bg-neutral-900 text-neutral-100 font-mono text-xs" {...props}>
+            <code className="px-1.5 py-0.5 rounded bg-neutral-800 dark:bg-neutral-900 text-neutral-200 font-mono text-xs not-prose" {...props}>
               {content}
             </code>
           );
