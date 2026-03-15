@@ -537,7 +537,16 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
 }
 
 /// Show a notification telling the user that capture has stalled, with a restart button.
+/// Skips showing if the main overlay panel is visible — the notification panel
+/// steals focus and causes a deadlock with the overlay's focus-loss handler.
 async fn show_capture_stall_notification(app: &tauri::AppHandle, system: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        if crate::window::MAIN_PANEL_SHOWN.load(std::sync::atomic::Ordering::SeqCst) {
+            tracing::debug!("skipping capture stall notification — overlay is visible");
+            return Ok(());
+        }
+    }
     let payload = serde_json::json!({
         "id": format!("capture_stall_{}", system),
         "type": "capture_stall",
