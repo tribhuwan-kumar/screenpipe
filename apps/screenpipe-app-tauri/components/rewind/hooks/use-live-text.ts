@@ -144,35 +144,10 @@ export function useLiveText(opts: {
 		return () => { cancelled = true; clearTimeout(timer); };
 	}, [nativeLiveTextActive, debouncedFrame?.frameId]);
 
-	// Prefetch VisionKit analysis for adjacent frames so scrolling is instant.
-	// Fire-and-forget: Swift caches results in an LRU for future hits.
-	useEffect(() => {
-		if (!nativeLiveTextActive || !adjacentFrames?.length) return;
-
-		const paths: string[] = [];
-		const seen = new Set<string>();
-		if (debouncedFrame?.filePath) seen.add(debouncedFrame.filePath);
-
-		for (const frame of adjacentFrames) {
-			const dev = frame?.devices?.[0];
-			if (!dev?.frame_id) continue;
-			const filePath = dev.metadata?.file_path;
-			const lower = filePath?.toLowerCase() ?? "";
-			const isSnapshot = lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png");
-
-			const imagePath = isSnapshot && filePath
-				? filePath
-				: `http://localhost:3030/frames/${dev.frame_id}`;
-
-			if (seen.has(imagePath)) continue;
-			seen.add(imagePath);
-			paths.push(imagePath);
-		}
-
-		if (paths.length > 0) {
-			invoke("livetext_prefetch", { paths }).catch(() => {});
-		}
-	}, [nativeLiveTextActive, debouncedFrame?.frameId, adjacentFrames]);
+	// Prefetch disabled — each prefetch call blocks a GCD thread via
+	// DispatchSemaphore in Swift's analyzeImage(), causing thread exhaustion
+	// and app freeze when scrolling fast. The LRU cache still works for
+	// revisited frames; prefetch can be re-enabled once analyzeImage is async.
 
 	// Update overlay position on resize or when renderedImageInfo first becomes available
 	useEffect(() => {

@@ -133,7 +133,8 @@ private class LiveTextManager {
                         fetchedData = data
                         sem.signal()
                     }.resume()
-                    sem.wait()
+                    let waitResult = sem.wait(timeout: .now() + 10)
+                    if waitResult == .timedOut { return }
                     if let data = fetchedData, !data.isEmpty {
                         result = NSImage(data: data)
                     }
@@ -146,6 +147,8 @@ private class LiveTextManager {
     }
 
     /// Run VisionKit analysis on an image. Returns the analysis or nil.
+    /// Uses a 10-second timeout to prevent indefinite thread blocking
+    /// when GCD thread pool is saturated.
     func analyzeImage(_ image: NSImage) -> ImageAnalysis? {
         let analyzer = ensureAnalyzer()
         let semaphore = DispatchSemaphore(value: 0)
@@ -159,7 +162,8 @@ private class LiveTextManager {
             } catch {}
             semaphore.signal()
         }
-        semaphore.wait()
+        let result = semaphore.wait(timeout: .now() + 10)
+        if result == .timedOut { return nil }
         return analysisResult
     }
 }
