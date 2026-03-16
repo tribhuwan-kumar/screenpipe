@@ -25,7 +25,6 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 use tracing::{debug, error, warn};
 
-
 /// Maximum writes per batch. Caps transaction size to avoid holding
 /// the write lock too long and starving readers.
 const MAX_BATCH_SIZE: usize = 500;
@@ -333,13 +332,12 @@ async fn execute_single_write(
             timestamp,
         } => {
             let ts = timestamp.unwrap_or_else(Utc::now);
-            let id =
-                sqlx::query("INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)")
-                    .bind(file_path.as_str())
-                    .bind(ts)
-                    .execute(&mut **conn)
-                    .await?
-                    .last_insert_rowid();
+            let id = sqlx::query("INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)")
+                .bind(file_path.as_str())
+                .bind(ts)
+                .execute(&mut **conn)
+                .await?
+                .last_insert_rowid();
             Ok(WriteResult::Id(id))
         }
 
@@ -402,14 +400,13 @@ async fn execute_single_write(
                 if *existing_chunk_id != 0 {
                     return Ok(WriteResult::Id(*existing_chunk_id));
                 }
-                let id = sqlx::query(
-                    "INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)",
-                )
-                .bind(file_path.as_str())
-                .bind(ts)
-                .execute(&mut **conn)
-                .await?
-                .last_insert_rowid();
+                let id =
+                    sqlx::query("INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)")
+                        .bind(file_path.as_str())
+                        .bind(ts)
+                        .execute(&mut **conn)
+                        .await?
+                        .last_insert_rowid();
                 return Ok(WriteResult::Id(id));
             }
 
@@ -418,14 +415,13 @@ async fn execute_single_write(
                 if *existing_chunk_id != 0 {
                     return Ok(WriteResult::Id(*existing_chunk_id));
                 }
-                let id = sqlx::query(
-                    "INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)",
-                )
-                .bind(file_path.as_str())
-                .bind(ts)
-                .execute(&mut **conn)
-                .await?
-                .last_insert_rowid();
+                let id =
+                    sqlx::query("INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)")
+                        .bind(file_path.as_str())
+                        .bind(ts)
+                        .execute(&mut **conn)
+                        .await?
+                        .last_insert_rowid();
                 return Ok(WriteResult::Id(id));
             }
 
@@ -433,14 +429,12 @@ async fn execute_single_write(
             let audio_chunk_id = if *existing_chunk_id != 0 {
                 *existing_chunk_id
             } else {
-                sqlx::query(
-                    "INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)",
-                )
-                .bind(file_path.as_str())
-                .bind(ts)
-                .execute(&mut **conn)
-                .await?
-                .last_insert_rowid()
+                sqlx::query("INSERT INTO audio_chunks (file_path, timestamp) VALUES (?1, ?2)")
+                    .bind(file_path.as_str())
+                    .bind(ts)
+                    .execute(&mut **conn)
+                    .await?
+                    .last_insert_rowid()
             };
 
             // Insert transcription
@@ -517,9 +511,11 @@ async fn execute_single_write(
             .last_insert_rowid();
 
             // Insert OCR text in same transaction
-            if let (Some(text), Some(text_json), Some(engine)) =
-                (ocr_text.as_deref(), ocr_text_json.as_deref(), ocr_engine.as_deref())
-            {
+            if let (Some(text), Some(text_json), Some(engine)) = (
+                ocr_text.as_deref(),
+                ocr_text_json.as_deref(),
+                ocr_engine.as_deref(),
+            ) {
                 let text_length = text.len() as i64;
                 sqlx::query(
                     "INSERT INTO ocr_text (frame_id, text, text_json, ocr_engine, text_length) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -820,11 +816,10 @@ mod tests {
         }
 
         // Verify transcription is linked to chunk
-        let row: (i64,) =
-            sqlx::query_as("SELECT audio_chunk_id FROM audio_transcriptions LIMIT 1")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let row: (i64,) = sqlx::query_as("SELECT audio_chunk_id FROM audio_transcriptions LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(row.0, chunk_id);
     }
 

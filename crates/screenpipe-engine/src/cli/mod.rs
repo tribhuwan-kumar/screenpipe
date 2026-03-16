@@ -53,7 +53,9 @@ fn cli_engine_to_str(engine: &CliAudioTranscriptionEngine) -> &'static str {
         CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
         CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
         CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
-        CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => "whisper-large-v3-turbo-quantized",
+        CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
+            "whisper-large-v3-turbo-quantized"
+        }
         CliAudioTranscriptionEngine::OpenAICompatible => "openai-compatible",
         CliAudioTranscriptionEngine::Qwen3Asr => "qwen3-asr",
         CliAudioTranscriptionEngine::Disabled => "disabled",
@@ -362,7 +364,11 @@ impl RecordArgs {
             ignored_windows: self.ignored_windows.clone(),
             included_windows: self.included_windows.clone(),
             ignored_urls: self.ignored_urls.clone(),
-            languages: self.language.iter().map(|l| l.as_lang_code().to_string()).collect(),
+            languages: self
+                .language
+                .iter()
+                .map(|l| l.as_lang_code().to_string())
+                .collect(),
             deepgram_api_key: self.deepgram_api_key.clone().unwrap_or_default(),
             video_quality: self.video_quality.clone(),
             analytics_enabled: !self.disable_telemetry,

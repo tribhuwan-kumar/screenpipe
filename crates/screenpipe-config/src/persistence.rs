@@ -26,8 +26,7 @@ pub fn load_toml(path: &Path) -> Result<RecordingSettings, String> {
     }
     let contents = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
-    toml::from_str(&contents)
-        .map_err(|e| format!("failed to parse {}: {}", path.display(), e))
+    toml::from_str(&contents).map_err(|e| format!("failed to parse {}: {}", path.display(), e))
 }
 
 /// Save `RecordingSettings` to a TOML file.
@@ -40,8 +39,7 @@ pub fn save_toml(settings: &RecordingSettings, path: &Path) -> Result<(), String
     }
     let contents = toml::to_string_pretty(settings)
         .map_err(|e| format!("failed to serialize settings: {}", e))?;
-    std::fs::write(path, contents)
-        .map_err(|e| format!("failed to write {}: {}", path.display(), e))
+    std::fs::write(path, contents).map_err(|e| format!("failed to write {}: {}", path.display(), e))
 }
 
 /// Resolve the screenpipe config directory: `~/.screenpipe/`

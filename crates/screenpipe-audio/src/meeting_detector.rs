@@ -137,27 +137,27 @@ impl MeetingDetector {
             "around",
             "whereby",
             "google meet",
-            "tuple",         // Pair programming with video
-            "pop",           // Screen sharing + video
-            "tandem",        // Virtual office
-            "loom",          // Loom live recording/calls
-            "riverside",     // Podcast/interview recording
-            "gather",        // Virtual office
-            "butter",        // Workshop/meeting platform
-            "cal.com",       // Cal.com video meetings
-            "daily.co",      // Daily.co video SDK app
-            "ringcentral",   // RingCentral meetings
+            "tuple",       // Pair programming with video
+            "pop",         // Screen sharing + video
+            "tandem",      // Virtual office
+            "loom",        // Loom live recording/calls
+            "riverside",   // Podcast/interview recording
+            "gather",      // Virtual office
+            "butter",      // Workshop/meeting platform
+            "cal.com",     // Cal.com video meetings
+            "daily.co",    // Daily.co video SDK app
+            "ringcentral", // RingCentral meetings
             "ringcentral meetings",
-            "bluejeans",     // BlueJeans video
-            "gotomeeting",   // GoTo Meeting
+            "bluejeans",   // BlueJeans video
+            "gotomeeting", // GoTo Meeting
             "goto meeting",
-            "dialpad",       // Dialpad meetings
-            "lifesize",      // Lifesize video
-            "vonage",        // Vonage meetings
+            "dialpad",  // Dialpad meetings
+            "lifesize", // Lifesize video
+            "vonage",   // Vonage meetings
             "8x8 meet",
             "8x8 work",
-            "jitsi meet",    // Jitsi desktop app
-            "chime",         // Amazon Chime
+            "jitsi meet", // Jitsi desktop app
+            "chime",      // Amazon Chime
             "amazon chime",
         ]
         .iter()
@@ -192,31 +192,31 @@ impl MeetingDetector {
             "teams.live.com".to_string(),
             "zoom.us/j".to_string(),
             "zoom.us/wc".to_string(),
-            "zoom.us/my".to_string(),       // Personal meeting rooms
+            "zoom.us/my".to_string(), // Personal meeting rooms
             "whereby.com".to_string(),
             "app.slack.com/huddle".to_string(),
-            "meet.jit.si".to_string(),      // Jitsi public instance
-            "jitsi".to_string(),            // Self-hosted Jitsi (partial match)
-            "riverside.fm".to_string(),     // Riverside browser
-            "gather.town".to_string(),      // Gather virtual office
+            "meet.jit.si".to_string(),  // Jitsi public instance
+            "jitsi".to_string(),        // Self-hosted Jitsi (partial match)
+            "riverside.fm".to_string(), // Riverside browser
+            "gather.town".to_string(),  // Gather virtual office
             "app.gather.town".to_string(),
-            "butter.us".to_string(),        // Butter workshops
-            "livestorm.co".to_string(),     // Livestorm webinars
-            "ping.gg".to_string(),          // Ping video
-            "cal.com".to_string(),          // Cal.com video
-            "daily.co".to_string(),         // Daily.co video
+            "butter.us".to_string(),    // Butter workshops
+            "livestorm.co".to_string(), // Livestorm webinars
+            "ping.gg".to_string(),      // Ping video
+            "cal.com".to_string(),      // Cal.com video
+            "daily.co".to_string(),     // Daily.co video
             "app.daily.co".to_string(),
-            "pop.com".to_string(),          // Pop pair programming
-            "tuple.app".to_string(),        // Tuple pair programming
-            "tandem.chat".to_string(),      // Tandem virtual office
+            "pop.com".to_string(),     // Pop pair programming
+            "tuple.app".to_string(),   // Tuple pair programming
+            "tandem.chat".to_string(), // Tandem virtual office
             "meet.ringcentral.com".to_string(),
             "bluejeans.com".to_string(),
             "gotomeeting.com".to_string(),
-            "app.chime.aws".to_string(),    // Amazon Chime
+            "app.chime.aws".to_string(), // Amazon Chime
             "dialpad.com/meetings".to_string(),
             "8x8.vc".to_string(),
-            "webex.com".to_string(),        // Webex in browser
-            "loom.com/share".to_string(),   // Loom live sessions
+            "webex.com".to_string(),      // Webex in browser
+            "loom.com/share".to_string(), // Loom live sessions
         ];
 
         Self {

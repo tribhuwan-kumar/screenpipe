@@ -12,10 +12,10 @@ use oasgen::{oasgen, OaSchema};
 use screenpipe_db::MeetingRecord;
 
 use crate::server::AppState;
+use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use chrono::Utc;
 
 #[derive(OaSchema, Deserialize, Debug)]
 pub struct UpdateMeetingRequest {
@@ -164,7 +164,9 @@ pub(crate) async fn bulk_delete_meetings_handler(
             Err(e) => {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    JsonResponse(json!({"error": format!("failed to delete meeting {}: {}", id, e)})),
+                    JsonResponse(
+                        json!({"error": format!("failed to delete meeting {}: {}", id, e)}),
+                    ),
                 ));
             }
         }
@@ -247,9 +249,7 @@ pub(crate) async fn stop_meeting_handler(
         )
     })?;
 
-    let now = Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string();
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
     state.db.end_meeting(id, &now).await.map_err(|e| {
         (

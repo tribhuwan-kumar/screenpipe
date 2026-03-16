@@ -27,8 +27,7 @@ static REGISTRY_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 
 /// Base URL for the screenpipe registry API.
 fn api_base_url() -> String {
-    std::env::var("SCREENPIPE_API_BASE_URL")
-        .unwrap_or_else(|_| "https://screenpi.pe".to_string())
+    std::env::var("SCREENPIPE_API_BASE_URL").unwrap_or_else(|_| "https://screenpi.pe".to_string())
 }
 
 /// Extract the Bearer token from the Authorization header.
@@ -137,10 +136,7 @@ pub async fn pipe_store_detail(headers: HeaderMap, Path(slug): Path<String>) -> 
 ///
 /// Unpublish a pipe from the registry. Requires auth (Bearer token).
 /// Only the pipe's author can unpublish it.
-pub async fn pipe_store_unpublish(
-    headers: HeaderMap,
-    Path(slug): Path<String>,
-) -> Json<Value> {
+pub async fn pipe_store_unpublish(headers: HeaderMap, Path(slug): Path<String>) -> Json<Value> {
     let token = match extract_auth_token(&headers) {
         Some(t) => t,
         None => return Json(json!({ "error": "authorization required" })),
@@ -150,12 +146,7 @@ pub async fn pipe_store_unpublish(
     let client = &*REGISTRY_CLIENT;
 
     let url = format!("{}/api/pipes/store/{}", base, slug);
-    match client
-        .delete(&url)
-        .bearer_auth(&token)
-        .send()
-        .await
-    {
+    match client.delete(&url).bearer_auth(&token).send().await {
         Ok(resp) => match resp.json::<Value>().await {
             Ok(resp_body) => Json(resp_body),
             Err(e) => Json(json!({ "error": format!("failed to parse registry response: {}", e) })),
@@ -241,9 +232,7 @@ pub async fn pipe_store_install(
                 .and_then(|v| v.as_str())
             {
                 Some(md) => md.to_string(),
-                None => {
-                    return Json(json!({ "error": "pipe not found or missing source_md" }))
-                }
+                None => return Json(json!({ "error": "pipe not found or missing source_md" })),
             }
         }
     };

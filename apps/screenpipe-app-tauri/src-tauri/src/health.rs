@@ -671,6 +671,9 @@ mod tests {
             verbose_instructions: None,
             device_status_details: None,
             monitors: None,
+            audio_pipeline: None,
+            vision_db_write_stalled: false,
+            audio_db_write_stalled: false,
         })
     }
 
@@ -688,6 +691,9 @@ mod tests {
             verbose_instructions: None,
             device_status_details: None,
             monitors: None,
+            audio_pipeline: None,
+            vision_db_write_stalled: false,
+            audio_db_write_stalled: false,
         })
     }
 
