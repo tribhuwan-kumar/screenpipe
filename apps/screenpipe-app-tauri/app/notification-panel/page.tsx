@@ -144,6 +144,8 @@ export default function NotificationPanelPage() {
         setPayload(data);
         setVisible(true);
         setProgress(100);
+        setRestartState("idle");
+        setRestartError(null);
 
         posthog.capture("notification_shown", {
           type: data.type,

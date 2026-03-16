@@ -455,8 +455,8 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                 if current_epoch > 0 && current_epoch != last_known_spawn_epoch {
                     if last_known_spawn_epoch > 0 {
                         // A restart happened — activate grace period
-                        info!("detected restart (spawn epoch {} → {}), activating 120s stall detection grace",
-                            last_known_spawn_epoch, current_epoch);
+                        info!("detected restart (spawn epoch {} → {}), activating {}s stall detection grace",
+                            last_known_spawn_epoch, current_epoch, NOTIFICATION_COOLDOWN.as_secs());
                         last_restart_triggered = Some(Instant::now());
                         consecutive_audio_stall = 0;
                         consecutive_vision_stall = 0;
@@ -468,10 +468,10 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
             // ── Capture stall detection ──
             // Only check when the server is responding (status == Recording),
             // we're past the startup grace period, and not in a post-restart
-            // grace period (120s after any restart, giving the new pipeline
-            // time to load models and produce its first DB write).
+            // grace period. Grace matches NOTIFICATION_COOLDOWN so a restart
+            // never triggers a second notification before the cooldown expires.
             let in_restart_grace = last_restart_triggered
-                .map(|t| t.elapsed() < Duration::from_secs(120))
+                .map(|t| t.elapsed() < NOTIFICATION_COOLDOWN)
                 .unwrap_or(false);
             if status == RecordingStatus::Recording
                 && start_time.elapsed() > Duration::from_secs(120)
