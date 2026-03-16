@@ -501,6 +501,9 @@ async fn main() {
                 permissions::check_arc_installed,
                 permissions::check_arc_automation_permission,
                 permissions::request_arc_automation_permission,
+                permissions::get_installed_browsers,
+                permissions::check_browsers_automation_permission,
+                permissions::request_browsers_automation_permission,
                 // Commands from main.rs
                 get_env,
                 vault_status,
@@ -1223,18 +1226,14 @@ async fn main() {
                 let screen_ok = startup_perms.screen_recording.permitted();
                 let mic_ok = startup_perms.microphone.permitted();
 
-                // Also check Arc automation if Arc is installed
-                let arc_installed = std::path::Path::new("/Applications/Arc.app").exists();
-                let arc_ok = if arc_installed {
-                    permissions::check_arc_automation_permission(app.handle().clone())
-                } else {
-                    true
-                };
+                // Also check browser automation if any Chromium browser is installed
+                let browsers_ok =
+                    permissions::check_browsers_automation_permission(app.handle().clone());
 
-                if !screen_ok || !mic_ok || !arc_ok {
+                if !screen_ok || !mic_ok || !browsers_ok {
                     warn!(
-                        "Startup permission check failed — screen: {:?}, mic: {:?}, arc: {}. Showing recovery window.",
-                        startup_perms.screen_recording, startup_perms.microphone, arc_ok
+                        "Startup permission check failed — screen: {:?}, mic: {:?}, browsers: {}. Showing recovery window.",
+                        startup_perms.screen_recording, startup_perms.microphone, browsers_ok
                     );
                     let _ = ShowRewindWindow::PermissionRecovery.show(&app.handle());
                 }

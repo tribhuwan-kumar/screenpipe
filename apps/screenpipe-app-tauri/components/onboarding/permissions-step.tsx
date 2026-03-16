@@ -90,7 +90,7 @@ export default function PermissionsStep({
 }: PermissionsStepProps) {
   const { isMac, isLoading: isPlatformLoading } = usePlatform();
   const [statuses, setStatuses] = useState<Record<string, boolean>>({});
-  const [arcInstalled, setArcInstalled] = useState(false);
+  const [installedBrowsers, setInstalledBrowsers] = useState<string[]>([]);
   const [requesting, setRequesting] = useState(false);
   const [showSkip, setShowSkip] = useState(false);
   const hasAdvancedRef = useRef(false);
@@ -123,16 +123,16 @@ export default function PermissionsStep({
       macOnly: true,
     },
     {
-      id: "arc",
+      id: "browsers",
       icon: <Globe className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      title: "browser urls (arc)",
-      subtitle: "capture the current url from arc browser",
+      title: "browser urls",
+      subtitle: "capture urls & detect private browsing",
       check: async () => {
-        const granted = await commands.checkArcAutomationPermission();
+        const granted = await commands.checkBrowsersAutomationPermission();
         return granted ? "granted" : "denied";
       },
       request: async () => {
-        await commands.requestArcAutomationPermission();
+        await commands.requestBrowsersAutomationPermission();
       },
       macOnly: true,
       optional: true,
@@ -142,7 +142,7 @@ export default function PermissionsStep({
   // Filter permissions for this platform
   const activePermissions = permissions.filter((p) => {
     if (p.macOnly && !isMac) return false;
-    if (p.id === "arc" && !arcInstalled) return false;
+    if (p.id === "browsers" && installedBrowsers.length === 0) return false;
     return true;
   });
 
@@ -176,12 +176,12 @@ export default function PermissionsStep({
       return changed ? { ...prev, ...results } : prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMac, arcInstalled]);
+  }, [isMac, installedBrowsers.length]);
 
-  // Check Arc installation once
+  // Check installed browsers once
   useEffect(() => {
     if (isPlatformLoading) return;
-    commands.checkArcInstalled().then(setArcInstalled).catch(() => {});
+    commands.getInstalledBrowsers().then(setInstalledBrowsers).catch(() => {});
   }, [isPlatformLoading]);
 
   // Non-mac: skip permissions entirely

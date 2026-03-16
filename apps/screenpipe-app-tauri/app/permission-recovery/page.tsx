@@ -72,9 +72,9 @@ function PermissionRow({
 
 export default function PermissionRecoveryPage() {
   const [permissions, setPermissions] = useState<Record<string, string> | null>(null);
-  const [arcInstalled, setArcInstalled] = useState(false);
-  const [arcAutomationOk, setArcAutomationOk] = useState(false);
-  const [arcChecked, setArcChecked] = useState(false);
+  const [hasBrowsers, setHasBrowsers] = useState(false);
+  const [browsersAutomationOk, setBrowsersAutomationOk] = useState(false);
+  const [browsersChecked, setBrowsersChecked] = useState(false);
   const { isMac: isMacOS } = usePlatform();
   const restartTriggeredRef = useRef(false);
 
@@ -83,13 +83,13 @@ export default function PermissionRecoveryPage() {
       const perms = await commands.doPermissionsCheck(false);
       setPermissions(perms);
 
-      const installed = await commands.checkArcInstalled().catch(() => false);
-      setArcInstalled(installed);
-      if (installed) {
-        const granted = await commands.checkArcAutomationPermission().catch(() => false);
-        setArcAutomationOk(granted);
+      const browsers = await commands.getInstalledBrowsers().catch(() => []);
+      setHasBrowsers(browsers.length > 0);
+      if (browsers.length > 0) {
+        const granted = await commands.checkBrowsersAutomationPermission().catch(() => false);
+        setBrowsersAutomationOk(granted);
       }
-      setArcChecked(true);
+      setBrowsersChecked(true);
       return perms;
     } catch (error) {
       console.error("failed to check permissions:", error);
@@ -107,13 +107,13 @@ export default function PermissionRecoveryPage() {
   }, [checkPermissions]);
 
   useEffect(() => {
-    if (!permissions || restartTriggeredRef.current || !arcChecked) return;
+    if (!permissions || restartTriggeredRef.current || !browsersChecked) return;
 
     const screenOk = permissions.screenRecording === "granted" || permissions.screenRecording === "notNeeded";
     const micOk = permissions.microphone === "granted" || permissions.microphone === "notNeeded";
-    const arcOk = !arcInstalled || arcAutomationOk;
+    const browsersOk = !hasBrowsers || browsersAutomationOk;
 
-    if (screenOk && micOk && arcOk) {
+    if (screenOk && micOk && browsersOk) {
       restartTriggeredRef.current = true;
       setTimeout(async () => {
         try {
@@ -125,7 +125,7 @@ export default function PermissionRecoveryPage() {
         }
       }, 1000);
     }
-  }, [permissions, arcChecked, arcInstalled, arcAutomationOk]);
+  }, [permissions, browsersChecked, hasBrowsers, browsersAutomationOk]);
 
   const handleFix = async (permission: Parameters<typeof commands.requestPermission>[0]) => {
     posthog.capture("permission_recovery_manual_fix", { permission });
@@ -142,8 +142,8 @@ export default function PermissionRecoveryPage() {
     ? "granted" : permissions === null ? "checking" : "denied";
 
   const allCriticalOk = screenStatus === "granted" && micStatus === "granted";
-  const arcNeedsFix = isMacOS && arcInstalled && !arcAutomationOk;
-  const allOk = allCriticalOk && !arcNeedsFix && arcChecked;
+  const browsersNeedFix = isMacOS && hasBrowsers && !browsersAutomationOk;
+  const allOk = allCriticalOk && !browsersNeedFix && browsersChecked;
 
   return (
     <div className="flex flex-col w-full h-screen overflow-hidden bg-background">
@@ -192,15 +192,15 @@ export default function PermissionRecoveryPage() {
                   onFix={() => handleFix("accessibility")}
                 />
               )}
-              {isMacOS && arcInstalled && (
+              {isMacOS && hasBrowsers && (
                 <PermissionRow
                   icon={<Globe className="w-4 h-4" strokeWidth={1.5} />}
-                  label="arc urls"
-                  description="browser capture"
-                  status={arcAutomationOk ? "granted" : permissions === null ? "checking" : "denied"}
+                  label="browser urls"
+                  description="url capture & private browsing detection"
+                  status={browsersAutomationOk ? "granted" : permissions === null ? "checking" : "denied"}
                   onFix={async () => {
-                    posthog.capture("permission_recovery_arc_automation");
-                    await commands.requestArcAutomationPermission();
+                    posthog.capture("permission_recovery_browser_automation");
+                    await commands.requestBrowsersAutomationPermission();
                   }}
                 />
               )}

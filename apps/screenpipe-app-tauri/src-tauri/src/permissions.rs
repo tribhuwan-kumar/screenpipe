@@ -396,25 +396,89 @@ pub fn do_permissions_check(initial_check: bool) -> OSPermissionsCheck {
     }
 }
 
-/// Launch Arc if it's not already running, then wait briefly for it to start.
+/// Known Chromium-based browsers that use AppleScript for incognito detection
+/// and (in Arc's case) URL capture. Each needs its own Automation permission.
+#[cfg(target_os = "macos")]
+struct ChromiumBrowserInfo {
+    name: &'static str,
+    bundle_id: &'static str,
+    app_path: &'static str,
+    process_name: &'static str,
+}
+
+#[cfg(target_os = "macos")]
+const CHROMIUM_BROWSERS: &[ChromiumBrowserInfo] = &[
+    ChromiumBrowserInfo {
+        name: "Arc",
+        bundle_id: "company.thebrowser.Browser",
+        app_path: "/Applications/Arc.app",
+        process_name: "Arc",
+    },
+    ChromiumBrowserInfo {
+        name: "Google Chrome",
+        bundle_id: "com.google.Chrome",
+        app_path: "/Applications/Google Chrome.app",
+        process_name: "Google Chrome",
+    },
+    ChromiumBrowserInfo {
+        name: "Brave Browser",
+        bundle_id: "com.brave.Browser",
+        app_path: "/Applications/Brave Browser.app",
+        process_name: "Brave Browser",
+    },
+    ChromiumBrowserInfo {
+        name: "Microsoft Edge",
+        bundle_id: "com.microsoft.edgemac",
+        app_path: "/Applications/Microsoft Edge.app",
+        process_name: "Microsoft Edge",
+    },
+    ChromiumBrowserInfo {
+        name: "Vivaldi",
+        bundle_id: "com.vivaldi.Vivaldi",
+        app_path: "/Applications/Vivaldi.app",
+        process_name: "Vivaldi",
+    },
+    ChromiumBrowserInfo {
+        name: "Opera",
+        bundle_id: "com.operasoftware.Opera",
+        app_path: "/Applications/Opera.app",
+        process_name: "Opera",
+    },
+    ChromiumBrowserInfo {
+        name: "Chromium",
+        bundle_id: "org.chromium.Chromium",
+        app_path: "/Applications/Chromium.app",
+        process_name: "Chromium",
+    },
+];
+
+/// Launch a browser if it's not already running, then wait briefly for it to start.
 /// The macOS Automation permission prompt requires the target app to be running.
 #[cfg(target_os = "macos")]
-fn ensure_arc_running() {
+fn ensure_browser_running(process_name: &str, app_path: &str) {
     use std::process::Command;
 
-    // Check if Arc is already running via pgrep
     let running = Command::new("pgrep")
-        .args(["-x", "Arc"])
+        .args(["-x", process_name])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
 
     if !running {
-        debug!("arc not running, launching it for automation permission prompt");
-        let _ = Command::new("open").args(["-a", "Arc"]).spawn();
-        // Give Arc a moment to launch before the permission API call
+        debug!(
+            "{} not running, launching it for automation permission prompt",
+            process_name
+        );
+        let _ = Command::new("open").args(["-a", app_path]).spawn();
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
+}
+
+/// Launch Arc if it's not already running, then wait briefly for it to start.
+/// The macOS Automation permission prompt requires the target app to be running.
+#[cfg(target_os = "macos")]
+fn ensure_arc_running() {
+    ensure_browser_running("Arc", "/Applications/Arc.app");
 }
 
 /// Check if Arc browser is installed (macOS only)
@@ -424,6 +488,116 @@ pub fn check_arc_installed() -> bool {
     #[cfg(target_os = "macos")]
     {
         std::path::Path::new("/Applications/Arc.app").exists()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Returns the names of installed Chromium browsers that need Automation permission
+#[tauri::command(async)]
+#[specta::specta]
+pub fn get_installed_browsers() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        CHROMIUM_BROWSERS
+            .iter()
+            .filter(|b| std::path::Path::new(b.app_path).exists())
+            .map(|b| b.name.to_string())
+            .collect()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Vec::new()
+    }
+}
+
+/// Check if Automation permission is granted for all installed Chromium browsers.
+/// Returns true only if ALL installed browsers have automation granted.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn check_browsers_automation_permission(_app: tauri::AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let installed: Vec<&ChromiumBrowserInfo> = CHROMIUM_BROWSERS
+            .iter()
+            .filter(|b| std::path::Path::new(b.app_path).exists())
+            .collect();
+
+        if installed.is_empty() {
+            return true;
+        }
+
+        if is_app_bundle() {
+            installed
+                .iter()
+                .all(|b| ae_check_automation_direct(b.bundle_id, false) == 0)
+        } else {
+            // Dev mode: just check Arc as before (launchctl approach doesn't scale to N browsers)
+            run_self_detached("--check-arc-automation")
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Request Automation permission for all installed Chromium browsers that are currently running.
+/// For browsers not running, opens System Settings > Automation as fallback.
+#[tauri::command(async)]
+#[specta::specta]
+pub fn request_browsers_automation_permission(_app: tauri::AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+
+        let installed: Vec<&ChromiumBrowserInfo> = CHROMIUM_BROWSERS
+            .iter()
+            .filter(|b| std::path::Path::new(b.app_path).exists())
+            .collect();
+
+        if installed.is_empty() {
+            return true;
+        }
+
+        if is_app_bundle() {
+            let mut any_denied = false;
+            for browser in &installed {
+                // Check if this browser is running
+                let running = Command::new("pgrep")
+                    .args(["-x", browser.process_name])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+
+                if running {
+                    let result = ae_check_automation_direct(browser.bundle_id, true);
+                    if result != 0 {
+                        any_denied = true;
+                    }
+                } else {
+                    // Not running — check if already granted without prompting
+                    let result = ae_check_automation_direct(browser.bundle_id, false);
+                    if result != 0 {
+                        any_denied = true;
+                    }
+                }
+            }
+
+            if any_denied {
+                open_permission_settings(OSPermission::Automation);
+            }
+            !any_denied
+        } else {
+            open_permission_settings(OSPermission::Automation);
+            run_self_detached_fire_and_forget("--trigger-arc-automation");
+            false
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -678,8 +852,10 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
     // Extra delay after onboarding to let permissions settle
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Check if Arc is installed once at startup
-    let arc_installed = std::path::Path::new("/Applications/Arc.app").exists();
+    // Check if any Chromium browser is installed once at startup
+    let any_browser_installed = CHROMIUM_BROWSERS
+        .iter()
+        .any(|b| std::path::Path::new(b.app_path).exists());
 
     let mut check_interval = interval(Duration::from_secs(10));
 
@@ -716,9 +892,9 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
         let mic_ok = perms.microphone.permitted();
         let accessibility_ok = perms.accessibility.permitted();
 
-        // Check Arc automation permission if Arc is installed
-        let arc_ok = if arc_installed {
-            check_arc_automation_permission(app.clone())
+        // Check browser automation permission if any Chromium browser is installed
+        let arc_ok = if any_browser_installed {
+            check_browsers_automation_permission(app.clone())
         } else {
             true
         };

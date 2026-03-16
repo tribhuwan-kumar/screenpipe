@@ -1577,6 +1577,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       const providerConfig = buildProviderConfig();
       console.log("[Pi] Preset changed, restarting:", providerConfig?.provider, providerConfig?.model);
       piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
+      // Reset session sync flag — Pi restarts fresh without conversation context,
+      // so the next message will re-inject chat history.
+      piSessionSyncedRef.current = false;
       commands.piUpdateConfig(settings.user?.token ?? null, providerConfig).catch((e) => {
         console.error("[Pi] Preset switch failed:", e);
       });
