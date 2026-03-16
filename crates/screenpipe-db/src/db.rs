@@ -29,10 +29,10 @@ use futures::future::try_join_all;
 use crate::{
     text_similarity::is_similar_transcription, AudioChunksResponse, AudioDevice, AudioEntry,
     AudioResult, AudioResultRaw, ContentType, DeviceType, Element, ElementRow, ElementSource,
-    FrameData, FrameRow, FrameRowLight, FrameWindowData, InsertUiEvent, MeetingRecord, MemoryRecord, OCREntry,
-    OCRResult, OCRResultRaw, OcrEngine, OcrTextBlock, Order, SearchMatch, SearchMatchGroup,
-    SearchResult, Speaker, TagContentType, TextBounds, TextPosition, TimeSeriesChunk, UiContent,
-    UiEventRecord, UiEventRow, VideoMetadata,
+    FrameData, FrameRow, FrameRowLight, FrameWindowData, InsertUiEvent, MeetingRecord,
+    MemoryRecord, OCREntry, OCRResult, OCRResultRaw, OcrEngine, OcrTextBlock, Order, SearchMatch,
+    SearchMatchGroup, SearchResult, Speaker, TagContentType, TextBounds, TextPosition,
+    TimeSeriesChunk, UiContent, UiEventRecord, UiEventRow, VideoMetadata,
 };
 
 /// Time window (in seconds) to check for similar transcriptions across devices.
@@ -225,10 +225,8 @@ impl DatabaseManager {
             .await?;
 
         let write_semaphore = Arc::new(Semaphore::new(1));
-        let write_queue = crate::write_queue::spawn_write_drain(
-            write_pool.clone(),
-            Arc::clone(&write_semaphore),
-        );
+        let write_queue =
+            crate::write_queue::spawn_write_drain(write_pool.clone(), Arc::clone(&write_semaphore));
         let db_manager = DatabaseManager {
             pool: read_pool,
             write_pool,
@@ -396,7 +394,8 @@ impl DatabaseManager {
         let mut last_error = None;
         for attempt in 1..=max_retries {
             let mut conn =
-                match tokio::time::timeout(Duration::from_secs(3), self.write_pool.acquire()).await {
+                match tokio::time::timeout(Duration::from_secs(3), self.write_pool.acquire()).await
+                {
                     Ok(Ok(conn)) => conn,
                     Ok(Err(e)) => return Err(e),
                     Err(_) => return Err(sqlx::Error::PoolTimedOut),
@@ -571,12 +570,11 @@ impl DatabaseManager {
 
     /// Check whether an audio chunk row exists.
     pub async fn audio_chunk_exists(&self, chunk_id: i64) -> Result<bool, sqlx::Error> {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM audio_chunks WHERE id = ?1)",
-        )
-        .bind(chunk_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM audio_chunks WHERE id = ?1)")
+                .bind(chunk_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(exists)
     }
 
@@ -1618,12 +1616,10 @@ impl DatabaseManager {
                     Some(format!("{}\n{}", a11y, ocr))
                 }
             }
-            _ => {
-                accessibility_text
-                    .filter(|t| !t.is_empty())
-                    .map(String::from)
-                    .or_else(|| ocr_text_str.filter(|t| !t.is_empty()).map(String::from))
-            }
+            _ => accessibility_text
+                .filter(|t| !t.is_empty())
+                .map(String::from)
+                .or_else(|| ocr_text_str.filter(|t| !t.is_empty()).map(String::from)),
         };
 
         let result = self
@@ -1777,7 +1773,11 @@ impl DatabaseManager {
 
         for (idx, window) in windows.iter().enumerate() {
             // Compute full_text for FTS indexing
-            let full_text = if window.text.is_empty() { None } else { Some(window.text.as_str()) };
+            let full_text = if window.text.is_empty() {
+                None
+            } else {
+                Some(window.text.as_str())
+            };
 
             // Insert frame
             let frame_id = sqlx::query(
@@ -1896,7 +1896,11 @@ impl DatabaseManager {
 
             for (idx, window) in windows.iter().enumerate() {
                 // Compute full_text for FTS indexing
-                let full_text = if window.text.is_empty() { None } else { Some(window.text.as_str()) };
+                let full_text = if window.text.is_empty() {
+                    None
+                } else {
+                    Some(window.text.as_str())
+                };
 
                 let frame_id = sqlx::query(
                     "INSERT INTO frames (video_chunk_id, offset_index, timestamp, name, browser_url, app_name, window_name, focused, device_name, full_text) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -2163,14 +2167,18 @@ impl DatabaseManager {
                 SearchResult::Audio(audio) => audio.timestamp,
                 SearchResult::UI(ui) => ui.timestamp,
                 SearchResult::Input(input) => input.timestamp,
-                SearchResult::Memory(m) => m.created_at.parse::<DateTime<Utc>>().unwrap_or_default(),
+                SearchResult::Memory(m) => {
+                    m.created_at.parse::<DateTime<Utc>>().unwrap_or_default()
+                }
             };
             let timestamp_b = match b {
                 SearchResult::OCR(ocr) => ocr.timestamp,
                 SearchResult::Audio(audio) => audio.timestamp,
                 SearchResult::UI(ui) => ui.timestamp,
                 SearchResult::Input(input) => input.timestamp,
-                SearchResult::Memory(m) => m.created_at.parse::<DateTime<Utc>>().unwrap_or_default(),
+                SearchResult::Memory(m) => {
+                    m.created_at.parse::<DateTime<Utc>>().unwrap_or_default()
+                }
             };
             timestamp_b.cmp(&timestamp_a)
         });
@@ -2732,8 +2740,7 @@ impl DatabaseManager {
                     speaker_name,
                 ));
 
-                let (frames_count, audio_count) =
-                    tokio::try_join!(frames_future, audio_future)?;
+                let (frames_count, audio_count) = tokio::try_join!(frames_future, audio_future)?;
                 return Ok(frames_count + audio_count);
             } else {
                 let frames_count = frames_future.await?;
@@ -2910,11 +2917,7 @@ impl DatabaseManager {
         let count: i64 = match content_type {
             ContentType::OCR | ContentType::Accessibility => {
                 sqlx::query_scalar(&sql)
-                    .bind(if has_fts {
-                        fts_query
-                    } else {
-                        "*".to_owned()
-                    })
+                    .bind(if has_fts { fts_query } else { "*".to_owned() })
                     .bind(start_time)
                     .bind(end_time)
                     .bind(min_length.map(|l| l as i64))
@@ -4057,7 +4060,8 @@ impl DatabaseManager {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut map: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+        let mut map: std::collections::HashMap<String, (i64, i64)> =
+            std::collections::HashMap::new();
         for (mid, count) in rows {
             map.entry(mid).or_default().0 = count;
         }
@@ -5808,9 +5812,8 @@ LIMIT ? OFFSET ?
         let merged_start: Option<String> = row.try_get("ms")?;
         let merged_end: Option<String> = row.try_get("me")?;
         // Update the survivor row
-        let update_sql = format!(
-            "UPDATE meetings SET meeting_start = ?1, meeting_end = ?2 WHERE id = ?3"
-        );
+        let update_sql =
+            format!("UPDATE meetings SET meeting_start = ?1, meeting_end = ?2 WHERE id = ?3");
         sqlx::query(&update_sql)
             .bind(&merged_start)
             .bind(&merged_end)
@@ -5942,10 +5945,7 @@ LIMIT ? OFFSET ?
             sets.push("source_context = ?5");
         }
 
-        let sql = format!(
-            "UPDATE memories SET {} WHERE id = ?6",
-            sets.join(", ")
-        );
+        let sql = format!("UPDATE memories SET {} WHERE id = ?6", sets.join(", "));
 
         sqlx::query(&sql)
             .bind(&now)
@@ -6087,7 +6087,6 @@ LIMIT ? OFFSET ?
             .fetch_one(&self.pool)
             .await
     }
-
 }
 
 pub fn find_matching_positions(blocks: &[OcrTextBlock], query: &str) -> Vec<TextPosition> {
@@ -6172,7 +6171,9 @@ pub fn find_matching_a11y_positions(tree_json: &str, query: &str) -> Vec<TextPos
     matches.sort_by(|a, b| {
         let area_a = a.bounds.width * a.bounds.height;
         let area_b = b.bounds.width * b.bounds.height;
-        area_b.partial_cmp(&area_a).unwrap_or(std::cmp::Ordering::Equal)
+        area_b
+            .partial_cmp(&area_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
     matches.dedup_by(|a, b| a.text == b.text);
 

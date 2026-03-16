@@ -20,10 +20,10 @@
 //! or a TOML config file. Both paths produce the same type that the
 //! engine consumes.
 
-mod recording;
 mod defaults;
 mod persistence;
+mod recording;
 
-pub use recording::*;
 pub use defaults::*;
 pub use persistence::*;
+pub use recording::*;

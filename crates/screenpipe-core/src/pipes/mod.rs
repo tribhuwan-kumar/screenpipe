@@ -1309,7 +1309,10 @@ impl PipeManager {
             if cb_error_type.as_deref() == Some("context_overflow") {
                 let pipe_dir = pipes_dir_for_log.join(&pipe_name);
                 if let Err(e) = delete_pi_sessions(&pipe_dir) {
-                    warn!("failed to clear Pi session after context overflow for '{}': {}", pipe_name, e);
+                    warn!(
+                        "failed to clear Pi session after context overflow for '{}': {}",
+                        pipe_name, e
+                    );
                 } else {
                     info!("cleared Pi session for '{}' after context overflow — next run starts fresh", pipe_name);
                 }
@@ -1383,58 +1386,64 @@ impl PipeManager {
         let pipe_dir = self.pipes_dir.join(name);
 
         // Resolve preset → model/provider overrides (with fallback support)
-        let (run_model, run_provider, run_provider_url, run_api_key, preset_prompt, active_preset_id) =
-            if !config.preset.is_empty() {
-                // Pick the best available preset using circuit breaker
-                let (preset_id, _idx) = self
-                    .fallback_registry
-                    .pick_preset(&config.preset)
-                    .ok_or_else(|| anyhow!("pipe '{}': no presets configured", name))?;
+        let (
+            run_model,
+            run_provider,
+            run_provider_url,
+            run_api_key,
+            preset_prompt,
+            active_preset_id,
+        ) = if !config.preset.is_empty() {
+            // Pick the best available preset using circuit breaker
+            let (preset_id, _idx) = self
+                .fallback_registry
+                .pick_preset(&config.preset)
+                .ok_or_else(|| anyhow!("pipe '{}': no presets configured", name))?;
 
-                match resolve_preset(&self.pipes_dir, preset_id) {
-                    Some(resolved) => {
-                        info!(
-                            "pipe '{}': using preset '{}' → model={}, provider={:?}{}",
-                            name,
-                            preset_id,
-                            resolved.model,
-                            resolved.provider,
-                            if _idx > 0 {
-                                format!(" (fallback #{})", _idx)
-                            } else {
-                                String::new()
-                            }
-                        );
-                        (
-                            resolved.model,
-                            resolved.provider,
-                            resolved.url,
-                            resolved.api_key,
-                            resolved.prompt,
-                            Some(preset_id.to_string()),
-                        )
-                    }
-                    None => {
-                        return Err(anyhow!(
-                            "pipe '{}': preset '{}' not found in settings — \
+            match resolve_preset(&self.pipes_dir, preset_id) {
+                Some(resolved) => {
+                    info!(
+                        "pipe '{}': using preset '{}' → model={}, provider={:?}{}",
+                        name,
+                        preset_id,
+                        resolved.model,
+                        resolved.provider,
+                        if _idx > 0 {
+                            format!(" (fallback #{})", _idx)
+                        } else {
+                            String::new()
+                        }
+                    );
+                    (
+                        resolved.model,
+                        resolved.provider,
+                        resolved.url,
+                        resolved.api_key,
+                        resolved.prompt,
+                        Some(preset_id.to_string()),
+                    )
+                }
+                None => {
+                    return Err(anyhow!(
+                        "pipe '{}': preset '{}' not found in settings — \
                              create the preset in Settings → AI or remove the \
                              'preset: {}' line from the pipe config",
-                            name,
-                            preset_id,
-                            preset_id
-                        ));
-                    }
+                        name,
+                        preset_id,
+                        preset_id
+                    ));
                 }
-            } else {
-                (
-                    config.model.clone(),
-                    config.provider.clone(),
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            };
+            }
+        } else {
+            (
+                config.model.clone(),
+                config.provider.clone(),
+                None,
+                None,
+                None,
+                None,
+            )
+        };
 
         // Create DB execution row
         let exec_id = if let Some(ref store) = self.store {

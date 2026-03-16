@@ -102,8 +102,7 @@ impl RecordingConfig {
         data_dir: std::path::PathBuf,
         audio_engine_override: Option<&str>,
     ) -> Self {
-        let engine_str = audio_engine_override
-            .unwrap_or(&settings.audio_transcription_engine);
+        let engine_str = audio_engine_override.unwrap_or(&settings.audio_transcription_engine);
 
         Self {
             audio_chunk_duration: settings.audio_chunk_duration.max(0) as u64,

@@ -192,10 +192,7 @@ impl PresetFallbackRegistry {
                     state
                 }
                 Err(e) => {
-                    warn!(
-                        "corrupt preset fallback state, starting fresh: {}",
-                        e
-                    );
+                    warn!("corrupt preset fallback state, starting fresh: {}", e);
                     PersistedState::default()
                 }
             },
@@ -291,12 +288,7 @@ impl PresetFallbackRegistry {
 
     /// Record failure from raw stderr/stdout content (for errors not caught
     /// by the structured parser).
-    pub fn record_failure_from_output(
-        &self,
-        preset_id: &str,
-        stderr: &str,
-        stdout: &str,
-    ) -> bool {
+    pub fn record_failure_from_output(&self, preset_id: &str, stderr: &str, stdout: &str) -> bool {
         let combined = format!("{} {}", stderr, stdout).to_lowercase();
 
         let reason = if combined.contains("rate limit")
@@ -345,10 +337,7 @@ impl PresetFallbackRegistry {
         for (id, breaker) in state.presets.iter_mut() {
             if breaker.state == BreakerState::Open && now >= breaker.cooldown_until {
                 breaker.state = BreakerState::HalfOpen;
-                info!(
-                    "startup recovery: preset '{}' moved to half-open",
-                    id
-                );
+                info!("startup recovery: preset '{}' moved to half-open", id);
                 changed = true;
             }
             // Sanity: if cooldown_until is more than 24h in the future, reset it
@@ -418,10 +407,7 @@ mod tests {
     #[test]
     fn test_parse_preset_list_array() {
         let v = serde_json::json!(["primary", "fallback"]);
-        assert_eq!(
-            parse_preset_list(&v),
-            vec!["primary", "fallback"]
-        );
+        assert_eq!(parse_preset_list(&v), vec!["primary", "fallback"]);
     }
 
     #[test]

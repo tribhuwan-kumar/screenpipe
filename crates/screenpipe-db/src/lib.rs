@@ -9,11 +9,13 @@ mod types;
 mod video_db;
 pub(crate) mod write_queue;
 
-pub use db::{find_matching_a11y_positions, parse_all_text_positions, DatabaseManager, DeleteTimeRangeResult};
-pub use write_queue::SyncTable;
+pub use db::{
+    find_matching_a11y_positions, parse_all_text_positions, DatabaseManager, DeleteTimeRangeResult,
+};
 pub use migration_worker::{
     create_migration_worker, MigrationCommand, MigrationConfig, MigrationResponse, MigrationStatus,
     MigrationWorker,
 };
 pub use text_normalizer::{expand_search_query, sanitize_fts5_query};
 pub use types::*;
+pub use write_queue::SyncTable;

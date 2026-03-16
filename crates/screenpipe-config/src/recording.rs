@@ -32,7 +32,6 @@ pub struct VocabEntry {
 #[serde(default)]
 pub struct RecordingSettings {
     // ── Audio ──────────────────────────────────────────────────────────
-
     /// Disable all audio capture and transcription.
     #[serde(rename = "disableAudio")]
     pub disable_audio: bool,
@@ -87,7 +86,6 @@ pub struct RecordingSettings {
     pub vocabulary: Vec<VocabEntry>,
 
     // ── Vision ─────────────────────────────────────────────────────────
-
     /// Disable all screen capture.
     #[serde(rename = "disableVision")]
     pub disable_vision: bool,
@@ -112,7 +110,6 @@ pub struct RecordingSettings {
     pub video_quality: String,
 
     // ── Filters ────────────────────────────────────────────────────────
-
     /// Window titles to exclude from capture.
     #[serde(rename = "ignoredWindows")]
     pub ignored_windows: Vec<String>,
@@ -133,13 +130,11 @@ pub struct RecordingSettings {
     pub languages: Vec<String>,
 
     // ── Privacy ────────────────────────────────────────────────────────
-
     /// Redact personally identifiable information from transcriptions.
     #[serde(rename = "usePiiRemoval")]
     pub use_pii_removal: bool,
 
     // ── Cloud / Auth ───────────────────────────────────────────────────
-
     /// Screenpipe cloud user ID. Empty string means not logged in.
     /// Kept as String (not Option) to match existing store.bin schema.
     #[serde(rename = "userId")]
@@ -167,7 +162,6 @@ pub struct RecordingSettings {
     pub openai_compatible_model: Option<String>,
 
     // ── System ─────────────────────────────────────────────────────────
-
     /// HTTP server port for the screenpipe API.
     pub port: u16,
 
@@ -367,11 +361,17 @@ mod tests {
         let settings: RecordingSettings = serde_json::from_str(json).unwrap();
 
         // Recording fields parsed correctly
-        assert_eq!(settings.audio_transcription_engine, "whisper-large-v3-turbo");
+        assert_eq!(
+            settings.audio_transcription_engine,
+            "whisper-large-v3-turbo"
+        );
         assert_eq!(settings.audio_devices, vec!["MacBook Pro Microphone"]);
         assert_eq!(settings.deepgram_api_key, "");
         assert_eq!(settings.user_id, "abc-123");
-        assert_eq!(settings.ignored_windows, vec!["Control Center", "Notification Center"]);
+        assert_eq!(
+            settings.ignored_windows,
+            vec!["Control Center", "Notification Center"]
+        );
         assert_eq!(settings.analytics_id, "posthog-uuid");
 
         // Fields that don't exist in RecordingSettings (UI-only) are silently ignored

@@ -253,6 +253,12 @@ impl WindowFilters {
             return false;
         }
 
+        // Check if window title suggests a blocked URL (catches streaming sites
+        // like DAZN/Netflix where URL detection only works for focused windows)
+        if self.is_title_suggesting_blocked_url(title) {
+            return false;
+        }
+
         // If include list is set, only allow windows that match it
         if !self.include_set.is_empty() {
             return self
