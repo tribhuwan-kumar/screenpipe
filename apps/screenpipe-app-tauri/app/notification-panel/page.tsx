@@ -30,6 +30,10 @@ export default function NotificationPanelPage() {
   const [payload, setPayload] = useState<NotificationPayload | null>(null);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
+  const [restartState, setRestartState] = useState<
+    "idle" | "restarting" | "success" | "error"
+  >("idle");
+  const [restartError, setRestartError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDismissMsRef = useRef(20000);
 
@@ -75,14 +79,48 @@ export default function NotificationPanelPage() {
             source: "pipe-suggestion-notification",
           });
         } else if (action === "restart_recording") {
-          try {
-            await invoke("stop_screenpipe");
-          } catch {
-            // may already be stopped
+          setRestartState("restarting");
+          setRestartError(null);
+          // Pause auto-dismiss while restarting
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
           }
-          // wait for port release + cooldown
-          await new Promise((r) => setTimeout(r, 2000));
-          await invoke("spawn_screenpipe");
+          try {
+            try {
+              await invoke("stop_screenpipe");
+            } catch {
+              // may already be stopped
+            }
+            await new Promise((r) => setTimeout(r, 2000));
+            await invoke("spawn_screenpipe");
+            // Poll health endpoint to confirm restart succeeded
+            let healthy = false;
+            for (let i = 0; i < 15; i++) {
+              await new Promise((r) => setTimeout(r, 1000));
+              try {
+                const res = await fetch("http://localhost:3030/health");
+                if (res.ok) {
+                  healthy = true;
+                  break;
+                }
+              } catch {
+                // server not up yet
+              }
+            }
+            if (healthy) {
+              setRestartState("success");
+              await new Promise((r) => setTimeout(r, 1500));
+              await hide(false);
+            } else {
+              setRestartState("error");
+              setRestartError("server did not respond after restart");
+            }
+          } catch (e) {
+            setRestartState("error");
+            setRestartError(String(e));
+          }
+          return; // don't auto-hide on error so user sees the message
         }
       } catch {
         // ignore
@@ -273,35 +311,70 @@ export default function NotificationPanelPage() {
               flexWrap: "wrap",
             }}
           >
-            {payload.actions.map((action) => (
-              <button
-                key={action.action}
-                onClick={() => handleAction(action.action)}
+            {restartState === "restarting" ? (
+              <span
                 style={{
-                  background: action.primary
-                    ? "rgba(0, 0, 0, 0.06)"
-                    : "none",
-                  border: "1px solid rgba(0, 0, 0, 0.12)",
-                  color: "rgba(0, 0, 0, 0.75)",
-                  cursor: "pointer",
-                  padding: "4px 10px",
                   fontSize: "10px",
+                  color: "rgba(0, 0, 0, 0.5)",
                   fontFamily: '"IBM Plex Mono", monospace',
                   fontWeight: 500,
-                  letterSpacing: "0.03em",
                 }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "rgba(0, 0, 0, 0.08)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = action.primary
-                    ? "rgba(0, 0, 0, 0.06)"
-                    : "none")
-                }
               >
-                {action.label}
-              </button>
-            ))}
+                restarting...
+              </span>
+            ) : restartState === "success" ? (
+              <span
+                style={{
+                  fontSize: "10px",
+                  color: "rgba(34, 139, 34, 0.8)",
+                  fontFamily: '"IBM Plex Mono", monospace',
+                  fontWeight: 500,
+                }}
+              >
+                restarted successfully
+              </span>
+            ) : restartState === "error" ? (
+              <span
+                style={{
+                  fontSize: "10px",
+                  color: "rgba(180, 30, 30, 0.8)",
+                  fontFamily: '"IBM Plex Mono", monospace',
+                  fontWeight: 500,
+                }}
+              >
+                restart failed{restartError ? `: ${restartError}` : ""}
+              </span>
+            ) : (
+              payload.actions.map((action) => (
+                <button
+                  key={action.action}
+                  onClick={() => handleAction(action.action)}
+                  style={{
+                    background: action.primary
+                      ? "rgba(0, 0, 0, 0.06)"
+                      : "none",
+                    border: "1px solid rgba(0, 0, 0, 0.12)",
+                    color: "rgba(0, 0, 0, 0.75)",
+                    cursor: "pointer",
+                    padding: "4px 10px",
+                    fontSize: "10px",
+                    fontFamily: '"IBM Plex Mono", monospace',
+                    fontWeight: 500,
+                    letterSpacing: "0.03em",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "rgba(0, 0, 0, 0.08)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = action.primary
+                      ? "rgba(0, 0, 0, 0.06)"
+                      : "none")
+                  }
+                >
+                  {action.label}
+                </button>
+              ))
+            )}
             <span
               onClick={() => hide(false)}
               style={{

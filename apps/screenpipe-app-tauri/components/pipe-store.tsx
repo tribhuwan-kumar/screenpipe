@@ -1254,6 +1254,32 @@ function PipeDetailPanel({
 
 // --- Publish Dialog ---
 
+// Redact secrets from pipe content before publishing
+function redactSecrets(text: string): { redacted: string; count: number } {
+  let count = 0;
+  const patterns: [RegExp, string][] = [
+    [/sk-ant-[a-zA-Z0-9_-]{20,}/g, "sk-ant-***REDACTED***"],
+    [/sk-[a-zA-Z0-9]{20,}/g, "sk-***REDACTED***"],
+    [/ghp_[a-zA-Z0-9]{36,}/g, "ghp_***REDACTED***"],
+    [/gho_[a-zA-Z0-9]{36,}/g, "gho_***REDACTED***"],
+    [/xoxb-[a-zA-Z0-9-]+/g, "xoxb-***REDACTED***"],
+    [/xoxp-[a-zA-Z0-9-]+/g, "xoxp-***REDACTED***"],
+    [/AIza[a-zA-Z0-9_-]{30,}/g, "AIza***REDACTED***"],
+    [/AKIA[A-Z0-9]{16,}/g, "AKIA***REDACTED***"],
+    [/Bearer\s+ey[a-zA-Z0-9._-]+/g, "Bearer ***REDACTED***"],
+    [/((?:API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIALS)\s*[=:]\s*["']?)([a-zA-Z0-9_-]{8,})(["']?)/gi,
+      "$1***REDACTED***$3"],
+  ];
+  let result = text;
+  for (const [pattern, replacement] of patterns) {
+    const before = result;
+    result = result.replace(pattern, replacement);
+    if (result !== before) count++;
+    pattern.lastIndex = 0;
+  }
+  return { redacted: result, count };
+}
+
 function PublishDialog({
   open,
   onOpenChange,
@@ -1274,6 +1300,7 @@ function PublishDialog({
   const [icon, setIcon] = useState("🔧");
   const [publishCategory, setPublishCategory] = useState("Other");
   const [publishing, setPublishing] = useState(false);
+  const [redactEnabled, setRedactEnabled] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -1294,8 +1321,17 @@ function PublishDialog({
     try {
       // Get pipe content from local pipes list
       const pipe = localPipes.find((p: any) => p.name === selectedPipe);
-      const sourceMd = pipe?.raw_content;
+      let sourceMd = pipe?.raw_content;
       if (!sourceMd) throw new Error("could not read pipe content");
+
+      // Redact secrets if enabled
+      if (redactEnabled) {
+        const { redacted, count } = redactSecrets(sourceMd);
+        if (count > 0) {
+          sourceMd = redacted;
+          toast({ title: `redacted ${count} secret(s) from pipe before publishing` });
+        }
+      }
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -1420,6 +1456,18 @@ function PublishDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Redact secrets checkbox */}
+            <div className="flex items-center gap-2 pt-1">
+              <Checkbox
+                id="redact-secrets"
+                checked={redactEnabled}
+                onCheckedChange={(v) => setRedactEnabled(v === true)}
+              />
+              <Label htmlFor="redact-secrets" className="text-xs text-muted-foreground">
+                redact API keys & secrets before publishing
+              </Label>
             </div>
           </div>
         )}

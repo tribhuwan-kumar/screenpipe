@@ -316,6 +316,10 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
     let mut last_audio_notification: Option<Instant> = None;
     let mut last_vision_notification: Option<Instant> = None;
     let mut wake_reset_done = false;
+    // Grace period after restart: suppress stall detection for 120s after a
+    // restart notification was shown, giving the new pipeline time to produce
+    // its first DB write (metrics reset to 0 on restart).
+    let mut last_restart_triggered: Option<Instant> = None;
 
     tokio::spawn(async move {
         loop {
@@ -441,9 +445,17 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
             }
 
             // ── Capture stall detection ──
-            // Only check when the server is responding (status == Recording)
-            // and we're past the startup grace period.
-            if status == RecordingStatus::Recording && start_time.elapsed() > Duration::from_secs(120) {
+            // Only check when the server is responding (status == Recording),
+            // we're past the startup grace period, and not in a post-restart
+            // grace period (120s after a restart notification, giving the new
+            // pipeline time to produce its first DB write).
+            let in_restart_grace = last_restart_triggered
+                .map(|t| t.elapsed() < Duration::from_secs(120))
+                .unwrap_or(false);
+            if status == RecordingStatus::Recording
+                && start_time.elapsed() > Duration::from_secs(120)
+                && !in_restart_grace
+            {
                 if let Ok(ref health) = health_result {
                     let audio_bad = matches!(
                         health.audio_status.as_deref(),
@@ -464,7 +476,12 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         })
                         .unwrap_or(false);
 
-                    // Audio stall tracking — also trigger on DB write stalls
+                    // Audio stall tracking:
+                    // - audio_bad (capture stale/not_started): always counts
+                    // - audio_db_write_stalled: only counts as a stall signal.
+                    //   Change #1 (engine side) ensures this flag only fires after
+                    //   at least one successful DB write, so silent environments
+                    //   (last_db_write_ts == 0) won't trigger false positives.
                     let audio_db_stalled = health.audio_db_write_stalled;
                     if (audio_bad || audio_db_stalled) && !audio_excused {
                         consecutive_audio_stall = consecutive_audio_stall.saturating_add(1);
@@ -516,6 +533,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                                 CAPTURE_STALL_THRESHOLD
                             );
                             last_audio_notification = Some(now_instant);
+                            last_restart_triggered = Some(now_instant);
                             let _ = show_capture_stall_notification(&app, "audio").await;
                         }
                     }
@@ -531,6 +549,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                                 reason, CAPTURE_STALL_THRESHOLD
                             );
                             last_vision_notification = Some(now_instant);
+                            last_restart_triggered = Some(now_instant);
                             let _ = show_capture_stall_notification(&app, "screen").await;
                         }
                     }

@@ -35,9 +35,9 @@ use crate::{
             vision_metrics_handler,
         },
         meetings::{
-            delete_meeting_handler, get_meeting_handler, list_meetings_handler,
-            merge_meetings_handler, start_meeting_handler, stop_meeting_handler,
-            update_meeting_handler,
+            bulk_delete_meetings_handler, delete_meeting_handler, get_meeting_handler,
+            list_meetings_handler, merge_meetings_handler, start_meeting_handler,
+            stop_meeting_handler, update_meeting_handler,
         },
         memories::{
             create_memory_handler, delete_memory_handler, get_memory_handler,
@@ -484,6 +484,7 @@ impl SCServer {
             .post("/speakers/undo-reassign", undo_speaker_reassign_handler)
             .get("/meetings", list_meetings_handler)
             .post("/meetings/merge", merge_meetings_handler)
+            .post("/meetings/bulk-delete", bulk_delete_meetings_handler)
             .post("/meetings/start", start_meeting_handler)
             .post("/meetings/stop", stop_meeting_handler)
             .get("/meetings/:id", get_meeting_handler)

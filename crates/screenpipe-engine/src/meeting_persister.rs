@@ -36,6 +36,9 @@ pub fn start_meeting_persister(
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
 
+            // Ensure grace period is checked even when audio pipeline is idle
+            detector.check_grace_period().await;
+
             let in_meeting = detector.is_in_meeting();
 
             match (was_in_meeting, in_meeting) {

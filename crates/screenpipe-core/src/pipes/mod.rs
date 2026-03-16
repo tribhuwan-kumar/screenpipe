@@ -11,6 +11,7 @@
 //! [`AgentExecutor`].
 
 pub mod permissions;
+pub mod preset_fallback;
 pub mod sync;
 
 use crate::agents::{
@@ -57,10 +58,16 @@ pub struct PipeConfig {
     /// LLM provider override.  Default: none (uses screenpipe cloud).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    /// AI preset id from `~/.screenpipe/store.bin` → `settings.aiPresets`.
+    /// AI preset id(s) from `~/.screenpipe/store.bin` → `settings.aiPresets`.
     /// When set, overrides `model` and `provider` at runtime.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preset: Option<String>,
+    /// Accepts a single string or an array of strings for fallback.
+    /// Example: `preset: "my-preset"` or `preset: ["primary", "fallback"]`
+    #[serde(
+        default,
+        deserialize_with = "deserialize_preset_field",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub preset: Vec<String>,
 
     // -- Data permissions (all optional, backwards compatible) ---------------
     /// Only data from these apps reaches the pipe (case-insensitive).
@@ -122,6 +129,52 @@ pub struct PipeConfig {
     /// Catches any extra fields from front-matter (backwards compat).
     #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, serde_json::Value>,
+}
+
+/// Deserialize `preset` field: accepts a single string or an array of strings.
+fn deserialize_preset_field<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct PresetVisitor;
+
+    impl<'de> de::Visitor<'de> for PresetVisitor {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or array of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Vec<String>, E> {
+            if v.is_empty() {
+                Ok(vec![])
+            } else {
+                Ok(vec![v.to_string()])
+            }
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Vec<String>, E> {
+            Ok(vec![])
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Vec<String>, E> {
+            Ok(vec![])
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
+            let mut result = Vec::new();
+            while let Some(s) = seq.next_element::<String>()? {
+                if !s.is_empty() {
+                    result.push(s);
+                }
+            }
+            Ok(result)
+        }
+    }
+
+    deserializer.deserialize_any(PresetVisitor)
 }
 
 fn default_schedule() -> String {

@@ -234,13 +234,13 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
     let audio_db_write_stalled = if !state.audio_disabled
         && global_audio_active
         && audio_snap.uptime_secs > 120.0
+        && audio_snap.last_db_write_ts > 0
     {
-        let db_stale = audio_snap.last_db_write_ts == 0
-            || now_ts.saturating_sub(audio_snap.last_db_write_ts) > threshold_secs;
+        let db_stale = now_ts.saturating_sub(audio_snap.last_db_write_ts) > threshold_secs;
         if db_stale {
             warn!(
                 "health_check: audio DB writes stalled — devices active but last DB write {}s ago (pool exhaustion likely)",
-                if audio_snap.last_db_write_ts > 0 { now_ts.saturating_sub(audio_snap.last_db_write_ts) } else { 0 },
+                now_ts.saturating_sub(audio_snap.last_db_write_ts),
             );
         }
         db_stale

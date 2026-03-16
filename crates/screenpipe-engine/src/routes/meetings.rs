@@ -32,6 +32,11 @@ pub struct MergeMeetingsRequest {
 }
 
 #[derive(OaSchema, Deserialize, Debug)]
+pub struct BulkDeleteMeetingsRequest {
+    pub ids: Vec<i64>,
+}
+
+#[derive(OaSchema, Deserialize, Debug)]
 pub struct StartMeetingRequest {
     pub app: String,
     pub title: Option<String>,
@@ -138,6 +143,34 @@ pub(crate) async fn update_meeting_handler(
     })?;
 
     Ok(JsonResponse(meeting))
+}
+
+#[oasgen]
+pub(crate) async fn bulk_delete_meetings_handler(
+    State(state): State<Arc<AppState>>,
+    axum::Json(body): axum::Json<BulkDeleteMeetingsRequest>,
+) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
+    if body.ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            JsonResponse(json!({"error": "at least 1 meeting id is required"})),
+        ));
+    }
+
+    let mut total_deleted = 0u64;
+    for id in &body.ids {
+        match state.db.delete_meeting(*id).await {
+            Ok(n) => total_deleted += n,
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    JsonResponse(json!({"error": format!("failed to delete meeting {}: {}", id, e)})),
+                ));
+            }
+        }
+    }
+
+    Ok(JsonResponse(json!({"deleted": total_deleted})))
 }
 
 #[oasgen]

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Trash2, Pencil, Check, X, Loader2, GitMerge } from "lucide-react";
+import { Trash2, Pencil, Check, X, Loader2, GitMerge, ArrowUpDown } from "lucide-react";
 
 interface MeetingRecord {
   id: number;
@@ -69,6 +69,8 @@ export function MeetingsSection() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [merging, setMerging] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [sortAsc, setSortAsc] = useState(false);
 
   const fetchMeetings = useCallback(async () => {
     setLoading(true);
@@ -91,6 +93,11 @@ export function MeetingsSection() {
   useEffect(() => {
     fetchMeetings();
   }, [fetchMeetings]);
+
+  const sortedMeetings = React.useMemo(() => {
+    if (!sortAsc) return meetings;
+    return [...meetings].reverse();
+  }, [meetings, sortAsc]);
 
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
@@ -197,33 +204,86 @@ export function MeetingsSection() {
     }
   };
 
+  const bulkDeleteSelected = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("http://localhost:3030/meetings/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast({ title: `${ids.length} meeting(s) deleted` });
+      setSelected(new Set());
+      await fetchMeetings();
+    } catch (err) {
+      toast({
+        title: "failed to delete meetings",
+        description: String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4 h-full flex flex-col">
-      <div className="space-y-1">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">
-          Meetings
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          View and manage detected meetings
-        </p>
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            Meetings
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            View and manage detected meetings
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setSortAsc((v) => !v)}
+          className="gap-1.5 text-xs"
+          title={sortAsc ? "sort newest first" : "sort oldest first"}
+        >
+          <ArrowUpDown className="h-3.5 w-3.5" />
+          {sortAsc ? "oldest first" : "newest first"}
+        </Button>
       </div>
 
       {/* Bulk actions */}
-      {selected.size >= 2 && (
+      {selected.size >= 1 && (
         <div className="flex items-center gap-2">
+          {selected.size >= 2 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={mergeSelected}
+              disabled={merging}
+              className="gap-1.5"
+            >
+              {merging ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <GitMerge className="h-3.5 w-3.5" />
+              )}
+              merge {selected.size} selected
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
-            onClick={mergeSelected}
-            disabled={merging}
-            className="gap-1.5"
+            onClick={bulkDeleteSelected}
+            disabled={bulkDeleting}
+            className="gap-1.5 text-destructive hover:text-destructive"
           >
-            {merging ? (
+            {bulkDeleting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <GitMerge className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" />
             )}
-            merge {selected.size} selected
+            delete {selected.size} selected
           </Button>
         </div>
       )}
@@ -238,7 +298,7 @@ export function MeetingsSection() {
         <p className="text-sm text-muted-foreground py-8">no meetings found</p>
       ) : (
         <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
-          {meetings.map((meeting) => {
+          {sortedMeetings.map((meeting) => {
             const isEditing = editingId === meeting.id;
             const isSaving = savingId === meeting.id;
             const isDeleting = deletingId === meeting.id;
