@@ -14,6 +14,10 @@ const ShortcutSection = () => {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">
+        Keyboard shortcuts and hotkeys
+      </p>
+
       <div className="space-y-2">
         <ShortcutRow type="global" shortcut="showScreenpipeShortcut" title="toggle screenpipe overlay" description="show/hide the main interface" value={settings.showScreenpipeShortcut} />
         <ShortcutRow type="global" shortcut="showChatShortcut" title="toggle ai chat" description="show/hide the ai chat window" value={settings.showChatShortcut} />

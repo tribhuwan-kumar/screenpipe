@@ -30,6 +30,10 @@ export function StorageSection() {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">
+        Local disk, cloud archive, and sync
+      </p>
+
       {/* Tabs */}
       <div className="flex items-center gap-4 border-b border-border">
         {visibleTabs.map((tab) => (

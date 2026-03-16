@@ -4,6 +4,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { apiCache } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
@@ -55,19 +56,31 @@ export function MemoriesSection() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const fetchMemories = useCallback(async () => {
-    setLoading(true);
+    const cacheKey = "memories/list";
+    const cached = apiCache.getStale<MemoryListResponse>(cacheKey);
+    if (cached) {
+      setMemories(cached.data);
+      setTotal(cached.pagination.total);
+      if (apiCache.isFresh(cacheKey)) return;
+    } else {
+      setLoading(true);
+    }
+
     try {
       const res = await fetch("http://localhost:3030/memories?limit=100");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: MemoryListResponse = await res.json();
+      apiCache.set(cacheKey, data, 60_000); // 1 min TTL
       setMemories(data.data);
       setTotal(data.pagination.total);
     } catch (err) {
-      toast({
-        title: "failed to load memories",
-        description: String(err),
-        variant: "destructive",
-      });
+      if (!cached) {
+        toast({
+          title: "failed to load memories",
+          description: String(err),
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -86,6 +99,7 @@ export function MemoriesSection() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast({ title: "memory deleted" });
+      apiCache.invalidate("memories/list");
       await fetchMemories();
     } catch (err) {
       toast({
@@ -100,6 +114,10 @@ export function MemoriesSection() {
 
   return (
     <div className="space-y-4 h-full flex flex-col">
+      <p className="text-muted-foreground text-sm mb-4">
+        facts and preferences the AI has learned from your activity
+      </p>
+
       <div className="flex items-center gap-2">
           {total > 0 && (
             <Badge variant="secondary" className="text-xs">

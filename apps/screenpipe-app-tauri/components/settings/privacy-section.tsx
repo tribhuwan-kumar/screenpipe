@@ -348,6 +348,10 @@ export function PrivacySection() {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">
+        Content filtering, PII redaction, and telemetry
+      </p>
+
       <div className="flex items-center justify-end">
           {hasUnsavedChanges && (
             <Button

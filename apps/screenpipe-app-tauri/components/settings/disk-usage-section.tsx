@@ -24,6 +24,9 @@ export function DiskUsageSection() {
   if (error) {
     return (
       <div className="space-y-6">
+        <p className="text-muted-foreground text-sm mb-4">
+          Monitor storage usage for your Screenpipe data
+        </p>
         <Card>
           <CardContent className="pt-6">
             <div className="text-center text-destructive">
@@ -41,6 +44,10 @@ export function DiskUsageSection() {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">
+        Storage usage at ~/.screenpipe
+      </p>
+
       <div className="flex items-center justify-end">
           <Button
             onClick={handleRefresh}

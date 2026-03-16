@@ -1086,6 +1086,8 @@ export function ConnectionsSection() {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">Give AI access to your memory, and connect to the apps you use every day</p>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

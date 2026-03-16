@@ -143,9 +143,8 @@ pub(crate) async fn list_memories_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListMemoriesQuery>,
 ) -> Result<JsonResponse<MemoryListResponse>, (StatusCode, JsonResponse<Value>)> {
-    let memories = state
-        .db
-        .list_memories(
+    let (memories_result, total_result) = tokio::join!(
+        state.db.list_memories(
             query.q.as_deref(),
             query.source.as_deref(),
             query.tags.as_deref(),
@@ -154,18 +153,8 @@ pub(crate) async fn list_memories_handler(
             query.end_time.as_deref(),
             query.limit,
             query.offset,
-        )
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                JsonResponse(json!({"error": e.to_string()})),
-            )
-        })?;
-
-    let total = state
-        .db
-        .count_memories(
+        ),
+        state.db.count_memories(
             query.q.as_deref(),
             query.source.as_deref(),
             query.tags.as_deref(),
@@ -173,13 +162,21 @@ pub(crate) async fn list_memories_handler(
             query.start_time.as_deref(),
             query.end_time.as_deref(),
         )
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                JsonResponse(json!({"error": e.to_string()})),
-            )
-        })?;
+    );
+
+    let memories = memories_result.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            JsonResponse(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    let total = total_result.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            JsonResponse(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(JsonResponse(MemoryListResponse {
         data: memories.into_iter().map(memory_to_response).collect(),

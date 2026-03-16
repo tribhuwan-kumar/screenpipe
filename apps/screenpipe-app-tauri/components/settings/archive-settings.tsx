@@ -221,6 +221,15 @@ export function ArchiveSettings() {
   if (!isProUser) {
     return (
       <div className="space-y-6">
+        <p className="text-muted-foreground text-sm mb-4">
+          Encrypt and archive old data to the cloud to free disk space.{" "}
+          <button
+            onClick={() => openUrl("https://docs.screenpi.pe/cloud-archive")}
+            className="underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            Learn more
+          </button>
+        </p>
         <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-[10px]">
               pro

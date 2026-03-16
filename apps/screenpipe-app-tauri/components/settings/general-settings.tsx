@@ -84,6 +84,10 @@ export default function GeneralSettings() {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">
+        Startup, updates, and notifications
+      </p>
+
       <div className="flex items-center justify-end">
           <UpdateBanner compact />
       </div>

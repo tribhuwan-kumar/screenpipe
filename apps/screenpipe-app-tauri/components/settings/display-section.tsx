@@ -43,6 +43,10 @@ export function DisplaySection() {
 
   return (
     <div className="space-y-5">
+      <p className="text-muted-foreground text-sm mb-4">
+        Theme, windows, and overlay appearance
+      </p>
+
       <div className="space-y-2">
         <Card className="border-border bg-card">
           <CardContent className="px-3 py-2.5">

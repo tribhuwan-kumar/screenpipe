@@ -156,6 +156,9 @@ export function BillingSection() {
   if (!token) {
     return (
       <div className="space-y-6">
+        <p className="text-muted-foreground text-sm mb-4">
+          Sign in to view your usage and billing
+        </p>
         <Card className="p-8 flex flex-col items-center text-center">
           <Zap className="h-10 w-10 text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-1">Sign in required</h3>
@@ -214,6 +217,10 @@ export function BillingSection() {
 
   return (
     <div className="space-y-6">
+      <p className="text-muted-foreground text-sm mb-4">
+        Your AI usage and payment settings
+      </p>
+
       {/* Tier display */}
       <Card className="p-4">
         <div className="flex items-center justify-between">
