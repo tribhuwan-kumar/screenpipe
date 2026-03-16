@@ -355,7 +355,7 @@ function SettingsPageContent() {
   const isFullHeight = activeSection === "home" || activeSection === "timeline";
 
   return (
-    <div className={cn("bg-background", isFullHeight ? "h-screen overflow-hidden" : "min-h-screen")}>
+    <div className={cn("bg-background", isFullHeight ? "h-screen overflow-hidden" : "min-h-screen")} data-testid="home-page">
       {/* Transparent titlebar area */}
       <div className="h-8 bg-transparent" data-tauri-drag-region></div>
 
@@ -436,6 +436,7 @@ function SettingsPageContent() {
                   const btn = (
                     <button
                       key={section.id}
+                      data-testid={`nav-${section.id}`}
                       onClick={() => {
                         setActiveSection(section.id);
                         setSettingsModalOpen(false);
@@ -551,6 +552,7 @@ function SettingsPageContent() {
                 {(() => {
                   const btn = (
                     <button
+                      data-testid="nav-settings"
                       onClick={() => openModal("general")}
                       className={cn(
                         "w-full flex items-center px-3 py-2 rounded-lg transition-all duration-150 text-left group",
@@ -587,6 +589,7 @@ function SettingsPageContent() {
                   const isActive = activeSection === "help" && !settingsModalOpen;
                   const btn = (
                     <button
+                      data-testid="nav-help"
                       onClick={() => {
                         setActiveSection("help");
                         setSettingsModalOpen(false);
