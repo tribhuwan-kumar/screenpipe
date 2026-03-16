@@ -1321,7 +1321,7 @@ function PublishDialog({
     try {
       // Get pipe content from local pipes list
       const pipe = localPipes.find((p: any) => p.name === selectedPipe);
-      let sourceMd = pipe?.raw_content;
+      let sourceMd = pipe?.raw_content as string | undefined;
       if (!sourceMd) throw new Error("could not read pipe content");
 
       // Redact secrets if enabled
