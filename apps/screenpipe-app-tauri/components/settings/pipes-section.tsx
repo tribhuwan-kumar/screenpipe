@@ -221,7 +221,7 @@ interface PipeConfig {
   agent: string;
   model: string;
   provider?: string;
-  preset?: string;
+  preset?: string | string[];
   history?: boolean;
   connections?: string[];
   // serde(flatten) merges extra YAML fields into this level at runtime
@@ -471,6 +471,109 @@ function errorTypeBadge(errorType: string | null) {
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${cls}`}>
       {errorType.replace("_", " ")}
     </span>
+  );
+}
+
+/** Primary + fallback AI preset selector for a pipe. */
+function PipePresetSelector({
+  pipe,
+  setPipes,
+  fetchPipes,
+  pendingConfigSaves,
+}: {
+  pipe: { config: PipeConfig };
+  setPipes: React.Dispatch<React.SetStateAction<any[]>>;
+  fetchPipes: () => void;
+  pendingConfigSaves: React.MutableRefObject<Record<string, Promise<void>>>;
+}) {
+  const presetList: string[] = Array.isArray(pipe.config.preset)
+    ? pipe.config.preset
+    : pipe.config.preset
+      ? [pipe.config.preset]
+      : [];
+
+  const primaryPreset = presetList[0] || null;
+  const fallbackPreset = presetList[1] || null;
+  const [showFallback, setShowFallback] = useState(!!fallbackPreset);
+
+  const savePresets = (primary: string | null, fallback: string | null) => {
+    const pipeName = pipe.config.name;
+    const newList = [primary, fallback].filter(Boolean) as string[];
+    const presetValue: string | string[] | null =
+      newList.length === 0 ? null : newList.length === 1 ? newList[0] : newList;
+
+    setPipes((prev: any[]) =>
+      prev.map((p: any) =>
+        p.config.name === pipeName
+          ? { ...p, config: { ...p.config, preset: presetValue || undefined } }
+          : p
+      )
+    );
+
+    const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preset: presetValue }),
+    })
+      .then(() => {
+        delete pendingConfigSaves.current[pipeName];
+        fetchPipes();
+      })
+      .catch(() => {
+        delete pendingConfigSaves.current[pipeName];
+      });
+    pendingConfigSaves.current[pipeName] = savePromise;
+  };
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <Label className="text-xs">primary ai preset</Label>
+        <AIPresetsSelector
+          compact
+          allowNone
+          controlledPresetId={primaryPreset}
+          onControlledSelect={(presetId) =>
+            savePresets(presetId || null, fallbackPreset)
+          }
+        />
+      </div>
+
+      {showFallback ? (
+        <div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">fallback ai preset</Label>
+            <button
+              className="text-[10px] text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setShowFallback(false);
+                savePresets(primaryPreset, null);
+              }}
+            >
+              remove
+            </button>
+          </div>
+          <AIPresetsSelector
+            compact
+            allowNone
+            controlledPresetId={fallbackPreset}
+            onControlledSelect={(presetId) =>
+              savePresets(primaryPreset, presetId || null)
+            }
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            used when primary hits rate limit or credits run out
+          </p>
+        </div>
+      ) : (
+        <button
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setShowFallback(true)}
+        >
+          + add fallback preset
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1287,13 +1390,13 @@ export function PipesSection() {
                               JSON.stringify({
                                 pipeName: pipe.config.name,
                                 executionId: exec.id,
-                                presetId: pipe.config.preset || null,
+                                presetId: (Array.isArray(pipe.config.preset) ? pipe.config.preset[0] : pipe.config.preset) || null,
                               })
                             );
                             emit("watch_pipe", {
                               pipeName: pipe.config.name,
                               executionId: exec.id,
-                              presetId: pipe.config.preset || null,
+                              presetId: (Array.isArray(pipe.config.preset) ? pipe.config.preset[0] : pipe.config.preset) || null,
                             });
                           }}
                           title="watch live output"
@@ -1337,41 +1440,12 @@ export function PipesSection() {
                 {/* Expanded detail */}
                 {expanded === pipe.config.name && (
                   <div className="mt-4 space-y-4 border-t pt-4">
-                    <div>
-                      <Label className="text-xs">ai preset</Label>
-                      <AIPresetsSelector
-                        compact
-                        allowNone
-                        controlledPresetId={pipe.config.preset || null}
-                        onControlledSelect={(presetId) => {
-                          const val = presetId || "";
-                          const pipeName = pipe.config.name;
-                          // Optimistic update — reflect immediately in UI
-                          setPipes((prev) =>
-                            prev.map((p) =>
-                              p.config.name === pipeName
-                                ? { ...p, config: { ...p.config, preset: val || undefined } }
-                                : p
-                            )
-                          );
-                          // Save to server — track promise so runPipe can await it
-                          const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ preset: val || null }),
-                          }).then(() => {
-                            delete pendingConfigSaves.current[pipeName];
-                            fetchPipes();
-                          }).catch(() => {
-                            delete pendingConfigSaves.current[pipeName];
-                          });
-                          pendingConfigSaves.current[pipeName] = savePromise;
-                        }}
-                      />
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        uses model & provider from your ai settings preset
-                      </p>
-                    </div>
+                    <PipePresetSelector
+                      pipe={pipe}
+                      setPipes={setPipes}
+                      fetchPipes={fetchPipes}
+                      pendingConfigSaves={pendingConfigSaves}
+                    />
 
                     <div>
                       <Label className="text-xs">schedule</Label>
