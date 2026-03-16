@@ -5929,17 +5929,19 @@ LIMIT ? OFFSET ?
         source_context: Option<&str>,
         tags: Option<&str>,
         importance: f64,
+        frame_id: Option<i64>,
     ) -> Result<i64, SqlxError> {
         let mut tx = self.begin_immediate_with_retry().await?;
         let id = sqlx::query(
-            "INSERT INTO memories (content, source, source_context, tags, importance) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO memories (content, source, source_context, tags, importance, frame_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .bind(content)
         .bind(source)
         .bind(source_context)
         .bind(tags.unwrap_or("[]"))
         .bind(importance)
+        .bind(frame_id)
         .execute(&mut **tx.conn())
         .await?
         .last_insert_rowid();
@@ -5949,7 +5951,7 @@ LIMIT ? OFFSET ?
 
     pub async fn get_memory_by_id(&self, id: i64) -> Result<MemoryRecord, SqlxError> {
         sqlx::query_as::<_, MemoryRecord>(
-            "SELECT id, content, source, source_context, tags, importance, \
+            "SELECT id, content, source, source_context, tags, importance, frame_id, \
              created_at, updated_at \
              FROM memories WHERE id = ?1",
         )
@@ -6028,7 +6030,7 @@ LIMIT ? OFFSET ?
 
         let mut sql = if use_fts {
             String::from(
-                "SELECT m.id, m.content, m.source, m.source_context, m.tags, m.importance, \
+                "SELECT m.id, m.content, m.source, m.source_context, m.tags, m.importance, m.frame_id, \
                  m.created_at, m.updated_at \
                  FROM memories_fts fts \
                  JOIN memories m ON m.id = fts.rowid \
@@ -6036,7 +6038,7 @@ LIMIT ? OFFSET ?
             )
         } else {
             String::from(
-                "SELECT id, content, source, source_context, tags, importance, \
+                "SELECT id, content, source, source_context, tags, importance, frame_id, \
                  created_at, updated_at \
                  FROM memories WHERE 1=1",
             )

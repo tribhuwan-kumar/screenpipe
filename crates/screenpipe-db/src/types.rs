@@ -168,6 +168,7 @@ pub struct MemoryRecord {
     pub source_context: Option<String>,
     pub tags: Option<String>,
     pub importance: f64,
+    pub frame_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }

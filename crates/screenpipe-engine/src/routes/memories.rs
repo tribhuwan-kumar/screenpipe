@@ -25,6 +25,7 @@ pub(crate) struct CreateMemoryRequest {
     pub tags: Vec<String>,
     #[serde(default = "default_importance")]
     pub importance: f64,
+    pub frame_id: Option<i64>,
 }
 
 fn default_source() -> String {
@@ -43,6 +44,7 @@ pub(crate) struct MemoryResponse {
     pub source_context: Option<Value>,
     pub tags: Vec<String>,
     pub importance: f64,
+    pub frame_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -94,6 +96,7 @@ fn memory_to_response(m: screenpipe_db::MemoryRecord) -> MemoryResponse {
             .and_then(|t| serde_json::from_str(t).ok())
             .unwrap_or_default(),
         importance: m.importance,
+        frame_id: m.frame_id,
         created_at: m.created_at,
         updated_at: m.updated_at,
     }
@@ -115,6 +118,7 @@ pub(crate) async fn create_memory_handler(
             source_context_json.as_deref(),
             Some(&tags_json),
             payload.importance,
+            payload.frame_id,
         )
         .await
         .map_err(|e| {
