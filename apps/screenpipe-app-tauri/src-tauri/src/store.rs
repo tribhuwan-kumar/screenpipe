@@ -243,6 +243,11 @@ pub struct SettingsStore {
     #[serde(rename = "ignoreIncognitoWindows", default = "default_true")]
     pub ignore_incognito_windows: bool,
 
+    /// Show restart notifications when audio/vision capture stalls.
+    /// Disable to suppress all capture-stall notification popups.
+    #[serde(rename = "showRestartNotifications", default = "default_true")]
+    pub show_restart_notifications: bool,
+
     /// Catch-all for fields added by the frontend (e.g. chatHistory, deviceId)
     /// that the Rust struct doesn't know about. Without this, `save()` would
     /// serialize only known fields and silently wipe frontend-only data.
@@ -585,6 +590,7 @@ impl Default for SettingsStore {
             video_quality: "balanced".to_string(),
             chat_always_on_top: true,
             ignore_incognito_windows: true,
+            show_restart_notifications: true,
             extra: std::collections::HashMap::new(),
         }
     }

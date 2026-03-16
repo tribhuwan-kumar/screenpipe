@@ -240,6 +240,28 @@ export default function GeneralSettings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* restart notifications */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">
+                  restart notifications
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  show a notification when audio or screen capture stalls
+                </p>
+              </div>
+              <Switch
+                checked={settings?.showRestartNotifications !== false}
+                onCheckedChange={(checked) =>
+                  handleSettingsChange({ showRestartNotifications: checked })
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
     </div>

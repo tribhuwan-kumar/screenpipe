@@ -541,10 +541,15 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         wake_reset_done = false;
                     }
 
-                    // Show notification if threshold hit and cooldown expired
+                    // Show notification if threshold hit, cooldown expired, and not disabled
+                    let notifications_enabled = crate::store::SettingsStore::get(&app)
+                        .ok()
+                        .flatten()
+                        .map(|s| s.show_restart_notifications)
+                        .unwrap_or(true);
                     let now_instant = Instant::now();
 
-                    if consecutive_audio_stall == CAPTURE_STALL_THRESHOLD {
+                    if consecutive_audio_stall == CAPTURE_STALL_THRESHOLD && notifications_enabled {
                         let cooldown_ok = last_audio_notification
                             .map(|t| now_instant.duration_since(t) >= NOTIFICATION_COOLDOWN)
                             .unwrap_or(true);
@@ -559,7 +564,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         }
                     }
 
-                    if consecutive_vision_stall == CAPTURE_STALL_THRESHOLD {
+                    if consecutive_vision_stall == CAPTURE_STALL_THRESHOLD && notifications_enabled {
                         let cooldown_ok = last_vision_notification
                             .map(|t| now_instant.duration_since(t) >= NOTIFICATION_COOLDOWN)
                             .unwrap_or(true);
