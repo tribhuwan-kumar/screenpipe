@@ -209,7 +209,7 @@ await test("force quit + recovery (DB intact)", async () => {
     Bun.spawnSync(["powershell", "-NoProfile", "-Command",
       "Get-Process -Name 'screenpipe*' -ErrorAction SilentlyContinue | Stop-Process -Force"]);
   } else {
-    Bun.spawnSync(["pkill", "-9", "-f", "screenpipe"]);
+    Bun.spawnSync(["pkill", "-9", "-f", "screenpipe-app"]);
   }
   await sleep(3000);
 
@@ -390,7 +390,7 @@ await test("clean quit leaves no orphans (S8.1)", async () => {
       Bun.spawnSync(["taskkill", "/PID", String(pid)]);
     }
   } else {
-    Bun.spawnSync(["pkill", "-TERM", "-f", "screenpipe"]);
+    Bun.spawnSync(["pkill", "-TERM", "-f", "screenpipe-app"]);
   }
   await sleep(10_000);
 

@@ -184,8 +184,8 @@ jobs:
           fi
           echo "✓ Built: $APP_PATH"
 
-          # Kill any existing screenpipe
-          pkill -f "screenpipe" 2>/dev/null || true
+          # Kill any existing screenpipe app (not the persistent CLI on port 3333)
+          pkill -f "screenpipe-app" 2>/dev/null || true
           sleep 2
 
           # Install to /Applications
@@ -319,8 +319,9 @@ jobs:
 
       - name: Launch app and start server
         run: |
-          # Kill any leftover screenpipe processes from previous runs
-          pkill -f "screenpipe" 2>/dev/null || true
+          # Kill any leftover screenpipe app processes from previous runs
+          # Note: persistent CLI runs on port 3333 — don't kill it
+          pkill -f "screenpipe-app" 2>/dev/null || true
           sleep 2
 
           # 1. Start CLI server on port 3030 (reliable, no TCC permission needed)
@@ -559,9 +560,8 @@ jobs:
           fi
           # Kill the CLI server (skip if PID is 0 — kill 0 sends SIGTERM to the process group)
           if [ -n "$SERVER_PID" ] && [ "$SERVER_PID" -gt 0 ] 2>/dev/null; then kill $SERVER_PID 2>/dev/null || true; fi
-          # Kill the app
+          # Kill the app (not the persistent CLI on port 3333)
           pkill -f "screenpipe-app" 2>/dev/null || true
-          pkill -f "screenpipe" 2>/dev/null || true
           killall "System Settings" 2>/dev/null || true
           sleep 2
 
