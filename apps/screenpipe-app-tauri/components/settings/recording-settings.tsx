@@ -860,7 +860,7 @@ export function RecordingSettings() {
     };
   };
 
-  const handleAudioTranscriptionModelChange = (
+  const handleAudioTranscriptionModelChange = async (
     value: string,
     realtime = false
   ) => {
@@ -872,12 +872,25 @@ export function RecordingSettings() {
 
     // If trying to use cloud but not subscribed
     if (value === "screenpipe-cloud" && !settings.user?.cloud_subscribed) {
-      const clientRefId = `${
-        settings.user?.id
-      }&customer_email=${encodeURIComponent(settings.user?.email ?? "")}`;
-      openUrl(
-        `https://buy.stripe.com/9B63cv1cD1oG2Vjg097ss0G?client_reference_id=${clientRefId}`
-      );
+      try {
+        const response = await fetch("https://screenpi.pe/api/cloud-sync/checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${settings.user?.token}`,
+          },
+          body: JSON.stringify({
+            tier: "pro",
+            billingPeriod: "monthly",
+            userId: settings.user?.id,
+            email: settings.user?.email,
+          }),
+        });
+        const data = await response.json();
+        openUrl(data.url || "https://screenpi.pe/billing");
+      } catch {
+        openUrl("https://screenpi.pe/billing");
+      }
       // Revert back to previous value in the Select component
       return;
     }

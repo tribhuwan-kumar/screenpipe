@@ -54,13 +54,34 @@ export function UpgradeDialog({
 
   const handleSubscribe = async (isAnnual: boolean) => {
     trackAction(isAnnual ? "subscribe_annual" : "subscribe_monthly");
-    const baseUrl = isAnnual
-      ? "https://buy.stripe.com/00w7sL5sT0kCdzX7tD7ss0H"
-      : "https://buy.stripe.com/9B63cv1cD1oG2Vjg097ss0G";
-    const params = new URLSearchParams();
-    if (settings.user?.id) params.set("client_reference_id", settings.user.id);
-    if (settings.user?.email) params.set("customer_email", settings.user.email);
-    await openUrl(`${baseUrl}?${params.toString()}`);
+    if (!settings.user?.token) {
+      await commands.openLoginWindow();
+      onOpenChange(false);
+      return;
+    }
+    try {
+      const response = await fetch("https://screenpi.pe/api/cloud-sync/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${settings.user.token}`,
+        },
+        body: JSON.stringify({
+          tier: "pro",
+          billingPeriod: isAnnual ? "yearly" : "monthly",
+          userId: settings.user.id,
+          email: settings.user.email,
+        }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        await openUrl(data.url);
+      } else {
+        await openUrl("https://screenpi.pe/billing");
+      }
+    } catch {
+      await openUrl("https://screenpi.pe/billing");
+    }
     onOpenChange(false);
   };
 
