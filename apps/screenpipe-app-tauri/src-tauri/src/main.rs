@@ -1217,23 +1217,19 @@ async fn main() {
             app.manage(server_shutdown_tx);
 
 
-            // Startup permission gate: check permissions immediately after onboarding
-            // and show recovery window if any critical permission is missing.
-            // This catches revoked permissions before the server even tries to start.
+            // Startup permission gate: check CRITICAL permissions immediately after onboarding
+            // and show recovery window only if screen or mic is missing.
+            // Browser automation is optional — never blocks startup (see #2510).
             #[cfg(target_os = "macos")]
             if onboarding_store.is_completed {
                 let startup_perms = permissions::do_permissions_check(false);
                 let screen_ok = startup_perms.screen_recording.permitted();
                 let mic_ok = startup_perms.microphone.permitted();
 
-                // Also check browser automation if any Chromium browser is installed
-                let browsers_ok =
-                    permissions::check_browsers_automation_permission(app.handle().clone());
-
-                if !screen_ok || !mic_ok || !browsers_ok {
+                if !screen_ok || !mic_ok {
                     warn!(
-                        "Startup permission check failed — screen: {:?}, mic: {:?}, browsers: {}. Showing recovery window.",
-                        startup_perms.screen_recording, startup_perms.microphone, browsers_ok
+                        "Startup permission check failed — screen: {:?}, mic: {:?}. Showing recovery window.",
+                        startup_perms.screen_recording, startup_perms.microphone
                     );
                     let _ = ShowRewindWindow::PermissionRecovery.show(&app.handle());
                 }

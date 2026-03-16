@@ -5,7 +5,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Monitor, Mic, Keyboard, Globe, Check, RefreshCw } from "lucide-react";
+import { Monitor, Mic, Keyboard, Check, RefreshCw } from "lucide-react";
 import { commands } from "@/lib/utils/tauri";
 import { usePlatform } from "@/lib/hooks/use-platform";
 import posthog from "posthog-js";
@@ -72,9 +72,6 @@ function PermissionRow({
 
 export default function PermissionRecoveryPage() {
   const [permissions, setPermissions] = useState<Record<string, string> | null>(null);
-  const [hasBrowsers, setHasBrowsers] = useState(false);
-  const [browsersAutomationOk, setBrowsersAutomationOk] = useState(false);
-  const [browsersChecked, setBrowsersChecked] = useState(false);
   const { isMac: isMacOS } = usePlatform();
   const restartTriggeredRef = useRef(false);
 
@@ -82,14 +79,6 @@ export default function PermissionRecoveryPage() {
     try {
       const perms = await commands.doPermissionsCheck(false);
       setPermissions(perms);
-
-      const browsers = await commands.getInstalledBrowsers().catch(() => []);
-      setHasBrowsers(browsers.length > 0);
-      if (browsers.length > 0) {
-        const granted = await commands.checkBrowsersAutomationPermission().catch(() => false);
-        setBrowsersAutomationOk(granted);
-      }
-      setBrowsersChecked(true);
       return perms;
     } catch (error) {
       console.error("failed to check permissions:", error);
@@ -106,14 +95,14 @@ export default function PermissionRecoveryPage() {
     return () => clearInterval(interval);
   }, [checkPermissions]);
 
+  // Auto-close and restart when critical permissions are restored
   useEffect(() => {
-    if (!permissions || restartTriggeredRef.current || !browsersChecked) return;
+    if (!permissions || restartTriggeredRef.current) return;
 
     const screenOk = permissions.screenRecording === "granted" || permissions.screenRecording === "notNeeded";
     const micOk = permissions.microphone === "granted" || permissions.microphone === "notNeeded";
-    const browsersOk = !hasBrowsers || browsersAutomationOk;
 
-    if (screenOk && micOk && browsersOk) {
+    if (screenOk && micOk) {
       restartTriggeredRef.current = true;
       setTimeout(async () => {
         try {
@@ -125,12 +114,11 @@ export default function PermissionRecoveryPage() {
         }
       }, 1000);
     }
-  }, [permissions, browsersChecked, hasBrowsers, browsersAutomationOk]);
+  }, [permissions]);
 
   const handleFix = async (permission: Parameters<typeof commands.requestPermission>[0]) => {
     posthog.capture("permission_recovery_manual_fix", { permission });
     try { await commands.requestPermission(permission); } catch {}
-    // Immediate recheck after requesting
     await checkPermissions();
   };
 
@@ -141,9 +129,7 @@ export default function PermissionRecoveryPage() {
   const accessibilityStatus = permissions?.accessibility === "granted" || permissions?.accessibility === "notNeeded"
     ? "granted" : permissions === null ? "checking" : "denied";
 
-  const allCriticalOk = screenStatus === "granted" && micStatus === "granted";
-  const browsersNeedFix = isMacOS && hasBrowsers && !browsersAutomationOk;
-  const allOk = allCriticalOk && !browsersNeedFix && browsersChecked;
+  const allOk = screenStatus === "granted" && micStatus === "granted";
 
   return (
     <div className="flex flex-col w-full h-screen overflow-hidden bg-background">
@@ -158,13 +144,9 @@ export default function PermissionRecoveryPage() {
         ) : (
           <div className="w-full max-w-sm space-y-4">
             <div className="text-center">
-              <h2 className="font-mono text-sm">
-                {allCriticalOk ? "permissions" : "recording paused"}
-              </h2>
+              <h2 className="font-mono text-sm">recording paused</h2>
               <p className="font-mono text-xs text-muted-foreground mt-1">
-                {allCriticalOk
-                  ? "optional permissions need attention"
-                  : "some permissions were revoked"}
+                some permissions were revoked
               </p>
             </div>
 
@@ -187,21 +169,9 @@ export default function PermissionRecoveryPage() {
                 <PermissionRow
                   icon={<Keyboard className="w-4 h-4" strokeWidth={1.5} />}
                   label="accessibility"
-                  description="shortcuts"
+                  description="read text from apps"
                   status={accessibilityStatus}
                   onFix={() => handleFix("accessibility")}
-                />
-              )}
-              {isMacOS && hasBrowsers && (
-                <PermissionRow
-                  icon={<Globe className="w-4 h-4" strokeWidth={1.5} />}
-                  label="browser urls"
-                  description="url capture & private browsing detection"
-                  status={browsersAutomationOk ? "granted" : permissions === null ? "checking" : "denied"}
-                  onFix={async () => {
-                    posthog.capture("permission_recovery_browser_automation");
-                    await commands.requestBrowsersAutomationPermission();
-                  }}
                 />
               )}
             </div>

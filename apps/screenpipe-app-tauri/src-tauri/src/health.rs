@@ -316,10 +316,12 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
     let mut last_audio_notification: Option<Instant> = None;
     let mut last_vision_notification: Option<Instant> = None;
     let mut wake_reset_done = false;
-    // Grace period after restart: suppress stall detection for 120s after a
-    // restart notification was shown, giving the new pipeline time to produce
-    // its first DB write (metrics reset to 0 on restart).
+    // Grace period after ANY restart (manual, notification-triggered, or
+    // settings-triggered): suppress stall detection for 120s, giving the
+    // new pipeline time to load models and produce its first DB write.
     let mut last_restart_triggered: Option<Instant> = None;
+    // Track last known spawn epoch to detect user-initiated restarts
+    let mut last_known_spawn_epoch: u64 = 0;
 
     tokio::spawn(async move {
         loop {
@@ -444,11 +446,30 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                 });
             }
 
+            // ── Detect any restart (manual, notification, settings-triggered) ──
+            // When spawn_screenpipe completes, it updates last_spawn_epoch.
+            // If we see a new epoch, set the grace period so the new pipeline
+            // has time to warm up before we start stall-checking.
+            if let Some(rec_state) = app.try_state::<crate::recording::RecordingState>() {
+                let current_epoch = rec_state.last_spawn_epoch.load(std::sync::atomic::Ordering::SeqCst);
+                if current_epoch > 0 && current_epoch != last_known_spawn_epoch {
+                    if last_known_spawn_epoch > 0 {
+                        // A restart happened — activate grace period
+                        info!("detected restart (spawn epoch {} → {}), activating 120s stall detection grace",
+                            last_known_spawn_epoch, current_epoch);
+                        last_restart_triggered = Some(Instant::now());
+                        consecutive_audio_stall = 0;
+                        consecutive_vision_stall = 0;
+                    }
+                    last_known_spawn_epoch = current_epoch;
+                }
+            }
+
             // ── Capture stall detection ──
             // Only check when the server is responding (status == Recording),
             // we're past the startup grace period, and not in a post-restart
-            // grace period (120s after a restart notification, giving the new
-            // pipeline time to produce its first DB write).
+            // grace period (120s after any restart, giving the new pipeline
+            // time to load models and produce its first DB write).
             let in_restart_grace = last_restart_triggered
                 .map(|t| t.elapsed() < Duration::from_secs(120))
                 .unwrap_or(false);

@@ -452,35 +452,6 @@ const CHROMIUM_BROWSERS: &[ChromiumBrowserInfo] = &[
     },
 ];
 
-/// Launch a browser if it's not already running, then wait briefly for it to start.
-/// The macOS Automation permission prompt requires the target app to be running.
-#[cfg(target_os = "macos")]
-fn ensure_browser_running(process_name: &str, app_path: &str) {
-    use std::process::Command;
-
-    let running = Command::new("pgrep")
-        .args(["-x", process_name])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    if !running {
-        debug!(
-            "{} not running, launching it for automation permission prompt",
-            process_name
-        );
-        let _ = Command::new("open").args(["-a", app_path]).spawn();
-        std::thread::sleep(std::time::Duration::from_secs(2));
-    }
-}
-
-/// Launch Arc if it's not already running, then wait briefly for it to start.
-/// The macOS Automation permission prompt requires the target app to be running.
-#[cfg(target_os = "macos")]
-fn ensure_arc_running() {
-    ensure_browser_running("Arc", "/Applications/Arc.app");
-}
-
 /// Check if Arc browser is installed (macOS only)
 #[tauri::command(async)]
 #[specta::specta]
@@ -547,8 +518,9 @@ pub fn check_browsers_automation_permission(_app: tauri::AppHandle) -> bool {
     }
 }
 
-/// Request Automation permission for all installed Chromium browsers that are currently running.
-/// For browsers not running, opens System Settings > Automation as fallback.
+/// Request Automation permission for installed Chromium browsers that are already running.
+/// Never force-launches browsers — only prompts for ones the user already has open.
+/// Opens System Settings > Automation as fallback for browsers not running.
 #[tauri::command(async)]
 #[specta::specta]
 pub fn request_browsers_automation_permission(_app: tauri::AppHandle) -> bool {
@@ -566,9 +538,11 @@ pub fn request_browsers_automation_permission(_app: tauri::AppHandle) -> bool {
         }
 
         if is_app_bundle() {
-            let mut any_denied = false;
+            let mut all_granted = true;
+            let mut prompted_any = false;
+
             for browser in &installed {
-                // Check if this browser is running
+                // Only prompt browsers that are already running — never force-launch (#2510)
                 let running = Command::new("pgrep")
                     .args(["-x", browser.process_name])
                     .output()
@@ -578,21 +552,23 @@ pub fn request_browsers_automation_permission(_app: tauri::AppHandle) -> bool {
                 if running {
                     let result = ae_check_automation_direct(browser.bundle_id, true);
                     if result != 0 {
-                        any_denied = true;
+                        all_granted = false;
                     }
+                    prompted_any = true;
                 } else {
-                    // Not running — check if already granted without prompting
+                    // Not running — silently check without prompting
                     let result = ae_check_automation_direct(browser.bundle_id, false);
                     if result != 0 {
-                        any_denied = true;
+                        all_granted = false;
                     }
                 }
             }
 
-            if any_denied {
+            // Only open System Settings if we couldn't prompt any running browser
+            if !all_granted && !prompted_any {
                 open_permission_settings(OSPermission::Automation);
             }
-            !any_denied
+            all_granted
         } else {
             open_permission_settings(OSPermission::Automation);
             run_self_detached_fire_and_forget("--trigger-arc-automation");
@@ -809,18 +785,32 @@ fn run_self_detached_fire_and_forget(flag: &str) {
 pub fn request_arc_automation_permission(_app: tauri::AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
-        // Arc must be running for macOS to show the permission prompt
-        ensure_arc_running();
+        use std::process::Command;
+
+        // Only prompt if Arc is already running — never force-launch (#2510)
+        let arc_running = Command::new("pgrep")
+            .args(["-x", "Arc"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
 
         if is_app_bundle() {
-            let result = ae_check_automation_direct("company.thebrowser.Browser", true);
-            if result != 0 {
+            if arc_running {
+                let result = ae_check_automation_direct("company.thebrowser.Browser", true);
+                if result != 0 {
+                    open_permission_settings(OSPermission::Automation);
+                }
+                result == 0
+            } else {
+                // Arc not running — open System Settings instead of force-launching
                 open_permission_settings(OSPermission::Automation);
+                false
             }
-            result == 0
         } else {
             open_permission_settings(OSPermission::Automation);
-            run_self_detached_fire_and_forget("--trigger-arc-automation");
+            if arc_running {
+                run_self_detached_fire_and_forget("--trigger-arc-automation");
+            }
             false
         }
     }
@@ -866,13 +856,13 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
     let mut screen_fail_count = 0u32;
     let mut mic_fail_count = 0u32;
     let mut accessibility_fail_count = 0u32;
-    let mut arc_fail_count = 0u32;
+    let mut browser_fail_count = 0u32;
     // Require consecutive successes before resetting fail count, to prevent
     // a single transient "OK" from resetting the counter and re-triggering
     let mut screen_ok_count = 0u32;
     let mut mic_ok_count = 0u32;
     let mut accessibility_ok_count = 0u32;
-    let mut arc_ok_count = 0u32;
+    let mut browser_ok_count = 0u32;
     const REQUIRED_CONSECUTIVE_FAILURES: u32 = 2;
     const REQUIRED_CONSECUTIVE_SUCCESSES: u32 = 3; // need 3 consecutive OKs (~30s) to reset
 
@@ -893,7 +883,8 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
         let accessibility_ok = perms.accessibility.permitted();
 
         // Check browser automation permission if any Chromium browser is installed
-        let arc_ok = if any_browser_installed {
+        // This is informational only — never triggers recovery modal (#2510)
+        let browser_automation_ok = if any_browser_installed {
             check_browsers_automation_permission(app.clone())
         } else {
             true
@@ -932,14 +923,14 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
             accessibility_fail_count = accessibility_fail_count.saturating_add(1);
         }
 
-        if arc_ok {
-            arc_ok_count += 1;
-            if arc_ok_count >= REQUIRED_CONSECUTIVE_SUCCESSES {
-                arc_fail_count = 0;
+        if browser_automation_ok {
+            browser_ok_count += 1;
+            if browser_ok_count >= REQUIRED_CONSECUTIVE_SUCCESSES {
+                browser_fail_count = 0;
             }
         } else {
-            arc_ok_count = 0;
-            arc_fail_count = arc_fail_count.saturating_add(1);
+            browser_ok_count = 0;
+            browser_fail_count = browser_fail_count.saturating_add(1);
         }
 
         // Only trigger when we have REQUIRED_CONSECUTIVE_FAILURES in a row
@@ -947,10 +938,9 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
         let mic_confirmed_lost = mic_fail_count == REQUIRED_CONSECUTIVE_FAILURES;
         let accessibility_confirmed_lost =
             accessibility_fail_count == REQUIRED_CONSECUTIVE_FAILURES;
-        // Arc automation is tracked but NOT used to trigger the recovery modal —
-        // it's optional and shouldn't block the user. The arc_automation field is
-        // still included in the payload for the banner/recovery page to display.
-        let _ = arc_fail_count; // keep tracking for payload, suppress unused warning
+        // Browser automation is tracked but NOT used to trigger the recovery modal —
+        // it's optional and shouldn't block the user (#2510).
+        let _ = browser_fail_count; // keep tracking for payload, suppress unused warning
 
         // Only emit permission-lost when a CORE permission is lost (screen, mic, accessibility).
         let core_lost = screen_confirmed_lost || mic_confirmed_lost || accessibility_confirmed_lost;
@@ -967,7 +957,7 @@ pub async fn start_permission_monitor(app: tauri::AppHandle) {
                         "screen_recording": !screen_ok,
                         "microphone": !mic_ok,
                         "accessibility": !accessibility_ok,
-                        "arc_automation": !arc_ok,
+                        "browser_automation": !browser_automation_ok,
                     }),
                 ) {
                     error!("failed to emit permission-lost event: {}", e);

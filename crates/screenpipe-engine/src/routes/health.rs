@@ -216,14 +216,17 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
     {
         let capture_fresh = now_ts.saturating_sub(vision_snap.last_capture_attempt_ts)
             < threshold_secs;
-        let db_stale = vision_snap.last_db_write_ts == 0
-            || now_ts.saturating_sub(vision_snap.last_db_write_ts) > threshold_secs;
+        // Require at least one successful DB write before flagging a stall.
+        // last_db_write_ts == 0 means "never written yet" (pipeline warming up),
+        // not "writes stopped" — same fix as audio side.
+        let db_stale = vision_snap.last_db_write_ts > 0
+            && now_ts.saturating_sub(vision_snap.last_db_write_ts) > threshold_secs;
         let stalled = capture_fresh && db_stale;
         if stalled {
             warn!(
                 "health_check: vision DB writes stalled — capture heartbeat {}s ago but last DB write {}s ago (pool exhaustion likely)",
                 now_ts.saturating_sub(vision_snap.last_capture_attempt_ts),
-                if vision_snap.last_db_write_ts > 0 { now_ts.saturating_sub(vision_snap.last_db_write_ts) } else { 0 },
+                now_ts.saturating_sub(vision_snap.last_db_write_ts),
             );
         }
         stalled

@@ -110,8 +110,13 @@ export default function NotificationPanelPage() {
             }
             if (healthy) {
               setRestartState("success");
-              await new Promise((r) => setTimeout(r, 1500));
-              await hide(false);
+              await new Promise((r) => setTimeout(r, 2000));
+              try {
+                await hide(false);
+              } catch {
+                // fallback: force-hide via invoke directly
+                try { await invoke("hide_notification_panel"); } catch {}
+              }
             } else {
               setRestartState("error");
               setRestartError("server did not respond after restart");
@@ -326,7 +331,7 @@ export default function NotificationPanelPage() {
               <span
                 style={{
                   fontSize: "10px",
-                  color: "rgba(34, 139, 34, 0.8)",
+                  color: "rgba(0, 0, 0, 0.7)",
                   fontFamily: '"IBM Plex Mono", monospace',
                   fontWeight: 500,
                 }}
@@ -337,7 +342,7 @@ export default function NotificationPanelPage() {
               <span
                 style={{
                   fontSize: "10px",
-                  color: "rgba(180, 30, 30, 0.8)",
+                  color: "rgba(0, 0, 0, 0.7)",
                   fontFamily: '"IBM Plex Mono", monospace',
                   fontWeight: 500,
                 }}
