@@ -110,6 +110,7 @@ hostname = "0.4"
 screenpipe-core = { path = "../../../crates/screenpipe-core", features = ["cloud-sync"] }
 
 # Embedded screenpipe server
+screenpipe-config = { path = "../../../crates/screenpipe-config", features = ["specta"] }
 screenpipe-engine = { path = "../../../crates/screenpipe-engine", default-features = false }
 screenpipe-screen = { path = "../../../crates/screenpipe-screen" }
 screenpipe-a11y = { path = "../../../crates/screenpipe-a11y" }

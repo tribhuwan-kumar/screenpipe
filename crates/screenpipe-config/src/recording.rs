@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 /// Custom vocabulary entry for transcription biasing and word replacement.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct VocabEntry {
     /// The word or phrase to bias toward during transcription.
     pub word: String,
@@ -27,6 +28,7 @@ pub struct VocabEntry {
 /// JSON schema (store.bin). This ensures backwards compatibility — existing
 /// `store.bin` files deserialize without migration.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(default)]
 pub struct RecordingSettings {
     // ── Audio ──────────────────────────────────────────────────────────

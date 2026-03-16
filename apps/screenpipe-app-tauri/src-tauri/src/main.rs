@@ -280,7 +280,7 @@ async fn upload_file_to_s3(file_path: &str, signed_url: &str) -> Result<bool, St
 #[allow(dead_code)]
 async fn is_server_running(app: AppHandle) -> Result<bool, String> {
     let store = app.state::<store::SettingsStore>();
-    let port = store.port;
+    let port = store.recording.port;
     let client = reqwest::Client::new();
     let response = client
         .get(format!("http://localhost:{}", port))
@@ -1018,7 +1018,7 @@ async fn main() {
             app.manage(store.clone());
 
             // Set Chinese HuggingFace mirror early — before any model downloads
-            if store.use_chinese_mirror {
+            if store.recording.use_chinese_mirror {
                 std::env::set_var("HF_ENDPOINT", "https://hf-mirror.com");
                 info!("Chinese HuggingFace mirror enabled (HF_ENDPOINT set early)");
             }
@@ -1041,34 +1041,34 @@ async fn main() {
                     // Set user.id to the persistent analytics UUID
                     // This links Sentry errors to PostHog sessions and feedback reports
                     scope.set_user(Some(sentry::protocol::User {
-                        id: Some(store.analytics_id.clone()),
+                        id: Some(store.recording.analytics_id.clone()),
                         ..Default::default()
                     }));
                     scope.set_context("app_settings", sentry::protocol::Context::Other({
                         let mut map = std::collections::BTreeMap::new();
-                        map.insert("fps".into(), serde_json::json!(store.fps));
-                        map.insert("adaptive_fps".into(), serde_json::json!(store.adaptive_fps));
-                        map.insert("audio_chunk_duration".into(), serde_json::json!(store.audio_chunk_duration));
-                        map.insert("port".into(), serde_json::json!(store.port));
-                        map.insert("disable_audio".into(), serde_json::json!(store.disable_audio));
-                        map.insert("audio_transcription_engine".into(), serde_json::json!(store.audio_transcription_engine));
+                        map.insert("fps".into(), serde_json::json!(store.recording.fps));
+                        map.insert("adaptive_fps".into(), serde_json::json!(store.recording.adaptive_fps));
+                        map.insert("audio_chunk_duration".into(), serde_json::json!(store.recording.audio_chunk_duration));
+                        map.insert("port".into(), serde_json::json!(store.recording.port));
+                        map.insert("disable_audio".into(), serde_json::json!(store.recording.disable_audio));
+                        map.insert("audio_transcription_engine".into(), serde_json::json!(store.recording.audio_transcription_engine));
                         map.insert("ocr_engine".into(), serde_json::json!(store.ocr_engine));
-                        map.insert("monitor_ids".into(), serde_json::json!(store.monitor_ids));
-                        map.insert("use_all_monitors".into(), serde_json::json!(store.use_all_monitors));
-                        map.insert("languages".into(), serde_json::json!(store.languages));
-                        map.insert("use_pii_removal".into(), serde_json::json!(store.use_pii_removal));
-                        map.insert("disable_vision".into(), serde_json::json!(store.disable_vision));
-                        map.insert("enable_input_capture".into(), serde_json::json!(store.enable_input_capture));
-                        map.insert("enable_accessibility".into(), serde_json::json!(store.enable_accessibility));
+                        map.insert("monitor_ids".into(), serde_json::json!(store.recording.monitor_ids));
+                        map.insert("use_all_monitors".into(), serde_json::json!(store.recording.use_all_monitors));
+                        map.insert("languages".into(), serde_json::json!(store.recording.languages));
+                        map.insert("use_pii_removal".into(), serde_json::json!(store.recording.use_pii_removal));
+                        map.insert("disable_vision".into(), serde_json::json!(store.recording.disable_vision));
+                        map.insert("enable_input_capture".into(), serde_json::json!(store.recording.enable_input_capture));
+                        map.insert("enable_accessibility".into(), serde_json::json!(store.recording.enable_accessibility));
                         map.insert("auto_start_enabled".into(), serde_json::json!(store.auto_start_enabled));
                         map.insert("platform".into(), serde_json::json!(store.platform));
                         map.insert("embedded_llm_enabled".into(), serde_json::json!(store.embedded_llm.enabled));
                         map.insert("embedded_llm_model".into(), serde_json::json!(store.embedded_llm.model));
                         // Only send counts for privacy-sensitive lists (not actual values)
-                        map.insert("audio_device_count".into(), serde_json::json!(store.audio_devices.len()));
-                        map.insert("ignored_windows_count".into(), serde_json::json!(store.ignored_windows.len()));
-                        map.insert("included_windows_count".into(), serde_json::json!(store.included_windows.len()));
-                        map.insert("ignored_urls_count".into(), serde_json::json!(store.ignored_urls.len()));
+                        map.insert("audio_device_count".into(), serde_json::json!(store.recording.audio_devices.len()));
+                        map.insert("ignored_windows_count".into(), serde_json::json!(store.recording.ignored_windows.len()));
+                        map.insert("included_windows_count".into(), serde_json::json!(store.recording.included_windows.len()));
+                        map.insert("ignored_urls_count".into(), serde_json::json!(store.recording.ignored_urls.len()));
                         map.insert("ai_preset_count".into(), serde_json::json!(store.ai_presets.len()));
                         map
                     }));
@@ -1099,16 +1099,16 @@ async fn main() {
             {
                 let store_for_download = store.clone();
                 tauri::async_runtime::spawn(async move {
-                    if store_for_download.disable_audio {
+                    if store_for_download.recording.disable_audio {
                         info!("audio disabled — skipping model pre-downloads");
                         return;
                     }
                     // Determine which whisper model the user's config needs
-                    let engine = match store_for_download.audio_transcription_engine.as_str() {
+                    let engine = match store_for_download.recording.audio_transcription_engine.as_str() {
                         "deepgram" | "screenpipe-cloud" => None, // Cloud engines don't need local model
                         _ => {
                             use screenpipe_audio::core::engine::AudioTranscriptionEngine;
-                            Some(std::sync::Arc::new(match store_for_download.audio_transcription_engine.as_str() {
+                            Some(std::sync::Arc::new(match store_for_download.recording.audio_transcription_engine.as_str() {
                                 "whisper-tiny" => AudioTranscriptionEngine::WhisperTiny,
                                 "whisper-tiny-quantized" => AudioTranscriptionEngine::WhisperTinyQuantized,
                                 "whisper-large-v3" => AudioTranscriptionEngine::WhisperLargeV3,
@@ -1330,7 +1330,7 @@ async fn main() {
 
                             // Check permissions before starting
                             let permissions_check = permissions::do_permissions_check(false);
-                            let disable_audio = store_clone.disable_audio;
+                            let disable_audio = store_clone.recording.disable_audio;
 
                             if !permissions_check.screen_recording.permitted() {
                                 warn!("Screen recording permission not granted: {:?}. Server will not start.", permissions_check.screen_recording);
@@ -1402,7 +1402,7 @@ async fn main() {
 
             // Check analytics settings from store
             let is_analytics_enabled = store
-                .analytics_enabled;
+                .recording.analytics_enabled;
 
             let is_autostart_enabled = store
                 .auto_start_enabled;
@@ -1419,7 +1419,7 @@ async fn main() {
             );
 
             // Use persistent analytics_id for PostHog (consistent across frontend and backend)
-            let unique_id = store.analytics_id.clone();
+            let unique_id = store.recording.analytics_id.clone();
             let email = store.user.email.unwrap_or_default();
 
             if is_analytics_enabled {

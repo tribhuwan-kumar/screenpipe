@@ -9203,7 +9203,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.159"
+version = "2.2.162"
 dependencies = [
  "anyhow",
  "arboard",
@@ -9242,6 +9242,7 @@ dependencies = [
  "resvg",
  "screenpipe-a11y",
  "screenpipe-audio",
+ "screenpipe-config",
  "screenpipe-connect",
  "screenpipe-core",
  "screenpipe-db",
@@ -9353,6 +9354,18 @@ dependencies = [
  "which 7.0.3",
  "whisper-rs",
  "windows 0.58.0",
+]
+
+[[package]]
+name = "screenpipe-config"
+version = "0.3.185"
+dependencies = [
+ "dirs 6.0.0",
+ "serde",
+ "serde_json",
+ "specta",
+ "toml 0.8.2",
+ "tracing",
 ]
 
 [[package]]
@@ -9484,6 +9497,7 @@ dependencies = [
  "screenpipe-a11y",
  "screenpipe-apple-intelligence",
  "screenpipe-audio",
+ "screenpipe-config",
  "screenpipe-connect",
  "screenpipe-core",
  "screenpipe-db",

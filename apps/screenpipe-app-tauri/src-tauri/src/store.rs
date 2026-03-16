@@ -102,64 +102,25 @@ impl OnboardingStore {
 #[derive(Serialize, Deserialize, Type, Clone)]
 #[serde(default)]
 pub struct SettingsStore {
+    // ── Recording settings (shared source of truth) ──────────────────────
+    /// All recording/capture config lives here. Flattened so the JSON shape
+    /// is unchanged — `disableAudio`, `port`, `fps`, etc. stay at the top level.
+    #[serde(flatten)]
+    pub recording: screenpipe_config::RecordingSettings,
+
+    // ── App-only fields (UI, shortcuts, metadata) ────────────────────────
     #[serde(rename = "aiPresets")]
     pub ai_presets: Vec<AIPreset>,
 
-    #[serde(rename = "deepgramApiKey")]
-    pub deepgram_api_key: String,
     #[serde(rename = "isLoading")]
     pub is_loading: bool,
 
-    #[serde(rename = "userId")]
-    pub user_id: String,
-
-    /// Persistent analytics ID used for PostHog tracking (both frontend and backend)
-    #[serde(rename = "analyticsId")]
-    pub analytics_id: String,
-
     #[serde(rename = "devMode")]
     pub dev_mode: bool,
-    #[serde(rename = "audioTranscriptionEngine")]
-    pub audio_transcription_engine: String,
     #[serde(rename = "ocrEngine")]
     pub ocr_engine: String,
-    #[serde(rename = "monitorIds")]
-    pub monitor_ids: Vec<String>,
-    #[serde(rename = "audioDevices")]
-    pub audio_devices: Vec<String>,
-    /// When true, automatically follow system default audio devices
-    #[serde(rename = "useSystemDefaultAudio", default = "default_true")]
-    pub use_system_default_audio: bool,
-    #[serde(rename = "usePiiRemoval")]
-    pub use_pii_removal: bool,
-    /// Filter music-dominant audio before transcription using spectral analysis
-    #[serde(rename = "filterMusic", default)]
-    pub filter_music: bool,
-    #[serde(rename = "port")]
-    pub port: u16,
     #[serde(rename = "dataDir")]
     pub data_dir: String,
-    #[serde(rename = "disableAudio")]
-    pub disable_audio: bool,
-    #[serde(rename = "ignoredWindows")]
-    pub ignored_windows: Vec<String>,
-    #[serde(rename = "includedWindows")]
-    pub included_windows: Vec<String>,
-    #[serde(rename = "ignoredUrls", default)]
-    pub ignored_urls: Vec<String>,
-
-    #[serde(rename = "fps")]
-    pub fps: f32,
-    #[serde(rename = "vadSensitivity")]
-    pub vad_sensitivity: String,
-    #[serde(rename = "analyticsEnabled")]
-    pub analytics_enabled: bool,
-    #[serde(rename = "audioChunkDuration")]
-    pub audio_chunk_duration: i32,
-    #[serde(rename = "useChineseMirror")]
-    pub use_chinese_mirror: bool,
-    #[serde(rename = "languages")]
-    pub languages: Vec<String>,
     #[serde(rename = "embeddedLLM")]
     pub embedded_llm: EmbeddedLLM,
     #[serde(rename = "autoStartEnabled")]
@@ -188,33 +149,15 @@ pub struct SettingsStore {
     pub lock_vault_shortcut: String,
     #[serde(rename = "realtimeAudioTranscriptionEngine")]
     pub realtime_audio_transcription_engine: String,
-    #[serde(rename = "disableVision")]
-    pub disable_vision: bool,
     /// When true, screen capture continues but OCR text extraction is skipped.
     /// Reduces CPU usage significantly while still recording video.
     #[serde(rename = "disableOcr", default)]
     pub disable_ocr: bool,
-    #[serde(rename = "useAllMonitors")]
-    pub use_all_monitors: bool,
-    #[serde(rename = "adaptiveFps", default)]
-    pub adaptive_fps: bool,
     #[serde(rename = "showShortcutOverlay", default = "default_true")]
     pub show_shortcut_overlay: bool,
     /// Unique device ID for AI usage tracking (generated on first launch)
     #[serde(rename = "deviceId", default = "generate_device_id")]
     pub device_id: String,
-    /// Enable input event capture (keyboard, mouse, clipboard).
-    /// Requires input monitoring permission on macOS.
-    #[serde(rename = "enableInputCapture", default)]
-    pub enable_input_capture: bool,
-    /// Enable accessibility text capture (AX tree walker).
-    /// Requires accessibility permission on macOS.
-    #[serde(
-        rename = "enableAccessibility",
-        alias = "enableUiEvents",
-        default = "default_true"
-    )]
-    pub enable_accessibility: bool,
     /// Auto-install updates and restart when a new version is available.
     /// When disabled, users must click "update now" in the tray menu.
     #[serde(rename = "autoUpdate", default = "default_true")]
@@ -227,36 +170,21 @@ pub struct SettingsStore {
     /// Disabled by default so the overlay doesn't appear in screenpipe's own recordings.
     #[serde(rename = "showOverlayInScreenRecording", default)]
     pub show_overlay_in_screen_recording: bool,
-    /// Video quality preset controlling storage vs quality tradeoff.
-    /// Affects H.265 CRF during recording and JPEG quality during frame extraction.
-    /// Values: "low", "balanced", "high", "max". Default: "balanced".
-    #[serde(rename = "videoQuality", default = "default_video_quality")]
-    pub video_quality: String,
 
     /// When true, the chat window stays above all other windows (default: true).
     #[serde(rename = "chatAlwaysOnTop", default = "default_true")]
     pub chat_always_on_top: bool,
-
-    /// Automatically detect and skip incognito / private browsing windows.
-    /// Uses localized title matching (20+ languages) and on macOS, native
-    /// AppleScript detection for Chromium browsers.
-    #[serde(rename = "ignoreIncognitoWindows", default = "default_true")]
-    pub ignore_incognito_windows: bool,
 
     /// Show restart notifications when audio/vision capture stalls.
     /// Disable to suppress all capture-stall notification popups.
     #[serde(rename = "showRestartNotifications", default = "default_true")]
     pub show_restart_notifications: bool,
 
-    /// Catch-all for fields added by the frontend (e.g. chatHistory, deviceId)
+    /// Catch-all for fields added by the frontend (e.g. chatHistory)
     /// that the Rust struct doesn't know about. Without this, `save()` would
     /// serialize only known fields and silently wipe frontend-only data.
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
-}
-
-fn default_video_quality() -> String {
-    "balanced".to_string()
 }
 
 fn generate_device_id() -> String {
@@ -429,9 +357,6 @@ impl Default for SettingsStore {
             "screenpipe".to_string(),
         ];
 
-        // Add platform-specific ignored windows
-        // Note: In a real implementation, you'd detect the actual platform
-        // For now, we'll include common ones or you can detect platform here
         #[cfg(target_os = "macos")]
         ignored_windows.extend([
             ".env".to_string(),
@@ -486,60 +411,32 @@ impl Default for SettingsStore {
         };
 
         Self {
+            // App-specific defaults override RecordingSettings::default() where needed
+            recording: screenpipe_config::RecordingSettings {
+                audio_transcription_engine: "whisper-large-v3-turbo-quantized".to_string(),
+                monitor_ids: vec!["default".to_string()],
+                audio_devices: vec!["default".to_string()],
+                use_pii_removal: true,
+                vad_sensitivity: "medium".to_string(),
+                analytics_id: uuid::Uuid::new_v4().to_string(),
+                ignored_windows,
+                ..screenpipe_config::RecordingSettings::default()
+            },
             ai_presets: vec![default_free_preset],
-            deepgram_api_key: "".to_string(),
             is_loading: false,
-            user_id: "".to_string(),
-            analytics_id: uuid::Uuid::new_v4().to_string(),
-
             dev_mode: false,
-            audio_transcription_engine: "whisper-large-v3-turbo-quantized".to_string(),
             #[cfg(target_os = "macos")]
             ocr_engine: "apple-native".to_string(),
             #[cfg(target_os = "windows")]
             ocr_engine: "windows-native".to_string(),
             #[cfg(target_os = "linux")]
             ocr_engine: "tesseract".to_string(),
-            monitor_ids: vec!["default".to_string()],
-            audio_devices: vec!["default".to_string()],
-            use_system_default_audio: true,
-            use_pii_removal: true,
-            filter_music: false,
-            port: 3030,
             data_dir: "default".to_string(),
-            disable_audio: false,
-            ignored_windows,
-            included_windows: vec![],
-            ignored_urls: vec![],
-
-            fps: 0.5,
-            vad_sensitivity: "medium".to_string(),
-            analytics_enabled: true,
-            audio_chunk_duration: 30,
-            use_chinese_mirror: false,
-            languages: vec![],
             embedded_llm: EmbeddedLLM::default(),
             auto_start_enabled: true,
             platform: "unknown".to_string(),
             disabled_shortcuts: vec![],
-            user: User {
-                id: None,
-                name: None,
-                email: None,
-                image: None,
-                token: None,
-                clerk_id: None,
-                api_key: None,
-                credits: None,
-                stripe_connected: None,
-                stripe_account_status: None,
-                github_username: None,
-                bio: None,
-                website: None,
-                contact: None,
-                cloud_subscribed: None,
-                credits_balance: None,
-            },
+            user: User::default(),
             #[cfg(target_os = "windows")]
             show_screenpipe_shortcut: "Alt+S".to_string(),
             #[cfg(not(target_os = "windows"))]
@@ -573,23 +470,16 @@ impl Default for SettingsStore {
             #[cfg(not(target_os = "windows"))]
             lock_vault_shortcut: "Super+Shift+L".to_string(),
             realtime_audio_transcription_engine: "deepgram".to_string(),
-            disable_vision: false,
             disable_ocr: false,
-            use_all_monitors: true, // Match CLI default - dynamic monitor detection
             show_shortcut_overlay: true,
             device_id: uuid::Uuid::new_v4().to_string(),
-            adaptive_fps: false,
-            enable_input_capture: true,
-            enable_accessibility: true,
             auto_update: true,
             #[cfg(target_os = "macos")]
             overlay_mode: "fullscreen".to_string(),
             #[cfg(not(target_os = "macos"))]
             overlay_mode: "window".to_string(),
             show_overlay_in_screen_recording: false,
-            video_quality: "balanced".to_string(),
             chat_always_on_top: true,
-            ignore_incognito_windows: true,
             show_restart_notifications: true,
             extra: std::collections::HashMap::new(),
         }
@@ -663,112 +553,53 @@ impl SettingsStore {
         }
     }
 
+    /// Build a `RecordingSettings` from this settings store.
+    ///
+    /// Since RecordingSettings is now embedded via flatten, this is mostly a
+    /// clone with overrides for fields that need special handling (e.g. user_id
+    /// comes from the User auth object, user_name has a fallback chain).
+    pub fn to_recording_settings(&self) -> screenpipe_config::RecordingSettings {
+        let mut settings = self.recording.clone();
+        // Override user_id from auth user object (not the flat userId field)
+        settings.user_id = self
+            .user
+            .id
+            .as_ref()
+            .filter(|id| !id.is_empty())
+            .cloned()
+            .unwrap_or_default();
+        // Fallback chain: userName setting → cloud name → cloud email
+        settings.user_name = settings
+            .user_name
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| self.user.name.clone().filter(|s| !s.trim().is_empty()))
+            .or_else(|| self.user.email.clone().filter(|s| !s.trim().is_empty()));
+        // Always force these on for the engine
+        settings.enable_input_capture = true;
+        settings.enable_accessibility = true;
+        settings
+    }
+
     /// Build a unified `RecordingConfig` from this settings store.
     pub fn to_recording_config(
         &self,
         data_dir: std::path::PathBuf,
     ) -> screenpipe_engine::RecordingConfig {
-        use screenpipe_audio::audio_manager::builder::TranscriptionMode;
-        use screenpipe_audio::core::engine::AudioTranscriptionEngine;
-        let audio_engine_str = self.resolve_audio_engine();
-
-        screenpipe_engine::RecordingConfig {
-            audio_chunk_duration: self.audio_chunk_duration as u64,
-            port: self.port,
+        let resolved_engine = self.resolve_audio_engine();
+        let settings = self.to_recording_settings();
+        screenpipe_engine::RecordingConfig::from_settings(
+            &settings,
             data_dir,
-            disable_audio: self.disable_audio,
-            disable_vision: self.disable_vision,
-            use_pii_removal: self.use_pii_removal,
-            filter_music: self.filter_music,
-            enable_input_capture: true, // always enabled, setting removed from UI
-            enable_accessibility: true, // always enabled, setting removed from UI
-            audio_transcription_engine: audio_engine_str
-                .parse()
-                .unwrap_or(AudioTranscriptionEngine::WhisperLargeV3Turbo),
-            transcription_mode: match self.extra.get("transcriptionMode").and_then(|v| v.as_str()) {
-                Some("smart") | Some("batch") => TranscriptionMode::Batch,
-                _ => TranscriptionMode::Realtime,
-            },
-            audio_devices: self.audio_devices.clone(),
-            use_system_default_audio: self.use_system_default_audio,
-            monitor_ids: self.monitor_ids.clone(),
-            use_all_monitors: self.use_all_monitors,
-            ignored_windows: self.ignored_windows.clone(),
-            included_windows: self.included_windows.clone(),
-            ignored_urls: self.ignored_urls.clone(),
-            ignore_incognito_windows: self.ignore_incognito_windows,
-            languages: self
-                .languages
-                .iter()
-                .filter(|s| s != &"default")
-                .filter_map(|s| s.parse().ok())
-                .collect(),
-            deepgram_api_key: if self.deepgram_api_key.is_empty()
-                || self.deepgram_api_key == "default"
-            {
-                None
-            } else {
-                Some(self.deepgram_api_key.clone())
-            },
-            user_id: self.user.id.as_ref().filter(|id| !id.is_empty()).cloned(),
-            // OpenAI Compatible transcription
-            openai_compatible_endpoint: self
-                .extra
-                .get("openaiCompatibleEndpoint")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            openai_compatible_api_key: self
-                .extra
-                .get("openaiCompatibleApiKey")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            openai_compatible_model: self
-                .extra
-                .get("openaiCompatibleModel")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            // Fallback chain for speaker identification: userName setting → cloud name → cloud email
-            user_name: self
-                .extra
-                .get("userName")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .filter(|s| !s.trim().is_empty())
-                .or_else(|| self.user.name.clone().filter(|s| !s.trim().is_empty()))
-                .or_else(|| self.user.email.clone().filter(|s| !s.trim().is_empty())),
-            video_quality: self.video_quality.clone(),
-            use_chinese_mirror: self.use_chinese_mirror,
-            analytics_enabled: self.analytics_enabled,
-            analytics_id: self.analytics_id.clone(),
-            vocabulary: self
-                .extra
-                .get("vocabularyWords")
-                .and_then(|v| {
-                    serde_json::from_value::<Vec<screenpipe_audio::transcription::VocabularyEntry>>(
-                        v.clone(),
-                    )
-                    .ok()
-                })
-                .unwrap_or_default(),
-            batch_max_duration_secs: self
-                .extra
-                .get("batchMaxDurationSecs")
-                .and_then(|v| v.as_u64())
-                .filter(|&v| v > 0),
-            power_mode: self
-                .extra
-                .get("powerMode")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-        }
+            Some(&resolved_engine),
+        )
     }
 
     fn resolve_audio_engine(&self) -> String {
-        let engine = self.audio_transcription_engine.clone();
+        let engine = self.recording.audio_transcription_engine.clone();
         let has_user_id = self.user.id.as_ref().map_or(false, |id| !id.is_empty());
         let is_subscribed = self.user.cloud_subscribed == Some(true);
-        let has_deepgram_key =
-            !self.deepgram_api_key.is_empty() && self.deepgram_api_key != "default";
+        let has_deepgram_key = !self.recording.deepgram_api_key.is_empty()
+            && self.recording.deepgram_api_key != "default";
         match engine.as_str() {
             "screenpipe-cloud" if !has_user_id => {
                 tracing::warn!("screenpipe-cloud selected but user not logged in, falling back to whisper-large-v3-turbo-quantized");

@@ -371,12 +371,12 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
 
             // Filter monitors to only show actively recording ones
             if let Ok(Some(store)) = crate::store::SettingsStore::get(&app) {
-                if !store.use_all_monitors && !store.monitor_ids.is_empty()
-                    && store.monitor_ids != vec!["default".to_string()]
+                if !store.recording.use_all_monitors && !store.recording.monitor_ids.is_empty()
+                    && store.recording.monitor_ids != vec!["default".to_string()]
                 {
                     devices.retain(|d| {
                         if d.kind != DeviceKind::Monitor { return true; }
-                        store.monitor_ids.iter().any(|allowed| {
+                        store.recording.monitor_ids.iter().any(|allowed| {
                             // Stable ID format: "Display 3_1920x1080_0,0"
                             // Extract name prefix before last '_' (position coords)
                             let allowed_name = allowed.rsplitn(2, '_').last().unwrap_or(allowed);
@@ -474,7 +474,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                 .map(|t| t.elapsed() < NOTIFICATION_COOLDOWN)
                 .unwrap_or(false);
             if status == RecordingStatus::Recording
-                && start_time.elapsed() > Duration::from_secs(120)
+                && start_time.elapsed() > NOTIFICATION_COOLDOWN
                 && !in_restart_grace
             {
                 if let Ok(ref health) = health_result {

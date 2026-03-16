@@ -165,7 +165,7 @@ pub async fn spawn_screenpipe(
     }
 
     let store = SettingsStore::get(&app).ok().flatten().unwrap_or_default();
-    let port = store.port;
+    let port = store.recording.port;
     let health_url = format!("http://localhost:{}/health", port);
 
     // Check if another start is already in progress (race between main.rs boot and frontend)
@@ -270,7 +270,7 @@ pub async fn spawn_screenpipe(
     // Check permissions before starting
     let permissions_check = do_permissions_check(false);
     let store = SettingsStore::get(&app).ok().flatten().unwrap_or_default();
-    let disable_audio = store.disable_audio;
+    let disable_audio = store.recording.disable_audio;
 
     // Screen recording permission is required
     if !permissions_check.screen_recording.permitted() {

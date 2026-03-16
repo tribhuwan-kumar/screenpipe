@@ -197,7 +197,7 @@ function StarRating({
               className={cn(
                 iconSize,
                 filled
-                  ? "fill-yellow-500 text-yellow-500"
+                  ? "fill-foreground text-foreground"
                   : "text-muted-foreground/30"
               )}
             />
@@ -571,14 +571,14 @@ function DiscoverView() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight">Discover Pipes</h3>
+          <h3 className="text-xl font-semibold tracking-tight">discover pipes</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
             browse, install, and review community pipes
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setPublishOpen(true)}>
           <Upload className="h-4 w-4 mr-1.5" />
-          publish
+          PUBLISH
         </Button>
       </div>
 
@@ -615,7 +615,7 @@ function DiscoverView() {
               key={c}
               onClick={() => setCategory(c)}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap",
+                "px-3 py-1.5 rounded-none text-xs font-medium transition-colors duration-150 whitespace-nowrap",
                 category === c
                   ? "bg-foreground text-background"
                   : "bg-muted text-muted-foreground hover:text-foreground"
@@ -655,7 +655,7 @@ function DiscoverView() {
             <Card key={i} className="overflow-hidden">
               <CardContent className="p-5 space-y-3">
                 <div className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <Skeleton className="h-10 w-10 rounded-none" />
                   <div className="space-y-1.5 flex-1">
                     <Skeleton className="h-4 w-2/3" />
                     <Skeleton className="h-3 w-1/3" />
@@ -725,10 +725,10 @@ function FeaturedCard({
       className="flex-shrink-0 w-[300px] snap-start group cursor-pointer"
       onClick={onClick}
     >
-      <div className="border border-border bg-card hover:bg-accent/50 transition-all duration-200 rounded-xl p-5 space-y-3 h-full">
+      <div className="border border-border bg-card hover:bg-accent/50 transition-colors duration-150 rounded-none p-5 space-y-3 h-full">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <div className="text-3xl bg-muted rounded-xl h-12 w-12 flex items-center justify-center flex-shrink-0">
+            <div className="text-3xl bg-muted rounded-none h-12 w-12 flex items-center justify-center flex-shrink-0">
               {pipe.icon || "🔧"}
             </div>
             <div className="min-w-0">
@@ -738,7 +738,7 @@ function FeaturedCard({
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                 <span className="truncate">{pipe.author}</span>
                 {pipe.author_verified && (
-                  <BadgeCheck className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                  <BadgeCheck className="h-3 w-3 text-foreground flex-shrink-0" />
                 )}
               </div>
             </div>
@@ -747,7 +747,7 @@ function FeaturedCard({
             size="sm"
             variant={isInstalled ? "outline" : "default"}
             className={cn(
-              "h-7 px-3 text-xs font-semibold rounded-full flex-shrink-0",
+              "h-7 px-3 text-xs font-semibold rounded-none uppercase tracking-wide flex-shrink-0",
               isInstalled && "pointer-events-none"
             )}
             disabled={installing || isInstalled}
@@ -759,9 +759,9 @@ function FeaturedCard({
             {installing ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : isInstalled ? (
-              "Installed"
+              "INSTALLED"
             ) : (
-              "Get"
+              "GET"
             )}
           </Button>
         </div>
@@ -771,7 +771,7 @@ function FeaturedCard({
         </p>
 
         <div className="flex items-center justify-between">
-          <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-normal rounded-full">
+          <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-normal rounded-none">
             {pipe.category}
           </Badge>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -811,10 +811,10 @@ function PipeCard({
   return (
     <div
       onClick={onClick}
-      className="border border-border bg-card hover:bg-accent/50 transition-all duration-200 rounded-xl p-5 cursor-pointer group"
+      className="border border-border bg-card hover:bg-accent/50 transition-colors duration-150 rounded-none p-5 cursor-pointer group"
     >
       <div className="flex items-start gap-3">
-        <div className="text-2xl bg-muted rounded-xl h-11 w-11 flex items-center justify-center flex-shrink-0">
+        <div className="text-2xl bg-muted rounded-none h-11 w-11 flex items-center justify-center flex-shrink-0">
           {pipe.icon || "🔧"}
         </div>
         <div className="min-w-0 flex-1">
@@ -824,7 +824,7 @@ function PipeCard({
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                 <span className="truncate">{pipe.author}</span>
                 {pipe.author_verified && (
-                  <BadgeCheck className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                  <BadgeCheck className="h-3 w-3 text-foreground flex-shrink-0" />
                 )}
               </div>
             </div>
@@ -832,7 +832,7 @@ function PipeCard({
               size="sm"
               variant={isInstalled ? "outline" : "default"}
               className={cn(
-                "h-7 px-3 text-xs font-semibold rounded-full flex-shrink-0",
+                "h-7 px-3 text-xs font-semibold rounded-none uppercase tracking-wide flex-shrink-0",
                 isInstalled && "pointer-events-none"
               )}
               disabled={installing || isInstalled}
@@ -844,9 +844,9 @@ function PipeCard({
               {installing ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : isInstalled ? (
-                "Installed"
+                "INSTALLED"
               ) : (
-                "Get"
+                "GET"
               )}
             </Button>
           </div>
@@ -863,14 +863,14 @@ function PipeCard({
             <Badge
               key={p.key}
               variant="outline"
-              className="text-[10px] px-1.5 py-0 gap-0.5 font-normal rounded-full"
+              className="text-[10px] px-1.5 py-0 gap-0.5 font-normal rounded-none"
             >
               {p.icon}
               {p.label}
             </Badge>
           ))}
           {permissionPills.length > 3 && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal rounded-full">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal rounded-none">
               +{permissionPills.length - 3}
             </Badge>
           )}
@@ -962,7 +962,7 @@ function PipeDetailPanel({
                   <div className="flex items-center gap-1 text-sm text-muted-foreground">
                     <span>{pipe.author}</span>
                     {pipe.author_verified && (
-                      <BadgeCheck className="h-3.5 w-3.5 text-blue-500" />
+                      <BadgeCheck className="h-3.5 w-3.5 text-foreground" />
                     )}
                   </div>
                 ) : null}
@@ -1004,17 +1004,17 @@ function PipeDetailPanel({
                 <Button
                   size="sm"
                   variant="destructive"
-                  className="h-9 px-4 text-sm font-semibold rounded-none"
+                  className="h-9 px-4 text-sm font-semibold rounded-none uppercase tracking-wide"
                   disabled={unpublishing}
                   onClick={() => onUnpublish(pipe.slug)}
                 >
                   {unpublishing ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                      unpublishing...
+                      UNPUBLISHING...
                     </>
                   ) : (
-                    "unpublish"
+                    "UNPUBLISH"
                   )}
                 </Button>
               )}
@@ -1022,7 +1022,7 @@ function PipeDetailPanel({
                 size="sm"
                 variant={isInstalled ? "outline" : "default"}
                 className={cn(
-                  "h-9 px-5 text-sm font-semibold rounded-none flex-shrink-0",
+                  "h-9 px-5 text-sm font-semibold rounded-none uppercase tracking-wide flex-shrink-0",
                   isInstalled && "pointer-events-none"
                 )}
                 disabled={
@@ -1033,14 +1033,14 @@ function PipeDetailPanel({
                 {installing === pipe.slug ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                    installing...
+                    INSTALLING...
                   </>
                 ) : isInstalled ? (
-                  "Installed"
+                  "INSTALLED"
                 ) : (
                   <>
                     <Download className="h-4 w-4 mr-1.5" />
-                    Get
+                    GET
                   </>
                 )}
               </Button>
@@ -1073,11 +1073,11 @@ function PipeDetailPanel({
                 code: ({ className, children, ...props }) => {
                   const isInline = !className;
                   return isInline ? (
-                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs" {...props}>
+                    <code className="bg-muted px-1.5 py-0.5 rounded-none text-xs" {...props}>
                       {children}
                     </code>
                   ) : (
-                    <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
+                    <pre className="bg-muted p-4 rounded-none overflow-x-auto text-xs">
                       <code className={className} {...props}>
                         {children}
                       </code>
@@ -1109,9 +1109,9 @@ function PipeDetailPanel({
                   className="flex items-center gap-2 text-sm py-1.5"
                 >
                   {status === "allowed" ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <CheckCircle2 className="h-4 w-4 text-foreground flex-shrink-0" />
                   ) : status === "denied" ? (
-                    <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                    <XCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                   ) : (
                     <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
                   )}
@@ -1140,8 +1140,8 @@ function PipeDetailPanel({
 
         {/* Unrestricted warning */}
         {unrestricted && (
-          <div className="border border-orange-500/50 bg-orange-500/5 rounded-none p-4 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-orange-600 dark:text-orange-400">
+          <div className="border border-foreground bg-muted/50 rounded-none p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <AlertTriangle className="h-4 w-4" />
               unrestricted data access
             </div>
@@ -1234,10 +1234,10 @@ function PipeDetailPanel({
                     {submittingReview ? (
                       <>
                         <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
-                        submitting...
+                        SUBMITTING...
                       </>
                     ) : (
-                      "submit review"
+                      "SUBMIT REVIEW"
                     )}
                   </Button>
                 </div>
@@ -1503,7 +1503,7 @@ function PublishDialog({
             onClick={() => onOpenChange(false)}
             className="text-xs"
           >
-            cancel
+            CANCEL
           </Button>
           {token && (
             <Button
@@ -1515,10 +1515,10 @@ function PublishDialog({
               {publishing ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  publishing...
+                  PUBLISHING...
                 </>
               ) : (
-                "publish"
+                "PUBLISH"
               )}
             </Button>
           )}
@@ -1541,7 +1541,7 @@ export function PermissionsReview({
 
   return (
     <div className="space-y-3">
-      <div className="border border-border rounded-xl p-4 space-y-2">
+      <div className="border border-border rounded-none p-4 space-y-2">
         <div className="flex items-center gap-1.5 text-sm font-medium">
           <Shield className="h-4 w-4" />
           data access
@@ -1555,9 +1555,9 @@ export function PermissionsReview({
                 className="flex items-center gap-2 text-xs py-1"
               >
                 {status === "allowed" ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-foreground flex-shrink-0" />
                 ) : status === "denied" ? (
-                  <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                  <XCircle className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                 ) : (
                   <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex-shrink-0" />
                 )}
@@ -1572,8 +1572,8 @@ export function PermissionsReview({
       </div>
 
       {unrestricted && (
-        <div className="border border-orange-500/50 bg-orange-500/5 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-xs font-medium text-orange-600 dark:text-orange-400">
+        <div className="border border-foreground bg-muted/50 rounded-none p-4">
+          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
             <AlertTriangle className="h-3.5 w-3.5" />
             unrestricted data access — this pipe can read all your data
           </div>

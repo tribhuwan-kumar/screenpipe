@@ -89,6 +89,76 @@ pub struct RecordingConfig {
 }
 
 impl RecordingConfig {
+    /// Build a `RecordingConfig` from the shared `RecordingSettings` type.
+    ///
+    /// This is the **single conversion point** from the flat, serde-friendly
+    /// `RecordingSettings` (strings, sentinels) to the typed engine config
+    /// (enums, `Option`, `PathBuf`).
+    ///
+    /// `audio_engine_override`: if provided, overrides `settings.audio_transcription_engine`.
+    /// The caller is responsible for engine-fallback logic (e.g. checking subscription status).
+    pub fn from_settings(
+        settings: &screenpipe_config::RecordingSettings,
+        data_dir: std::path::PathBuf,
+        audio_engine_override: Option<&str>,
+    ) -> Self {
+        let engine_str = audio_engine_override
+            .unwrap_or(&settings.audio_transcription_engine);
+
+        Self {
+            audio_chunk_duration: settings.audio_chunk_duration.max(0) as u64,
+            port: settings.port,
+            data_dir,
+            disable_audio: settings.disable_audio,
+            disable_vision: settings.disable_vision,
+            use_pii_removal: settings.use_pii_removal,
+            filter_music: settings.filter_music,
+            enable_input_capture: settings.enable_input_capture,
+            enable_accessibility: settings.enable_accessibility,
+            audio_transcription_engine: engine_str
+                .parse()
+                .unwrap_or(AudioTranscriptionEngine::WhisperLargeV3Turbo),
+            transcription_mode: match settings.transcription_mode.as_str() {
+                "smart" | "batch" => TranscriptionMode::Batch,
+                _ => TranscriptionMode::Realtime,
+            },
+            audio_devices: settings.audio_devices.clone(),
+            use_system_default_audio: settings.use_system_default_audio,
+            monitor_ids: settings.monitor_ids.clone(),
+            use_all_monitors: settings.use_all_monitors,
+            ignored_windows: settings.ignored_windows.clone(),
+            included_windows: settings.included_windows.clone(),
+            ignored_urls: settings.ignored_urls.clone(),
+            ignore_incognito_windows: settings.ignore_incognito_windows,
+            languages: settings
+                .languages
+                .iter()
+                .filter(|s| s.as_str() != "default")
+                .filter_map(|s| s.parse().ok())
+                .collect(),
+            deepgram_api_key: settings.effective_deepgram_key().map(|s| s.to_string()),
+            user_id: settings.effective_user_id().map(|s| s.to_string()),
+            openai_compatible_endpoint: settings.openai_compatible_endpoint.clone(),
+            openai_compatible_api_key: settings.openai_compatible_api_key.clone(),
+            openai_compatible_model: settings.openai_compatible_model.clone(),
+            user_name: settings.user_name.clone(),
+            video_quality: settings.video_quality.clone(),
+            use_chinese_mirror: settings.use_chinese_mirror,
+            analytics_enabled: settings.analytics_enabled,
+            analytics_id: settings.analytics_id.clone(),
+            vocabulary: settings
+                .vocabulary
+                .iter()
+                .map(|v| VocabularyEntry {
+                    word: v.word.clone(),
+                    replacement: v.replace_with.clone(),
+                })
+                .collect(),
+            batch_max_duration_secs: settings.batch_max_duration_secs.filter(|&v| v > 0),
+            power_mode: settings.power_mode.clone(),
+        }
+    }
+
     /// Build a `UiRecorderConfig` from this recording config.
     pub fn to_ui_recorder_config(&self) -> crate::ui_recorder::UiRecorderConfig {
         crate::ui_recorder::UiRecorderConfig {

@@ -1336,6 +1336,7 @@ pub async fn perform_ocr_on_image(
         .unwrap_or_default();
 
     let languages: Vec<screenpipe_core::Language> = store
+        .recording
         .languages
         .iter()
         .filter(|s| s != &"default")
