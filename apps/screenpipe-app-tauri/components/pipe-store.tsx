@@ -342,7 +342,7 @@ function DiscoverView() {
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : data.data || data.pipes || [];
-        const names = new Set(list.map((p: any) => p.config?.name || p.name));
+        const names = new Set<string>(list.map((p: any) => p.config?.name || p.name));
         apiCache.set(cacheKey, names, 30_000);
         setInstalledNames(names);
       })
