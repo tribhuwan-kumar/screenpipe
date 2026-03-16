@@ -4,7 +4,8 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { apiCache } from "@/lib/cache";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -329,13 +330,21 @@ function DiscoverView() {
   // Installed pipe names (for "Installed" badge)
   const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
 
-  // Fetch installed pipes
+  // Fetch installed pipes (cached 30s, invalidated on install)
   useEffect(() => {
+    const cacheKey = "pipes/installed";
+    const cached = apiCache.get<Set<string>>(cacheKey);
+    if (cached) {
+      setInstalledNames(cached);
+      return;
+    }
     fetch("http://localhost:3030/pipes")
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : data.data || data.pipes || [];
-        setInstalledNames(new Set(list.map((p: any) => p.config?.name || p.name)));
+        const names = new Set(list.map((p: any) => p.config?.name || p.name));
+        apiCache.set(cacheKey, names, 30_000);
+        setInstalledNames(names);
       })
       .catch(() => {});
   }, [showDetail]);
@@ -347,22 +356,36 @@ function DiscoverView() {
     return () => clearTimeout(debounceRef.current);
   }, [searchQuery]);
 
-  // Fetch pipes
+  // Fetch pipes with stale-while-revalidate caching
   const fetchPipes = useCallback(async () => {
-    setLoading(true);
+    const params = new URLSearchParams();
+    if (debouncedQuery) params.set("q", debouncedQuery);
+    if (category !== "All") params.set("category", category.toLowerCase());
+    if (sort) params.set("sort", sort);
+    const cacheKey = `pipes/store?${params}`;
+
+    // Show cached data immediately if available
+    const cached = apiCache.getStale<any[]>(cacheKey);
+    if (cached) {
+      setPipes(cached);
+      // If cache is still fresh, skip network request
+      if (apiCache.isFresh(cacheKey)) return;
+    } else {
+      setLoading(true);
+    }
+
+    // Fetch fresh data in background
     try {
-      const params = new URLSearchParams();
-      if (debouncedQuery) params.set("q", debouncedQuery);
-      if (category !== "All") params.set("category", category.toLowerCase());
-      if (sort) params.set("sort", sort);
       const res = await fetch(`http://localhost:3030/pipes/store?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = data.data || data.pipes || (Array.isArray(data) ? data : []);
-      setPipes(list.map(normalizePipe));
+      const normalized = list.map(normalizePipe);
+      apiCache.set(cacheKey, normalized, 5 * 60_000); // 5 min TTL
+      setPipes(normalized);
     } catch (err) {
       console.error("failed to fetch pipe store:", err);
-      setPipes([]);
+      if (!cached) setPipes([]);
     } finally {
       setLoading(false);
     }
@@ -419,7 +442,8 @@ function DiscoverView() {
         title: `"${data.name || slug}" installed`,
         description: "switch to my pipes to configure and run it",
       });
-      // Refresh installed names
+      // Invalidate cache and update installed names
+      apiCache.invalidate("pipes/installed");
       setInstalledNames((prev) => new Set([...prev, data.name || slug]));
     } catch (err: any) {
       toast({

@@ -10,10 +10,20 @@
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::Json;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::pipes_api::SharedPipeManager;
+
+/// Shared HTTP client for all registry requests (connection pooling + keep-alive).
+static REGISTRY_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .pool_max_idle_per_host(4)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+});
 
 /// Base URL for the screenpipe registry API.
 fn api_base_url() -> String {
@@ -73,7 +83,7 @@ pub struct StoreReviewRequest {
 /// Browse and search pipes from the registry.
 pub async fn pipe_store_search(Query(query): Query<StoreSearchQuery>) -> Json<Value> {
     let base = api_base_url();
-    let client = reqwest::Client::new();
+    let client = &*REGISTRY_CLIENT;
 
     let mut params: Vec<(&str, String)> = Vec::new();
     if let Some(ref q) = query.q {
@@ -107,7 +117,7 @@ pub async fn pipe_store_search(Query(query): Query<StoreSearchQuery>) -> Json<Va
 /// Get a single pipe's detail from the registry.
 pub async fn pipe_store_detail(headers: HeaderMap, Path(slug): Path<String>) -> Json<Value> {
     let base = api_base_url();
-    let client = reqwest::Client::new();
+    let client = &*REGISTRY_CLIENT;
 
     let url = format!("{}/api/pipes/store/{}", base, slug);
     let mut req = client.get(&url);
@@ -137,7 +147,7 @@ pub async fn pipe_store_unpublish(
     };
 
     let base = api_base_url();
-    let client = reqwest::Client::new();
+    let client = &*REGISTRY_CLIENT;
 
     let url = format!("{}/api/pipes/store/{}", base, slug);
     match client
@@ -168,7 +178,7 @@ pub async fn pipe_store_publish(
     };
 
     let base = api_base_url();
-    let client = reqwest::Client::new();
+    let client = &*REGISTRY_CLIENT;
 
     let payload = json!({
         "source_md": body.source_md,
@@ -205,7 +215,7 @@ pub async fn pipe_store_install(
     Json(body): Json<StoreInstallRequest>,
 ) -> Json<Value> {
     let base = api_base_url();
-    let client = reqwest::Client::new();
+    let client = &*REGISTRY_CLIENT;
 
     // 1. Fetch pipe detail from registry to get source_md
     let detail_url = format!("{}/api/pipes/store/{}", base, body.slug);
@@ -266,7 +276,7 @@ pub async fn pipe_store_review(
     };
 
     let base = api_base_url();
-    let client = reqwest::Client::new();
+    let client = &*REGISTRY_CLIENT;
 
     let payload = json!({
         "rating": body.rating,

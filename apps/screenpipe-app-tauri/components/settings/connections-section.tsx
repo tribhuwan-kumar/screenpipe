@@ -4,6 +4,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { apiCache } from "@/lib/cache";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -685,6 +686,7 @@ function WhatsAppPanel() {
 
   const handleDisconnect = async () => {
     await fetch("http://localhost:3030/connections/whatsapp/disconnect", { method: "POST" });
+    apiCache.invalidate("connections/list");
     setStatus("idle");
     setQr(null);
     setInfo(null);
@@ -841,6 +843,7 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
       const saveData = await saveRes.json();
       if (!saveRes.ok || saveData.error) throw new Error(saveData.error || "save failed");
       setStatus("idle");
+      apiCache.invalidate("connections/list");
       onRefresh();
     } catch (e: any) {
       setError(e?.message || "unknown error");
@@ -852,6 +855,7 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
     try {
       await fetch(`http://localhost:3030/connections/${integration.id}`, { method: "DELETE" });
       setCreds({});
+      apiCache.invalidate("connections/list");
       onRefresh();
     } catch { /* ignore */ }
   };
@@ -976,11 +980,21 @@ export function ConnectionsSection() {
   useEffect(() => { refreshStatus(); }, [selected, refreshStatus]);
 
   const fetchIntegrations = useCallback(async (retries = 3) => {
+    const cacheKey = "connections/list";
+    // Show cached data if fresh (< 30s) — avoids showing stale connection status
+    const cached = apiCache.get<any[]>(cacheKey);
+    if (cached) {
+      setIntegrations(cached);
+      setIntegrationsLoaded(true);
+      return;
+    }
+
     for (let i = 0; i < retries; i++) {
       try {
         const res = await fetch("http://localhost:3030/connections");
         const data = await res.json();
         if (data.data) {
+          apiCache.set(cacheKey, data.data, 30_000); // 30s TTL
           setIntegrations(data.data);
           setIntegrationsLoaded(true);
           return;
