@@ -1091,15 +1091,19 @@ pub async fn show_notification_panel(
             let _ = app_handle.run_on_main_thread(move || {
                 if let Ok(panel) = app_clone.get_webview_panel("notification-panel") {
                     use tauri_nspanel::cocoa::appkit::NSWindowCollectionBehavior;
+                    use objc::{msg_send, sel, sel_impl};
                     panel.set_level(1001);
-                    panel.set_style_mask(128);
+                    panel.set_style_mask(128); // NSNonactivatingPanelMask
                     panel.set_hides_on_deactivate(false);
                     panel.set_collection_behaviour(
                         NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
                             | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle
                             | NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary,
                     );
-                    panel.order_front_regardless();
+                    // orderFront: (not orderFrontRegardless) respects
+                    // NSNonactivatingPanelMask — shows the panel without
+                    // stealing focus from the user's current app.
+                    let _: () = unsafe { msg_send![&*panel, orderFront: std::ptr::null::<objc::runtime::Object>()] };
                 }
             });
         }
@@ -1161,7 +1165,9 @@ pub async fn show_notification_panel(
                             | NSWindowCollectionBehavior::NSWindowCollectionBehaviorIgnoresCycle
                             | NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary,
                     );
-                    panel.order_front_regardless();
+                    // orderFront: (not orderFrontRegardless) respects
+                    // NSNonactivatingPanelMask — shows without stealing focus.
+                    let _: () = unsafe { msg_send![&*panel, orderFront: std::ptr::null::<objc::runtime::Object>()] };
                     info!("Notification panel configured for all-Spaces fullscreen support");
                 } else {
                     error!("Failed to get notification panel in main thread");
