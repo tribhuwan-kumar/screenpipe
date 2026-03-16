@@ -31,7 +31,7 @@ const APP_CONFIRMATION_WINDOW: Duration = Duration::from_secs(300); // 5 minutes
 /// Buffer before a calendar event's start time to handle early joins.
 /// Most people join meetings 5-15 min early — this ensures calendar-based
 /// detection activates even when you join before the scheduled time.
-const CALENDAR_EARLY_JOIN_BUFFER: Duration = Duration::from_secs(15 * 60); // 15 minutes
+const CALENDAR_EARLY_JOIN_BUFFER: Duration = Duration::from_secs(5 * 60); // 5 minutes
 
 /// A calendar event signal fed into the meeting detector.
 /// Contains only the fields needed for meeting detection — no serde/chrono deps.
@@ -386,7 +386,10 @@ impl MeetingDetector {
             || (last_output > 0 && (now - last_output) < window)
     }
 
-    /// Returns the first active calendar event overlapping now (with 15-min early-join buffer).
+    /// Returns the first active calendar event overlapping now (with early-join buffer).
+    ///
+    /// Filters out all-day / long events (> 4 hours) — these are typically OOO,
+    /// focus blocks, or reminders, not actual meetings.
     ///
     /// For native calendar events: requires 2+ attendees (filters out "focus time" blocks).
     /// For ICS events: accepts any non-all-day event, because many ICS feeds strip
@@ -398,7 +401,12 @@ impl MeetingDetector {
         now: i64,
     ) -> Option<&'a CalendarSignal> {
         let buffer_ms = CALENDAR_EARLY_JOIN_BUFFER.as_millis() as i64;
+        let max_duration_ms: i64 = 4 * 60 * 60 * 1000; // 4 hours
         state.calendar_events.iter().find(|e| {
+            // Skip all-day or very long events (> 4h)
+            if e.end_epoch_ms - e.start_epoch_ms > max_duration_ms {
+                return false;
+            }
             let in_time_window = (e.start_epoch_ms - buffer_ms) <= now && e.end_epoch_ms > now;
             if !in_time_window {
                 return false;

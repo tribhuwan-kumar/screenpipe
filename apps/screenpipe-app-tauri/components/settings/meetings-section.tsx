@@ -27,7 +27,15 @@ interface EditState {
 }
 
 function formatDuration(start: string, end: string | null): string {
-  if (!end) return "ongoing";
+  if (!end) {
+    const startMs = new Date(start).getTime();
+    const nowMs = Date.now();
+    if (nowMs < startMs) {
+      const minsUntil = Math.ceil((startMs - nowMs) / 60000);
+      return minsUntil <= 1 ? "starts in <1m" : `starts in ${minsUntil}m`;
+    }
+    return "ongoing";
+  }
   const ms = new Date(end).getTime() - new Date(start).getTime();
   if (ms < 0) return "—";
   const totalMinutes = Math.floor(ms / 60000);
@@ -381,7 +389,7 @@ export function MeetingsSection() {
                           formatTime(meeting.meeting_end)
                         ) : (
                           <span className="text-primary font-medium">
-                            ongoing
+                            {formatDuration(meeting.meeting_start, null)}
                           </span>
                         )}
                         <span className="ml-1.5 text-muted-foreground/60">
