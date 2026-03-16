@@ -187,7 +187,7 @@ pub struct RecordingSettings {
     pub enable_input_capture: bool,
 
     /// Enable accessibility text capture (AX tree walker).
-    #[serde(rename = "enableAccessibility")]
+    #[serde(rename = "enableAccessibility", alias = "enableUiEvents")]
     pub enable_accessibility: bool,
 }
 
