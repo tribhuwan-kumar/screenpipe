@@ -608,8 +608,7 @@ async fn show_capture_stall_notification(app: &tauri::AppHandle, system: &str) -
         "title": format!("{} recording stopped", system),
         "body": format!("{} capture appears to have stopped. you can restart to fix this.", system),
         "actions": [
-            { "label": "RESTART", "action": "restart_recording" },
-            { "label": "DISMISS", "action": "dismiss" }
+            { "label": "RESTART", "action": "restart_recording", "primary": true }
         ],
         "autoDismissMs": 30000
     });
