@@ -177,16 +177,11 @@ export function AccountSection() {
     <div className="space-y-6">
       {/* Header + login status */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Account
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {settings.user?.token
-              ? `logged in as ${settings.user.email}`
-              : "not logged in"}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {settings.user?.token
+            ? `logged in as ${settings.user.email}`
+            : "not logged in"}
+        </p>
         <div className="flex gap-2">
           {settings.user?.token ? (
             <>

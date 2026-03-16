@@ -347,10 +347,7 @@ export function TeamSection() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Team
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             manage your team and share pipe configurations and content filters
           </p>
         </div>
@@ -379,10 +376,7 @@ export function TeamSection() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Team
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">loading...</p>
+          <p className="text-sm text-muted-foreground">loading...</p>
         </div>
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -395,10 +389,7 @@ export function TeamSection() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Join Team
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             enter the passphrase from your team admin to complete joining
           </p>
         </div>
@@ -454,10 +445,7 @@ export function TeamSection() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Team
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             share pipe configurations and content filters with your team using end-to-end encryption
           </p>
         </div>
@@ -554,10 +542,7 @@ export function TeamSection() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Team
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             {team.team.name}
           </p>
         </div>

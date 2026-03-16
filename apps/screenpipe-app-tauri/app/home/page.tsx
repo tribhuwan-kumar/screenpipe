@@ -829,14 +829,9 @@ function ReferralSection() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold tracking-tight text-foreground">
-          refer and earn rewards
-        </h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          give <span className="font-semibold text-foreground">10% off</span> screenpipe and get <span className="font-semibold text-foreground">1 free month</span> for each person you refer.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground mb-4">
+        give <span className="font-semibold text-foreground">10% off</span> screenpipe and get <span className="font-semibold text-foreground">1 free month</span> for each person you refer.
+      </p>
 
       <div className="space-y-4">
         <div>
