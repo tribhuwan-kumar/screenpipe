@@ -45,6 +45,21 @@ pub enum CliAudioTranscriptionEngine {
     Disabled,
 }
 
+fn cli_engine_to_str(engine: &CliAudioTranscriptionEngine) -> &'static str {
+    match engine {
+        CliAudioTranscriptionEngine::Deepgram => "deepgram",
+        CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny",
+        CliAudioTranscriptionEngine::WhisperTinyQuantized => "whisper-tiny-quantized",
+        CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
+        CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
+        CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
+        CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => "whisper-large-v3-turbo-quantized",
+        CliAudioTranscriptionEngine::OpenAICompatible => "openai-compatible",
+        CliAudioTranscriptionEngine::Qwen3Asr => "qwen3-asr",
+        CliAudioTranscriptionEngine::Disabled => "disabled",
+    }
+}
+
 impl From<CliAudioTranscriptionEngine> for CoreAudioTranscriptionEngine {
     fn from(cli_engine: CliAudioTranscriptionEngine) -> Self {
         match cli_engine {
@@ -321,48 +336,48 @@ impl RecordArgs {
         }
     }
 
-    /// Convert RecordArgs into a unified RecordingConfig.
-    pub fn into_recording_config(
-        self,
-        data_dir: PathBuf,
-    ) -> crate::recording_config::RecordingConfig {
-        let languages = self.unique_languages().unwrap_or_default();
-        crate::recording_config::RecordingConfig {
-            audio_chunk_duration: self.audio_chunk_duration,
+    /// Build a `RecordingSettings` from CLI arguments.
+    pub fn to_recording_settings(&self) -> screenpipe_config::RecordingSettings {
+        let engine_str = cli_engine_to_str(&self.audio_transcription_engine);
+        let mode_str = match self.transcription_mode {
+            CliTranscriptionMode::Realtime => "realtime",
+            CliTranscriptionMode::Batch => "batch",
+        };
+
+        screenpipe_config::RecordingSettings {
+            audio_chunk_duration: self.audio_chunk_duration as i32,
             port: self.port,
-            data_dir,
             disable_audio: self.disable_audio,
             disable_vision: self.disable_vision,
             use_pii_removal: self.use_pii_removal,
             filter_music: self.filter_music,
             enable_input_capture: true,
             enable_accessibility: true,
-            audio_transcription_engine: self.audio_transcription_engine.into(),
-            transcription_mode: self.transcription_mode.into(),
-            audio_devices: self.audio_device,
+            audio_transcription_engine: engine_str.to_string(),
+            transcription_mode: mode_str.to_string(),
+            audio_devices: self.audio_device.clone(),
             use_system_default_audio: self.use_system_default_audio,
             monitor_ids: self.monitor_id.iter().map(|id| id.to_string()).collect(),
             use_all_monitors: self.use_all_monitors,
-            ignored_windows: self.ignored_windows,
-            included_windows: self.included_windows,
-            ignored_urls: self.ignored_urls,
-            languages,
-            deepgram_api_key: self.deepgram_api_key,
-            user_id: None,
-            user_name: None,
-            // OpenAI Compatible transcription
-            openai_compatible_endpoint: None,
-            openai_compatible_api_key: None,
-            openai_compatible_model: None,
-            video_quality: self.video_quality,
-            use_chinese_mirror: false,
+            ignored_windows: self.ignored_windows.clone(),
+            included_windows: self.included_windows.clone(),
+            ignored_urls: self.ignored_urls.clone(),
+            languages: self.language.iter().map(|l| l.as_lang_code().to_string()).collect(),
+            deepgram_api_key: self.deepgram_api_key.clone().unwrap_or_default(),
+            video_quality: self.video_quality.clone(),
             analytics_enabled: !self.disable_telemetry,
-            analytics_id: String::new(),
-            vocabulary: vec![],
             ignore_incognito_windows: true,
-            batch_max_duration_secs: None,
-            power_mode: None,
+            ..screenpipe_config::RecordingSettings::default()
         }
+    }
+
+    /// Convert RecordArgs into a unified RecordingConfig via RecordingSettings.
+    pub fn into_recording_config(
+        self,
+        data_dir: PathBuf,
+    ) -> crate::recording_config::RecordingConfig {
+        let settings = self.to_recording_settings();
+        crate::recording_config::RecordingConfig::from_settings(&settings, data_dir, None)
     }
 }
 
