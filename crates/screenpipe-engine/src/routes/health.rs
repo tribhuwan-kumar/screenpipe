@@ -14,10 +14,20 @@ use std::sync::{
     Arc,
 };
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use crate::server::AppState;
 use crate::ui_recorder::{tree_walker_snapshot, TreeWalkerSnapshot};
+
+/// Cached health response to avoid recomputing on every poll.
+/// Multiple WebSocket clients + HTTP polls can call /health dozens of
+/// times per second. The response only changes meaningfully every ~1s.
+static HEALTH_CACHE: std::sync::LazyLock<RwLock<(u64, Option<HealthCheckResponse>)>> =
+    std::sync::LazyLock::new(|| RwLock::new((0, None)));
+
+/// Minimum interval between full health recomputations (in seconds).
+const HEALTH_CACHE_TTL_SECS: u64 = 1;
 
 use screenpipe_screen::monitor::{
     get_cached_monitor_descriptions, get_monitor_by_id, list_monitors, list_monitors_detailed,
@@ -34,7 +44,7 @@ pub struct MonitorInfo {
     pub is_default: bool,
 }
 
-#[derive(Serialize, OaSchema, Deserialize)]
+#[derive(Serialize, OaSchema, Deserialize, Clone)]
 pub struct HealthCheckResponse {
     pub status: String,
     pub status_code: u16,
@@ -63,7 +73,7 @@ pub struct HealthCheckResponse {
     pub audio_db_write_stalled: bool,
 }
 
-#[derive(Serialize, OaSchema, Deserialize)]
+#[derive(Serialize, OaSchema, Deserialize, Clone)]
 pub struct PoolHealthInfo {
     pub read_pool_size: u32,
     pub read_pool_idle: u32,
@@ -71,7 +81,7 @@ pub struct PoolHealthInfo {
     pub write_pool_idle: u32,
 }
 
-#[derive(Serialize, OaSchema, Deserialize)]
+#[derive(Serialize, OaSchema, Deserialize, Clone)]
 pub struct PipelineHealthInfo {
     pub uptime_secs: f64,
     pub frames_captured: u64,
@@ -88,7 +98,7 @@ pub struct PipelineHealthInfo {
     pub ocr_cache_hit_rate: f64,
 }
 
-#[derive(Serialize, OaSchema, Deserialize)]
+#[derive(Serialize, OaSchema, Deserialize, Clone)]
 pub struct AudioPipelineHealthInfo {
     pub uptime_secs: f64,
     pub chunks_sent: u64,
@@ -134,6 +144,35 @@ pub struct AudioPipelineHealthInfo {
 
 #[oasgen]
 pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<HealthCheckResponse> {
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Return cached response if still fresh. This prevents thundering-herd
+    // scenarios where dozens of WebSocket clients + HTTP polls recompute the
+    // full health response simultaneously.
+    {
+        let cache = HEALTH_CACHE.read().await;
+        if now_ts.saturating_sub(cache.0) < HEALTH_CACHE_TTL_SECS {
+            if let Some(ref cached) = cache.1 {
+                return JsonResponse(cached.clone());
+            }
+        }
+    }
+
+    let response = health_check_inner(&state).await;
+
+    // Cache the result
+    {
+        let mut cache = HEALTH_CACHE.write().await;
+        *cache = (now_ts, Some(response.clone()));
+    }
+
+    JsonResponse(response)
+}
+
+async fn health_check_inner(state: &Arc<AppState>) -> HealthCheckResponse {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -479,7 +518,7 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
         None
     };
 
-    JsonResponse(HealthCheckResponse {
+    HealthCheckResponse {
         status: overall_status.to_string(),
         status_code,
         last_frame_timestamp: last_frame,
@@ -601,7 +640,7 @@ pub async fn health_check(State(state): State<Arc<AppState>>) -> JsonResponse<He
         },
         vision_db_write_stalled,
         audio_db_write_stalled,
-    })
+    }
 }
 
 /// Returns raw vision pipeline metrics snapshot.
@@ -702,5 +741,73 @@ pub async fn api_vision_status() -> JsonResponse<serde_json::Value> {
             "status": "error",
             "message": e
         })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_response(status: &str) -> HealthCheckResponse {
+        HealthCheckResponse {
+            status: status.to_string(),
+            status_code: 200,
+            last_frame_timestamp: None,
+            last_audio_timestamp: None,
+            frame_status: "ok".to_string(),
+            audio_status: "ok".to_string(),
+            message: "test".to_string(),
+            verbose_instructions: None,
+            device_status_details: None,
+            monitors: None,
+            pipeline: None,
+            audio_pipeline: None,
+            accessibility: None,
+            pool_stats: None,
+            vision_db_write_stalled: false,
+            audio_db_write_stalled: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn health_cache_fresh_then_stale() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Seed the cache with a fresh timestamp
+        {
+            let mut cache = HEALTH_CACHE.write().await;
+            *cache = (now, Some(dummy_response("healthy")));
+        }
+
+        // Reading within TTL should return the cached value
+        {
+            let cache = HEALTH_CACHE.read().await;
+            assert!(now.saturating_sub(cache.0) < HEALTH_CACHE_TTL_SECS);
+            assert_eq!(cache.1.as_ref().unwrap().status, "healthy");
+        }
+
+        // Now seed a stale timestamp
+        let stale_ts = now - HEALTH_CACHE_TTL_SECS - 1;
+        {
+            let mut cache = HEALTH_CACHE.write().await;
+            *cache = (stale_ts, Some(dummy_response("degraded")));
+        }
+
+        // Should be expired
+        {
+            let cache = HEALTH_CACHE.read().await;
+            assert!(now.saturating_sub(cache.0) >= HEALTH_CACHE_TTL_SECS);
+        }
+    }
+
+    #[test]
+    fn health_response_is_cloneable() {
+        let resp = dummy_response("healthy");
+        let cloned = resp.clone();
+        assert_eq!(cloned.status, "healthy");
+        assert_eq!(cloned.status_code, 200);
     }
 }
