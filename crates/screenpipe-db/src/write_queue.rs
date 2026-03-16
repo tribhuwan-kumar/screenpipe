@@ -100,6 +100,23 @@ pub(crate) enum WriteOp {
         device_name: String,
         fps: f64,
     },
+    /// Mark records as synced by timestamp range. Used by cloud sync to
+    /// go through the write queue instead of bypassing it on the read pool.
+    MarkSynced {
+        table: SyncTable,
+        synced_at: String,
+        time_start: String,
+        time_end: String,
+    },
+}
+
+/// Which table to mark as synced.
+#[derive(Debug, Clone)]
+pub enum SyncTable {
+    Frames,
+    AudioTranscriptions,
+    FramesAccessibility,
+    UiEvents,
 }
 
 /// Result returned to callers. Each variant matches the return type
@@ -549,6 +566,35 @@ async fn execute_single_write(
             .await?
             .last_insert_rowid();
             Ok(WriteResult::Id(id))
+        }
+
+        WriteOp::MarkSynced {
+            table,
+            synced_at,
+            time_start,
+            time_end,
+        } => {
+            let sql = match table {
+                SyncTable::Frames => {
+                    "UPDATE frames SET synced_at = ?1 WHERE timestamp >= ?2 AND timestamp <= ?3 AND synced_at IS NULL"
+                }
+                SyncTable::AudioTranscriptions => {
+                    "UPDATE audio_transcriptions SET synced_at = ?1 WHERE timestamp >= ?2 AND timestamp <= ?3 AND synced_at IS NULL"
+                }
+                SyncTable::FramesAccessibility => {
+                    "UPDATE frames SET synced_at = ?1 WHERE timestamp >= ?2 AND timestamp <= ?3 AND text_source = 'accessibility' AND synced_at IS NULL"
+                }
+                SyncTable::UiEvents => {
+                    "UPDATE ui_events SET synced_at = ?1 WHERE timestamp >= ?2 AND timestamp <= ?3 AND synced_at IS NULL"
+                }
+            };
+            sqlx::query(sql)
+                .bind(synced_at.as_str())
+                .bind(time_start.as_str())
+                .bind(time_end.as_str())
+                .execute(&mut **conn)
+                .await?;
+            Ok(WriteResult::Unit)
         }
     }
 }

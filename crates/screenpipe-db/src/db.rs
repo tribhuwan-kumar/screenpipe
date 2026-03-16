@@ -470,6 +470,28 @@ impl DatabaseManager {
         }
     }
 
+    /// Mark records as synced via the write coalescing queue.
+    /// This ensures sync UPDATEs go through the write semaphore and don't
+    /// bypass the write pool (which was causing WAL lock contention).
+    pub async fn mark_synced(
+        &self,
+        table: crate::write_queue::SyncTable,
+        synced_at: &str,
+        time_start: &str,
+        time_end: &str,
+    ) -> Result<(), sqlx::Error> {
+        use crate::write_queue::WriteOp;
+        self.write_queue
+            .submit(WriteOp::MarkSynced {
+                table,
+                synced_at: synced_at.to_string(),
+                time_start: time_start.to_string(),
+                time_end: time_end.to_string(),
+            })
+            .await?;
+        Ok(())
+    }
+
     pub async fn insert_audio_chunk(
         &self,
         file_path: &str,
