@@ -1220,16 +1220,32 @@ async fn main() {
             // Startup permission gate: check CRITICAL permissions immediately after onboarding
             // and show recovery window only if screen or mic is missing.
             // Browser automation is optional — never blocks startup (see #2510).
+            // Uses retry loop because CGPreflightScreenCaptureAccess can return false
+            // transiently on startup before TCC fully initializes.
             #[cfg(target_os = "macos")]
             if onboarding_store.is_completed {
-                let startup_perms = permissions::do_permissions_check(false);
-                let screen_ok = startup_perms.screen_recording.permitted();
-                let mic_ok = startup_perms.microphone.permitted();
+                let mut screen_ok = false;
+                let mut mic_ok = false;
+                for attempt in 0..3 {
+                    let startup_perms = permissions::do_permissions_check(false);
+                    screen_ok = startup_perms.screen_recording.permitted();
+                    mic_ok = startup_perms.microphone.permitted();
+                    if screen_ok && mic_ok {
+                        break;
+                    }
+                    if attempt < 2 {
+                        debug!(
+                            "Startup permission check attempt {} — screen: {:?}, mic: {:?}. Retrying...",
+                            attempt + 1, startup_perms.screen_recording, startup_perms.microphone
+                        );
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                    }
+                }
 
                 if !screen_ok || !mic_ok {
                     warn!(
-                        "Startup permission check failed — screen: {:?}, mic: {:?}. Showing recovery window.",
-                        startup_perms.screen_recording, startup_perms.microphone
+                        "Startup permission check failed after retries — screen: {}, mic: {}. Showing recovery window.",
+                        screen_ok, mic_ok
                     );
                     let _ = ShowRewindWindow::PermissionRecovery.show(&app.handle());
                 }
