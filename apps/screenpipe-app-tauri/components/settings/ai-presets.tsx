@@ -1643,15 +1643,6 @@ export const AIPresets = () => {
   if (!settings.aiPresets?.length) {
     return (
       <div className="space-y-5">
-        <div className="space-y-1">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            AI Settings
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Configure AI models and preferences
-          </p>
-        </div>
-        
         <div className="w-full h-[400px] flex flex-col items-center justify-center space-y-4">
           <Settings2 className="w-12 h-12 text-muted-foreground" />
           <h2 className="text-xl font-medium text-muted-foreground">
@@ -1672,15 +1663,6 @@ export const AIPresets = () => {
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">
-          AI Settings
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Configure AI models and preferences
-        </p>
-      </div>
-      
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Badge variant="outline" className="px-3 py-1">

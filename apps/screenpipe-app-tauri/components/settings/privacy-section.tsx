@@ -348,11 +348,7 @@ export function PrivacySection() {
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Privacy
-          </h1>
+      <div className="flex items-center justify-end">
           {hasUnsavedChanges && (
             <Button
               onClick={handleUpdate}
@@ -368,10 +364,6 @@ export function PrivacySection() {
               Apply & Restart
             </Button>
           )}
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Content filtering, PII redaction, and telemetry
-        </p>
       </div>
 
       {/* PII Removal */}

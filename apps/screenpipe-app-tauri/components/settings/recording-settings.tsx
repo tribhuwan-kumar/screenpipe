@@ -1102,11 +1102,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Recording
-          </h1>
+      <div className="flex items-center justify-end">
           {hasUnsavedChanges && (
             <Button
               onClick={handleUpdate}
@@ -1122,10 +1118,6 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
               Apply & Restart
             </Button>
           )}
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Screen and audio recording preferences
-        </p>
       </div>
 
       {/* Battery Saver / Power Mode */}

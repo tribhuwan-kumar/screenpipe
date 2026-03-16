@@ -221,24 +221,10 @@ export function ArchiveSettings() {
   if (!isProUser) {
     return (
       <div className="space-y-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Cloud archive
-            </h1>
+        <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-[10px]">
               pro
             </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Encrypt and archive old data to the cloud to free disk space.{" "}
-            <button
-              onClick={() => openUrl("https://docs.screenpi.pe/cloud-archive")}
-              className="underline underline-offset-2 hover:text-foreground transition-colors"
-            >
-              Learn more
-            </button>
-          </p>
         </div>
 
         <Card>
@@ -260,16 +246,14 @@ export function ArchiveSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Cloud archive
-          </h1>
+      <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-[10px]">
             pro
           </Badge>
-        </div>
-        <p className="text-sm text-muted-foreground mt-1">
+      </div>
+
+      {/* Retention selector */}
+      <p className="text-sm text-muted-foreground">
           Encrypt and archive data older than{" "}
           <Select
             value={String(retentionDays)}
@@ -294,7 +278,6 @@ export function ArchiveSettings() {
             Learn more
           </button>
         </p>
-      </div>
 
       {/* Toggle */}
       <div className="flex items-center justify-between">

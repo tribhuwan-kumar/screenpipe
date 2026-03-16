@@ -17,15 +17,6 @@ export function FeedbackSection() {
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">
-          Help
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Get support, send logs, or suggest features
-        </p>
-      </div>
-
       <div className="space-y-2">
         <div className="px-3 py-2.5 bg-card border border-border">
           <div className="flex items-center gap-2.5 mb-2.5">

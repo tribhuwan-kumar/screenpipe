@@ -100,21 +100,12 @@ export function MemoriesSection() {
 
   return (
     <div className="space-y-4 h-full flex flex-col">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <Brain className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Memories
-          </h1>
+      <div className="flex items-center gap-2">
           {total > 0 && (
             <Badge variant="secondary" className="text-xs">
               {total}
             </Badge>
           )}
-        </div>
-        <p className="text-muted-foreground text-sm">
-          facts and preferences the AI has learned from your activity
-        </p>
       </div>
 
       {loading ? (

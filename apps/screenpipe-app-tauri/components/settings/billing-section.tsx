@@ -156,14 +156,6 @@ export function BillingSection() {
   if (!token) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Billing
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Sign in to view your usage and billing
-          </p>
-        </div>
         <Card className="p-8 flex flex-col items-center text-center">
           <Zap className="h-10 w-10 text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-1">Sign in required</h3>
@@ -185,11 +177,6 @@ export function BillingSection() {
   if (loading && !usage) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Billing
-          </h1>
-        </div>
         <div className="space-y-4">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-24 w-full" />
@@ -203,11 +190,6 @@ export function BillingSection() {
   if (error && !usage) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Billing
-          </h1>
-        </div>
         <Card className="p-6 text-center">
           <p className="text-sm text-muted-foreground mb-4">{error}</p>
           <Button variant="outline" size="sm" onClick={() => fetchData()}>
@@ -232,16 +214,6 @@ export function BillingSection() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-foreground">
-          Billing
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your AI usage and payment settings
-        </p>
-      </div>
-
       {/* Tier display */}
       <Card className="p-4">
         <div className="flex items-center justify-between">

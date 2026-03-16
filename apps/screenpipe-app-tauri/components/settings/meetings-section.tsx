@@ -231,15 +231,7 @@ export function MeetingsSection() {
 
   return (
     <div className="space-y-4 h-full flex flex-col">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Meetings
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            View and manage detected meetings
-          </p>
-        </div>
+      <div className="flex items-center justify-end">
         <Button
           size="sm"
           variant="ghost"
