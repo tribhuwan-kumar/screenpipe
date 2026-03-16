@@ -79,12 +79,15 @@ async getInstalledBrowsers() : Promise<string[]> {
 },
 /**
  * Check if Automation permission is granted for all installed Chromium browsers.
+ * Returns true only if ALL installed browsers have automation granted.
  */
 async checkBrowsersAutomationPermission() : Promise<boolean> {
     return await TAURI_INVOKE("check_browsers_automation_permission");
 },
 /**
- * Request Automation permission for all installed Chromium browsers that are currently running.
+ * Request Automation permission for installed Chromium browsers that are already running.
+ * Never force-launches browsers — only prompts for ones the user already has open.
+ * Opens System Settings > Automation as fallback for browsers not running.
  */
 async requestBrowsersAutomationPermission() : Promise<boolean> {
     return await TAURI_INVOKE("request_browsers_automation_permission");
