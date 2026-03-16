@@ -343,20 +343,36 @@ async fn compact_chunk(
 
         let sql = format!(
             "UPDATE frames SET video_chunk_id = ?1, \
-             offset_index = CASE id {} END, \
+             offset_index = CASE id {} ELSE offset_index END, \
              snapshot_path = NULL \
              WHERE id IN ({}) AND snapshot_path IS NOT NULL",
             case_clauses.join(" "),
             placeholders.join(",")
         );
 
-        let mut tx = db.begin_immediate_with_retry().await?;
-        let mut query = sqlx::query(&sql).bind(chunk_id);
-        for id in &ids {
-            query = query.bind(id);
+        match db.begin_immediate_with_retry().await {
+            Ok(mut tx) => {
+                let mut query = sqlx::query(&sql).bind(chunk_id);
+                for id in &ids {
+                    query = query.bind(id);
+                }
+                match query.execute(&mut **tx.conn()).await {
+                    Ok(_) => {
+                        if let Err(e) = tx.commit().await {
+                            warn!("snapshot compaction: commit failed for batch: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("snapshot compaction: UPDATE failed for batch: {}", e);
+                        // tx drops here → auto-rollback, continue with next batch
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("snapshot compaction: could not acquire write lock: {}", e);
+                // Skip this batch, try next one
+            }
         }
-        query.execute(&mut **tx.conn()).await?;
-        tx.commit().await?;
         // Yield briefly between batches so audio/frame insertions can acquire the write semaphore
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
