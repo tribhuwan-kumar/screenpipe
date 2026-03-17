@@ -1350,6 +1350,12 @@ impl PipeManager {
 
     /// Run a pipe once with an explicit trigger type.
     async fn run_pipe_with_trigger(&self, name: &str, trigger: &str) -> Result<PipeRunLog> {
+        self.run_pipe_with_trigger_inner(name, trigger, 0).await
+    }
+
+    /// Inner implementation with retry depth tracking for preset fallback.
+    fn run_pipe_with_trigger_inner<'a>(&'a self, name: &'a str, trigger: &'a str, retry_depth: usize) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PipeRunLog>> + Send + 'a>> {
+        Box::pin(async move {
         let (config, body, _raw) = {
             let pipes = self.pipes.lock().await;
             pipes
@@ -1708,11 +1714,36 @@ impl PipeManager {
             cleanup_pipe_token(token, self.token_registry.as_ref());
         }
 
+        // Immediate fallback retry: if the pipe failed with a retryable error
+        // and there are fallback presets available, retry now instead of waiting
+        // for the next scheduled run.
+        if !log.success && config.preset.len() > 1 && retry_depth < config.preset.len() - 1 {
+            // Check if the circuit breaker picked a different preset for retry
+            if let Some((next_preset_id, _)) = self.fallback_registry.pick_preset(&config.preset) {
+                let should_retry = match &active_preset_id {
+                    Some(current_id) => next_preset_id != current_id.as_str(),
+                    None => false,
+                };
+                if should_retry {
+                    info!(
+                        "pipe '{}': primary preset failed, immediately retrying with fallback '{}'",
+                        name, next_preset_id
+                    );
+                    // Save log of the failed attempt
+                    self.append_log(name, &log).await;
+                    let _ = self.write_log_to_disk(name, &log);
+                    // Retry with next preset
+                    return self.run_pipe_with_trigger_inner(name, trigger, retry_depth + 1).await;
+                }
+            }
+        }
+
         // Save log (in-memory + disk)
         self.append_log(name, &log).await;
         let _ = self.write_log_to_disk(name, &log);
 
         Ok(log)
+        }) // end Box::pin(async move { ... })
     }
 
     /// Enable or disable a pipe (writes back to pipe.md front-matter).

@@ -53,6 +53,7 @@ import { Badge } from "../ui/badge";
 import { toast } from "../ui/use-toast";
 import { Card, CardContent } from "../ui/card";
 import { AIProviderType } from "@screenpipe/browser";
+import { useIsEnterpriseBuild } from "@/lib/hooks/use-is-enterprise-build";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1487,6 +1488,7 @@ export const AIPresets = () => {
     null
   );
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const isEnterprise = useIsEnterpriseBuild();
   const [piAvailable, setPiAvailable] = useState(false);
 
   // Check Pi availability (installed at app startup by Rust background thread)
@@ -1497,11 +1499,13 @@ export const AIPresets = () => {
         setPiAvailable(true);
       }
     };
-    checkPi();
+    if (!isEnterprise) {
+      checkPi();
+    }
     // Re-check periodically in case background install finishes
-    const interval = setInterval(checkPi, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    const interval = isEnterprise ? null : setInterval(checkPi, 5000);
+    return () => { if (interval) clearInterval(interval); };
+  }, [isEnterprise]);
 
   useEffect(() => {
     if (!createPresetsDialog) {
@@ -1690,7 +1694,7 @@ export const AIPresets = () => {
       </div>
 
       <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
-        {settings.aiPresets.map((preset) => {
+        {settings.aiPresets.filter((preset) => !isEnterprise || preset.provider !== "pi").map((preset) => {
           const isDefault = preset.defaultPreset;
           const hasValidation = preset.provider && preset.model && preset.url;
           
