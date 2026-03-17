@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use regex::Regex;
+use regex::{Regex, RegexSet};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -135,6 +135,12 @@ lazy_static! {
     static ref PASSWORD_CONTEXT_PATTERN: Regex = Regex::new(
         r"(?i)((?:master\s+)?(?:password|passcode|passphrase|pin|secret\s*key|unlock\s*code|security\s*code)[\s]*[:=][\s]*)(\S+)"
     ).unwrap();
+
+    // RegexSet for fast "any PII present?" check — single DFA pass over the text.
+    // Most captures have zero PII so this avoids running 27 individual replace_all calls.
+    static ref PII_REGEX_SET: RegexSet = RegexSet::new(
+        PII_PATTERNS.iter().map(|(re, _)| re.as_str())
+    ).unwrap();
 }
 
 /// Represents a region in an image that contains PII and should be redacted
@@ -153,15 +159,21 @@ pub struct PiiRegion {
 }
 
 pub fn remove_pii(text: &str) -> String {
-    let mut sanitized = text.to_string();
+    // Fast path: single RegexSet DFA pass checks all patterns at once.
+    // Most captured text has zero PII, so we avoid 27 individual replace_all calls.
+    let matches: Vec<usize> = PII_REGEX_SET.matches(text).into_iter().collect();
+    if matches.is_empty() {
+        return text.to_string();
+    }
 
     // First, handle password context specially - preserve the keyword, redact only the value
-    sanitized = PASSWORD_CONTEXT_PATTERN
-        .replace_all(&sanitized, "$1[PASSWORD]")
+    let mut sanitized = PASSWORD_CONTEXT_PATTERN
+        .replace_all(text, "$1[PASSWORD]")
         .to_string();
 
-    // Then apply other PII patterns (skip PASSWORD_CONTEXT as it's already handled)
-    for (pattern, replacement) in PII_PATTERNS.iter() {
+    // Only run replace_all for patterns that actually matched
+    for idx in matches {
+        let (pattern, replacement) = &PII_PATTERNS[idx];
         if *replacement == "PASSWORD_CONTEXT" {
             continue; // Already handled above
         }
@@ -194,12 +206,7 @@ pub fn remove_pii_from_text_json(
 
 /// Check if a given text contains PII
 pub fn contains_pii(text: &str) -> bool {
-    for (pattern, _) in PII_PATTERNS.iter() {
-        if pattern.is_match(text) {
-            return true;
-        }
-    }
-    false
+    PII_REGEX_SET.is_match(text)
 }
 
 /// Get the PII type for a given text, if any

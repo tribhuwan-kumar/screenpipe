@@ -1813,7 +1813,7 @@ impl DatabaseManager {
             return Ok(vec![]);
         }
 
-        // Read the latest video_chunk OUTSIDE the write transaction.
+        // Read the latest video_chunk OUTSIDE the write queue.
         // This SELECT only needs a shared read lock, not the exclusive write lock.
         // Moving it out reduces write lock hold time significantly.
         let video_chunk: Option<(i64, String)> = sqlx::query_as(
@@ -1836,66 +1836,48 @@ impl DatabaseManager {
 
         let timestamp = timestamp.unwrap_or_else(Utc::now);
         let ocr_engine_str = format!("{:?}", *ocr_engine);
-        let mut results = Vec::with_capacity(windows.len());
 
-        // Now acquire the write lock — only INSERTs run inside the transaction.
-        let mut tx = self.begin_immediate_with_retry().await?;
+        // Build owned window data for the queue
+        let batch_windows: Vec<crate::write_queue::FrameBatchWindow> = windows
+            .iter()
+            .map(|w| crate::write_queue::FrameBatchWindow {
+                app_name: w.app_name.clone(),
+                window_name: w.window_name.clone(),
+                browser_url: w.browser_url.clone(),
+                focused: w.focused,
+                text: w.text.clone(),
+                text_json: w.text_json.clone(),
+            })
+            .collect();
 
-        for (idx, window) in windows.iter().enumerate() {
-            // Compute full_text for FTS indexing
-            let full_text = if window.text.is_empty() {
-                None
-            } else {
-                Some(window.text.as_str())
-            };
-
-            // Insert frame
-            let frame_id = sqlx::query(
-                "INSERT INTO frames (video_chunk_id, offset_index, timestamp, name, browser_url, app_name, window_name, focused, device_name, full_text) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            )
-            .bind(video_chunk_id)
-            .bind(offset_index)
-            .bind(timestamp)
-            .bind(&file_path)
-            .bind(window.browser_url.as_deref())
-            .bind(window.app_name.as_deref())
-            .bind(window.window_name.as_deref())
-            .bind(window.focused)
-            .bind(device_name)
-            .bind(full_text)
-            .execute(&mut **tx.conn())
-            .await?
-            .last_insert_rowid();
-
-            // Insert OCR text
-            let text_length = window.text.len() as i64;
-            sqlx::query(
-                "INSERT INTO ocr_text (frame_id, text, text_json, ocr_engine, text_length) VALUES (?1, ?2, ?3, ?4, ?5)",
-            )
-            .bind(frame_id)
-            .bind(&window.text)
-            .bind(&window.text_json)
-            .bind(&ocr_engine_str)
-            .bind(text_length)
-            .execute(&mut **tx.conn())
+        // Submit through the write queue instead of acquiring the write lock directly.
+        let result = self
+            .write_queue
+            .submit(crate::write_queue::WriteOp::InsertFramesBatch {
+                video_chunk_id,
+                file_path,
+                device_name: device_name.to_string(),
+                timestamp,
+                offset_index,
+                ocr_engine_str,
+                windows: batch_windows,
+            })
             .await?;
 
-            // Dual-write: insert OCR elements into unified elements table
-            if !window.text_json.is_empty() {
-                Self::insert_ocr_elements(tx.conn(), frame_id, &window.text_json).await;
+        match result {
+            crate::write_queue::WriteResult::FrameBatch(results) => {
+                debug!(
+                    "Batch inserted {} frames with OCR for device {}",
+                    results.len(),
+                    device_name
+                );
+                Ok(results)
             }
-
-            results.push((frame_id, idx));
+            _ => {
+                tracing::warn!("Unexpected WriteResult variant from InsertFramesBatch");
+                Ok(vec![])
+            }
         }
-
-        tx.commit().await?;
-        debug!(
-            "Batch inserted {} frames with OCR for device {}",
-            results.len(),
-            device_name
-        );
-
-        Ok(results)
     }
 
     /// Insert multiple frames (each with their own offset and windows) in a single

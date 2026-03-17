@@ -453,6 +453,8 @@ impl ScreenpipeSyncProvider {
     }
 
     /// Import a sync chunk from another machine into the local database.
+    /// All INSERTs run inside a single transaction to avoid repeated WAL lock
+    /// acquisitions. Existence checks (SELECTs) use the read pool.
     pub async fn import_chunk(&self, chunk: &SyncChunk) -> SyncResult<ImportResult> {
         let pool = &self.db.pool;
         let mut imported_frames = 0;
@@ -477,9 +479,14 @@ impl ScreenpipeSyncProvider {
             });
         }
 
+        // Acquire a single write transaction for ALL inserts
+        let mut tx = self.db.begin_immediate_with_retry().await.map_err(|e| {
+            SyncError::Database(format!("failed to begin import transaction: {}", e))
+        })?;
+
         // Import frames
         for frame in &chunk.frames {
-            // Check if already exists
+            // Check if already exists (read-only, uses read pool)
             let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM frames WHERE sync_id = ?")
                 .bind(&frame.sync_id)
                 .fetch_optional(pool)
@@ -504,7 +511,7 @@ impl ScreenpipeSyncProvider {
             .bind(&frame.device_name)
             .bind(&frame.sync_id)
             .bind(&chunk.machine_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut **tx.conn())
             .await
             .map_err(|e| SyncError::Database(format!("failed to create video_chunk: {}", e)))?
             .unwrap_or(0);
@@ -531,14 +538,17 @@ impl ScreenpipeSyncProvider {
             .bind(&frame.sync_id)
             .bind(&chunk.machine_id)
             .bind(Utc::now().to_rfc3339())
-            .execute(pool)
+            .execute(&mut **tx.conn())
             .await
             .map_err(|e| SyncError::Database(format!("failed to insert frame: {}", e)))?;
 
             imported_frames += 1;
         }
 
-        // Build sync_id to local frame_id map
+        // Yield to let other async tasks progress after frames section
+        tokio::task::yield_now().await;
+
+        // Build sync_id to local frame_id map (read-only, uses read pool)
         let frame_sync_ids: Vec<String> = chunk.frames.iter().map(|f| f.sync_id.clone()).collect();
         let frame_id_map: std::collections::HashMap<String, i64> = if !frame_sync_ids.is_empty() {
             sqlx::query_as::<_, (String, i64)>(
@@ -564,7 +574,7 @@ impl ScreenpipeSyncProvider {
         // Import OCR
         for ocr in &chunk.ocr_records {
             if let Some(&frame_id) = frame_id_map.get(&ocr.frame_sync_id) {
-                // Check if already exists
+                // Check if already exists (read-only, uses read pool)
                 let exists: Option<(i64,)> =
                     sqlx::query_as("SELECT 1 FROM ocr_text WHERE sync_id = ?")
                         .bind(&ocr.sync_id)
@@ -603,7 +613,7 @@ impl ScreenpipeSyncProvider {
                 .bind(window_name)
                 .bind(&ocr.sync_id)
                 .bind(Utc::now().to_rfc3339())
-                .execute(pool)
+                .execute(&mut **tx.conn())
                 .await
                 .map_err(|e| SyncError::Database(format!("failed to insert OCR: {}", e)))?;
 
@@ -613,9 +623,12 @@ impl ScreenpipeSyncProvider {
             }
         }
 
+        // Yield to let other async tasks progress after OCR section
+        tokio::task::yield_now().await;
+
         // Import transcriptions
         for trans in &chunk.transcriptions {
-            // Check if already exists
+            // Check if already exists (read-only, uses read pool)
             let exists: Option<(i64,)> =
                 sqlx::query_as("SELECT 1 FROM audio_transcriptions WHERE sync_id = ?")
                     .bind(&trans.sync_id)
@@ -643,7 +656,7 @@ impl ScreenpipeSyncProvider {
             .bind(&trans.sync_id)
             .bind(&trans.sync_id)
             .bind(&chunk.machine_id)
-            .fetch_one(pool)
+            .fetch_one(&mut **tx.conn())
             .await
             .map_err(|e| SyncError::Database(format!("failed to create audio_chunk: {}", e)))?;
 
@@ -661,18 +674,21 @@ impl ScreenpipeSyncProvider {
             .bind(trans.speaker_id)
             .bind(&trans.sync_id)
             .bind(Utc::now().to_rfc3339())
-            .execute(pool)
+            .execute(&mut **tx.conn())
             .await
             .map_err(|e| SyncError::Database(format!("failed to insert transcription: {}", e)))?;
 
             imported_transcriptions += 1;
         }
 
+        // Yield to let other async tasks progress after transcriptions section
+        tokio::task::yield_now().await;
+
         // Import accessibility records — insert as frames with full_text
         // (accessibility table was dropped; text now lives in frames.full_text)
         let mut imported_accessibility = 0;
         for acc in &chunk.accessibility_records {
-            // Check if already imported via sync_id on frames
+            // Check if already imported via sync_id on frames (read-only, uses read pool)
             let exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM frames WHERE sync_id = ?")
                 .bind(&acc.sync_id)
                 .fetch_optional(pool)
@@ -700,7 +716,7 @@ impl ScreenpipeSyncProvider {
             .bind(&acc.sync_id)
             .bind(&chunk.machine_id)
             .bind(Utc::now().to_rfc3339())
-            .execute(pool)
+            .execute(&mut **tx.conn())
             .await
             .map_err(|e| {
                 SyncError::Database(format!("failed to insert accessibility as frame: {}", e))
@@ -709,10 +725,13 @@ impl ScreenpipeSyncProvider {
             imported_accessibility += 1;
         }
 
+        // Yield to let other async tasks progress after accessibility section
+        tokio::task::yield_now().await;
+
         // Import UI events
         let mut imported_ui_events = 0;
         for event in &chunk.ui_events {
-            // Check if already exists
+            // Check if already exists (read-only, uses read pool)
             let exists: Option<(i64,)> =
                 sqlx::query_as("SELECT 1 FROM ui_events WHERE sync_id = ?")
                     .bind(&event.sync_id)
@@ -764,12 +783,17 @@ impl ScreenpipeSyncProvider {
             .bind(&event.sync_id)
             .bind(&chunk.machine_id)
             .bind(Utc::now().to_rfc3339())
-            .execute(pool)
+            .execute(&mut **tx.conn())
             .await
             .map_err(|e| SyncError::Database(format!("failed to insert ui_event: {}", e)))?;
 
             imported_ui_events += 1;
         }
+
+        // Commit the single transaction for all inserts
+        tx.commit().await.map_err(|e| {
+            SyncError::Database(format!("failed to commit import transaction: {}", e))
+        })?;
 
         Ok(ImportResult {
             imported_frames,

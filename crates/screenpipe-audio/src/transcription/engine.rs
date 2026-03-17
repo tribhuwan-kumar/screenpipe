@@ -88,12 +88,12 @@ impl TranscriptionEngine {
                 #[cfg(feature = "qwen3-asr")]
                 {
                     let model = tokio::task::spawn_blocking(|| {
-                        audiopipe::Model::from_pretrained("qwen3-asr-0.6b-ggml")
+                        audiopipe::Model::from_pretrained("qwen3-asr-0.6b-antirez")
                     })
                     .await
                     .map_err(|e| anyhow!("qwen3-asr model loading task panicked: {}", e))?
                     .map_err(|e| anyhow!("failed to load qwen3-asr model: {}", e))?;
-                    info!("qwen3-asr-ggml model loaded successfully");
+                    info!("qwen3-asr (OpenBLAS) model loaded successfully");
                     Ok(Self::Qwen3Asr {
                         model: Arc::new(StdMutex::new(model)),
                         vocabulary,

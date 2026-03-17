@@ -11,7 +11,7 @@
     "prebuild": "bun scripts/pre_build.js",
     "tauri": "tauri",
     "tauri:build": "scripts/build_macos.sh",
-    "clean": "rm -rf out && cargo clean && rm -rf src-tauri/{screenpipe-*,tesseract-*,ffmpeg*,bun*,ollama*,ui_monitor*} node_modules"
+    "clean": "rm -rf out && cargo clean && rm -rf src-tauri/{screenpipe-*,tesseract-*,ffmpeg*,openblas*,bun*,ollama*,ui_monitor*} node_modules"
   },
   "dependencies": {
     "@patternfly/react-core": "^6.4.1",

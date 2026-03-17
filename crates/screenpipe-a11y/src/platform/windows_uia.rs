@@ -36,8 +36,8 @@ use windows::Win32::UI::Accessibility::{
     UIA_PROPERTY_ID,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId, PeekMessageW,
-    TranslateMessage, MSG, PM_REMOVE,
+    DispatchMessageW, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    MsgWaitForMultipleObjects, PeekMessageW, QS_ALLINPUT, TranslateMessage, MSG, PM_REMOVE,
 };
 
 /// Shared state for pending focus changes (set by COM handler, read by UIA thread)
@@ -699,14 +699,61 @@ pub fn run_uia_thread(
             }
         }
 
-        // Sleep to avoid busy-waiting (50ms = responsive but low CPU)
-        std::thread::sleep(Duration::from_millis(50));
+        // Block until a Windows message arrives or a computed timeout elapses.
+        // This replaces the old 50ms sleep-poll: the thread stays asleep until
+        // something actually needs to happen (COM event, debounce, or re-capture).
+        let wait_ms = compute_next_timeout(&pending_focus, debounce_dur, &last_capture_time, interval_dur, &config);
+        unsafe {
+            MsgWaitForMultipleObjects(
+                None,
+                false,
+                wait_ms as u32,
+                QS_ALLINPUT,
+            );
+        }
     }
 
     // Cleanup
     let _ = uia.unsubscribe_focus_changes(&handler_interface);
     unsafe { CoUninitialize() };
     debug!("UIA worker thread stopped");
+}
+
+/// Compute the next timeout for MsgWaitForMultipleObjects.
+/// Returns the minimum of:
+/// - Time until debounce fires (if pending focus exists)
+/// - Time until periodic re-capture
+/// - Max 1000ms safety ceiling
+fn compute_next_timeout(
+    pending_focus: &Arc<Mutex<Option<PendingFocus>>>,
+    debounce_dur: Duration,
+    last_capture_time: &Instant,
+    interval_dur: Duration,
+    config: &UiCaptureConfig,
+) -> u64 {
+    let mut min_ms: u64 = 1000; // safety ceiling
+
+    // Time until debounce fires
+    if let Some(ref pf) = *pending_focus.lock() {
+        let elapsed = pf.time.elapsed();
+        if elapsed >= debounce_dur {
+            return 0; // Ready now
+        }
+        let remaining = (debounce_dur - elapsed).as_millis() as u64;
+        min_ms = min_ms.min(remaining);
+    }
+
+    // Time until periodic re-capture
+    if config.tree_capture_interval_ms > 0 {
+        let elapsed = last_capture_time.elapsed();
+        if elapsed >= interval_dur {
+            return 0; // Ready now
+        }
+        let remaining = (interval_dur - elapsed).as_millis() as u64;
+        min_ms = min_ms.min(remaining);
+    }
+
+    min_ms.max(1) // avoid 0 (which means infinite in Win32)
 }
 
 /// Capture a window tree and send it through the channel if it changed.

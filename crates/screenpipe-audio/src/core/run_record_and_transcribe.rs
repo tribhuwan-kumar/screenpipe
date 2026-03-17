@@ -23,9 +23,14 @@ use crate::{
 use super::AudioStream;
 
 /// Timeout for receiving audio data before considering the stream dead.
-/// If no audio is received for this duration, the stream is likely hijacked
-/// by another app (e.g., Wispr Flow taking over the microphone).
+/// For input: another app may have hijacked the mic (e.g., Wispr Flow).
+/// For output: ScreenCaptureKit delivers callbacks continuously even during
+/// silence, so a 30s timeout means the OS stream genuinely stopped.
 const AUDIO_RECEIVE_TIMEOUT_SECS: u64 = 30;
+
+/// Grace period after stream start before treating timeouts as fatal.
+/// ScreenCaptureKit may take a moment to begin delivering callbacks.
+const STREAM_STARTUP_GRACE_SECS: u64 = 10;
 
 /// Recording always uses 30s segments. Both batch and realtime modes record identically.
 /// The batch vs realtime distinction is in the processing layer (manager.rs):
@@ -54,12 +59,13 @@ pub async fn run_record_and_transcribe(
     let max_samples = audio_samples_len + overlap_samples;
     let mut collected_audio = Vec::new();
     let mut segment_start_time = now_epoch_secs();
+    let stream_start = std::time::Instant::now();
 
     while is_running.load(Ordering::Relaxed)
         && !audio_stream.is_disconnected.load(Ordering::Relaxed)
     {
         while collected_audio.len() < max_samples && is_running.load(Ordering::Relaxed) {
-            match recv_audio_chunk(&mut receiver, &audio_stream, &device_name, &metrics).await? {
+            match recv_audio_chunk(&mut receiver, &audio_stream, &device_name, &metrics, &stream_start).await? {
                 Some(chunk) => collected_audio.extend(chunk),
                 None => continue,
             }
@@ -105,6 +111,7 @@ async fn recv_audio_chunk(
     audio_stream: &Arc<AudioStream>,
     device_name: &str,
     metrics: &Arc<AudioPipelineMetrics>,
+    stream_start: &std::time::Instant,
 ) -> Result<Option<Vec<f32>>> {
     let recv_result = tokio::time::timeout(
         Duration::from_secs(AUDIO_RECEIVE_TIMEOUT_SECS),
@@ -131,21 +138,26 @@ async fn recv_audio_chunk(
             Err(anyhow!("Audio stream error: {}", e))
         }
         Err(_timeout) => {
-            if audio_stream.device.device_type == DeviceType::Output {
+            // During startup grace period, tolerate timeouts while the OS
+            // stream initializes (ScreenCaptureKit may take a moment).
+            if stream_start.elapsed().as_secs() < STREAM_STARTUP_GRACE_SECS + AUDIO_RECEIVE_TIMEOUT_SECS {
                 debug!(
-                    "no audio from output device {} for {}s - idle (normal), continuing",
+                    "no audio from {} for {}s during startup grace, continuing",
                     device_name, AUDIO_RECEIVE_TIMEOUT_SECS
                 );
                 return Ok(None);
             }
-            debug!(
-                "no audio received from {} for {}s - stream may be hijacked, triggering reconnect",
+            // For both input and output: ScreenCaptureKit delivers callbacks
+            // continuously even during silence. A 30s timeout means the OS
+            // stream genuinely stopped producing data.
+            warn!(
+                "no audio received from {} for {}s - stream dead, triggering reconnect",
                 device_name, AUDIO_RECEIVE_TIMEOUT_SECS
             );
             metrics.record_stream_timeout();
             audio_stream.is_disconnected.store(true, Ordering::Relaxed);
             Err(anyhow!(
-                "Audio stream timeout - no data received for {}s (possible audio hijack)",
+                "Audio stream timeout - no data received for {}s (stream dead)",
                 AUDIO_RECEIVE_TIMEOUT_SECS
             ))
         }

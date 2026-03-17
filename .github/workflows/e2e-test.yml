@@ -196,7 +196,7 @@ jobs:
           patchelf x11-utils x11-apps xdotool openbox xterm
           fonts-liberation imagemagick fonts-dejavu alsa-utils
           pulseaudio pulseaudio-utils libpipewire-0.3-dev
-          libgbm-dev libwayland-dev libegl-dev mold
+          libgbm-dev libwayland-dev libegl-dev libopenblas-dev mold
 
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1

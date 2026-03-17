@@ -240,6 +240,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "antirez-asr-sys"
+version = "0.1.0"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=b199cf5b3d1e0e87604f02910240a2bc8851cf9a#b199cf5b3d1e0e87604f02910240a2bc8851cf9a"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,8 +540,9 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=4ceceb0#4ceceb04ed8c0939cfca904bd8b649e8537bc316"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=b199cf5b3d1e0e87604f02910240a2bc8851cf9a#b199cf5b3d1e0e87604f02910240a2bc8851cf9a"
 dependencies = [
+ "antirez-asr-sys",
  "hf-hub 0.4.3",
  "qwen3-asr-sys",
  "serde",
@@ -5733,7 +5742,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=4ceceb0#4ceceb04ed8c0939cfca904bd8b649e8537bc316"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=b199cf5b3d1e0e87604f02910240a2bc8851cf9a#b199cf5b3d1e0e87604f02910240a2bc8851cf9a"
 dependencies = [
  "cc",
  "cmake",
@@ -6504,7 +6513,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-audio"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "anyhow",
  "audiopipe",
@@ -6563,7 +6572,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-config"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "dirs 6.0.0",
  "serde",
@@ -6576,7 +6585,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-connect"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6602,7 +6611,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-core"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -6645,7 +6654,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-db"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6670,7 +6679,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-engine"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6738,7 +6747,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-events"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6756,7 +6765,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-screen"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "accessibility-sys",
  "anyhow",
@@ -6796,7 +6805,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-vault"
-version = "0.3.185"
+version = "0.3.186"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -10008,9 +10017,9 @@ dependencies = [
 
 [[package]]
 name = "xcap"
-version = "0.8.3"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bdf4c8d4c33dfab96fb585cdf991a7bd86d754ac35edd4b80477a9b739892b2"
+checksum = "4e68ffe10c83f18354f0bcf6d9038d5e133c7d91af57baca50d1b90bea83257c"
 dependencies = [
  "dispatch2",
  "image",

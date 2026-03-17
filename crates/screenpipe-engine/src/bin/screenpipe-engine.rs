@@ -27,7 +27,7 @@ use screenpipe_engine::{
         Cli, CliAudioTranscriptionEngine, Command,
     },
     hot_frame_cache::HotFrameCache,
-    start_meeting_persister, start_meeting_watcher, start_power_manager, start_sleep_monitor,
+    start_meeting_watcher, start_power_manager, start_sleep_monitor,
     start_speaker_identification, start_ui_recording,
     vision_manager::{start_monitor_watcher, stop_monitor_watcher, VisionManager},
     watch_pid, ResourceMonitor, SCServer,
@@ -1004,21 +1004,18 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Start meeting watcher (standalone accessibility listener for smart mode)
+    // Start v2 meeting detection (UI scanning for call controls)
     // Independent of enable_input_capture/enable_accessibility — only needs accessibility permission
-    let _meeting_watcher_handle = meeting_detector
-        .as_ref()
-        .map(|detector| start_meeting_watcher(detector.clone()));
-
-    // Persist meeting state transitions to DB (smart mode only)
-    let _meeting_persister_handle = meeting_detector.as_ref().map(|detector| {
-        start_meeting_persister(detector.clone(), db.clone(), manual_meeting.clone())
-    });
-
-    // Bridge calendar events from event bus into meeting detector
-    let _calendar_bridge_handle = meeting_detector
-        .as_ref()
-        .map(|detector| screenpipe_engine::start_calendar_bridge(detector.clone()));
+    let _meeting_watcher_handle = {
+        let v2_in_meeting = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        start_meeting_watcher(
+            db.clone(),
+            v2_in_meeting,
+            manual_meeting.clone(),
+            shutdown_tx.subscribe(),
+            meeting_detector.clone(),
+        )
+    };
 
     // Start calendar-assisted speaker identification
     let _speaker_id_handle = start_speaker_identification(db.clone(), config.user_name.clone());
