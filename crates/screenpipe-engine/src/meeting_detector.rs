@@ -488,17 +488,65 @@ impl MeetingUiScanner {
         }
     }
 
-    /// Fallback for non-macOS: always returns "in call" if process is running.
-    #[cfg(not(target_os = "macos"))]
+    /// Windows: scan a process's windows via UI Automation for call control signals.
+    #[cfg(target_os = "windows")]
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
+        let app_name = windows_get_process_name(pid).unwrap_or_else(|| format!("pid:{}", pid));
+        let max_depth = self.max_depth;
+        let scan_timeout = self.scan_timeout;
+        let signals = profile.call_signals.clone();
+        let min_required = profile.min_signals_required;
+
+        let scan_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            windows_scan_process_uia(pid, &signals, min_required, max_depth, scan_timeout)
+        }));
+
+        let matched_signals = match scan_result {
+            Ok(Ok(signals)) => signals,
+            Ok(Err(e)) => {
+                debug!(
+                    "meeting scanner: UIA scan failed for pid {} ({}): {}",
+                    pid, app_name, e
+                );
+                Vec::new()
+            }
+            Err(_) => {
+                warn!(
+                    "meeting scanner: UIA scan panicked for pid {} ({})",
+                    pid, app_name
+                );
+                Vec::new()
+            }
+        };
+
+        let signals_found = matched_signals.len();
+        let is_in_call = signals_found >= profile.min_signals_required;
+
+        debug!(
+            "meeting scanner: pid={} app={} signals={} in_call={} matched={:?}",
+            pid, app_name, signals_found, is_in_call, matched_signals,
+        );
+
+        ScanResult {
+            app_name,
+            profile_index: 0,
+            signals_found,
+            is_in_call,
+            matched_signals,
+        }
+    }
+
+    /// Fallback for platforms other than macOS and Windows.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
         let _ = profile;
         let app_name = format!("pid:{}", pid);
         ScanResult {
             app_name,
             profile_index: 0,
-            signals_found: 1,
-            is_in_call: true,
-            matched_signals: vec!["process-running-fallback".to_string()],
+            signals_found: 0,
+            is_in_call: false,
+            matched_signals: Vec::new(),
         }
     }
 }
@@ -699,6 +747,301 @@ fn get_app_name_for_pid(pid: i32) -> Option<String> {
         let app = cidre::ns::RunningApp::with_pid(pid)?;
         app.localized_name().map(|s| s.to_string())
     })
+}
+
+// ============================================================================
+// Windows UIA Helpers
+// ============================================================================
+
+/// Process info from Windows process enumeration.
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone)]
+struct WindowsProcessInfo {
+    pid: u32,
+    name: String,
+}
+
+/// Enumerate all running processes on Windows.
+#[cfg(target_os = "windows")]
+fn windows_enumerate_processes() -> Vec<WindowsProcessInfo> {
+    use windows::Win32::System::Threading::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+
+    let mut results = Vec::new();
+
+    unsafe {
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(h) => h,
+            Err(_) => return results,
+        };
+
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                let name = String::from_utf16_lossy(
+                    &entry.szExeFile[..entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len())]
+                );
+                results.push(WindowsProcessInfo {
+                    pid: entry.th32ProcessID,
+                    name,
+                });
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+
+        let _ = windows::Win32::Foundation::CloseHandle(snapshot);
+    }
+
+    results
+}
+
+/// Get process name by PID on Windows.
+#[cfg(target_os = "windows")]
+fn windows_get_process_name(pid: i32) -> Option<String> {
+    windows_enumerate_processes()
+        .into_iter()
+        .find(|p| p.pid == pid as u32)
+        .map(|p| p.name)
+}
+
+/// Enumerate visible window titles and their PIDs on Windows.
+#[cfg(target_os = "windows")]
+fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use std::sync::Mutex;
+
+    let results: Arc<Mutex<Vec<(i32, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let results = &*(lparam.0 as *const Mutex<Vec<(i32, String)>>);
+
+        if IsWindowVisible(hwnd).as_bool() {
+            let mut text = [0u16; 512];
+            let len = GetWindowTextW(hwnd, &mut text);
+            if len > 0 {
+                let title = String::from_utf16_lossy(&text[..len as usize]);
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if let Ok(mut r) = results.lock() {
+                    r.push((pid as i32, title));
+                }
+            }
+        }
+        BOOL(1)
+    }
+
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_callback),
+            LPARAM(&*results_clone as *const Mutex<Vec<(i32, String)>> as isize),
+        );
+    }
+
+    Arc::try_unwrap(results).unwrap_or_default().into_inner().unwrap_or_default()
+}
+
+/// Scan a process's windows via Windows UI Automation for call control signals.
+#[cfg(target_os = "windows")]
+fn windows_scan_process_uia(
+    pid: i32,
+    signals: &[CallSignal],
+    min_required: usize,
+    max_depth: usize,
+    timeout: Duration,
+) -> Result<Vec<String>, String> {
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use std::sync::Mutex;
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+
+        let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)
+            .map_err(|e| format!("UIA init failed: {}", e))?;
+
+        let walker = automation
+            .ControlViewWalker()
+            .map_err(|e| format!("walker failed: {}", e))?;
+
+        // Enumerate windows for this PID
+        let target_pid = pid as u32;
+        let param_data = (target_pid, Mutex::new(Vec::<HWND>::new()));
+
+        unsafe extern "system" fn enum_for_pid(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let (target_pid, hwnds) =
+                &*(lparam.0 as *const (u32, Mutex<Vec<HWND>>));
+
+            if IsWindowVisible(hwnd).as_bool() {
+                let mut win_pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, Some(&mut win_pid));
+                if win_pid == *target_pid {
+                    if let Ok(mut h) = hwnds.lock() {
+                        h.push(hwnd);
+                    }
+                }
+            }
+            BOOL(1)
+        }
+
+        let _ = EnumWindows(
+            Some(enum_for_pid),
+            LPARAM(&param_data as *const (u32, Mutex<Vec<HWND>>) as isize),
+        );
+
+        let window_handles = param_data.1.into_inner().unwrap_or_default();
+
+        let start = Instant::now();
+        let mut found = Vec::new();
+
+        for hwnd in window_handles {
+            if start.elapsed() >= timeout || found.len() >= min_required {
+                break;
+            }
+
+            let element = match automation.ElementFromHandle(hwnd) {
+                Ok(el) => el,
+                Err(_) => continue,
+            };
+
+            windows_walk_uia(
+                &walker, &element, signals, 0, max_depth,
+                &start, timeout, &mut found, min_required,
+            );
+        }
+
+        CoUninitialize();
+        Ok(found)
+    }
+}
+
+/// Walk UIA element tree looking for call signals (Windows).
+#[cfg(target_os = "windows")]
+unsafe fn windows_walk_uia(
+    walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+    signals: &[CallSignal],
+    depth: usize,
+    max_depth: usize,
+    start: &Instant,
+    timeout: Duration,
+    found: &mut Vec<String>,
+    min_required: usize,
+) {
+    if depth >= max_depth || start.elapsed() >= timeout || found.len() >= min_required {
+        return;
+    }
+
+    let role = element
+        .CurrentLocalizedControlType()
+        .ok()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    let name = element.CurrentName().ok().map(|s| s.to_string());
+    let automation_id = element.CurrentAutomationId().ok().map(|s| s.to_string());
+    let help_text = element.CurrentHelpText().ok().map(|s| s.to_string());
+    let accel_key = element.CurrentAcceleratorKey().ok().map(|s| s.to_string());
+
+    // Windows uses "Button", macOS uses "AXButton" — match both forms
+    let ax_role = format!("AX{}", role);
+    let role_lower = role.to_lowercase();
+
+    for signal in signals {
+        let matched = match signal {
+            CallSignal::AutomationId(id) => {
+                automation_id.as_deref().map_or(false, |a| a == *id)
+            }
+            CallSignal::AutomationIdContains(substr) => {
+                automation_id.as_deref().map_or(false, |a| {
+                    a.to_lowercase().contains(&substr.to_lowercase())
+                })
+            }
+            CallSignal::KeyboardShortcut(shortcut) => {
+                let s_lower = shortcut.to_lowercase();
+                help_text.as_deref().map_or(false, |h| h.to_lowercase().contains(&s_lower))
+                    || accel_key.as_deref().map_or(false, |a| a.to_lowercase().contains(&s_lower))
+                    || name.as_deref().map_or(false, |n| n.to_lowercase().contains(&s_lower))
+            }
+            CallSignal::RoleWithName { role: r, name_contains } => {
+                let expected = r.strip_prefix("AX").unwrap_or(r);
+                let role_matches = role == *r || ax_role == *r || role == expected
+                    || role_lower == expected.to_lowercase();
+                if !role_matches {
+                    false
+                } else {
+                    let needle = name_contains.to_lowercase();
+                    name.as_deref().map_or(false, |n| n.to_lowercase().contains(&needle))
+                        || help_text.as_deref().map_or(false, |h| h.to_lowercase().contains(&needle))
+                }
+            }
+            CallSignal::MenuBarItem { title_contains } => {
+                (role_lower == "menu bar" || role_lower == "menubar")
+                    && name.as_deref().map_or(false, |n| {
+                        n.to_lowercase().contains(&title_contains.to_lowercase())
+                    })
+            }
+            CallSignal::MenuItemId(expected_id) => {
+                (role_lower == "menu item" || role_lower == "menuitem")
+                    && automation_id.as_deref().map_or(false, |a| a == *expected_id)
+            }
+        };
+
+        if matched {
+            let label = format_signal_match(signal, &role, name.as_deref(), help_text.as_deref());
+            if !found.contains(&label) {
+                found.push(label);
+            }
+        }
+    }
+
+    if found.len() >= min_required {
+        return;
+    }
+
+    // Skip content areas
+    if role_lower == "edit" || role_lower == "document" || role_lower == "text" || role_lower == "list" {
+        return;
+    }
+
+    // Walk children
+    if let Ok(child) = walker.GetFirstChildElement(element) {
+        windows_walk_uia(
+            walker, &child, signals, depth + 1, max_depth,
+            start, timeout, found, min_required,
+        );
+
+        let mut current = child;
+        while found.len() < min_required && start.elapsed() < timeout {
+            match walker.GetNextSiblingElement(&current) {
+                Ok(next) => {
+                    windows_walk_uia(
+                        walker, &next, signals, depth + 1, max_depth,
+                        start, timeout, found, min_required,
+                    );
+                    current = next;
+                }
+                Err(_) => break,
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -1105,14 +1448,121 @@ fn has_browser_meeting_url(pid: i32, url_patterns: &[&str]) -> bool {
     })
 }
 
-/// Fallback for non-macOS platforms — returns empty (process-based detection only).
-#[cfg(not(target_os = "macos"))]
+/// Windows: find running meeting app processes by matching process names and browser window titles.
+#[cfg(target_os = "windows")]
+pub fn find_running_meeting_apps(
+    profiles: &[MeetingDetectionProfile],
+    currently_tracking: Option<&ActiveTracking>,
+) -> Vec<RunningMeetingApp> {
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use std::collections::{HashMap, HashSet};
+
+    let mut results = Vec::new();
+    let mut seen_pids = HashSet::new();
+
+    // Build a map of process name -> (pid, exe_name) for all running processes
+    let process_map = windows_enumerate_processes();
+
+    // First, handle currently tracked process
+    if let Some(tracking) = currently_tracking {
+        if process_map.values().any(|p| p.pid == tracking.pid as u32) {
+            results.push(RunningMeetingApp {
+                pid: tracking.pid,
+                app_name: process_map.values()
+                    .find(|p| p.pid == tracking.pid as u32)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| format!("pid:{}", tracking.pid)),
+                profile_index: tracking.profile_index,
+                browser_url: None,
+            });
+            seen_pids.insert(tracking.pid);
+        }
+    }
+
+    // Match native app processes
+    for (idx, profile) in profiles.iter().enumerate() {
+        for proc in process_map.values() {
+            let proc_name_lower = proc.name.to_lowercase();
+            let matches_native = profile
+                .app_identifiers
+                .windows_process_names
+                .iter()
+                .any(|n| proc_name_lower == n.to_lowercase());
+
+            if matches_native && !seen_pids.contains(&(proc.pid as i32)) {
+                results.push(RunningMeetingApp {
+                    pid: proc.pid as i32,
+                    app_name: proc.name.clone(),
+                    profile_index: idx,
+                    browser_url: None,
+                });
+                seen_pids.insert(proc.pid as i32);
+            }
+        }
+    }
+
+    // Match browser URL patterns via window titles
+    let window_titles = windows_enumerate_window_titles();
+
+    let browser_process_names: &[&str] = &[
+        "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe",
+        "arc.exe", "opera.exe", "vivaldi.exe",
+    ];
+
+    for (idx, profile) in profiles.iter().enumerate() {
+        if profile.app_identifiers.browser_url_patterns.is_empty() {
+            continue;
+        }
+
+        for (pid, title) in &window_titles {
+            if seen_pids.contains(pid) {
+                continue;
+            }
+
+            // Check if this is a browser process
+            let proc_name = process_map.values()
+                .find(|p| p.pid == *pid as u32)
+                .map(|p| p.name.to_lowercase());
+            let is_browser = proc_name.as_ref().map_or(false, |n| {
+                browser_process_names.iter().any(|b| n == *b)
+            });
+            if !is_browser {
+                continue;
+            }
+
+            let title_lower = title.to_lowercase();
+            if profile.app_identifiers.browser_url_patterns.iter().any(|p| {
+                title_lower.contains(&p.to_lowercase())
+            }) {
+                results.push(RunningMeetingApp {
+                    pid: *pid,
+                    app_name: proc_name.unwrap_or_default(),
+                    profile_index: idx,
+                    browser_url: Some(title.clone()),
+                });
+                seen_pids.insert(*pid);
+                break;
+            }
+        }
+    }
+
+    results
+}
+
+/// Fallback for platforms other than macOS and Windows.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn find_running_meeting_apps(
     profiles: &[MeetingDetectionProfile],
     _currently_tracking: Option<&ActiveTracking>,
 ) -> Vec<RunningMeetingApp> {
     let _ = profiles;
-    debug!("meeting v2: find_running_meeting_apps not implemented for this platform");
+    debug!("meeting detector: find_running_meeting_apps not implemented for this platform");
     Vec::new()
 }
 
