@@ -401,7 +401,7 @@ impl MeetingUiScanner {
         let app_name = get_app_name_for_pid(pid).unwrap_or_else(|| format!("pid:{}", pid));
         let max_depth = self.max_depth;
         let scan_timeout = self.scan_timeout;
-        let signals = profile.call_signals.clone();
+        let precomputed = PrecomputedSignal::from_signals(&profile.call_signals);
         let min_required = profile.min_signals_required;
 
         // Wrap in catch_unwind to survive cidre/ObjC FFI panics
@@ -440,7 +440,7 @@ impl MeetingUiScanner {
 
                     // Walk this window's AX tree looking for signals
                     walk_for_signals(
-                        window, &signals, 0, max_depth, &start, scan_timeout,
+                        window, &precomputed, 0, max_depth, &start, scan_timeout,
                         &mut found, min_required,
                     );
 
@@ -555,10 +555,13 @@ impl MeetingUiScanner {
 ///
 /// This is a standalone function (not a method) so it can be called recursively
 /// without borrowing `self`. It is only compiled on macOS.
+///
+/// Uses `PrecomputedSignal` to avoid per-signal `.to_lowercase()` allocations.
+/// Lowercases node title/desc/identifier ONCE per node, not once per signal.
 #[cfg(target_os = "macos")]
 fn walk_for_signals(
     elem: &cidre::ax::UiElement,
-    signals: &[CallSignal],
+    signals: &[PrecomputedSignal],
     depth: usize,
     max_depth: usize,
     start: &Instant,
@@ -582,16 +585,21 @@ fn walk_for_signals(
     let desc = get_ax_string_attr(elem, cidre::ax::attr::desc());
     let identifier = get_ax_identifier(elem);
 
-    // Check each signal against this element
-    for signal in signals {
-        if check_signal_match(
-            signal,
+    // Lowercase node fields ONCE, not once per signal
+    let title_lower = title.as_deref().map(|t| t.to_lowercase());
+    let desc_lower = desc.as_deref().map(|d| d.to_lowercase());
+    let ident_lower = identifier.as_deref().map(|i| i.to_lowercase());
+
+    // Check each signal against this element using precomputed lowercase
+    for ps in signals {
+        if check_signal_match_precomputed(
+            ps,
             &role_str,
-            title.as_deref(),
-            desc.as_deref(),
-            identifier.as_deref(),
+            title_lower.as_deref(),
+            desc_lower.as_deref(),
+            ident_lower.as_deref(),
         ) {
-            let label = format_signal_match(signal, &role_str, title.as_deref(), desc.as_deref());
+            let label = format_signal_match(&ps.signal, &role_str, title.as_deref(), desc.as_deref());
             if !found.contains(&label) {
                 found.push(label);
             }
@@ -628,7 +636,38 @@ fn walk_for_signals(
     }
 }
 
+/// A signal with pre-lowercased match strings to avoid per-node allocations.
+struct PrecomputedSignal {
+    signal: CallSignal,
+    /// Pre-lowercased match string (the substring to search for).
+    lower: String,
+}
+
+impl PrecomputedSignal {
+    fn from_signals(signals: &[CallSignal]) -> Vec<PrecomputedSignal> {
+        signals
+            .iter()
+            .map(|s| {
+                let lower = match s {
+                    CallSignal::AutomationId(id) => id.to_string(), // exact match, no lowercase needed
+                    CallSignal::AutomationIdContains(substr) => substr.to_lowercase(),
+                    CallSignal::KeyboardShortcut(shortcut) => shortcut.to_lowercase(),
+                    CallSignal::RoleWithName { name_contains, .. } => name_contains.to_lowercase(),
+                };
+                PrecomputedSignal {
+                    signal: s.clone(),
+                    lower,
+                }
+            })
+            .collect()
+    }
+}
+
 /// Check if a [`CallSignal`] matches the given element properties.
+///
+/// `title` and `desc` are expected to be raw (not lowercased) for the original
+/// `check_signal_match` entry point. For the optimized hot path, use
+/// `check_signal_match_precomputed` with pre-lowercased values.
 fn check_signal_match(
     signal: &CallSignal,
     role: &str,
@@ -673,6 +712,39 @@ fn check_signal_match(
                 return false;
             }
             identifier.map_or(false, |ident| ident == *expected_id)
+        }
+    }
+}
+
+/// Optimized signal match using pre-lowercased signal strings and pre-lowercased node fields.
+/// Avoids per-signal and per-node `.to_lowercase()` allocations on the hot path.
+fn check_signal_match_precomputed(
+    ps: &PrecomputedSignal,
+    role: &str,
+    title_lower: Option<&str>,
+    desc_lower: Option<&str>,
+    identifier_lower: Option<&str>,
+) -> bool {
+    match &ps.signal {
+        CallSignal::AutomationId(id) => {
+            // exact match (not lowercased — automation IDs are case-sensitive)
+            identifier_lower.map_or(false, |ident| ident == *id)
+        }
+        CallSignal::AutomationIdContains(_) => {
+            identifier_lower.map_or(false, |ident| ident.contains(&ps.lower[..]))
+        }
+        CallSignal::KeyboardShortcut(_) => {
+            let in_desc = desc_lower.map_or(false, |d| d.contains(&ps.lower[..]));
+            let in_title = title_lower.map_or(false, |t| t.contains(&ps.lower[..]));
+            in_desc || in_title
+        }
+        CallSignal::RoleWithName { role: r, .. } => {
+            if role != *r {
+                return false;
+            }
+            let in_title = title_lower.map_or(false, |t| t.contains(&ps.lower[..]));
+            let in_desc = desc_lower.map_or(false, |d| d.contains(&ps.lower[..]));
+            in_title || in_desc
         }
     }
 }

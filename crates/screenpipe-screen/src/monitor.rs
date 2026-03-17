@@ -74,6 +74,10 @@ pub struct SafeMonitor {
     cached_sck: Option<SckMonitor>,
     #[cfg(target_os = "macos")]
     cached_xcap: Option<XcapMonitor>,
+    /// Cached index position in XcapMonitor::all() to avoid linear search on every capture.
+    /// Monitor IDs are stable during a session, so we try the cached index first (O(1)).
+    #[cfg(not(target_os = "macos"))]
+    cached_monitor_index: Arc<std::sync::Mutex<Option<usize>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -188,6 +192,7 @@ impl SafeMonitor {
         Self {
             monitor_id,
             monitor_data,
+            cached_monitor_index: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -277,13 +282,29 @@ impl SafeMonitor {
     #[cfg(not(target_os = "macos"))]
     pub async fn capture_image(&self) -> Result<DynamicImage> {
         let monitor_id = self.monitor_id;
+        let cached_idx = self.cached_monitor_index.clone();
 
         let image = tokio::task::spawn_blocking(move || -> Result<DynamicImage> {
-            let monitor = XcapMonitor::all()
-                .map_err(Error::from)?
-                .into_iter()
-                .find(|m| m.id().unwrap_or(0) == monitor_id)
-                .ok_or_else(|| anyhow::anyhow!("Monitor not found"))?;
+            let monitors = XcapMonitor::all().map_err(Error::from)?;
+
+            // Try cached index first (O(1) vs O(n))
+            let monitor = {
+                let idx = cached_idx.lock().unwrap();
+                idx.and_then(|i| monitors.get(i))
+                    .filter(|m| m.id().unwrap_or(0) == monitor_id)
+            }
+            .or_else(|| {
+                // Cache miss — linear search and cache result
+                let found = monitors
+                    .iter()
+                    .enumerate()
+                    .find(|(_, m)| m.id().unwrap_or(0) == monitor_id);
+                if let Some((i, _)) = found {
+                    *cached_idx.lock().unwrap() = Some(i);
+                }
+                found.map(|(_, m)| m)
+            })
+            .ok_or_else(|| anyhow::anyhow!("Monitor not found"))?;
 
             if monitor.width().unwrap_or(0) == 0 || monitor.height().unwrap_or(0) == 0 {
                 return Err(anyhow::anyhow!("Invalid monitor dimensions"));
@@ -390,6 +411,8 @@ impl SafeMonitor {
         .map_err(|e| anyhow::anyhow!("refresh task panicked: {}", e))??;
 
         self.monitor_data = Arc::new(refreshed);
+        // Invalidate cached index — monitor list may have changed
+        *self.cached_monitor_index.lock().unwrap() = None;
         tracing::debug!("Refreshed monitor {} metadata", self.monitor_id);
         Ok(())
     }
@@ -711,6 +734,8 @@ mod tests {
             cached_sck: None,
             #[cfg(target_os = "macos")]
             cached_xcap: None,
+            #[cfg(not(target_os = "macos"))]
+            cached_monitor_index: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
