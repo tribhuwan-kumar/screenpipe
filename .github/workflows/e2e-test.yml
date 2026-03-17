@@ -91,7 +91,8 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         workspaces: apps/screenpipe-app-tauri/src-tauri
-        shared-key: screenpipe-tauri-v2
+        shared-key: screenpipe-tauri-e2e
+        key: "1" # increment this to bust the cache if needed
 
     - name: Configure Bun cache on same drive as workspace (Windows perf fix)
       shell: pwsh
@@ -217,7 +218,8 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         workspaces: apps/screenpipe-app-tauri/src-tauri
-        shared-key: screenpipe-tauri-v2
+        shared-key: screenpipe-tauri-e2e
+        key: "1" # increment this to bust the cache if needed
 
     - name: Install frontend dependencies
       working-directory: ./apps/screenpipe-app-tauri
