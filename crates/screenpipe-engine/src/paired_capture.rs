@@ -129,7 +129,7 @@ pub async fn paired_capture(
     // where the document body is invisible to the accessibility tree.
     let a11y_is_thin = has_accessibility_text
         && tree_snapshot
-            .map(|s| a11y_content_is_thin(s, ctx.window_name, ctx.browser_url))
+            .map(|s| a11y_content_is_thin(s, ctx.window_name, ctx.browser_url, ctx.app_name))
             .unwrap_or(false);
 
     // Run OCR when: no a11y text, app prefers OCR, OR a11y text is thin (hybrid)
@@ -357,6 +357,35 @@ const CANVAS_APP_PATTERNS: &[&str] = &[
     "tldraw",
 ];
 
+/// Meeting/video apps whose main content is screen-shared or GPU-rendered video.
+/// The a11y tree only returns UI chrome (buttons, menus) not the actual content.
+/// Matched against app_name (lowercased).
+const MEETING_APP_PATTERNS: &[&str] = &[
+    "zoom",
+    "teams",
+    "slack",
+    "webex",
+    "skype",
+    "facetime",
+    "google meet",
+    "discord",
+    "around",
+    "tuple",
+    "pop",
+    "gather",
+    "butter",
+    "ringcentral",
+    "bluejeans",
+    "gotomeeting",
+    "goto meeting",
+    "dialpad",
+    "chime",
+    "jitsi",
+    "whereby",
+    "loom",
+    "riverside",
+];
+
 /// URL patterns for canvas-rendered apps. When inside a Google Doc, the window
 /// title is the document name (not "Google Docs"), so we also check the URL.
 const CANVAS_URL_PATTERNS: &[&str] = &[
@@ -380,6 +409,7 @@ fn a11y_content_is_thin(
     snap: &screenpipe_a11y::tree::TreeSnapshot,
     window_name: Option<&str>,
     browser_url: Option<&str>,
+    app_name: Option<&str>,
 ) -> bool {
     // 1a. Known canvas-rendered apps by window title
     if let Some(win) = window_name {
@@ -402,6 +432,19 @@ fn a11y_content_is_thin(
             .any(|pat| url_lower.contains(pat))
         {
             debug!("a11y_content_is_thin: known canvas URL '{}'", url);
+            return true;
+        }
+    }
+
+    // 1c. Meeting/video apps — main content is screen-shared or GPU-rendered,
+    //     a11y tree only has UI chrome (buttons like "Mute my audio" repeated).
+    if let Some(app) = app_name {
+        let app_lower = app.to_lowercase();
+        if MEETING_APP_PATTERNS
+            .iter()
+            .any(|pat| app_lower.contains(pat))
+        {
+            debug!("a11y_content_is_thin: meeting app '{}'", app);
             return true;
         }
     }
@@ -739,14 +782,15 @@ mod tests {
         assert!(a11y_content_is_thin(
             &snap,
             Some("Untitled - Google Docs"),
-            None
+            None,
+            None,
         ));
     }
 
     #[test]
     fn test_thin_known_canvas_app_figma() {
         let snap = make_snap(vec![]);
-        assert!(a11y_content_is_thin(&snap, Some("My Design - Figma"), None));
+        assert!(a11y_content_is_thin(&snap, Some("My Design - Figma"), None, None));
     }
 
     #[test]
@@ -757,7 +801,7 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "This is a long article about dogs. Dogs are domesticated descendants of wolves. They were the first species to be domesticated over 14,000 years ago.".into(), depth: 1, bounds: None },
             AccessibilityTreeNode { role: "AXLink".into(), text: "Read more about canine history".into(), depth: 1, bounds: None },
         ]);
-        assert!(!a11y_content_is_thin(&snap, Some("Dog - Wikipedia"), None));
+        assert!(!a11y_content_is_thin(&snap, Some("Dog - Wikipedia"), None, None));
     }
 
     #[test]
@@ -856,7 +900,7 @@ mod tests {
             },
         ]);
         // >70% chrome text
-        assert!(a11y_content_is_thin(&snap, Some("Untitled document"), None));
+        assert!(a11y_content_is_thin(&snap, Some("Untitled document"), None, None));
     }
 
     #[test]
@@ -868,7 +912,7 @@ mod tests {
             bounds: None,
         }]);
         // < 100 chars total
-        assert!(a11y_content_is_thin(&snap, Some("Some App"), None));
+        assert!(a11y_content_is_thin(&snap, Some("Some App"), None, None));
     }
 
     #[test]
@@ -882,7 +926,8 @@ mod tests {
         assert!(!a11y_content_is_thin(
             &snap,
             Some("main.rs - Visual Studio Code"),
-            None
+            None,
+            None,
         ));
     }
 
@@ -897,13 +942,15 @@ mod tests {
         assert!(a11y_content_is_thin(
             &snap,
             Some("Creon's list of profound books"),
-            Some("https://docs.google.com/document/d/abc123/edit")
+            Some("https://docs.google.com/document/d/abc123/edit"),
+            None,
         ));
         // Same content on a non-canvas URL → not thin (content ratio is fine)
         assert!(!a11y_content_is_thin(
             &snap,
             Some("Creon's list of profound books"),
-            Some("https://example.com")
+            Some("https://example.com"),
+            None,
         ));
     }
 }
