@@ -91,6 +91,8 @@ export function MemoriesSection() {
 
   useEffect(() => {
     fetchMemories();
+    const interval = setInterval(fetchMemories, 10000);
+    return () => clearInterval(interval);
   }, [fetchMemories]);
 
   const deleteMemory = async (id: number) => {

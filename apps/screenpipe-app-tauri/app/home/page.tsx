@@ -193,7 +193,7 @@ function SettingsPageContent() {
         .then((meetings: { meeting_end: string | null; detection_source: string }[]) => {
           if (cancelled) return;
           const hasActive = meetings.some(
-            (m) => m.meeting_end === null && m.detection_source === "manual"
+            (m) => m.meeting_end === null
           );
           setManualMeeting(hasActive);
         })

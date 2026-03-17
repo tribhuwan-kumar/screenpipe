@@ -100,6 +100,8 @@ export function MeetingsSection() {
 
   useEffect(() => {
     fetchMeetings();
+    const interval = setInterval(fetchMeetings, 10000);
+    return () => clearInterval(interval);
   }, [fetchMeetings]);
 
   const sortedMeetings = React.useMemo(() => {
