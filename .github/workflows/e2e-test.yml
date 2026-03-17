@@ -276,7 +276,8 @@ jobs:
             libpipewire-0.3-dev \
             libgbm-dev \
             libwayland-dev \
-            libegl-dev
+            libegl-dev \
+            libopenblas-dev
 
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1

@@ -442,7 +442,8 @@ jobs:
             libwayland-dev \
             libpipewire-0.3-dev \
             libgbm-dev \
-            libegl-dev
+            libegl-dev \
+            libopenblas-dev
 
       - uses: actions/cache@v4
         with:
