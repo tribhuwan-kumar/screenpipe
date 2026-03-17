@@ -71,7 +71,10 @@ export function MemoriesSection() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: MemoryListResponse = await res.json();
       apiCache.set(cacheKey, data, 60_000); // 1 min TTL
-      setMemories(data.data);
+      const sorted = data.data.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setMemories(sorted);
       setTotal(data.pagination.total);
     } catch (err) {
       if (!cached) {
