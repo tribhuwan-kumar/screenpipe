@@ -73,6 +73,10 @@ pub enum CallSignal {
     /// Match an AXMenuItem by its automation ID (AXIdentifier).
     /// Zoom exposes identifiers like "onMuteAudio:", "onMuteVideo:" on menu items.
     MenuItemId(&'static str),
+    /// Role-agnostic name match. Matches ANY element whose name contains
+    /// the text, regardless of control type. Use as a last-resort fallback
+    /// when apps expose meeting controls with non-standard roles.
+    NameContains(&'static str),
 }
 
 /// Per-app detection configuration.
@@ -116,6 +120,9 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                     role: "AXButton",
                     name_contains: "leave",
                 },
+                // Fallback: Teams on some Windows machines exposes "Leave" as a
+                // non-Button control type (Custom, Text, etc.). Match by name only.
+                CallSignal::NameContains("leave"),
             ],
             min_signals_required: 1,
         },
@@ -371,10 +378,10 @@ impl Default for MeetingUiScanner {
 }
 
 impl MeetingUiScanner {
-    /// Create a new scanner with default settings (depth=15, timeout=500ms).
+    /// Create a new scanner with default settings (depth=25, timeout=500ms).
     pub fn new() -> Self {
         Self {
-            max_depth: 15,
+            max_depth: 25,
             scan_timeout: Duration::from_millis(500),
         }
     }
@@ -655,6 +662,7 @@ impl PrecomputedSignal {
                     CallSignal::RoleWithName { name_contains, .. } => name_contains.to_lowercase(),
                     CallSignal::MenuBarItem { title_contains } => title_contains.to_lowercase(),
                     CallSignal::MenuItemId(id) => id.to_string(),
+                    CallSignal::NameContains(name) => name.to_lowercase(),
                 };
                 PrecomputedSignal {
                     signal: s.clone(),
@@ -715,6 +723,12 @@ fn check_signal_match(
             }
             identifier.map_or(false, |ident| ident == *expected_id)
         }
+        CallSignal::NameContains(needle) => {
+            let needle_lower = needle.to_lowercase();
+            let in_title = title.map_or(false, |t| t.to_lowercase().contains(&needle_lower));
+            let in_desc = desc.map_or(false, |d| d.to_lowercase().contains(&needle_lower));
+            in_title || in_desc
+        }
     }
 }
 
@@ -760,6 +774,12 @@ fn check_signal_match_precomputed(
             }
             identifier_lower.map_or(false, |ident| ident == &ps.lower[..])
         }
+        CallSignal::NameContains(_) => {
+            // Role-agnostic: match any element whose title or description contains the text
+            let in_title = title_lower.map_or(false, |t| t.contains(&ps.lower[..]));
+            let in_desc = desc_lower.map_or(false, |d| d.contains(&ps.lower[..]));
+            in_title || in_desc
+        }
     }
 }
 
@@ -783,6 +803,10 @@ fn format_signal_match(
             format!("menu_bar_item={} ({})", title_contains, label)
         }
         CallSignal::MenuItemId(id) => format!("menu_item_id={}", id),
+        CallSignal::NameContains(name) => {
+            let label = title.or(desc).unwrap_or("?");
+            format!("name_contains={} ({})", name, label)
+        }
     }
 }
 
@@ -1087,6 +1111,11 @@ unsafe fn windows_walk_uia(
             CallSignal::MenuItemId(expected_id) => {
                 (role_lower == "menu item" || role_lower == "menuitem")
                     && automation_id.as_deref().map_or(false, |a| a == *expected_id)
+            }
+            CallSignal::NameContains(needle) => {
+                let n_lower = needle.to_lowercase();
+                name.as_deref().map_or(false, |n| n.to_lowercase().contains(&n_lower))
+                    || help_text.as_deref().map_or(false, |h| h.to_lowercase().contains(&n_lower))
             }
         };
 
