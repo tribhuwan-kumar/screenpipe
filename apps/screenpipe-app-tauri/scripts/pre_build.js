@@ -28,9 +28,10 @@ const config = {
 	windows: {
 		ffmpegName: 'ffmpeg-8.0.1-full_build-shared',
 		ffmpegUrl: 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.0.1-full_build-shared.7z',
-		// Windows ARM64 (aarch64-pc-windows-msvc) — tordona/ffmpeg-win-arm64, full-shared for bin/ + lib/
-		ffmpegNameArm64: 'ffmpeg-master-latest-full-shared-win-arm64',
-		ffmpegUrlArm64: 'https://github.com/tordona/ffmpeg-win-arm64/releases/download/latest/ffmpeg-master-latest-full-shared-win-arm64.7z',
+		// Windows ARM64 (aarch64-pc-windows-msvc) — tordona/ffmpeg-win-arm64
+		// Resolved dynamically at build time via GitHub API (daily autobuilds change filenames)
+		ffmpegArm64GithubRepo: 'tordona/ffmpeg-win-arm64',
+		ffmpegArm64AssetPattern: /shared.*win-arm64\.7z$/,
 	},
 	linux: {
 		aptPackages: [
@@ -404,8 +405,17 @@ if (platform == 'windows') {
 	// Setup FFMPEG (x64: gyan.dev; arm64: tordona/ffmpeg-win-arm64)
 	if (!(await fs.exists(config.ffmpegRealname))) {
 		if (winArch === 'arm64') {
-			await $`${wgetPath} --no-config --tries=10 --retry-connrefused --waitretry=10 --secure-protocol=auto --no-check-certificate --show-progress ${config.windows.ffmpegUrlArm64} -O ${config.windows.ffmpegNameArm64}.7z`
-			await $`${sevenZ} x ${config.windows.ffmpegNameArm64}.7z`
+			// Resolve download URL dynamically from GitHub API (daily autobuilds change filenames)
+			const apiUrl = `https://api.github.com/repos/${config.windows.ffmpegArm64GithubRepo}/releases/latest`
+			const releaseResp = await fetch(apiUrl)
+			const releaseData = await releaseResp.json()
+			const asset = releaseData.assets?.find((a) => config.windows.ffmpegArm64AssetPattern.test(a.name))
+			if (!asset) throw new Error(`No matching ffmpeg ARM64 asset found in ${apiUrl}`)
+			const arm64Url = asset.browser_download_url
+			const arm64Filename = asset.name
+			console.log(`ffmpeg ARM64: ${arm64Url}`)
+			await $`${wgetPath} --no-config --tries=10 --retry-connrefused --waitretry=10 --secure-protocol=auto --no-check-certificate --show-progress ${arm64Url} -O ${arm64Filename}`
+			await $`${sevenZ} x ${arm64Filename}`
 			// tordona 7z extracts to a single folder; move its contents to ffmpeg (or rename if single top-level dir)
 			const entries = await fs.readdir(cwd, { withFileTypes: true })
 			const extractedDir = entries.find((d) => d.isDirectory() && d.name.startsWith('ffmpeg-') && d.name.includes('win-arm64'))
@@ -418,7 +428,7 @@ if (platform == 'windows') {
 					await fs.rename(path.join(cwd, e.name), path.join(cwd, config.ffmpegRealname, e.name))
 				}
 			}
-			await fs.rm(path.join(cwd, `${config.windows.ffmpegNameArm64}.7z`), { force: true }).catch(() => {})
+			await fs.rm(path.join(cwd, arm64Filename), { force: true }).catch(() => {})
 		} else {
 			await $`${wgetPath} --no-config --tries=10 --retry-connrefused --waitretry=10 --secure-protocol=auto --no-check-certificate --show-progress ${config.windows.ffmpegUrl} -O ${config.windows.ffmpegName}.7z`
 			await $`${sevenZ} x ${config.windows.ffmpegName}.7z`
