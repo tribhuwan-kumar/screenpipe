@@ -2188,6 +2188,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       unlistenPipeEvent?.();
       unlistenTerminated?.();
       unlistenLog?.();
+      // Abort any in-flight Pi request when navigating away from chat.
+      // Without this, Pi keeps streaming in the background and rejects
+      // new messages with "already processing" when the user returns.
+      commands.piAbort(PI_CHAT_SESSION).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
