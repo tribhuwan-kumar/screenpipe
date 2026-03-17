@@ -24,7 +24,7 @@ curl "http://localhost:3030/search?q=QUERY&content_type=all&limit=10&start_time=
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `q` | string | No | Keywords. Do NOT use for audio searches — transcriptions are noisy, q filters too aggressively. |
-| `content_type` | string | No | `all` (default), `ocr`, `audio`, `input`, `accessibility`, `memory` |
+| `content_type` | string | No | `all` (default), `accessibility`, `audio`, `input`, `ocr`, `memory`. Screen text is primarily captured via the OS accessibility tree (`accessibility`); OCR is a fallback for apps without accessibility support (games, remote desktops). Use `all` unless you need a specific modality. |
 | `limit` | integer | No | Max 1-20. Default: 10 |
 | `offset` | integer | No | Pagination. Default: 0 |
 | `start_time` | ISO 8601 or relative | **Yes** | Accepts `2024-01-15T10:00:00Z` or `16h ago`, `2d ago`, `30m ago` |
@@ -48,7 +48,7 @@ Don't jump to heavy `/search` calls. Escalate:
 
 Decision tree:
 - "What was I doing?" → Step 1 only
-- "Summarize my meeting" → Step 2 with `content_type=audio`, NO q param
+- "Summarize my meeting" → Step 2 with `content_type=audio`, NO q param. Add `content_type=all` for screen context.
 - "How long on X?" → Step 1 (`/activity-summary` has `active_minutes`)
 - "Which apps today?" → Step 1 (do NOT use frame counts or SQL)
 - "What button did I click?" → Step 3 (`/elements` with role=AXButton)
@@ -75,6 +75,8 @@ Decision tree:
   "pagination": {"limit": 10, "offset": 0, "total": 42}
 }
 ```
+
+> **Note**: The `"OCR"` type label is used for all screen text results, including text captured via the accessibility tree. Most screen text comes from accessibility, not OCR.
 
 ---
 
@@ -125,7 +127,7 @@ Roles are **not normalized** across platforms. Use the correct format for the us
 | Tab | `AXTab` | `TabItem` | `Tab` |
 | List item | `AXRow` | `ListItem` | `ListItem` |
 
-OCR roles (all platforms): `line`, `word`, `block`, `paragraph`, `page`
+OCR-only roles (fallback when accessibility unavailable): `line`, `word`, `block`, `paragraph`, `page`
 
 ---
 
@@ -381,7 +383,7 @@ curl http://localhost:3030/vision/list          # Monitors
 Reference specific moments with clickable links:
 
 ```markdown
-[10:30 AM — Chrome](screenpipe://frame/12345)           # OCR results (use frame_id)
+[10:30 AM — Chrome](screenpipe://frame/12345)           # screen text results (use frame_id)
 [meeting at 3pm](screenpipe://timeline?timestamp=ISO8601) # Audio results (use timestamp)
 ```
 
