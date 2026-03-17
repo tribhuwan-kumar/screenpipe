@@ -489,7 +489,8 @@ jobs:
             patchelf \
             libwebkit2gtk-4.1-dev \
             xdg-desktop-portal-gtk \
-            libsecret-1-dev
+            libsecret-1-dev \
+            libopenblas-dev
 
       - name: Install frontend dependencies
         working-directory: ${{ github.workspace }}/apps/screenpipe-app-tauri
