@@ -438,13 +438,29 @@ function DiscoverView() {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       posthog.capture("pipe_installed_from_store", { slug });
+
+      // Override the pipe's preset with the user's default preset so it
+      // works out of the box (published pipes may reference presets the
+      // user doesn't have).
+      const pipeName = data.name || slug;
+      const defaultPreset = settings.aiPresets?.find((p: any) => p.defaultPreset);
+      if (defaultPreset?.id) {
+        try {
+          await fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ preset: defaultPreset.id }),
+          });
+        } catch {}
+      }
+
       toast({
-        title: `"${data.name || slug}" installed`,
+        title: `"${pipeName}" installed`,
         description: "switch to my pipes to configure and run it",
       });
       // Invalidate cache and update installed names
       apiCache.invalidate("pipes/installed");
-      setInstalledNames((prev) => new Set([...prev, data.name || slug]));
+      setInstalledNames((prev) => new Set([...prev, pipeName]));
     } catch (err: any) {
       toast({
         title: "failed to install pipe",
