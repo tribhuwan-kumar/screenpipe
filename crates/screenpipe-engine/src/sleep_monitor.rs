@@ -243,7 +243,26 @@ pub fn start_sleep_monitor() {
         }
     });
 
-    // Thread 2: NSWorkspace notification observers for system sleep/wake.
+    // Thread 2: Safety-net CGSession poller. The CFNotificationCenter above is
+    // event-driven but notifications can be lost during sleep/wake transitions or
+    // if the CFRunLoop thread stalls. This poll catches any missed unlock within 5s.
+    std::thread::spawn(|| {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+
+            let locked = check_screen_locked_cgsession();
+            let was_locked = SCREEN_IS_LOCKED.swap(locked, Ordering::SeqCst);
+            if locked != was_locked {
+                if locked {
+                    info!("Screen locked (CGSession safety-net poll)");
+                } else {
+                    info!("Screen unlocked (CGSession safety-net poll)");
+                }
+            }
+        }
+    });
+
+    // Thread 3: NSWorkspace notification observers for system sleep/wake.
     // These are still useful for the RECENTLY_WOKE flag and telemetry.
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -307,12 +326,28 @@ fn on_did_wake(handle: &tokio::runtime::Handle) {
     // Mark that we recently woke
     RECENTLY_WOKE.store(true, Ordering::SeqCst);
 
+    // Immediately re-check screen lock state via CGSession.
+    // The CFNotificationCenter unlock notification can be lost during sleep/wake,
+    // so we must poll here to avoid SCREEN_IS_LOCKED getting stuck true forever.
+    let locked = check_screen_locked_cgsession();
+    let was_locked = SCREEN_IS_LOCKED.swap(locked, Ordering::SeqCst);
+    if was_locked && !locked {
+        // CFNotification missed the unlock — we're fixing it here
+    }
+
     // Spawn a task on the captured tokio runtime handle to check recording
     // health after a short delay. We can't use bare tokio::spawn() here
     // because this callback runs on an NSRunLoop thread, not a tokio thread.
     handle.spawn(async {
-        // Wait 5 seconds for system to stabilize
+        // Wait 5 seconds for system to stabilize, then re-check lock state again.
+        // The first check in on_did_wake may be too early (display not fully awake).
         tokio::time::sleep(Duration::from_secs(5)).await;
+
+        let locked = check_screen_locked_cgsession();
+        let was_locked = SCREEN_IS_LOCKED.swap(locked, Ordering::SeqCst);
+        if was_locked && !locked {
+            info!("Screen unlocked after wake (CGSession safety-net cleared SCREEN_IS_LOCKED)");
+        }
 
         // Check if recording is healthy
         let (audio_healthy, vision_healthy) = check_recording_health().await;

@@ -331,8 +331,28 @@ impl VisionManager {
         }
     }
 
-    /// Get list of currently recording monitor IDs
+    /// Get list of currently recording monitor IDs.
+    /// Removes dead tasks (finished JoinHandles) so MonitorWatcher can restart them.
     pub async fn active_monitors(&self) -> Vec<u32> {
+        // Collect dead task IDs first to avoid holding DashMap refs during removal
+        let dead: Vec<u32> = self
+            .recording_tasks
+            .iter()
+            .filter(|entry| entry.value().is_finished())
+            .map(|entry| *entry.key())
+            .collect();
+
+        for id in &dead {
+            if let Some((_, handle)) = self.recording_tasks.remove(id) {
+                warn!(
+                    "Monitor {} capture task died unexpectedly, removing so it can be restarted",
+                    id
+                );
+                // Await to clean up the JoinHandle
+                let _ = handle.await;
+            }
+        }
+
         self.recording_tasks
             .iter()
             .map(|entry| *entry.key())
