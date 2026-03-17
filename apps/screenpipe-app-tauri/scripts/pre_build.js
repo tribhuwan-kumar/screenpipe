@@ -59,7 +59,7 @@ const config = {
 	macos: {
 		ffmpegUrlArm: 'https://www.osxexperts.net/ffmpeg7arm.zip',
 		ffprobeUrlArm: 'https://www.osxexperts.net/ffprobe71arm.zip',
-		ffmpegUrlx86_64: 'https://ffmpeg.martin-riedl.de/download/macos/amd64/1766437297_8.0.1/ffmpeg.zip',
+		ffmpegUrlx86_64: 'https://www.osxexperts.net/ffmpeg80intel.zip',
 		ffprobeUrlx86_64: 'https://www.osxexperts.net/ffprobe71intel.zip',
 	},
 }
@@ -243,37 +243,42 @@ async function copyFile(src, dest) {
 
 /* ########## Linux ########## */
 if (platform == 'linux') {
-	// Check and install APT packages
-	try {
-		const aptPackagesNotInstalled = [];
+	// In CI, cache-apt-pkgs-action already installs packages; skip redundant apt install
+	const inCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+	if (inCI) {
+		console.log('CI detected: apt packages handled by workflow cache-apt-pkgs-action ✅\n');
+	} else {
+		// Check and install APT packages (local dev)
+		try {
+			const aptPackagesNotInstalled = [];
 
-		// Check each package installation status
-		for (const pkg of config.linux.aptPackages) {
-			try {
-				await $`dpkg -s ${pkg}`.quiet();
-			} catch {
-				aptPackagesNotInstalled.push(pkg);
+			// Check each package installation status
+			for (const pkg of config.linux.aptPackages) {
+				try {
+					await $`dpkg -s ${pkg}`.quiet();
+				} catch {
+					aptPackagesNotInstalled.push(pkg);
+				}
 			}
-		}
 
-		if (aptPackagesNotInstalled.length > 0) {
-			console.log('the following required packages are missing:');
-			aptPackagesNotInstalled.forEach(pkg => console.log(`  - ${pkg}`));
-			console.log('\ninstalling missing packages...');
+			if (aptPackagesNotInstalled.length > 0) {
+				console.log('the following required packages are missing:');
+				aptPackagesNotInstalled.forEach(pkg => console.log(`  - ${pkg}`));
+				console.log('\ninstalling missing packages...');
 
-			console.log('updating package lists...');
-			await $`sudo apt-get -qq update`;
-			
-			console.log('installing packages...');
-			await $`sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y ${aptPackagesNotInstalled}`;
-			console.log('Package installation completed successfully ✅\n');
-		} else {
-			console.log('all required packages are already installed ✅\n');
+				console.log('updating package lists...');
+				await $`sudo apt-get -qq update`;
+
+				console.log('installing packages...');
+				await $`sudo DEBIAN_FRONTEND=noninteractive apt-get -qq install -y ${aptPackagesNotInstalled}`;
+				console.log('Package installation completed successfully ✅\n');
+			} else {
+				console.log('all required packages are already installed ✅\n');
+			}
+		} catch (error) {
+			console.error("error checking/installing apt packages: %s", error.message);
 		}
-	} catch (error) {
-		console.error("error checking/installing apt packages: %s", error.message);
 	}
-
 
 	// Setup FFMPEG
 	if (!(await fs.exists(config.ffmpegRealname))) {

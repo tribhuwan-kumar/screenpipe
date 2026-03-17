@@ -84,7 +84,7 @@ export default function GeneralSettings() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-testid="section-settings-general">
       <p className="text-muted-foreground text-sm mb-4">
         Startup, updates, and notifications
       </p>
