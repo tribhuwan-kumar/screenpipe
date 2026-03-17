@@ -24,9 +24,11 @@ export class AnthropicProvider implements AIProvider {
 	}
 
 	/**
-	 * Build the system prompt from system messages and response_format
+	 * Build the system prompt from system messages and response_format.
+	 * Returns an array of content blocks with cache_control on the last block
+	 * to enable Anthropic prompt caching (90% input cost reduction on cache hits).
 	 */
-	private buildSystemPrompt(body: RequestBody): string | undefined {
+	private buildSystemPrompt(body: RequestBody): Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> | undefined {
 		const parts: string[] = [];
 
 		// Extract system messages from the conversation
@@ -50,7 +52,18 @@ export class AnthropicProvider implements AIProvider {
 			}
 		}
 
-		return parts.length > 0 ? parts.join('\n\n') : undefined;
+		if (parts.length === 0) return undefined;
+
+		const combined = parts.join('\n\n');
+		// Only cache system prompts with enough tokens to benefit (Anthropic min: 1024 tokens for haiku, 2048 for sonnet/opus)
+		// Rough heuristic: 4 chars ≈ 1 token, so 4096 chars ≈ 1024 tokens
+		const shouldCache = combined.length >= 4096;
+
+		return [{
+			type: 'text' as const,
+			text: combined,
+			...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+		}];
 	}
 
 	/**

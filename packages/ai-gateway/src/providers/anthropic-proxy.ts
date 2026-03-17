@@ -31,7 +31,7 @@ export async function proxyToAnthropic(
 			stream?: boolean;
 			max_tokens?: number;
 			messages?: any[];
-			system?: string;
+			system?: string | Array<{ type: string; text: string; cache_control?: { type: string } }>;
 			temperature?: number;
 			[key: string]: any;
 		};
@@ -50,6 +50,25 @@ export async function proxyToAnthropic(
 		// This is a client-side bug workaround, not provider-specific
 		if (body.messages) {
 			body.messages = sanitizeMessages(body.messages);
+		}
+
+		// Inject prompt caching on the system prompt if not already present.
+		// Anthropic caches the prefix up to the last cache_control breakpoint,
+		// reducing input costs by 90% on cache hits (5-min TTL).
+		if (body.system) {
+			if (typeof body.system === 'string') {
+				// Convert string to array format with cache_control
+				if (body.system.length >= 4096) {
+					body.system = [{ type: 'text', text: body.system, cache_control: { type: 'ephemeral' } }];
+				}
+			} else if (Array.isArray(body.system) && body.system.length > 0) {
+				// Array format — add cache_control to last block if not already present
+				const last = body.system[body.system.length - 1];
+				const totalLen = body.system.reduce((sum, b) => sum + (b.text?.length || 0), 0);
+				if (totalLen >= 4096 && !last.cache_control) {
+					last.cache_control = { type: 'ephemeral' };
+				}
+			}
 		}
 
 		const isStreaming = body.stream === true;
