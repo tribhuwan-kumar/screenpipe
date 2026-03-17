@@ -362,22 +362,18 @@ pub async fn start_embedded_server(
     // Shared manual meeting lock — used by both the HTTP API and the meeting persister
     let manual_meeting = std::sync::Arc::new(tokio::sync::RwLock::new(None::<i64>));
 
-    // Start meeting watcher (standalone accessibility listener for smart mode)
+    // Start v2 meeting detection (UI scanning for call controls)
     // Independent of enable_input_capture/enable_accessibility toggles — only needs accessibility permission
-    if let Some(ref detector) = meeting_detector {
-        let detector_clone = detector.clone();
-        let _meeting_watcher = start_meeting_watcher(detector_clone);
-        // Handle kept alive by the spawned task — no need to store it
-        info!("meeting watcher started");
-
-        // Persist meeting state transitions to DB (was missing — meetings were never saved in desktop app)
-        let _meeting_persister =
-            screenpipe_engine::start_meeting_persister(detector.clone(), db.clone(), manual_meeting.clone());
-        info!("meeting persister started");
-
-        // Bridge calendar events from event bus into meeting detector
-        let _calendar_bridge = screenpipe_engine::start_calendar_bridge(detector.clone());
-        info!("calendar bridge started for meeting detection");
+    {
+        let v2_in_meeting = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let _meeting_watcher = start_meeting_watcher(
+            db.clone(),
+            v2_in_meeting,
+            manual_meeting.clone(),
+            shutdown_tx.subscribe(),
+            meeting_detector.clone(),
+        );
+        info!("meeting watcher started (v2 UI scanning)");
     }
 
     // Start calendar-assisted speaker identification
