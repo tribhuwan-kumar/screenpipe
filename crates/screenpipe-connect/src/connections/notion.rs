@@ -13,13 +13,22 @@ static DEF: IntegrationDef = IntegrationDef {
     icon: "notion",
     category: Category::Productivity,
     description: "Create pages and databases in Notion. Use the Notion API with Bearer token and Notion-Version: 2022-06-28 header.",
-    fields: &[FieldDef {
-        key: "api_key",
-        label: "Integration Token",
-        secret: true,
-        placeholder: "ntn_...",
-        help_url: "https://www.notion.so/my-integrations",
-    }],
+    fields: &[
+        FieldDef {
+            key: "api_key",
+            label: "Integration Token",
+            secret: true,
+            placeholder: "ntn_...",
+            help_url: "https://www.notion.so/my-integrations",
+        },
+        FieldDef {
+            key: "database_id",
+            label: "Database ID",
+            secret: false,
+            placeholder: "31a6ae9cb015...",
+            help_url: "https://developers.notion.com/docs/working-with-databases",
+        },
+    ],
 };
 
 pub struct Notion;
