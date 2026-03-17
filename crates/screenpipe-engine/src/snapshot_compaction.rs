@@ -235,16 +235,7 @@ async fn compact_chunk(
                     device_name
                 );
                 for batch in ids.chunks(100) {
-                    let placeholders: Vec<&str> = batch.iter().map(|_| "?").collect();
-                    let sql = format!(
-                        "UPDATE frames SET snapshot_path = NULL WHERE id IN ({})",
-                        placeholders.join(",")
-                    );
-                    let mut query = sqlx::query(&sql);
-                    for id in batch {
-                        query = query.bind(id);
-                    }
-                    let _ = query.execute(&db.pool).await;
+                    let _ = db.clear_snapshot_paths_queued(batch.to_vec()).await;
                 }
                 return Ok(None);
             }
@@ -281,10 +272,9 @@ async fn compact_chunk(
                 "snapshot file missing, clearing DB pointer: {}",
                 snapshot_path
             );
-            let _ = sqlx::query("UPDATE frames SET snapshot_path = NULL WHERE id = ?")
-                .bind(frame_id)
-                .execute(&db.pool)
-                .await;
+            // Route through write queue instead of read pool to avoid
+            // unserialized writes that cause WAL contention and pool exhaustion.
+            let _ = db.clear_snapshot_paths_queued(vec![*frame_id]).await;
             continue;
         }
 

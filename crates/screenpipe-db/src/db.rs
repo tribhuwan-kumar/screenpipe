@@ -409,13 +409,31 @@ impl DatabaseManager {
                     })
                 }
                 Err(e) if Self::is_nested_transaction_error(&e) => {
-                    // Connection has a stuck transaction — detach it from the pool
-                    // so it doesn't poison subsequent acquire() calls.
+                    // Connection has a stuck transaction — ROLLBACK it and retry.
+                    // Previous approach: detach the connection. Problem: detach
+                    // permanently removes the slot from the pool. After ~3 detaches
+                    // the write pool (max_connections=3) is dead and ALL writes fail
+                    // with PoolTimedOut forever until restart.
+                    // New approach: ROLLBACK cleans the connection so it returns to
+                    // the pool healthy. Only detach as last resort if ROLLBACK fails.
                     warn!(
-                        "BEGIN IMMEDIATE hit stuck transaction (attempt {}/{}), detaching connection",
+                        "BEGIN IMMEDIATE hit stuck transaction (attempt {}/{}), rolling back",
                         attempt, max_retries
                     );
-                    let _raw = conn.detach();
+                    match sqlx::query("ROLLBACK").execute(&mut *conn).await {
+                        Ok(_) => {
+                            debug!("stuck transaction rolled back, connection recovered");
+                            // Connection is clean — drop returns it to pool
+                            drop(conn);
+                        }
+                        Err(rb_err) => {
+                            warn!(
+                                "ROLLBACK failed ({}), detaching connection as last resort",
+                                rb_err
+                            );
+                            let _raw = conn.detach();
+                        }
+                    }
                     last_error = Some(e);
                     tokio::time::sleep(Duration::from_millis(50)).await;
                     continue;
@@ -495,6 +513,65 @@ impl DatabaseManager {
     pub async fn compact_snapshots_queued(&self, chunk_id: i64, batch: Vec<(i64, u32)>) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
         self.write_queue.submit(WriteOp::CompactSnapshots { chunk_id, batch }).await?;
+        Ok(())
+    }
+
+    /// Clear snapshot_path for frames with missing JPEG files, via write queue.
+    pub async fn clear_snapshot_paths_queued(&self, frame_ids: Vec<i64>) -> Result<(), sqlx::Error> {
+        use crate::write_queue::WriteOp;
+        self.write_queue.submit(WriteOp::ClearSnapshotPaths { frame_ids }).await?;
+        Ok(())
+    }
+
+    /// Create a pipe execution via the write queue. Returns the new row ID.
+    pub async fn pipe_create_execution_queued(
+        &self,
+        pipe_name: &str,
+        trigger_type: &str,
+        model: &str,
+        provider: Option<&str>,
+    ) -> Result<i64, sqlx::Error> {
+        use crate::write_queue::{WriteOp, WriteResult};
+        let result = self
+            .write_queue
+            .submit(WriteOp::PipeCreateExecution {
+                pipe_name: pipe_name.to_string(),
+                trigger_type: trigger_type.to_string(),
+                model: model.to_string(),
+                provider: provider.map(|s| s.to_string()),
+                started_at: chrono::Utc::now().to_rfc3339(),
+            })
+            .await?;
+        match result {
+            WriteResult::Id(id) => Ok(id),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Execute a pipe UPDATE/INSERT/DELETE via the write queue.
+    pub async fn pipe_execute_write_queued(
+        &self,
+        id: i64,
+        sql: &str,
+        binds: Vec<crate::write_queue::PipeBindValue>,
+    ) -> Result<(), sqlx::Error> {
+        use crate::write_queue::WriteOp;
+        self.write_queue
+            .submit(WriteOp::PipeUpdateExecution {
+                id,
+                sql: sql.to_string(),
+                binds,
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// Delete old pipe executions via the write queue.
+    pub async fn pipe_delete_old_executions_queued(&self, keep_per_pipe: i32) -> Result<(), sqlx::Error> {
+        use crate::write_queue::WriteOp;
+        self.write_queue
+            .submit(WriteOp::PipeDeleteOldExecutions { keep_per_pipe })
+            .await?;
         Ok(())
     }
 
