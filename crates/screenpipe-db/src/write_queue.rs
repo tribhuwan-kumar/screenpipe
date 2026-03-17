@@ -93,6 +93,9 @@ pub(crate) enum WriteOp {
         ocr_engine: Option<String>,
         /// Pre-computed full_text for FTS indexing
         full_text: Option<String>,
+        /// When Some, this frame references another frame's elements (dedup).
+        /// The frame row is still inserted but element insertions are skipped.
+        elements_ref_frame_id: Option<i64>,
     },
     InsertVideoChunkWithFps {
         file_path: String,
@@ -569,18 +572,21 @@ async fn execute_single_write(
             ocr_text_json,
             ocr_engine,
             full_text,
+            elements_ref_frame_id,
         } => {
             let id = sqlx::query(
                 r#"INSERT INTO frames (
                     video_chunk_id, offset_index, timestamp, name,
                     browser_url, app_name, window_name, focused, device_name,
                     snapshot_path, capture_trigger, accessibility_text, text_source,
-                    accessibility_tree_json, content_hash, simhash, full_text
+                    accessibility_tree_json, content_hash, simhash, full_text,
+                    elements_ref_frame_id
                 ) VALUES (
                     NULL, 0, ?1, ?2,
                     ?3, ?4, ?5, ?6, ?7,
                     ?8, ?9, ?10, ?11,
-                    ?12, ?13, ?14, ?15
+                    ?12, ?13, ?14, ?15,
+                    ?16
                 )"#,
             )
             .bind(timestamp)
@@ -598,11 +604,12 @@ async fn execute_single_write(
             .bind(content_hash)
             .bind(simhash)
             .bind(full_text.as_deref())
+            .bind(elements_ref_frame_id)
             .execute(&mut **conn)
             .await?
             .last_insert_rowid();
 
-            // Insert OCR text in same transaction
+            // Insert OCR text in same transaction (always — needed for search)
             if let (Some(text), Some(text_json), Some(engine)) = (
                 ocr_text.as_deref(),
                 ocr_text_json.as_deref(),
@@ -620,16 +627,27 @@ async fn execute_single_write(
                 .execute(&mut **conn)
                 .await?;
 
-                // Dual-write OCR elements
-                crate::db::DatabaseManager::insert_ocr_elements(conn, id, text_json).await;
+                // Skip OCR element insertion when referencing another frame's elements
+                if elements_ref_frame_id.is_none() {
+                    crate::db::DatabaseManager::insert_ocr_elements(conn, id, text_json).await;
+                }
             }
 
-            // Dual-write accessibility elements
-            if let Some(tree_json) = accessibility_tree_json.as_deref() {
-                if !tree_json.is_empty() {
-                    crate::db::DatabaseManager::insert_accessibility_elements(conn, id, tree_json)
-                        .await;
+            // Skip accessibility element insertion when referencing another frame's elements
+            if elements_ref_frame_id.is_none() {
+                if let Some(tree_json) = accessibility_tree_json.as_deref() {
+                    if !tree_json.is_empty() {
+                        crate::db::DatabaseManager::insert_accessibility_elements(conn, id, tree_json)
+                            .await;
+                    }
                 }
+            }
+
+            if let Some(ref_id) = elements_ref_frame_id {
+                debug!(
+                    "elements dedup: frame {} references {} (same content_hash)",
+                    id, ref_id
+                );
             }
 
             debug!(
@@ -949,7 +967,8 @@ mod tests {
                 accessibility_tree_json TEXT,
                 content_hash INTEGER,
                 simhash INTEGER,
-                full_text TEXT
+                full_text TEXT,
+                elements_ref_frame_id INTEGER DEFAULT NULL
             )",
         )
         .execute(&pool)
@@ -1222,6 +1241,7 @@ mod tests {
                 ocr_text_json: None,
                 ocr_engine: None,
                 full_text: Some("page content".to_string()),
+                elements_ref_frame_id: None,
             })
             .await
             .unwrap();

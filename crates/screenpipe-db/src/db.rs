@@ -330,6 +330,7 @@ impl DatabaseManager {
             ("accessibility_tree_json", "TEXT DEFAULT NULL"),
             ("content_hash", "INTEGER DEFAULT NULL"),
             ("simhash", "INTEGER DEFAULT NULL"),
+            ("elements_ref_frame_id", "INTEGER DEFAULT NULL"),
         ];
 
         for (col_name, col_type) in missing_columns {
@@ -1418,6 +1419,7 @@ impl DatabaseManager {
             content_hash,
             simhash,
             None,
+            None, // elements_ref_frame_id
         )
         .await
     }
@@ -1744,6 +1746,7 @@ impl DatabaseManager {
         content_hash: Option<i64>,
         simhash: Option<i64>,
         ocr_data: Option<(&str, &str, &str)>, // (text, text_json, ocr_engine)
+        elements_ref_frame_id: Option<i64>,
     ) -> Result<i64, sqlx::Error> {
         use crate::write_queue::{WriteOp, WriteResult};
 
@@ -1789,6 +1792,7 @@ impl DatabaseManager {
                 ocr_text_json: ocr_data.map(|(_, j, _)| j.to_string()),
                 ocr_engine: ocr_data.map(|(_, _, e)| e.to_string()),
                 full_text,
+                elements_ref_frame_id,
             })
             .await?;
 
@@ -4022,6 +4026,62 @@ impl DatabaseManager {
         .await?;
         let ocr_deleted = ocr_result.rows_affected();
 
+        // 4b. Migrate elements from anchor frames being deleted that are referenced
+        // by frames outside the delete range. For each such anchor, move its elements
+        // to the first referencing frame and update all references.
+        let anchor_ids: Vec<i64> = sqlx::query_scalar(
+            r#"SELECT DISTINCT f.id FROM frames f
+               WHERE f.timestamp BETWEEN ?1 AND ?2
+               AND EXISTS (
+                   SELECT 1 FROM frames ref
+                   WHERE ref.elements_ref_frame_id = f.id
+                   AND ref.timestamp NOT BETWEEN ?1 AND ?2
+               )"#,
+        )
+        .bind(&start_str)
+        .bind(&end_str)
+        .fetch_all(&mut **tx.conn())
+        .await?;
+
+        for anchor_id in &anchor_ids {
+            // Find the first referencing frame outside the delete range
+            let new_anchor_id: Option<i64> = sqlx::query_scalar(
+                r#"SELECT MIN(id) FROM frames
+                   WHERE elements_ref_frame_id = ?1
+                   AND timestamp NOT BETWEEN ?2 AND ?3"#,
+            )
+            .bind(anchor_id)
+            .bind(&start_str)
+            .bind(&end_str)
+            .fetch_optional(&mut **tx.conn())
+            .await?
+            .flatten();
+
+            if let Some(new_id) = new_anchor_id {
+                // Move elements to the new anchor frame
+                sqlx::query("UPDATE elements SET frame_id = ?1 WHERE frame_id = ?2")
+                    .bind(new_id)
+                    .bind(anchor_id)
+                    .execute(&mut **tx.conn())
+                    .await?;
+                // Update all references to point to new anchor
+                sqlx::query(
+                    "UPDATE frames SET elements_ref_frame_id = ?1 WHERE elements_ref_frame_id = ?2",
+                )
+                .bind(new_id)
+                .bind(anchor_id)
+                .execute(&mut **tx.conn())
+                .await?;
+                // Clear ref on the new anchor (it now owns the elements)
+                sqlx::query(
+                    "UPDATE frames SET elements_ref_frame_id = NULL WHERE id = ?1",
+                )
+                .bind(new_id)
+                .execute(&mut **tx.conn())
+                .await?;
+            }
+        }
+
         // 5. Delete frames — triggers frames_fts delete; vision_tags CASCADE'd automatically
         let frames_result = sqlx::query("DELETE FROM frames WHERE timestamp BETWEEN ?1 AND ?2")
             .bind(&start_str)
@@ -4846,18 +4906,30 @@ LIMIT ? OFFSET ?
 
     /// Get all elements for a single frame, ordered by sort_order.
     /// Returns the full tree; clients reconstruct hierarchy from `parent_id`/`depth`.
+    ///
+    /// If the frame has `elements_ref_frame_id` set (element dedup), this follows
+    /// the reference and returns elements from the anchor frame instead.
     pub async fn get_frame_elements(
         &self,
         frame_id: i64,
         source: Option<&ElementSource>,
     ) -> Result<Vec<Element>, sqlx::Error> {
+        // Check if this frame references another frame's elements
+        let effective_frame_id: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(elements_ref_frame_id, id) FROM frames WHERE id = ?1",
+        )
+        .bind(frame_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .unwrap_or(frame_id);
+
         let sql = if source.is_some() {
             "SELECT id, frame_id, source, role, text, parent_id, depth, left_bound, top_bound, width_bound, height_bound, confidence, sort_order FROM elements WHERE frame_id = ?1 AND source = ?2 ORDER BY sort_order"
         } else {
             "SELECT id, frame_id, source, role, text, parent_id, depth, left_bound, top_bound, width_bound, height_bound, confidence, sort_order FROM elements WHERE frame_id = ?1 ORDER BY sort_order"
         };
 
-        let mut query = sqlx::query_as::<_, ElementRow>(sql).bind(frame_id);
+        let mut query = sqlx::query_as::<_, ElementRow>(sql).bind(effective_frame_id);
         if let Some(src) = source {
             query = query.bind(src.to_string());
         }

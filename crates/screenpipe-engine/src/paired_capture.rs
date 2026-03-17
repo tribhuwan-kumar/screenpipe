@@ -44,6 +44,8 @@ pub struct CaptureContext<'a> {
     pub focused: bool,
     pub capture_trigger: &'a str,
     pub use_pii_removal: bool,
+    /// When Some, this frame references another frame's elements (dedup).
+    pub elements_ref_frame_id: Option<i64>,
 }
 
 /// Result of a paired capture operation.
@@ -282,6 +284,7 @@ pub async fn paired_capture(
             content_hash,
             simhash,
             ocr_data,
+            ctx.elements_ref_frame_id,
         )
         .await?;
 
@@ -550,6 +553,7 @@ mod tests {
             focused: true,
             capture_trigger: "click",
             use_pii_removal: false,
+            elements_ref_frame_id: None,
         };
 
         let result = paired_capture(&ctx, None).await.unwrap();
@@ -583,6 +587,7 @@ mod tests {
             focused: true,
             capture_trigger: "app_switch",
             use_pii_removal: false,
+            elements_ref_frame_id: None,
         };
 
         let snap = TreeSnapshot {
@@ -639,6 +644,7 @@ mod tests {
             focused: true,
             capture_trigger: "idle",
             use_pii_removal: false,
+            elements_ref_frame_id: None,
         };
 
         // Empty accessibility text should be treated as no text
