@@ -4,5 +4,5 @@
 
 //! Meeting persister — DEPRECATED.
 //!
-//! The v2 meeting detection loop (`meeting_detector_v2`) handles its own
+//! The meeting detection loop (`meeting_detector`) handles its own
 //! DB persistence directly. This module is kept as an empty placeholder.

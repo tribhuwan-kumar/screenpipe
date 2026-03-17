@@ -22,7 +22,7 @@ pub mod routes;
 
 pub mod event_driven_capture;
 pub mod hot_frame_cache;
-pub mod meeting_detector_v2;
+pub mod meeting_detector;
 pub mod meeting_persister;
 pub mod meeting_watcher;
 pub mod paired_capture;
