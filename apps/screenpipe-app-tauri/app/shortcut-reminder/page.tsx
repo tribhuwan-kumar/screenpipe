@@ -14,10 +14,47 @@ import posthog from "posthog-js";
 import { usePlatform } from "@/lib/hooks/use-platform";
 import { getStore } from "@/lib/hooks/use-settings";
 import { commands } from "@/lib/utils/tauri";
-import { X } from "lucide-react";
+import { X, Phone } from "lucide-react";
 import { useOverlayData } from "./use-overlay-data";
 import { AudioEqualizer } from "./audio-equalizer";
 import { ScreenMatrix } from "./screen-matrix";
+
+function useMeetingState() {
+  const [active, setActive] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      fetch("http://localhost:3030/meetings/status")
+        .then((r) => r.json())
+        .then((d) => setActive(!!d.active))
+        .catch(() => {});
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  const toggle = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (active) {
+        await fetch("http://localhost:3030/meetings/stop", { method: "POST" });
+        setActive(false);
+      } else {
+        await fetch("http://localhost:3030/meetings/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "manual meeting" }),
+        });
+        setActive(true);
+      }
+    } catch {}
+    setLoading(false);
+  }, [active]);
+
+  return { active, loading, toggle };
+}
 
 export default function ShortcutReminderPage() {
   const { isMac, isLoading } = usePlatform();
@@ -25,6 +62,7 @@ export default function ShortcutReminderPage() {
   const [chatShortcut, setChatShortcut] = useState<string | null>(null);
   const [searchShortcut, setSearchShortcut] = useState<string | null>(null);
   const overlayData = useOverlayData();
+  const meeting = useMeetingState();
   const isMacRef = useRef(isMac);
   isMacRef.current = isMac;
 
@@ -219,18 +257,39 @@ export default function ShortcutReminderPage() {
             />
           </div>
           <div className="bg-white/10 border-t border-white/10" />
-          <button
-            onClick={handleClose}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            className="flex items-center justify-center py-0.5 hover:bg-white/10 transition-colors cursor-pointer border-t border-white/10"
-            title="Hide shortcut reminder"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <X className="h-2 w-2 text-white/40 hover:text-white" />
-          </button>
+          <div className="flex items-center justify-center gap-1 py-0.5 border-t border-white/10">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                meeting.toggle();
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              disabled={meeting.loading}
+              className="relative flex items-center justify-center hover:bg-white/10 transition-colors cursor-pointer p-0.5"
+              title={meeting.active ? "stop meeting" : "start meeting"}
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              {meeting.active && (
+                <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+              )}
+              <Phone className={`h-2 w-2 ${meeting.active ? "text-white" : "text-white/40 hover:text-white"}`} />
+            </button>
+            <button
+              onClick={handleClose}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              className="flex items-center justify-center hover:bg-white/10 transition-colors cursor-pointer p-0.5"
+              title="Hide shortcut reminder"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              <X className="h-2 w-2 text-white/40 hover:text-white" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

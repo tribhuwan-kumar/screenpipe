@@ -16,7 +16,6 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
-  FolderOpen,
   RefreshCw,
   Loader2,
   ExternalLink,
@@ -39,8 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { homeDir, join } from "@tauri-apps/api/path";
-import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { emit, once } from "@tauri-apps/api/event";
 import { ChatPrefillData } from "@/lib/chat-utils";
 import { commands } from "@/lib/utils/tauri";
@@ -942,12 +940,6 @@ export function PipesSection() {
     fetchPipes();
   };
 
-  const openPipesFolder = async () => {
-    const home = await homeDir();
-    const path = await join(home, ".screenpipe", "pipes");
-    revealItemInDir(path);
-  };
-
   const toggleExpand = (name: string) => {
     if (expanded === name) {
       setExpanded(null);
@@ -1088,9 +1080,13 @@ export function PipesSection() {
           }}>
             {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
-          <Button variant="outline" size="sm" onClick={openPipesFolder}>
-            <FolderOpen className="h-4 w-4 mr-1" />
-            open folder
+          <Button variant="outline" size="sm" onClick={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set("section", "connections");
+            window.location.href = url.toString();
+          }}>
+            <Link className="h-4 w-4 mr-1" />
+            connections
           </Button>
         </div>
       </div>
