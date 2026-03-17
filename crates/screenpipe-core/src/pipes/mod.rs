@@ -126,6 +126,11 @@ pub struct PipeConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connections: Vec<String>,
 
+    /// Execution timeout in seconds. Default: 300 (5 minutes).
+    /// Set higher for long-running pipes (e.g. coding agents): `timeout: 2400`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+
     /// Catches any extra fields from front-matter (backwards compat).
     #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, serde_json::Value>,
@@ -1127,11 +1132,12 @@ impl PipeManager {
         let pipes_dir_for_log = self.pipes_dir.clone();
         let executors = self.executors.clone();
         let agent = config.agent.clone();
+        let pipe_timeout = config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
 
         // Spawn the actual execution in a background task
         tokio::spawn(async move {
             let started_at = Utc::now();
-            let timeout_duration = std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS);
+            let timeout_duration = std::time::Duration::from_secs(pipe_timeout);
 
             // Create streaming channel and drainer task
             let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -1274,7 +1280,7 @@ impl PipeManager {
                                 Some("timeout"),
                                 Some(&format!(
                                     "execution timed out after {}s",
-                                    DEFAULT_TIMEOUT_SECS
+                                    pipe_timeout
                                 )),
                             )
                             .await;
@@ -1289,7 +1295,7 @@ impl PipeManager {
                             finished_at,
                             success: false,
                             stdout: String::new(),
-                            stderr: format!("execution timed out after {}s", DEFAULT_TIMEOUT_SECS),
+                            stderr: format!("execution timed out after {}s", pipe_timeout),
                         },
                         Some("timeout".to_string()),
                     )
@@ -1534,7 +1540,8 @@ impl PipeManager {
         }
 
         // Run with timeout + streaming
-        let timeout_duration = std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS);
+        let pipe_timeout = config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
+        let timeout_duration = std::time::Duration::from_secs(pipe_timeout);
 
         let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let drain_pipe_name = name.to_string();
@@ -1668,7 +1675,7 @@ impl PipeManager {
                 // Timeout — kill the process
                 warn!(
                     "pipe '{}' timed out after {}s, killing process",
-                    name, DEFAULT_TIMEOUT_SECS
+                    name, pipe_timeout
                 );
                 if let Some(handle) = removed_handle {
                     if handle.pid != 0 {
@@ -1689,7 +1696,7 @@ impl PipeManager {
                             Some("timeout"),
                             Some(&format!(
                                 "execution timed out after {}s",
-                                DEFAULT_TIMEOUT_SECS
+                                pipe_timeout
                             )),
                         )
                         .await;
@@ -1704,7 +1711,7 @@ impl PipeManager {
                     finished_at,
                     success: false,
                     stdout: String::new(),
-                    stderr: format!("execution timed out after {}s", DEFAULT_TIMEOUT_SECS),
+                    stderr: format!("execution timed out after {}s", pipe_timeout),
                 }
             }
         };
@@ -2201,6 +2208,7 @@ impl PipeManager {
                     let on_output = on_output_line.clone();
                     let store_ref = store.clone();
                     let token_registry_ref = token_registry.clone();
+                    let pipe_timeout = config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
 
                     tokio::spawn(async move {
                         // Create DB execution row
@@ -2258,7 +2266,7 @@ impl PipeManager {
                         });
 
                         let started_at = Utc::now();
-                        let timeout_duration = std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS);
+                        let timeout_duration = std::time::Duration::from_secs(pipe_timeout);
 
                         // Create streaming channel and drainer for scheduler
                         let (line_tx, mut line_rx) =
@@ -2393,7 +2401,7 @@ impl PipeManager {
                             Err(_elapsed) => {
                                 warn!(
                                     "pipe '{}' timed out after {}s",
-                                    pipe_name, DEFAULT_TIMEOUT_SECS
+                                    pipe_name, pipe_timeout
                                 );
                                 if let Some(handle) = removed_handle {
                                     if handle.pid != 0 {
@@ -2411,7 +2419,7 @@ impl PipeManager {
                                             Some("timeout"),
                                             Some(&format!(
                                                 "execution timed out after {}s",
-                                                DEFAULT_TIMEOUT_SECS
+                                                pipe_timeout
                                             )),
                                         )
                                         .await;
@@ -2428,7 +2436,7 @@ impl PipeManager {
                                         stdout: String::new(),
                                         stderr: format!(
                                             "execution timed out after {}s",
-                                            DEFAULT_TIMEOUT_SECS
+                                            pipe_timeout
                                         ),
                                     },
                                     Some("timeout".to_string()),
