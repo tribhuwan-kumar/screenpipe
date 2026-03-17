@@ -64,6 +64,15 @@ pub enum CallSignal {
         role: &'static str,
         name_contains: &'static str,
     },
+    /// Match a menu bar item by exact title (case-insensitive).
+    /// Used for apps like Zoom that expose meeting controls only via
+    /// AXMenuBarItem/AXMenuItem in the menu bar, not as AXButton in windows.
+    MenuBarItem {
+        title_contains: &'static str,
+    },
+    /// Match an AXMenuItem by its automation ID (AXIdentifier).
+    /// Zoom exposes identifiers like "onMuteAudio:", "onMuteVideo:" on menu items.
+    MenuItemId(&'static str),
 }
 
 /// Per-app detection configuration.
@@ -111,6 +120,9 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
             min_signals_required: 1,
         },
         // Zoom Desktop
+        // Note: Zoom on macOS does NOT expose AXWindow — only AXMenuBar.
+        // Meeting controls are available as AXMenuBarItem ("Meeting" menu)
+        // and AXMenuItem items with identifiers like "onMuteAudio:".
         MeetingDetectionProfile {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &["zoom.us", "zoom"],
@@ -118,6 +130,13 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                 browser_url_patterns: &["zoom.us/j", "zoom.us/wc", "zoom.us/my"],
             },
             call_signals: vec![
+                // macOS menu bar signals (Zoom only exposes AXMenuBar, no AXWindow)
+                CallSignal::MenuBarItem {
+                    title_contains: "Meeting",
+                },
+                CallSignal::MenuItemId("onMuteAudio:"),
+                CallSignal::MenuItemId("onMuteVideo:"),
+                // Windows / generic fallbacks (Zoom on Windows may expose buttons)
                 CallSignal::AutomationIdContains("leave"),
                 CallSignal::KeyboardShortcut("Alt+Q"),
                 CallSignal::RoleWithName {
@@ -592,6 +611,21 @@ fn check_signal_match(
             let in_desc = desc.map_or(false, |d| d.to_lowercase().contains(&name_lower));
             in_title || in_desc
         }
+        CallSignal::MenuBarItem { title_contains } => {
+            // Match AXMenuBarItem by title (Zoom's "Meeting" menu bar item)
+            if role != "AXMenuBarItem" {
+                return false;
+            }
+            let needle = title_contains.to_lowercase();
+            title.map_or(false, |t| t.to_lowercase().contains(&needle))
+        }
+        CallSignal::MenuItemId(expected_id) => {
+            // Match AXMenuItem by automation ID (Zoom's "onMuteAudio:" etc.)
+            if role != "AXMenuItem" {
+                return false;
+            }
+            identifier.map_or(false, |ident| ident == *expected_id)
+        }
     }
 }
 
@@ -610,6 +644,11 @@ fn format_signal_match(
             let label = title.or(desc).unwrap_or("?");
             format!("role_match={}:{} ({})", role, name_contains, label)
         }
+        CallSignal::MenuBarItem { title_contains } => {
+            let label = title.unwrap_or("?");
+            format!("menu_bar_item={} ({})", title_contains, label)
+        }
+        CallSignal::MenuItemId(id) => format!("menu_item_id={}", id),
     }
 }
 
@@ -2013,5 +2052,125 @@ mod tests {
         } else {
             panic!("expected Confirming state");
         }
+    }
+
+    // ── Zoom menu bar signal tests ────────────────────────────────────
+
+    #[test]
+    fn test_zoom_menu_bar_item_meeting() {
+        // Zoom on macOS exposes "Meeting" as an AXMenuBarItem during active calls
+        let signal = CallSignal::MenuBarItem {
+            title_contains: "Meeting",
+        };
+        assert!(check_signal_match(
+            &signal,
+            "AXMenuBarItem",
+            Some("Meeting"),
+            None,
+            None
+        ));
+        // Should not match other menu bar items
+        assert!(!check_signal_match(
+            &signal,
+            "AXMenuBarItem",
+            Some("View"),
+            None,
+            None
+        ));
+        // Should not match non-menu-bar roles
+        assert!(!check_signal_match(
+            &signal,
+            "AXButton",
+            Some("Meeting"),
+            None,
+            None
+        ));
+    }
+
+    #[test]
+    fn test_zoom_menu_item_id_mute_audio() {
+        let signal = CallSignal::MenuItemId("onMuteAudio:");
+        assert!(check_signal_match(
+            &signal,
+            "AXMenuItem",
+            Some("Mute audio"),
+            None,
+            Some("onMuteAudio:")
+        ));
+        // Wrong identifier
+        assert!(!check_signal_match(
+            &signal,
+            "AXMenuItem",
+            Some("Mute audio"),
+            None,
+            Some("onMuteVideo:")
+        ));
+        // Wrong role
+        assert!(!check_signal_match(
+            &signal,
+            "AXButton",
+            Some("Mute audio"),
+            None,
+            Some("onMuteAudio:")
+        ));
+        // No identifier
+        assert!(!check_signal_match(
+            &signal,
+            "AXMenuItem",
+            Some("Mute audio"),
+            None,
+            None
+        ));
+    }
+
+    #[test]
+    fn test_zoom_menu_item_id_mute_video() {
+        let signal = CallSignal::MenuItemId("onMuteVideo:");
+        assert!(check_signal_match(
+            &signal,
+            "AXMenuItem",
+            Some("Stop video"),
+            None,
+            Some("onMuteVideo:")
+        ));
+    }
+
+    #[test]
+    fn test_zoom_profile_has_menu_bar_signals() {
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.macos_app_names.contains(&"zoom.us"))
+            .expect("Zoom profile not found");
+
+        let has_menu_bar = zoom.call_signals.iter().any(|s| {
+            matches!(s, CallSignal::MenuBarItem { .. } | CallSignal::MenuItemId(_))
+        });
+        assert!(
+            has_menu_bar,
+            "Zoom profile must have menu bar signals for macOS detection"
+        );
+    }
+
+    #[test]
+    fn test_menu_bar_item_case_insensitive() {
+        let signal = CallSignal::MenuBarItem {
+            title_contains: "Meeting",
+        };
+        // Should match case-insensitively
+        assert!(check_signal_match(
+            &signal,
+            "AXMenuBarItem",
+            Some("meeting"),
+            None,
+            None
+        ));
+        assert!(check_signal_match(
+            &signal,
+            "AXMenuBarItem",
+            Some("MEETING"),
+            None,
+            None
+        ));
     }
 }
