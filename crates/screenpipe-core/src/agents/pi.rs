@@ -386,8 +386,17 @@ impl PiExecutor {
             }
         }
 
-        // Atomic write: write to temp file then rename to prevent partial reads
-        let models_tmp = config_dir.join("models.json.tmp");
+        // Atomic write: write to unique temp file then rename to prevent partial reads.
+        // Use a unique suffix to avoid races when multiple pipes call this concurrently
+        // (all pipes share this process, so PID alone isn't enough).
+        let models_tmp = config_dir.join(format!(
+            "models.json.{}.{}.tmp",
+            std::process::id(),
+            format!("{:?}", std::thread::current().id())
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .collect::<String>()
+        ));
         std::fs::write(&models_tmp, serde_json::to_string_pretty(&models_config)?)?;
         std::fs::rename(&models_tmp, &models_path)?;
 
@@ -407,7 +416,14 @@ impl PiExecutor {
                     obj.insert("screenpipe".to_string(), json!(token));
                 }
 
-                let auth_tmp = config_dir.join("auth.json.tmp");
+                let auth_tmp = config_dir.join(format!(
+                    "auth.json.{}.{}.tmp",
+                    std::process::id(),
+                    format!("{:?}", std::thread::current().id())
+                        .chars()
+                        .filter(|c| c.is_ascii_digit())
+                        .collect::<String>()
+                ));
                 std::fs::write(&auth_tmp, serde_json::to_string_pretty(&auth)?)?;
                 std::fs::rename(&auth_tmp, &auth_path)?;
 
