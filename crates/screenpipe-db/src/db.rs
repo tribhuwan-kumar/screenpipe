@@ -491,6 +491,20 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// Compact snapshots via the write coalescing queue.
+    pub async fn compact_snapshots_queued(&self, chunk_id: i64, batch: Vec<(i64, u32)>) -> Result<(), sqlx::Error> {
+        use crate::write_queue::WriteOp;
+        self.write_queue.submit(WriteOp::CompactSnapshots { chunk_id, batch }).await?;
+        Ok(())
+    }
+
+    /// Delete audio chunks in batch via the write coalescing queue.
+    pub async fn delete_audio_chunks_batch_queued(&self, chunk_ids: Vec<i64>) -> Result<(), sqlx::Error> {
+        use crate::write_queue::WriteOp;
+        self.write_queue.submit(WriteOp::DeleteAudioChunksBatch { chunk_ids }).await?;
+        Ok(())
+    }
+
     pub async fn insert_audio_chunk(
         &self,
         file_path: &str,
@@ -5399,136 +5413,50 @@ LIMIT ? OFFSET ?
     // UI Events (Input Capture Modality)
     // ============================================================================
 
-    /// Insert a UI event into the database
+    /// Insert a UI event via the write coalescing queue.
     pub async fn insert_ui_event(&self, event: &InsertUiEvent) -> Result<i64, sqlx::Error> {
+        use crate::write_queue::{WriteOp, WriteResult};
         let text_length = event.text_content.as_ref().map(|s| s.len() as i32);
-
-        let mut tx = self.begin_immediate_with_retry().await?;
-
-        let result = sqlx::query(
-            r#"
-            INSERT INTO ui_events (
-                timestamp, session_id, relative_ms, event_type,
-                x, y, delta_x, delta_y,
-                button, click_count, key_code, modifiers,
-                text_content, text_length,
-                app_name, app_pid, window_title, browser_url,
-                element_role, element_name, element_value, element_description,
-                element_automation_id, element_bounds, frame_id
-            ) VALUES (
-                ?1, ?2, ?3, ?4,
-                ?5, ?6, ?7, ?8,
-                ?9, ?10, ?11, ?12,
-                ?13, ?14,
-                ?15, ?16, ?17, ?18,
-                ?19, ?20, ?21, ?22,
-                ?23, ?24, ?25
-            )
-            "#,
-        )
-        .bind(event.timestamp)
-        .bind(&event.session_id)
-        .bind(event.relative_ms)
-        .bind(event.event_type.to_string())
-        .bind(event.x)
-        .bind(event.y)
-        .bind(event.delta_x.map(|v| v as i32))
-        .bind(event.delta_y.map(|v| v as i32))
-        .bind(event.button.map(|v| v as i32))
-        .bind(event.click_count.map(|v| v as i32))
-        .bind(event.key_code.map(|v| v as i32))
-        .bind(event.modifiers.map(|v| v as i32))
-        .bind(&event.text_content)
-        .bind(text_length)
-        .bind(&event.app_name)
-        .bind(event.app_pid)
-        .bind(&event.window_title)
-        .bind(&event.browser_url)
-        .bind(&event.element_role)
-        .bind(&event.element_name)
-        .bind(&event.element_value)
-        .bind(&event.element_description)
-        .bind(&event.element_automation_id)
-        .bind(&event.element_bounds)
-        .bind(event.frame_id)
-        .execute(&mut **tx.conn())
-        .await?;
-
-        let id = result.last_insert_rowid();
-        tx.commit().await?;
-
-        Ok(id)
+        let result = self.write_queue.submit(WriteOp::InsertUiEvent {
+            timestamp: event.timestamp.to_string(),
+            session_id: event.session_id.clone(),
+            relative_ms: event.relative_ms,
+            event_type: event.event_type.to_string(),
+            x: event.x, y: event.y,
+            delta_x: event.delta_x.map(|v| v as i32),
+            delta_y: event.delta_y.map(|v| v as i32),
+            button: event.button.map(|v| v as i32),
+            click_count: event.click_count.map(|v| v as i32),
+            key_code: event.key_code.map(|v| v as i32),
+            modifiers: event.modifiers.map(|v| v as i32),
+            text_content: event.text_content.clone(),
+            text_length,
+            app_name: event.app_name.clone(),
+            app_pid: event.app_pid,
+            window_title: event.window_title.clone(),
+            browser_url: event.browser_url.clone(),
+            element_role: event.element_role.clone(),
+            element_name: event.element_name.clone(),
+            element_value: event.element_value.clone(),
+            element_description: event.element_description.clone(),
+            element_automation_id: event.element_automation_id.clone(),
+            element_bounds: event.element_bounds.clone(),
+            frame_id: event.frame_id,
+        }).await?;
+        match result {
+            WriteResult::Id(id) => Ok(id),
+            _ => unreachable!(),
+        }
     }
 
-    /// Insert multiple UI events in a batch
-    pub async fn insert_ui_events_batch(
-        &self,
-        events: &[InsertUiEvent],
-    ) -> Result<usize, sqlx::Error> {
-        if events.is_empty() {
-            return Ok(0);
-        }
-
-        let mut tx = self.begin_immediate_with_retry().await?;
+    /// Insert multiple UI events via the write coalescing queue.
+    pub async fn insert_ui_events_batch(&self, events: &[InsertUiEvent]) -> Result<usize, sqlx::Error> {
+        if events.is_empty() { return Ok(0); }
         let mut count = 0;
-
         for event in events {
-            let text_length = event.text_content.as_ref().map(|s| s.len() as i32);
-
-            sqlx::query(
-                r#"
-                INSERT INTO ui_events (
-                    timestamp, session_id, relative_ms, event_type,
-                    x, y, delta_x, delta_y,
-                    button, click_count, key_code, modifiers,
-                    text_content, text_length,
-                    app_name, app_pid, window_title, browser_url,
-                    element_role, element_name, element_value, element_description,
-                    element_automation_id, element_bounds, frame_id
-                ) VALUES (
-                    ?1, ?2, ?3, ?4,
-                    ?5, ?6, ?7, ?8,
-                    ?9, ?10, ?11, ?12,
-                    ?13, ?14,
-                    ?15, ?16, ?17, ?18,
-                    ?19, ?20, ?21, ?22,
-                    ?23, ?24, ?25
-                )
-                "#,
-            )
-            .bind(event.timestamp)
-            .bind(&event.session_id)
-            .bind(event.relative_ms)
-            .bind(event.event_type.to_string())
-            .bind(event.x)
-            .bind(event.y)
-            .bind(event.delta_x.map(|v| v as i32))
-            .bind(event.delta_y.map(|v| v as i32))
-            .bind(event.button.map(|v| v as i32))
-            .bind(event.click_count.map(|v| v as i32))
-            .bind(event.key_code.map(|v| v as i32))
-            .bind(event.modifiers.map(|v| v as i32))
-            .bind(&event.text_content)
-            .bind(text_length)
-            .bind(&event.app_name)
-            .bind(event.app_pid)
-            .bind(&event.window_title)
-            .bind(&event.browser_url)
-            .bind(&event.element_role)
-            .bind(&event.element_name)
-            .bind(&event.element_value)
-            .bind(&event.element_description)
-            .bind(&event.element_automation_id)
-            .bind(&event.element_bounds)
-            .bind(event.frame_id)
-            .execute(&mut **tx.conn())
-            .await?;
-
+            self.insert_ui_event(event).await?;
             count += 1;
         }
-
-        tx.commit().await?;
-        debug!("Inserted {} UI events in batch", count);
         Ok(count)
     }
 

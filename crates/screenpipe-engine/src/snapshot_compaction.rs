@@ -337,46 +337,11 @@ async fn compact_chunk(
     // semaphore for too long, which starves audio/frame insertion and causes
     // PoolTimedOut errors (data loss).
     for batch in encoded_frames.chunks(100) {
-        let ids: Vec<i64> = batch.iter().map(|(id, _)| *id).collect();
-        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
-        let case_clauses: Vec<String> = batch
-            .iter()
-            .map(|(id, pos)| format!("WHEN {} THEN {}", id, pos))
-            .collect();
-
-        let sql = format!(
-            "UPDATE frames SET video_chunk_id = ?1, \
-             offset_index = CASE id {} ELSE offset_index END, \
-             snapshot_path = NULL \
-             WHERE id IN ({}) AND snapshot_path IS NOT NULL",
-            case_clauses.join(" "),
-            placeholders.join(",")
-        );
-
-        match db.begin_immediate_with_retry().await {
-            Ok(mut tx) => {
-                let mut query = sqlx::query(&sql).bind(chunk_id);
-                for id in &ids {
-                    query = query.bind(id);
-                }
-                match query.execute(&mut **tx.conn()).await {
-                    Ok(_) => {
-                        if let Err(e) = tx.commit().await {
-                            warn!("snapshot compaction: commit failed for batch: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        warn!("snapshot compaction: UPDATE failed for batch: {}", e);
-                        // tx drops here → auto-rollback, continue with next batch
-                    }
-                }
-            }
-            Err(e) => {
-                warn!("snapshot compaction: could not acquire write lock: {}", e);
-                // Skip this batch, try next one
-            }
+        let batch_vec: Vec<(i64, u32)> = batch.to_vec();
+        if let Err(e) = db.compact_snapshots_queued(chunk_id, batch_vec).await {
+            warn!("snapshot compaction: queue submit failed for batch: {}", e);
         }
-        // Yield briefly between batches so audio/frame insertions can acquire the write semaphore
+        // Yield briefly between batches
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 
