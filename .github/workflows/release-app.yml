@@ -491,6 +491,7 @@ jobs:
             xdg-desktop-portal-gtk \
             libsecret-1-dev \
             libopenblas-dev
+          echo "OPENBLAS_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
         working-directory: ${{ github.workspace }}/apps/screenpipe-app-tauri
