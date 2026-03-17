@@ -141,6 +141,30 @@ pub(crate) enum WriteOp {
         chunk_id: i64,
         batch: Vec<(i64, u32)>,
     },
+    /// Batch insert frames with OCR text. Replaces the direct
+    /// `begin_immediate_with_retry` call in `insert_frames_with_ocr_batch`
+    /// so that frame inserts go through the coalescing queue.
+    InsertFramesBatch {
+        video_chunk_id: i64,
+        file_path: String,
+        device_name: String,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        offset_index: i64,
+        ocr_engine_str: String,
+        /// Each entry: (app_name, window_name, browser_url, focused, text, text_json)
+        windows: Vec<FrameBatchWindow>,
+    },
+}
+
+/// Data for a single window in a batch frame insert.
+#[derive(Debug, Clone)]
+pub(crate) struct FrameBatchWindow {
+    pub app_name: Option<String>,
+    pub window_name: Option<String>,
+    pub browser_url: Option<String>,
+    pub focused: bool,
+    pub text: String,
+    pub text_json: String,
 }
 
 /// Which table to mark as synced.
@@ -160,6 +184,8 @@ pub(crate) enum WriteResult {
     /// For operations that return nothing meaningful.
     #[allow(dead_code)]
     Unit,
+    /// Result of InsertFramesBatch: Vec of (frame_id, window_index) pairs.
+    FrameBatch(Vec<(i64, usize)>),
 }
 
 /// A pending write: the operation plus a channel to send the result back.
@@ -657,6 +683,63 @@ async fn execute_single_write(
                     .bind(id).execute(&mut **conn).await?;
             }
             Ok(WriteResult::Unit)
+        }
+
+        WriteOp::InsertFramesBatch {
+            video_chunk_id,
+            file_path,
+            device_name,
+            timestamp,
+            offset_index,
+            ocr_engine_str,
+            windows,
+        } => {
+            let mut results = Vec::with_capacity(windows.len());
+            for (idx, window) in windows.iter().enumerate() {
+                let full_text = if window.text.is_empty() {
+                    None
+                } else {
+                    Some(window.text.as_str())
+                };
+
+                let frame_id = sqlx::query(
+                    "INSERT INTO frames (video_chunk_id, offset_index, timestamp, name, browser_url, app_name, window_name, focused, device_name, full_text) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                )
+                .bind(video_chunk_id)
+                .bind(offset_index)
+                .bind(timestamp)
+                .bind(file_path.as_str())
+                .bind(window.browser_url.as_deref())
+                .bind(window.app_name.as_deref())
+                .bind(window.window_name.as_deref())
+                .bind(window.focused)
+                .bind(device_name.as_str())
+                .bind(full_text)
+                .execute(&mut **conn)
+                .await?
+                .last_insert_rowid();
+
+                // Insert OCR text
+                let text_length = window.text.len() as i64;
+                sqlx::query(
+                    "INSERT INTO ocr_text (frame_id, text, text_json, ocr_engine, text_length) VALUES (?1, ?2, ?3, ?4, ?5)",
+                )
+                .bind(frame_id)
+                .bind(&window.text)
+                .bind(&window.text_json)
+                .bind(ocr_engine_str.as_str())
+                .bind(text_length)
+                .execute(&mut **conn)
+                .await?;
+
+                // Dual-write: insert OCR elements into unified elements table
+                if !window.text_json.is_empty() {
+                    crate::db::DatabaseManager::insert_ocr_elements(conn, frame_id, &window.text_json).await;
+                }
+
+                results.push((frame_id, idx));
+            }
+            Ok(WriteResult::FrameBatch(results))
         }
 
         WriteOp::CompactSnapshots { chunk_id, batch } => {
