@@ -1073,11 +1073,11 @@ function PipeDetailPanel({
                 code: ({ className, children, ...props }) => {
                   const isInline = !className;
                   return isInline ? (
-                    <code className="bg-muted px-1.5 py-0.5 rounded-none text-xs" {...props}>
+                    <code className="bg-muted text-foreground px-1.5 py-0.5 rounded-none text-xs" {...props}>
                       {children}
                     </code>
                   ) : (
-                    <pre className="bg-muted p-4 rounded-none overflow-x-auto text-xs">
+                    <pre className="bg-muted text-foreground p-4 rounded-none overflow-x-auto text-xs">
                       <code className={className} {...props}>
                         {children}
                       </code>

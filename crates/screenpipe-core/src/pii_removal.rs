@@ -482,6 +482,56 @@ mod tests {
     }
 
     #[test]
+    fn test_phone_no_false_positive_on_accessibility_bounds() {
+        // Accessibility tree bounding box coordinates must NOT be redacted as phone numbers.
+        // Real bug: the TS redactPii() in share-logs-button.tsx was mangling these values
+        // e.g. "left": 47692 became "left": [PHONE]7692
+        let bounds_json = r#"{"left": 47692, "top": 111658, "width": 44767, "height": 39496}"#;
+        assert_eq!(remove_pii(bounds_json), bounds_json);
+
+        // Individual coordinate values should not match
+        assert!(!contains_pii("47692"));
+        assert!(!contains_pii("111658"));
+        assert!(!contains_pii("44767"));
+        assert!(!contains_pii("39496"));
+        assert!(!contains_pii("62796"));
+        assert!(!contains_pii("16272"));
+
+        // Coordinates in structured text (Pi chat output)
+        let structured = r#""left_bound": 47692, "top_bound": 111658, "width_bound": 44767"#;
+        assert_eq!(remove_pii(structured), structured);
+    }
+
+    #[test]
+    fn test_phone_no_false_positive_on_numeric_ids_and_hashes() {
+        // Frame IDs, hash values, monitor IDs from logs
+        assert!(!contains_pii("frame_id: 549130407"));
+        assert!(!contains_pii("monitor 605818409"));
+        assert!(!contains_pii("hash=5542957767813040527"));
+        assert!(!contains_pii("pid: 25616"));
+        assert!(!contains_pii("elapsed=100.4287155s"));
+        assert!(!contains_pii("rows_returned=1434"));
+
+        // Timestamps and durations should not match
+        assert!(!contains_pii("age: 2624s"));
+        assert!(!contains_pii("poll=300s"));
+
+        // Meeting IDs
+        assert!(!contains_pii("meeting started (id=68)"));
+    }
+
+    #[test]
+    fn test_phone_no_false_positive_on_pixel_dimensions() {
+        // Monitor resolution strings
+        assert!(!contains_pii("2880x1800"));
+        assert!(!contains_pii("1920x1080"));
+
+        // Size/compression stats from snapshot compaction
+        let compaction = "snapshot compaction: 59 frames, 22.2MB to 8.9MB (2.5x), 59 JPEGs deleted";
+        assert_eq!(remove_pii(compaction), compaction);
+    }
+
+    #[test]
     fn test_contains_pii_ip_addresses() {
         assert!(contains_pii("Server IP: 192.168.1.1"));
         assert!(contains_pii("Connect to 10.0.0.1"));

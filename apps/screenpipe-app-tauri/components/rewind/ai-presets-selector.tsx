@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AIPreset, commands } from "@/lib/utils/tauri";
+import { useIsEnterpriseBuild } from "@/lib/hooks/use-is-enterprise-build";
 
 // Helper to detect UUID-like strings and format preset names nicely
 const formatPresetName = (name: string): string => {
@@ -181,6 +182,7 @@ export function AIProviderConfig({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [idError, setIdError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const isEnterprise = useIsEnterpriseBuild();
   const [piAvailable, setPiAvailable] = useState(false);
 
   // Check Pi availability (installed at app startup by Rust background thread)
@@ -195,11 +197,13 @@ export function AIProviderConfig({
         console.error("Failed to check pi:", e);
       }
     };
-    checkPi();
+    if (!isEnterprise) {
+      checkPi();
+    }
     // Re-check periodically in case background install finishes
-    const interval = setInterval(checkPi, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    const interval = isEnterprise ? null : setInterval(checkPi, 5000);
+    return () => { if (interval) clearInterval(interval); };
+  }, [isEnterprise]);
   const [formData, setFormData] = useState<AIPreset>({
     provider: defaultPreset?.provider || "openai",
     apiKey: defaultPreset?.apiKey || "",
@@ -913,9 +917,13 @@ export const AIPresetsSelector = ({
   >();
 
   const isControlled = onControlledSelect !== undefined;
+  const isEnterprise = useIsEnterpriseBuild();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const aiPresets = (settings?.aiPresets || []) as AIPreset[];
+  const aiPresets = useMemo(() => {
+    const presets = (settings?.aiPresets || []) as AIPreset[];
+    return isEnterprise ? presets.filter((p) => p.provider !== "pi") : presets;
+  }, [settings?.aiPresets, isEnterprise]);
 
   const selectedPreset = useMemo(() => {
     if (isControlled) return controlledPresetId ?? undefined;

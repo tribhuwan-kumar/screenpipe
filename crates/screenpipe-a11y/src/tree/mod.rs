@@ -35,7 +35,7 @@ pub struct NodeBounds {
 }
 
 /// A single node extracted from the accessibility tree, preserving role and hierarchy.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AccessibilityTreeNode {
     pub role: String,
     pub text: String,
@@ -44,6 +44,86 @@ pub struct AccessibilityTreeNode {
     /// None if the element doesn't expose AXPosition/AXSize.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<NodeBounds>,
+
+    // --- Automation properties (all Optional, filled per-platform) ---
+
+    /// Stable unique identifier for targeting elements.
+    /// Windows: UIA AutomationId. macOS: AXIdentifier. Linux: AT-SPI object path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automation_id: Option<String>,
+    /// Class/type info. Windows: Win32 ClassName. macOS: AXSubrole. Linux: AT-SPI attributes "class".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub class_name: Option<String>,
+    /// Current value (distinct from label text). For text fields, sliders, combo boxes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// Tooltip or help text. Windows: UIA HelpText. macOS: AXHelp. Linux: AT-SPI Description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help_text: Option<String>,
+    /// Associated URL. macOS: AXURL. Windows/Linux: extracted from value if URL-like.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Placeholder text for input fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    /// Human-readable role description. macOS: AXRoleDescription. Windows: LocalizedControlType.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role_description: Option<String>,
+    /// Fine-grained role classification. macOS: AXSubrole.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subrole: Option<String>,
+    /// Whether element is interactive/enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_enabled: Option<bool>,
+    /// Whether element currently has focus.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_focused: Option<bool>,
+    /// Whether element is selected (list items, tabs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_selected: Option<bool>,
+    /// Whether element is expanded (tree items, disclosure triangles).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_expanded: Option<bool>,
+    /// Whether element is a password field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_password: Option<bool>,
+    /// Whether element can receive keyboard focus.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_keyboard_focusable: Option<bool>,
+    /// Keyboard shortcut (Windows: AcceleratorKey).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accelerator_key: Option<String>,
+    /// Access key mnemonic (Windows: AccessKey).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_key: Option<String>,
+}
+
+impl AccessibilityTreeNode {
+    /// Create a node with only the core fields; all automation properties default to None.
+    pub fn new(role: String, text: String, depth: u8, bounds: Option<NodeBounds>) -> Self {
+        Self {
+            role,
+            text,
+            depth,
+            bounds,
+            automation_id: None,
+            class_name: None,
+            value: None,
+            help_text: None,
+            url: None,
+            placeholder: None,
+            role_description: None,
+            subrole: None,
+            is_enabled: None,
+            is_focused: None,
+            is_selected: None,
+            is_expanded: None,
+            is_password: None,
+            is_keyboard_focusable: None,
+            accelerator_key: None,
+            access_key: None,
+        }
+    }
 }
 
 /// Why the tree walk stopped early (if it did).

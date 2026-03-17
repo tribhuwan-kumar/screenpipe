@@ -107,6 +107,40 @@ pub(crate) enum WriteOp {
         time_start: String,
         time_end: String,
     },
+    InsertUiEvent {
+        timestamp: String,
+        session_id: Option<String>,
+        relative_ms: i64,
+        event_type: String,
+        x: Option<i32>,
+        y: Option<i32>,
+        delta_x: Option<i32>,
+        delta_y: Option<i32>,
+        button: Option<i32>,
+        click_count: Option<i32>,
+        key_code: Option<i32>,
+        modifiers: Option<i32>,
+        text_content: Option<String>,
+        text_length: Option<i32>,
+        app_name: Option<String>,
+        app_pid: Option<i32>,
+        window_title: Option<String>,
+        browser_url: Option<String>,
+        element_role: Option<String>,
+        element_name: Option<String>,
+        element_value: Option<String>,
+        element_description: Option<String>,
+        element_automation_id: Option<String>,
+        element_bounds: Option<String>,
+        frame_id: Option<i64>,
+    },
+    DeleteAudioChunksBatch {
+        chunk_ids: Vec<i64>,
+    },
+    CompactSnapshots {
+        chunk_id: i64,
+        batch: Vec<(i64, u32)>,
+    },
 }
 
 /// Which table to mark as synced.
@@ -590,6 +624,53 @@ async fn execute_single_write(
                 .bind(time_end.as_str())
                 .execute(&mut **conn)
                 .await?;
+            Ok(WriteResult::Unit)
+        }
+
+        WriteOp::InsertUiEvent {
+            timestamp, session_id, relative_ms, event_type,
+            x, y, delta_x, delta_y, button, click_count, key_code, modifiers,
+            text_content, text_length, app_name, app_pid, window_title, browser_url,
+            element_role, element_name, element_value, element_description,
+            element_automation_id, element_bounds, frame_id,
+        } => {
+            let result = sqlx::query(
+                "INSERT INTO ui_events (timestamp, session_id, relative_ms, event_type, x, y, delta_x, delta_y, button, click_count, key_code, modifiers, text_content, text_length, app_name, app_pid, window_title, browser_url, element_role, element_name, element_value, element_description, element_automation_id, element_bounds, frame_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
+            )
+            .bind(timestamp.as_str()).bind(session_id.as_deref()).bind(relative_ms).bind(event_type.as_str())
+            .bind(x).bind(y).bind(delta_x).bind(delta_y)
+            .bind(button).bind(click_count).bind(key_code).bind(modifiers)
+            .bind(text_content.as_deref()).bind(text_length)
+            .bind(app_name.as_deref()).bind(app_pid).bind(window_title.as_deref()).bind(browser_url.as_deref())
+            .bind(element_role.as_deref()).bind(element_name.as_deref()).bind(element_value.as_deref())
+            .bind(element_description.as_deref()).bind(element_automation_id.as_deref()).bind(element_bounds.as_deref())
+            .bind(frame_id)
+            .execute(&mut **conn).await?;
+            Ok(WriteResult::Id(result.last_insert_rowid()))
+        }
+
+        WriteOp::DeleteAudioChunksBatch { chunk_ids } => {
+            for id in chunk_ids {
+                sqlx::query("DELETE FROM audio_transcriptions WHERE audio_chunk_id = ?1")
+                    .bind(id).execute(&mut **conn).await?;
+                sqlx::query("DELETE FROM audio_chunks WHERE id = ?1")
+                    .bind(id).execute(&mut **conn).await?;
+            }
+            Ok(WriteResult::Unit)
+        }
+
+        WriteOp::CompactSnapshots { chunk_id, batch } => {
+            if batch.is_empty() { return Ok(WriteResult::Unit); }
+            let placeholders: Vec<String> = batch.iter().map(|_| "?".to_string()).collect();
+            let case_clauses: Vec<String> = batch.iter()
+                .map(|(id, pos)| format!("WHEN {} THEN {}", id, pos)).collect();
+            let sql = format!(
+                "UPDATE frames SET video_chunk_id = ?1, offset_index = CASE id {} ELSE offset_index END, snapshot_path = NULL WHERE id IN ({}) AND snapshot_path IS NOT NULL",
+                case_clauses.join(" "), placeholders.join(",")
+            );
+            let mut query = sqlx::query(&sql).bind(chunk_id);
+            for (id, _) in batch { query = query.bind(id); }
+            query.execute(&mut **conn).await?;
             Ok(WriteResult::Unit)
         }
     }

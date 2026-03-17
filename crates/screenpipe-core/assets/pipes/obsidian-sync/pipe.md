@@ -12,26 +12,25 @@ Sync screenpipe activity to an Obsidian vault as a daily markdown log.
 1. Fetch the Obsidian vault path from `GET http://localhost:3030/connections/obsidian` — the `vault_path` and `daily_note_folder` fields tell you where to write
 2. Read the existing daily note file first (if it exists) — merge into it
 3. Query the screenpipe search API for the time range in 30-minute chunks
-4. Use `min_length=50` to skip noisy/short OCR fragments
+4. Use `min_length=50` to skip noisy/short text fragments
 5. Synthesize activities, extract action items, write the note to the vault
 
 ## Search API
 
 ```
-GET http://localhost:3030/search?content_type=ocr&start_time=<ISO8601>&end_time=<ISO8601>&limit=200&min_length=50
+GET http://localhost:3030/search?content_type=all&start_time=<ISO8601>&end_time=<ISO8601>&limit=200&min_length=50
 ```
 
-Content types: `ocr` (screen text), `audio` (speech), `input` (clicks/keystrokes/clipboard/app switches), `accessibility` (UI tree), `all`.
+Content types: `all` (default — screen text + audio + accessibility), `accessibility` (structured UI tree text — primary screen text source), `audio` (speech), `input` (clicks/keystrokes/clipboard/app switches), `ocr` (screenshot text — fallback for apps without accessibility support), `memory`.
 
 Extra params: `q` (keyword), `app_name`, `speaker_name`, `offset` (pagination).
 
 Full API reference (60+ endpoints): https://docs.screenpi.pe/llms-full.txt
 
 Query each modality separately per chunk for richer results:
-1. `content_type=ocr&min_length=50` — what was on screen
+1. `content_type=all&min_length=50` — what was on screen (accessibility tree + OCR fallback)
 2. `content_type=audio` — what was said
 3. `content_type=input` — what was typed, clicked, copied
-4. `content_type=accessibility` — UI elements (buttons, labels, menus)
 
 ## Output Format
 
@@ -84,7 +83,7 @@ Brief 2-3 sentence summary of the day so far.
 
 ## Privacy
 
-- Never dump raw OCR — synthesize into activity descriptions
+- Never dump raw screen text — synthesize into activity descriptions
 - Redact passwords, API keys, tokens, credentials
 - Skip banking/financial/medical content — note as "private activity"
 - Summarize conversations, don't paste full transcripts

@@ -141,7 +141,7 @@ VISUALIZATION:
 When the user asks for diagrams, flowcharts, or visualizations, generate Mermaid diagrams using fenced code blocks with the "mermaid" language tag.
 
 DEEP LINKS & MEDIA:
-- Frame (PREFERRED): [10:30 AM — Chrome](screenpipe://frame/12345) — use frame_id from OCR search results. NEVER invent frame IDs.
+- Frame (PREFERRED): [10:30 AM — Chrome](screenpipe://frame/12345) — use frame_id from screen text search results. NEVER invent frame IDs.
 - Timeline (audio only): [meeting at 3pm](screenpipe://timeline?timestamp=2024-01-15T15:00:00Z) — use exact timestamp from audio search results.
 - Video: show .mp4 paths in inline code: \`/path/to/video.mp4\`
 NEVER fabricate frame IDs or timestamps — only use values from actual search results.
@@ -2188,6 +2188,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       unlistenPipeEvent?.();
       unlistenTerminated?.();
       unlistenLog?.();
+      // Abort any in-flight Pi request when navigating away from chat.
+      // Without this, Pi keeps streaming in the background and rejects
+      // new messages with "already processing" when the user returns.
+      commands.piAbort(PI_CHAT_SESSION).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

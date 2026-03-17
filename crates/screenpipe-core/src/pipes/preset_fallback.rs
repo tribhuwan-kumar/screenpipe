@@ -292,8 +292,9 @@ impl PresetFallbackRegistry {
         let combined = format!("{} {}", stderr, stdout).to_lowercase();
 
         let reason = if combined.contains("rate limit")
-            || combined.contains("429")
             || combined.contains("rate_limit")
+            || combined.contains("usage limit")
+            || combined.contains("429")
         {
             FailureReason::RateLimit
         } else if combined.contains("insufficient")

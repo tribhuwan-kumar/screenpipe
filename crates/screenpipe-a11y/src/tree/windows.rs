@@ -357,6 +357,36 @@ fn normalize_bounds(
     })
 }
 
+/// Build an AccessibilityTreeNode from a UIA AccessibilityNode, propagating automation properties.
+fn make_tree_node(
+    uia_node: &AccessibilityNode,
+    role: &str,
+    text: &str,
+    depth: usize,
+    bounds: Option<NodeBounds>,
+) -> AccessibilityTreeNode {
+    let mut n = AccessibilityTreeNode::new(
+        role.to_string(),
+        text.to_string(),
+        depth.min(255) as u8,
+        bounds,
+    );
+    n.automation_id = uia_node.automation_id.clone();
+    n.class_name = uia_node.class_name.clone();
+    n.value = uia_node.value.clone();
+    n.is_enabled = Some(uia_node.is_enabled);
+    n.is_focused = uia_node.is_focused;
+    n.is_keyboard_focusable = uia_node.is_keyboard_focusable;
+    n.help_text = uia_node.help_text.clone();
+    n.is_password = uia_node.is_password;
+    n.is_selected = uia_node.is_selected;
+    n.is_expanded = uia_node.is_expanded;
+    n.accelerator_key = uia_node.accelerator_key.clone();
+    n.access_key = uia_node.access_key.clone();
+    n.role_description = uia_node.localized_control_type.clone();
+    n
+}
+
 /// Recursively extract text from the accessibility tree.
 /// Mirrors the macOS walker's text extraction strategy.
 fn extract_text_from_tree(
@@ -393,12 +423,7 @@ fn extract_text_from_tree(
             if let Some(ref val) = node.value {
                 if !val.trim().is_empty() {
                     append_text(buffer, val);
-                    nodes.push(AccessibilityTreeNode {
-                        role: ct.to_string(),
-                        text: val.trim().to_string(),
-                        depth: depth.min(255) as u8,
-                        bounds: norm_bounds.clone(),
-                    });
+                    nodes.push(make_tree_node(node, ct, val.trim(), depth, norm_bounds.clone()));
                     // Don't recurse into text controls — their children are sub-elements of the same text
                     return;
                 }
@@ -421,12 +446,7 @@ fn extract_text_from_tree(
                     } else {
                         // Non-URL value — treat as text content
                         append_text(buffer, trimmed);
-                        nodes.push(AccessibilityTreeNode {
-                            role: ct.to_string(),
-                            text: trimmed.to_string(),
-                            depth: depth.min(255) as u8,
-                            bounds: norm_bounds.clone(),
-                        });
+                        nodes.push(make_tree_node(node, ct, trimmed, depth, norm_bounds.clone()));
                     }
                 }
             }
@@ -436,12 +456,7 @@ fn extract_text_from_tree(
             if let Some(ref name) = node.name {
                 if !name.trim().is_empty() {
                     append_text(buffer, name);
-                    nodes.push(AccessibilityTreeNode {
-                        role: ct.to_string(),
-                        text: name.trim().to_string(),
-                        depth: depth.min(255) as u8,
-                        bounds: norm_bounds.clone(),
-                    });
+                    nodes.push(make_tree_node(node, ct, name.trim(), depth, norm_bounds.clone()));
                 }
             }
         }
@@ -454,24 +469,14 @@ fn extract_text_from_tree(
         if let Some(ref val) = node.value {
             if !val.trim().is_empty() {
                 append_text(buffer, val);
-                nodes.push(AccessibilityTreeNode {
-                    role: ct.to_string(),
-                    text: val.trim().to_string(),
-                    depth: depth.min(255) as u8,
-                    bounds: norm_bounds.clone(),
-                });
+                nodes.push(make_tree_node(node, ct, val.trim(), depth, norm_bounds.clone()));
             }
         } else if ct.eq_ignore_ascii_case("Custom") {
             // Custom elements in Electron apps often have names
             if let Some(ref name) = node.name {
                 if !name.trim().is_empty() {
                     append_text(buffer, name);
-                    nodes.push(AccessibilityTreeNode {
-                        role: ct.to_string(),
-                        text: name.trim().to_string(),
-                        depth: depth.min(255) as u8,
-                        bounds: norm_bounds,
-                    });
+                    nodes.push(make_tree_node(node, ct, name.trim(), depth, norm_bounds));
                 }
             }
         }

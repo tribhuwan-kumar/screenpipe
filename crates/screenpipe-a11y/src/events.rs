@@ -164,7 +164,7 @@ pub struct ElementBounds {
 // ============================================================================
 
 /// A node in the accessibility tree
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AccessibilityNode {
     /// Control type (e.g., "Button", "Edit", "Text", "Window")
     pub control_type: String,
@@ -199,6 +199,34 @@ pub struct AccessibilityNode {
     /// Whether the element can receive keyboard focus
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_keyboard_focusable: Option<bool>,
+
+    /// Tooltip or help text (UIA HelpText)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help_text: Option<String>,
+
+    /// Whether the element is a password field (UIA IsPassword)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_password: Option<bool>,
+
+    /// Whether the element is selected (UIA SelectionItem.IsSelected)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_selected: Option<bool>,
+
+    /// Whether the element is expanded (UIA ExpandCollapse.ExpandCollapseState)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_expanded: Option<bool>,
+
+    /// Keyboard shortcut (UIA AcceleratorKey)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accelerator_key: Option<String>,
+
+    /// Access key mnemonic (UIA AccessKey)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_key: Option<String>,
+
+    /// Localized control type description (UIA LocalizedControlType)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_control_type: Option<String>,
 
     /// Child elements
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

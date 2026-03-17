@@ -204,7 +204,7 @@ pub async fn reconcile_untranscribed(
 
         // Batch-delete orphan chunks (missing audio files)
         if !orphan_chunk_ids.is_empty() {
-            if let Err(e) = db.delete_audio_chunks_batch(&orphan_chunk_ids).await {
+            if let Err(e) = db.delete_audio_chunks_batch_queued(orphan_chunk_ids.clone()).await {
                 warn!(
                     "reconciliation: failed to batch-delete {} orphan chunks: {}",
                     orphan_chunk_ids.len(),
@@ -280,7 +280,7 @@ pub async fn reconcile_untranscribed(
                 old_chunks.len()
             );
             let old_chunk_ids: Vec<i64> = old_chunks.iter().map(|c| c.id).collect();
-            if let Err(e) = db.delete_audio_chunks_batch(&old_chunk_ids).await {
+            if let Err(e) = db.delete_audio_chunks_batch_queued(old_chunk_ids.clone()).await {
                 warn!(
                     "reconciliation: failed to batch-delete {} silent chunks: {}",
                     old_chunks.len(),
@@ -439,7 +439,7 @@ async fn finalize_batch(
     // Delete secondary chunks — they're merged into the primary
     if !pending.secondary_chunk_ids.is_empty() {
         if let Err(e) = db
-            .delete_audio_chunks_batch(&pending.secondary_chunk_ids)
+            .delete_audio_chunks_batch_queued(pending.secondary_chunk_ids.clone())
             .await
         {
             warn!(

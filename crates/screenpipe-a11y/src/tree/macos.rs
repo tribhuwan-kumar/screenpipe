@@ -541,12 +541,15 @@ fn extract_text(elem: &ax::UiElement, role_str: &str, depth: usize, state: &mut 
         if let Some(val) = get_string_attr(elem, ax::attr::value()) {
             if !val.is_empty() {
                 append_text(&mut state.text_buffer, &val);
-                state.nodes.push(AccessibilityTreeNode {
-                    role: role_str.to_string(),
-                    text: val.trim().to_string(),
-                    depth: depth.min(255) as u8,
+                let mut node = AccessibilityTreeNode::new(
+                    role_str.to_string(),
+                    val.trim().to_string(),
+                    depth.min(255) as u8,
                     bounds,
-                });
+                );
+                node.value = Some(val.trim().to_string());
+                fill_ax_props(&mut node, elem, role_str);
+                state.nodes.push(node);
                 return;
             }
         }
@@ -557,12 +560,14 @@ fn extract_text(elem: &ax::UiElement, role_str: &str, depth: usize, state: &mut 
         if let Some(val) = get_string_attr(elem, ax::attr::value()) {
             if !val.is_empty() {
                 append_text(&mut state.text_buffer, &val);
-                state.nodes.push(AccessibilityTreeNode {
-                    role: role_str.to_string(),
-                    text: val.trim().to_string(),
-                    depth: depth.min(255) as u8,
+                let mut node = AccessibilityTreeNode::new(
+                    role_str.to_string(),
+                    val.trim().to_string(),
+                    depth.min(255) as u8,
                     bounds,
-                });
+                );
+                fill_ax_props(&mut node, elem, role_str);
+                state.nodes.push(node);
                 return;
             }
         }
@@ -572,12 +577,14 @@ fn extract_text(elem: &ax::UiElement, role_str: &str, depth: usize, state: &mut 
     if let Some(title) = get_string_attr(elem, ax::attr::title()) {
         if !title.is_empty() {
             append_text(&mut state.text_buffer, &title);
-            state.nodes.push(AccessibilityTreeNode {
-                role: role_str.to_string(),
-                text: title.trim().to_string(),
-                depth: depth.min(255) as u8,
+            let mut node = AccessibilityTreeNode::new(
+                role_str.to_string(),
+                title.trim().to_string(),
+                depth.min(255) as u8,
                 bounds,
-            });
+            );
+            fill_ax_props(&mut node, elem, role_str);
+            state.nodes.push(node);
             return;
         }
     }
@@ -586,12 +593,14 @@ fn extract_text(elem: &ax::UiElement, role_str: &str, depth: usize, state: &mut 
     if let Some(desc) = get_string_attr(elem, ax::attr::desc()) {
         if !desc.is_empty() {
             append_text(&mut state.text_buffer, &desc);
-            state.nodes.push(AccessibilityTreeNode {
-                role: role_str.to_string(),
-                text: desc.trim().to_string(),
-                depth: depth.min(255) as u8,
+            let mut node = AccessibilityTreeNode::new(
+                role_str.to_string(),
+                desc.trim().to_string(),
+                depth.min(255) as u8,
                 bounds,
-            });
+            );
+            fill_ax_props(&mut node, elem, role_str);
+            state.nodes.push(node);
         }
     }
 }
@@ -686,6 +695,55 @@ fn get_string_attr(elem: &ax::UiElement, attr: &ax::Attr) -> Option<String> {
             None
         }
     })
+}
+
+/// Extract a boolean attribute from an AX element.
+fn get_bool_attr(elem: &ax::UiElement, attr: &ax::Attr) -> Option<bool> {
+    elem.attr_value(attr).ok().and_then(|v| {
+        if v.get_type_id() == cf::Boolean::type_id() {
+            let b: &cf::Boolean = unsafe { std::mem::transmute(&*v) };
+            Some(b.value())
+        } else {
+            None
+        }
+    })
+}
+
+/// Whether a role represents an interactive/actionable element (buttons, inputs, etc.).
+fn is_interactive_role(role_str: &str) -> bool {
+    matches!(
+        role_str,
+        "AXButton"
+            | "AXTextField"
+            | "AXTextArea"
+            | "AXComboBox"
+            | "AXCheckBox"
+            | "AXRadioButton"
+            | "AXPopUpButton"
+            | "AXMenuButton"
+            | "AXMenuItem"
+            | "AXLink"
+            | "AXDisclosureTriangle"
+            | "AXTab"
+    )
+}
+
+/// Fill automation properties on an AccessibilityTreeNode from an AX element.
+/// Only fetches bool states for interactive elements to limit IPC overhead.
+fn fill_ax_props(node: &mut AccessibilityTreeNode, elem: &ax::UiElement, role_str: &str) {
+    node.automation_id = get_string_attr(elem, ax::attr::id());
+    node.subrole = get_string_attr(elem, ax::attr::subrole());
+    node.role_description = get_string_attr(elem, ax::attr::role_desc());
+    node.help_text = get_string_attr(elem, ax::attr::help());
+    // Bool states and extra string attrs only for interactive elements (limits IPC calls)
+    if is_interactive_role(role_str) {
+        node.placeholder = get_string_attr(elem, ax::attr::placeholder_value());
+        node.url = get_string_attr(elem, ax::attr::url());
+        node.is_enabled = get_bool_attr(elem, ax::attr::enabled());
+        node.is_focused = get_bool_attr(elem, ax::attr::focused());
+        node.is_selected = get_bool_attr(elem, ax::attr::selected());
+        node.is_expanded = get_bool_attr(elem, ax::attr::expanded());
+    }
 }
 
 #[cfg(test)]
