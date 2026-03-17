@@ -52,6 +52,7 @@ mod livetext;
 mod livetext_ffi;
 mod permissions;
 mod pi;
+mod pi_command_queue;
 mod pipe_suggestions_scheduler;
 mod recording;
 mod remote_sync_commands;

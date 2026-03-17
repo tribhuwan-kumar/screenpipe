@@ -276,6 +276,13 @@ pub struct PiManager {
     terminated_emitted: Arc<AtomicBool>,
     /// Channels waiting for RPC responses, keyed by request ID.
     pending_responses: PendingResponses,
+    /// Command queue handle — all commands go through here for serialization.
+    /// None until the process is started and the queue is spawned.
+    queue_handle: Option<crate::pi_command_queue::PiQueueHandle>,
+    /// Shared state for signaling done/terminated from stdout reader to queue.
+    queue_state: Option<Arc<crate::pi_command_queue::PiQueueState>>,
+    /// Join handle for the queue drain task (for cleanup).
+    queue_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl PiManager {
@@ -289,6 +296,9 @@ impl PiManager {
             last_activity: std::time::Instant::now(),
             terminated_emitted: Arc::new(AtomicBool::new(false)),
             pending_responses: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            queue_handle: None,
+            queue_state: None,
+            queue_task: None,
         }
     }
 
@@ -333,6 +343,16 @@ impl PiManager {
     }
 
     pub fn stop(&mut self) {
+        // Signal queue to stop accepting commands
+        if let Some(state) = self.queue_state.take() {
+            state.signal_terminated();
+        }
+        // Abort the queue drain task
+        if let Some(task) = self.queue_task.take() {
+            task.abort();
+        }
+        self.queue_handle = None;
+
         if let Some(mut child) = self.child.take() {
             // Send abort command before killing
             if let Some(ref mut stdin) = self.stdin {
@@ -1252,8 +1272,17 @@ pub async fn pi_start_inner(
     let terminated_emitted = Arc::new(AtomicBool::new(false));
     let pending_responses: PendingResponses;
     if let Some(m) = pool.sessions.get_mut(&sid) {
+        // Spawn the command queue for this session
+        let queue_state = crate::pi_command_queue::PiQueueState::new();
+        let stdin_arc = Arc::new(tokio::sync::Mutex::new(stdin));
+        let (queue_handle, queue_task) =
+            crate::pi_command_queue::spawn_queue(stdin_arc, queue_state.clone(), 0);
+        m.queue_handle = Some(queue_handle);
+        m.queue_state = Some(queue_state);
+        m.queue_task = Some(queue_task);
+
         m.child = Some(child);
-        m.stdin = Some(stdin);
+        m.stdin = None; // stdin is now owned by the queue
         m.project_dir = Some(project_dir.clone());
         m.last_activity = std::time::Instant::now();
         // Fresh flag for this session — old reader threads keep their own Arc
@@ -1262,6 +1291,12 @@ pub async fn pi_start_inner(
     } else {
         pending_responses = Arc::new(std::sync::Mutex::new(HashMap::new()));
     }
+
+    // Grab queue_state for the stdout reader before dropping the lock
+    let queue_state_for_reader = pool
+        .sessions
+        .get(&sid)
+        .and_then(|m| m.queue_state.clone());
 
     // Snapshot the state BEFORE dropping the lock, so we don't hold it during I/O
     let snapshot = match pool.sessions.get_mut(&sid) {
@@ -1313,9 +1348,18 @@ pub async fn pi_start_inner(
                 ready_signalled = true;
             }
 
+            // Signal the command queue when the SDK's agent loop finishes.
+            // "done" = agent turn complete; "response" for new_session/abort = command ack.
+            // We signal done on BOTH because new_session/abort emit "response" not "done".
+            if matches!(event_type.as_deref(), Some("done") | Some("response")) {
+                if let Some(ref qs) = queue_state_for_reader {
+                    qs.signal_done();
+                }
+            }
+
             match parsed {
                 Some(event) => {
-                    // Route RPC responses to waiting callers
+                    // Route RPC responses to waiting callers (legacy path, kept for compat)
                     if event_type.as_deref() == Some("response") {
                         if let Some(id) = event.get("id").and_then(|v| v.as_str()) {
                             let mut pending = pending_for_reader.lock().unwrap();
@@ -1346,6 +1390,10 @@ pub async fn pi_start_inner(
             "Pi stdout reader ended (pid: {}, session: {}), processed {} lines",
             pid, sid_clone, line_count
         );
+        // Signal the command queue that the process is dead
+        if let Some(ref qs) = queue_state_for_reader {
+            qs.signal_terminated();
+        }
         // Only emit once per session — overlapping sessions could race
         if terminated_guard
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -1439,7 +1487,9 @@ pub struct PiImageContent {
     pub data: String, // base64-encoded image data
 }
 
-/// Send a prompt to Pi, optionally with images
+/// Send a prompt to Pi, optionally with images.
+/// The command is serialized through the queue — it will wait for any prior
+/// command (new_session, abort) to fully complete before being written to stdin.
 #[tauri::command]
 #[specta::specta]
 pub async fn pi_prompt(
@@ -1449,46 +1499,53 @@ pub async fn pi_prompt(
     images: Option<Vec<PiImageContent>>,
 ) -> Result<(), String> {
     let sid = session_id.unwrap_or_else(|| "chat".to_string());
-    let mut pool = state.0.lock().await;
-    let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
-
-    if !m.is_running() {
-        return Err("Pi is not running".to_string());
-    }
+    let queue = {
+        let mut pool = state.0.lock().await;
+        let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
+        if !m.is_running() {
+            return Err("Pi is not running".to_string());
+        }
+        m.last_activity = std::time::Instant::now();
+        m.queue_handle.clone().ok_or("Pi command queue not initialized")?
+    };
 
     let mut cmd = json!({
         "type": "prompt",
         "message": message
     });
-
     if let Some(imgs) = images {
         if !imgs.is_empty() {
             cmd["images"] = serde_json::to_value(imgs).map_err(|e| e.to_string())?;
         }
     }
 
-    m.send_command(cmd)
+    let rx = queue
+        .send(cmd, crate::pi_command_queue::WaitMode::StreamThenWaitDone)
+        .await?;
+    rx.await.map_err(|_| "Pi command queue dropped".to_string())?
 }
 
-/// Abort current Pi operation. Waits for the Pi SDK to confirm the abort completed.
+/// Abort current Pi operation. Priority command — cancels all pending commands
+/// in the queue and sends abort directly. Waits for the SDK's done event.
 #[tauri::command]
 #[specta::specta]
 pub async fn pi_abort(state: State<'_, PiState>, session_id: Option<String>) -> Result<(), String> {
     let sid = session_id.unwrap_or_else(|| "chat".to_string());
-    let rx = {
+    let queue = {
         let mut pool = state.0.lock().await;
         let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
         if !m.is_running() {
             return Err("Pi is not running".to_string());
         }
-        m.send_command_and_wait(json!({"type": "abort"}), RPC_RESPONSE_TIMEOUT)?
+        m.last_activity = std::time::Instant::now();
+        m.queue_handle.clone().ok_or("Pi command queue not initialized")?
     };
-    // Await outside the lock so other commands aren't blocked
-    await_rpc_response(rx, "abort").await
+    queue.abort().await
 }
 
 /// Start a new Pi session (clears conversation history).
-/// Waits for the Pi SDK to finish aborting any in-flight work and resetting state.
+/// Serialized through the queue — waits for any in-flight work to complete,
+/// then sends new_session and waits for the SDK's done event before returning.
 #[tauri::command]
 #[specta::specta]
 pub async fn pi_new_session(
@@ -1496,15 +1553,22 @@ pub async fn pi_new_session(
     session_id: Option<String>,
 ) -> Result<(), String> {
     let sid = session_id.unwrap_or_else(|| "chat".to_string());
-    let rx = {
+    let queue = {
         let mut pool = state.0.lock().await;
         let m = pool.sessions.get_mut(&sid).ok_or("Pi not initialized")?;
         if !m.is_running() {
             return Err("Pi is not running".to_string());
         }
-        m.send_command_and_wait(json!({"type": "new_session"}), RPC_RESPONSE_TIMEOUT)?
+        m.last_activity = std::time::Instant::now();
+        m.queue_handle.clone().ok_or("Pi command queue not initialized")?
     };
-    await_rpc_response(rx, "new_session").await
+    let rx = queue
+        .send(
+            json!({"type": "new_session"}),
+            crate::pi_command_queue::WaitMode::WaitDone,
+        )
+        .await?;
+    rx.await.map_err(|_| "Pi command queue dropped".to_string())?
 }
 
 /// Timeout for RPC responses that must complete before the next command.
