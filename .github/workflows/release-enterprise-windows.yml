@@ -141,8 +141,7 @@ jobs:
         run: |
           echo "ORT_STRATEGY=system" >> $GITHUB_ENV
           echo "ORT_LIB_LOCATION=${{ github.workspace }}/ort-system-lib" >> $GITHUB_ENV
-          # Use prebuilt NASM objects on Windows: https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
-          echo "AWS_LC_SYS_PREBUILT_NASM=1" >> $GITHUB_ENV
+          echo "OPENBLAS_PATH=${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/openblas" >> $GITHUB_ENV
 
       - name: Use enterprise config
         shell: bash

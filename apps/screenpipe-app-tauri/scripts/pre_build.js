@@ -6,8 +6,8 @@ import { $ } from 'bun'
 import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
-
-const isDevMode = process.env.SCREENPIPE_APP_DEV === 'true' || false;
+import { setupOpenBlas } from './setup_openblas.js'
+import { findWget, find7z } from './find_tools.js'
 
 const originalCWD = process.cwd()
 // Change CWD to src-tauri
@@ -62,60 +62,6 @@ const config = {
 		ffmpegUrlx86_64: 'https://ffmpeg.martin-riedl.de/download/macos/amd64/1766437297_8.0.1/ffmpeg.zip',
 		ffprobeUrlx86_64: 'https://www.osxexperts.net/ffprobe71intel.zip',
 	},
-}
-
-async function findWget() {
-	const possiblePaths = [
-		'C:\\ProgramData\\chocolatey\\bin\\wget.exe',
-		'C:\\Program Files\\Git\\mingw64\\bin\\wget.exe',
-		'C:\\msys64\\usr\\bin\\wget.exe',
-		'C:\\Windows\\System32\\wget.exe',
-		'C:\\wget\\wget.exe',
-		'wget' // This will work if wget is in PATH
-	];
-
-	for (const wgetPath of possiblePaths) {
-		try {
-			await $`${wgetPath} --version`.quiet();
-			console.log(`wget found at: ${wgetPath}`);
-			return wgetPath;
-		} catch (error) {
-			// wget not found at this path, continue searching
-		}
-	}
-
-	console.error('wget not found. Please install wget and make sure it\'s in your PATH.');
-	process.exit(1);
-}
-
-async function find7z() {
-	const possiblePaths = [
-		'C:\\Program Files\\7-Zip\\7z.exe',
-		'C:\\Program Files (x86)\\7-Zip\\7z.exe',
-		path.join(process.env.LOCALAPPDATA || '', 'Programs', '7-Zip', '7z.exe'),
-	];
-
-	for (const p of possiblePaths) {
-		if (p && (await fs.stat(p).catch(() => null))) {
-			console.log(`7z found at: ${p}`);
-			return p;
-		}
-	}
-
-	// Last resort: 7z in PATH (e.g. after restarting terminal post winget install)
-	try {
-		await $`7z`.quiet();
-	} catch {
-		try {
-			await $`7z --help`.quiet();
-		} catch {
-			console.error('7-Zip (7z) not found. Install it with: winget install -e --id 7zip.7zip');
-			console.error('Then restart your terminal so PATH is updated (see CONTRIBUTING.md Windows setup).');
-			process.exit(1);
-		}
-	}
-	console.log('7z found in PATH');
-	return '7z';
 }
 
 // Export for Github actions
@@ -486,6 +432,8 @@ if (platform == 'windows') {
 		}
 	}
 
+	exports.openBlas = await setupOpenBlas({ cwd, winArch })
+
 	// Copy VC143 CRT DLLs for Tauri bundle (required in CI; optional locally). Use arch matching current Windows (x64 or arm64).
 		const inCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 		if (inCI) {
@@ -595,7 +543,6 @@ if (action?.includes('--build' || action.includes('--dev'))) {
 	process.env['FFMPEG_DIR'] = exports.ffmpeg
 	if (platform === 'windows') {
 		process.env['OPENBLAS_PATH'] = exports.openBlas
-		process.env['CLBlast_DIR'] = exports.clblast
 		process.env['LIBCLANG_PATH'] = exports.libClang
 		process.env['PATH'] = `${process.env['PATH']};${exports.cmake}`
 	}

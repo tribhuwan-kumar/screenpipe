@@ -274,6 +274,27 @@ jobs:
           Write-Host "ONNX Runtime extracted to $extractDir"
           Get-ChildItem "$extractDir/lib" | ForEach-Object { Write-Host $_.Name }
 
+      - name: Install wget (Windows)
+        shell: powershell
+        run: |
+          $wgetDir = "C:\wget"
+          if (-not (Test-Path "$wgetDir\wget.exe")) {
+            New-Item -ItemType Directory -Force -Path $wgetDir | Out-Null
+            Invoke-WebRequest -Uri "https://eternallybored.org/misc/wget/1.21.3/64/wget.exe" -OutFile "$wgetDir\wget.exe"
+          }
+          $env:Path = "$wgetDir;$env:Path"
+          echo "$wgetDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup OpenBLAS
+        shell: pwsh
+        run: |
+          cd apps/screenpipe-app-tauri
+          bun scripts/setup_openblas.js
+          "OPENBLAS_PATH=${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/openblas" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Shorten target dir to avoid MAX_PATH
         shell: powershell
         run: |
@@ -293,6 +314,7 @@ jobs:
           RUSTFLAGS: "-C link-arg=/LTCG"
           ORT_STRATEGY: system
           ORT_LIB_LOCATION: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/onnxruntime-win-x64-1.19.2
+          OPENBLAS_PATH: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/openblas
           # Use prebuilt NASM objects on Windows: https://aws.github.io/aws-lc-rs/requirements/windows.html#prebuilt-nasm-objects
           AWS_LC_SYS_PREBUILT_NASM: "1"
         run: |
@@ -339,6 +361,11 @@ jobs:
             $ortDll = "apps/screenpipe-app-tauri/src-tauri/onnxruntime-win-x64-1.19.2/lib/onnxruntime.dll"
           }
           Copy-Item $ortDll "$packageDir/bin/"
+          # Copy OpenBLAS DLL(s) for qwen3-asr (libopenblas.dll or openblas.dll)
+          $openblasBin = "apps/screenpipe-app-tauri/src-tauri/openblas/bin"
+          if (Test-Path $openblasBin) {
+            Copy-Item "$openblasBin/*.dll" "$packageDir/bin/" -Force
+          }
           # Bundle vcruntime DLLs for onnxruntime.dll (it uses dynamic CRT)
           Copy-Item C:\Windows\System32\vcruntime140.dll "$packageDir/bin/" -Force
           Copy-Item C:\Windows\System32\vcruntime140_1.dll "$packageDir/bin/" -Force -ErrorAction SilentlyContinue
@@ -519,7 +546,7 @@ jobs:
 
           # Windows x64
           mkdir -p packages/cli/screenpipe-win32-x64/bin
-          cd artifacts/screenpipe-windows && unzip -o screenpipe-*.zip -d extracted && cp extracted/bin/screenpipe.exe ../../packages/cli/screenpipe-win32-x64/bin/ && cp extracted/bin/onnxruntime.dll ../../packages/cli/screenpipe-win32-x64/bin/ 2>/dev/null || true && cd ../..
+          cd artifacts/screenpipe-windows && unzip -o screenpipe-*.zip -d extracted && cp extracted/bin/screenpipe.exe ../../packages/cli/screenpipe-win32-x64/bin/ && cp extracted/bin/*.dll ../../packages/cli/screenpipe-win32-x64/bin/ 2>/dev/null || true && cd ../..
 
       - name: Update package versions
         run: |
