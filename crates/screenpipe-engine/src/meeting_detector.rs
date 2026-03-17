@@ -649,10 +649,12 @@ impl PrecomputedSignal {
             .iter()
             .map(|s| {
                 let lower = match s {
-                    CallSignal::AutomationId(id) => id.to_string(), // exact match, no lowercase needed
+                    CallSignal::AutomationId(id) => id.to_string(),
                     CallSignal::AutomationIdContains(substr) => substr.to_lowercase(),
                     CallSignal::KeyboardShortcut(shortcut) => shortcut.to_lowercase(),
                     CallSignal::RoleWithName { name_contains, .. } => name_contains.to_lowercase(),
+                    CallSignal::MenuBarItem { title_contains } => title_contains.to_lowercase(),
+                    CallSignal::MenuItemId(id) => id.to_string(),
                 };
                 PrecomputedSignal {
                     signal: s.clone(),
@@ -746,6 +748,18 @@ fn check_signal_match_precomputed(
             let in_desc = desc_lower.map_or(false, |d| d.contains(&ps.lower[..]));
             in_title || in_desc
         }
+        CallSignal::MenuBarItem { .. } => {
+            if role != "AXMenuBarItem" {
+                return false;
+            }
+            title_lower.map_or(false, |t| t.contains(&ps.lower[..]))
+        }
+        CallSignal::MenuItemId(_) => {
+            if role != "AXMenuItem" {
+                return false;
+            }
+            identifier_lower.map_or(false, |ident| ident == &ps.lower[..])
+        }
     }
 }
 
@@ -836,7 +850,7 @@ struct WindowsProcessInfo {
 /// Enumerate all running processes on Windows.
 #[cfg(target_os = "windows")]
 fn windows_enumerate_processes() -> Vec<WindowsProcessInfo> {
-    use windows::Win32::System::Threading::{
+    use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
@@ -1543,10 +1557,10 @@ pub fn find_running_meeting_apps(
 
     // First, handle currently tracked process
     if let Some(tracking) = currently_tracking {
-        if process_map.values().any(|p| p.pid == tracking.pid as u32) {
+        if process_map.iter().any(|p| p.pid == tracking.pid as u32) {
             results.push(RunningMeetingApp {
                 pid: tracking.pid,
-                app_name: process_map.values()
+                app_name: process_map.iter()
                     .find(|p| p.pid == tracking.pid as u32)
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| format!("pid:{}", tracking.pid)),
@@ -1559,7 +1573,7 @@ pub fn find_running_meeting_apps(
 
     // Match native app processes
     for (idx, profile) in profiles.iter().enumerate() {
-        for proc in process_map.values() {
+        for proc in process_map.iter() {
             let proc_name_lower = proc.name.to_lowercase();
             let matches_native = profile
                 .app_identifiers
@@ -1598,7 +1612,7 @@ pub fn find_running_meeting_apps(
             }
 
             // Check if this is a browser process
-            let proc_name = process_map.values()
+            let proc_name = process_map.iter()
                 .find(|p| p.pid == *pid as u32)
                 .map(|p| p.name.to_lowercase());
             let is_browser = proc_name.as_ref().map_or(false, |n| {
