@@ -255,7 +255,7 @@ export default function GeneralSettings() {
                 </p>
               </div>
               <Switch
-                checked={settings?.showRestartNotifications !== false}
+                checked={settings?.showRestartNotifications === true}
                 onCheckedChange={(checked) =>
                   handleSettingsChange({ showRestartNotifications: checked })
                 }

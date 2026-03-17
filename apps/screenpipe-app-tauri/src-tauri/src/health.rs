@@ -292,8 +292,8 @@ fn parse_devices_from_health(health_result: &Result<HealthCheckResponse>) -> Vec
 }
 
 /// How many consecutive stale/not_started checks before showing a notification.
-/// At 1-second polling, 30 = 30 seconds of sustained failure.
-const CAPTURE_STALL_THRESHOLD: u32 = 30;
+/// At 1-second polling, 90 = 90 seconds of sustained failure.
+const CAPTURE_STALL_THRESHOLD: u32 = 90;
 
 /// Suppress re-notification for this long after showing one.
 const NOTIFICATION_COOLDOWN: Duration = Duration::from_secs(300); // 5 minutes
@@ -546,7 +546,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         .ok()
                         .flatten()
                         .map(|s| s.show_restart_notifications)
-                        .unwrap_or(true);
+                        .unwrap_or(false);
                     let now_instant = Instant::now();
 
                     if consecutive_audio_stall == CAPTURE_STALL_THRESHOLD && notifications_enabled {
@@ -605,8 +605,8 @@ async fn show_capture_stall_notification(app: &tauri::AppHandle, system: &str) -
     let payload = serde_json::json!({
         "id": format!("capture_stall_{}", system),
         "type": "capture_stall",
-        "title": format!("{} recording stopped", system),
-        "body": format!("{} capture appears to have stopped. you can restart to fix this.", system),
+        "title": format!("{} capture may be stalled", system),
+        "body": format!("screenpipe has not received recent {} updates. this may recover on its own, but restarting usually fixes it.", system),
         "actions": [
             { "label": "RESTART", "action": "restart_recording", "primary": true }
         ],

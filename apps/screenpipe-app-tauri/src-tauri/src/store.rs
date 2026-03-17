@@ -176,8 +176,8 @@ pub struct SettingsStore {
     pub chat_always_on_top: bool,
 
     /// Show restart notifications when audio/vision capture stalls.
-    /// Disable to suppress all capture-stall notification popups.
-    #[serde(rename = "showRestartNotifications", default = "default_true")]
+    /// Disabled by default for now until the stall detector is more reliable.
+    #[serde(rename = "showRestartNotifications", default)]
     pub show_restart_notifications: bool,
 
     /// Catch-all for fields added by the frontend (e.g. chatHistory)
@@ -480,7 +480,7 @@ impl Default for SettingsStore {
             overlay_mode: "window".to_string(),
             show_overlay_in_screen_recording: false,
             chat_always_on_top: true,
-            show_restart_notifications: true,
+            show_restart_notifications: false,
             extra: std::collections::HashMap::new(),
         }
     }
@@ -498,6 +498,21 @@ impl SettingsStore {
                 obj.remove("enableUiEvents");
             } else if let Some(v) = obj.remove("enableUiEvents") {
                 obj.insert("enableAccessibility".to_string(), v);
+            }
+
+            // Temporary one-time migration: disable restart notifications for all
+            // existing users until the stall detector is more reliable. Users can
+            // still opt back in manually from Settings; once they've seen this
+            // version, we stop overriding their choice.
+            if !obj.contains_key("restartNotificationsDefaultedOff") {
+                obj.insert(
+                    "showRestartNotifications".to_string(),
+                    Value::Bool(false),
+                );
+                obj.insert(
+                    "restartNotificationsDefaultedOff".to_string(),
+                    Value::Bool(true),
+                );
             }
 
             // Sanitize unknown provider types in aiPresets to prevent deserialization failures
