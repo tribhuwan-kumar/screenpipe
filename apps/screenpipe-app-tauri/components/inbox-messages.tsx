@@ -319,7 +319,7 @@ export function InboxMessages({
           </CardHeader>
           <CardContent className="min-h-[200px] w-[45vw]" ref={parentRef}>
             {unreadMessages.length === 0 ? (
-              <div className="flex h-full w-full items-center justify-center text-sm text-gray-500">
+              <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
                 no new messages
               </div>
             ) : (

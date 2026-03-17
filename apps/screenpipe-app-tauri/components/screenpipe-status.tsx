@@ -281,7 +281,7 @@ const HealthStatus = ({ className }: { className?: string }) => {
                       <div
                         className={`w-2 h-2 rounded-full ${
                           settings.disableAudio
-                            ? "bg-gray-400"
+                            ? "bg-muted-foreground"
                             : health?.audio_status === "ok"
                             ? "bg-green-500"
                             : "bg-red-500"

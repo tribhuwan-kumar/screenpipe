@@ -24,10 +24,10 @@ export function PrettyLink({
         "inline-flex items-center rounded-md px-4 py-2",
         "text-sm font-medium shadow-sm",
         "focus:outline-none focus:ring-2",
-        "focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200",
+        "focus:ring-ring focus:ring-offset-2 transition-colors duration-200",
         variant === "filled"
-          ? "bg-gray-600 text-white hover:bg-gray-700"
-          : "bg-transparent text-gray-600 border border-gray-600 hover:bg-gray-100"
+          ? "bg-muted-foreground text-background hover:bg-muted-foreground/80"
+          : "bg-transparent text-muted-foreground border border-muted-foreground hover:bg-muted"
       )}
     >
       {children}

@@ -710,7 +710,7 @@ function WhatsAppPanel() {
       {status === "pairing" && qr && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">scan this QR code with your WhatsApp app:</p>
-          <div className="bg-white p-3 rounded-lg inline-block">
+          <div className="bg-white p-3 rounded-lg inline-block border dark:border-border">
             <img
               src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`}
               alt="WhatsApp QR Code"

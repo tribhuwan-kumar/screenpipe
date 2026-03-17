@@ -38,7 +38,7 @@ export const VideoComponent = memo(function VideoComponent({
   }, []);
 
   const renderFileLink = () => (
-    <div className="mt-2 text-center text-xs text-gray-500 truncate px-2" title={filePath}>
+    <div className="mt-2 text-center text-xs text-muted-foreground truncate px-2" title={filePath}>
       {customDescription || filePath}
     </div>
   );
@@ -154,11 +154,11 @@ export const VideoComponent = memo(function VideoComponent({
     return (
       <div
         className={cn(
-          "w-full h-48 bg-gray-200 animate-pulse rounded-md flex items-center justify-center",
+          "w-full h-48 bg-muted animate-pulse rounded-md flex items-center justify-center",
           className
         )}
       >
-        <span className="text-gray-500">Loading media...</span>
+        <span className="text-muted-foreground">Loading media...</span>
       </div>
     );
   }
@@ -166,7 +166,7 @@ export const VideoComponent = memo(function VideoComponent({
   return (
     <div className={cn("w-full max-w-2xl text-center isolate", className)}>
       {isAudio ? (
-        <div className="relative z-10 bg-gray-100 p-4 rounded-md">
+        <div className="relative z-10 bg-muted p-4 rounded-md">
           <audio ref={(el) => { mediaElementRef.current = el; }} controls className="w-full pointer-events-auto">
             <source src={mediaSrc} type="audio/mpeg" />
             Your browser does not support the audio element.
