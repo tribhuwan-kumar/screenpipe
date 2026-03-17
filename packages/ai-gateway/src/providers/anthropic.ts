@@ -94,8 +94,18 @@ export class AnthropicProvider implements AIProvider {
 				try {
 					let currentToolCall: { index: number; id: string; name: string; arguments: string } | null = null;
 					let toolCallIndex = 0;
+					let inputTokens = 0;
+					let outputTokens = 0;
 
 					for await (const chunk of stream) {
+						// Capture usage from message_start and message_delta events
+						if (chunk.type === 'message_start' && (chunk as any).message?.usage) {
+							inputTokens = (chunk as any).message.usage.input_tokens || 0;
+						}
+						if (chunk.type === 'message_delta' && (chunk as any).usage) {
+							outputTokens = (chunk as any).usage.output_tokens || 0;
+						}
+
 						// Handle text content
 						if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
 							controller.enqueue(
@@ -164,6 +174,19 @@ export class AnthropicProvider implements AIProvider {
 							currentToolCall = null;
 						}
 					}
+					// Emit usage data in OpenAI format before [DONE]
+					controller.enqueue(
+						new TextEncoder().encode(
+							`data: ${JSON.stringify({
+								choices: [],
+								usage: {
+									prompt_tokens: inputTokens,
+									completion_tokens: outputTokens,
+									total_tokens: inputTokens + outputTokens,
+								},
+							})}\n\n`
+						)
+					);
 					controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
 					controller.close();
 				} catch (error: any) {

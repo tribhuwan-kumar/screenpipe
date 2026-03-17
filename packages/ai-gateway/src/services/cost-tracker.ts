@@ -121,6 +121,30 @@ export function inferProvider(model: string): string {
   return 'unknown';
 }
 
+// Default max daily cost per user in USD (overridable via env.MAX_DAILY_COST_PER_USER)
+const DEFAULT_MAX_DAILY_COST_USD = 5.0;
+
+export function getMaxDailyCostPerUser(env?: Env): number {
+  return parseFloat((env as any)?.MAX_DAILY_COST_PER_USER || '') || DEFAULT_MAX_DAILY_COST_USD;
+}
+
+/**
+ * Get a user's estimated cost for today. Used to enforce per-user daily cost caps.
+ */
+export async function getDailyUserCost(env: Env, deviceId: string): Promise<number> {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const result = await env.DB.prepare(
+      `SELECT COALESCE(SUM(estimated_cost_usd), 0) as daily_cost
+       FROM cost_log WHERE device_id = ? AND timestamp >= ?`
+    ).bind(deviceId, today + ' 00:00:00').first<{ daily_cost: number }>();
+    return result?.daily_cost ?? 0;
+  } catch (error) {
+    console.error('getDailyUserCost failed:', error);
+    return 0; // On error, allow the request
+  }
+}
+
 export interface SpendSummary {
   range_days: number;
   total_cost_usd: number;

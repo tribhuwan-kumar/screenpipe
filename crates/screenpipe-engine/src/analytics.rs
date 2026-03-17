@@ -10,8 +10,8 @@ use sysinfo::{System, SystemExt};
 #[cfg(target_os = "macos")]
 use tracing::warn;
 
-const POSTHOG_API_KEY: &str = "phc_Bt8GoTBPgkCpDrbaIZzJIEYt0CrJjhBiuLaBck1clce";
-const POSTHOG_HOST: &str = "https://eu.i.posthog.com";
+const POSTHOG_API_KEY: &str = "phc_z7FZXE8vmXtdTQ78LMy3j1BQWW4zP6PGDUP46rgcdnb";
+const POSTHOG_HOST: &str = "https://us.i.posthog.com";
 
 static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(false);
 

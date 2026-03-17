@@ -1026,7 +1026,7 @@ async fn main() {
             info!("Local data directory: {}", base_dir.display());
 
             // PostHog analytics setup
-            let posthog_api_key = "phc_Bt8GoTBPgkCpDrbaIZzJIEYt0CrJjhBiuLaBck1clce".to_string();
+            let posthog_api_key = "phc_z7FZXE8vmXtdTQ78LMy3j1BQWW4zP6PGDUP46rgcdnb".to_string();
             let interval_hours = 6;
 
             // Store setup and initialization - must be done first

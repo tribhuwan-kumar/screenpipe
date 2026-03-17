@@ -62,7 +62,7 @@ impl AnalyticsManager {
             email,
             interval: Duration::from_secs(interval_hours * 36),
             enabled: Arc::new(Mutex::new(analytics_enabled)),
-            api_host: "https://eu.i.posthog.com".to_string(),
+            api_host: "https://us.i.posthog.com".to_string(),
             local_api_base_url,
             screenpipe_dir_path,
             attribution: Mutex::new(None),

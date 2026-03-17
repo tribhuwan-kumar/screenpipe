@@ -300,7 +300,7 @@ impl ResourceMonitor {
 
         // Avoid unnecessary cloning by using references
         let payload = json!({
-            "api_key": "phc_Bt8GoTBPgkCpDrbaIZzJIEYt0CrJjhBiuLaBck1clce",
+            "api_key": "phc_z7FZXE8vmXtdTQ78LMy3j1BQWW4zP6PGDUP46rgcdnb",
             "event": "resource_usage",
             "properties": {
                 "distinct_id": &self.distinct_id,
@@ -326,7 +326,7 @@ impl ResourceMonitor {
 
         // Send the event to PostHog
         if let Err(e) = client
-            .post("https://eu.i.posthog.com/capture/")
+            .post("https://us.i.posthog.com/capture/")
             .json(&payload)
             .send()
             .await

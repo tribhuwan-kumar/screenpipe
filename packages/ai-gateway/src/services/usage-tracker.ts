@@ -112,7 +112,7 @@ async function getCreditBalance(env: Env, userId: string): Promise<number> {
 
 // Per-model query weights — expensive models cost more daily queries
 const MODEL_WEIGHTS: Record<string, number> = {
-  'claude-opus': 5,
+  'claude-opus': 15,
   'claude-sonnet': 3,
   'claude-haiku': 1,
   'gemini-3-pro': 3,
@@ -165,7 +165,7 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
     ],
   },
   subscribed: {
-    dailyQueries: 5000,
+    dailyQueries: 1500,
     rpm: 60,
     allowedModels: ['*'], // all models
   },

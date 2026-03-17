@@ -99,10 +99,10 @@ fi
 remove_quarantine
 
 # PostHog install tracking (non-blocking)
-curl -sL -X POST https://eu.i.posthog.com/capture/ \
+curl -sL -X POST https://us.i.posthog.com/capture/ \
     -H "Content-Type: application/json" \
     -d '{
-        "api_key": "phc_Bt8GoTBPgkCpDrbaIZzJIEYt0CrJjhBiuLaBck1clce",
+        "api_key": "phc_z7FZXE8vmXtdTQ78LMy3j1BQWW4zP6PGDUP46rgcdnb",
         "event": "cli_install_npm",
         "properties": {
             "distinct_id": "'$(hostname)'",
