@@ -1484,15 +1484,48 @@ impl DatabaseManager {
         frame_id: i64,
         tree_json: &str,
     ) {
-        // AccessibilityTreeNode: { role, text, depth, bounds? }
-        #[derive(serde::Deserialize)]
+        // AccessibilityTreeNode: { role, text, depth, bounds?, automation props... }
+        #[derive(serde::Deserialize, serde::Serialize)]
         struct AxNode {
             role: String,
             text: String,
             depth: u8,
+            #[serde(skip_serializing_if = "Option::is_none")]
             bounds: Option<AxBounds>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            automation_id: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            class_name: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            value: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            help_text: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            url: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            placeholder: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            role_description: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            subrole: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            is_enabled: Option<bool>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            is_focused: Option<bool>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            is_selected: Option<bool>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            is_expanded: Option<bool>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            is_password: Option<bool>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            is_keyboard_focusable: Option<bool>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            accelerator_key: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            access_key: Option<String>,
         }
-        #[derive(serde::Deserialize)]
+        #[derive(serde::Deserialize, serde::Serialize)]
         struct AxBounds {
             left: f32,
             top: f32,
@@ -1545,8 +1578,30 @@ impl DatabaseManager {
                 None => (None, None, None, None),
             };
 
+            // Serialize automation properties as JSON (only non-None fields)
+            let properties = {
+                let mut props = serde_json::Map::new();
+                if let Some(ref v) = node.automation_id { props.insert("automation_id".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.class_name { props.insert("class_name".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.value { props.insert("value".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.help_text { props.insert("help_text".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.url { props.insert("url".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.placeholder { props.insert("placeholder".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.role_description { props.insert("role_description".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.subrole { props.insert("subrole".into(), serde_json::Value::String(v.clone())); }
+                if let Some(v) = node.is_enabled { props.insert("is_enabled".into(), serde_json::Value::Bool(v)); }
+                if let Some(v) = node.is_focused { props.insert("is_focused".into(), serde_json::Value::Bool(v)); }
+                if let Some(v) = node.is_selected { props.insert("is_selected".into(), serde_json::Value::Bool(v)); }
+                if let Some(v) = node.is_expanded { props.insert("is_expanded".into(), serde_json::Value::Bool(v)); }
+                if let Some(v) = node.is_password { props.insert("is_password".into(), serde_json::Value::Bool(v)); }
+                if let Some(v) = node.is_keyboard_focusable { props.insert("is_keyboard_focusable".into(), serde_json::Value::Bool(v)); }
+                if let Some(ref v) = node.accelerator_key { props.insert("accelerator_key".into(), serde_json::Value::String(v.clone())); }
+                if let Some(ref v) = node.access_key { props.insert("access_key".into(), serde_json::Value::String(v.clone())); }
+                if props.is_empty() { None } else { Some(serde_json::Value::Object(props).to_string()) }
+            };
+
             let result = sqlx::query_scalar::<_, i64>(
-                "INSERT INTO elements (frame_id, source, role, text, parent_id, depth, left_bound, top_bound, width_bound, height_bound, confidence, sort_order) VALUES (?1, 'accessibility', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10) RETURNING id",
+                "INSERT INTO elements (frame_id, source, role, text, parent_id, depth, left_bound, top_bound, width_bound, height_bound, confidence, sort_order, properties) VALUES (?1, 'accessibility', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, ?11) RETURNING id",
             )
             .bind(frame_id)
             .bind(&node.role)
@@ -1558,6 +1613,7 @@ impl DatabaseManager {
             .bind(width)
             .bind(height)
             .bind(sort_order)
+            .bind(&properties)
             .fetch_one(&mut **tx)
             .await;
 

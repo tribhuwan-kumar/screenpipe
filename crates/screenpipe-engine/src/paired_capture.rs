@@ -594,6 +594,7 @@ mod tests {
                 text: "Hello World - Example Page".to_string(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             }],
             browser_url: Some("https://example.com".to_string()),
             timestamp: now,
@@ -777,6 +778,7 @@ mod tests {
             text: "Lots of real content here that is very long and should normally be fine".into(),
             depth: 0,
             bounds: None,
+            ..Default::default()
         }]);
         // Google Docs in window title → always thin regardless of content
         assert!(a11y_content_is_thin(
@@ -797,9 +799,9 @@ mod tests {
     fn test_not_thin_normal_webpage() {
         // Normal webpage: mostly AXStaticText content
         let snap = make_snap(vec![
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Menu".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXStaticText".into(), text: "This is a long article about dogs. Dogs are domesticated descendants of wolves. They were the first species to be domesticated over 14,000 years ago.".into(), depth: 1, bounds: None },
-            AccessibilityTreeNode { role: "AXLink".into(), text: "Read more about canine history".into(), depth: 1, bounds: None },
+            AccessibilityTreeNode { role: "AXButton".into(), text: "Menu".into(), depth: 0, bounds: None, ..Default::default() },
+            AccessibilityTreeNode { role: "AXStaticText".into(), text: "This is a long article about dogs. Dogs are domesticated descendants of wolves. They were the first species to be domesticated over 14,000 years ago.".into(), depth: 1, bounds: None, ..Default::default() },
+            AccessibilityTreeNode { role: "AXLink".into(), text: "Read more about canine history".into(), depth: 1, bounds: None, ..Default::default() },
         ]);
         assert!(!a11y_content_is_thin(&snap, Some("Dog - Wikipedia"), None, None));
     }
@@ -813,90 +815,105 @@ mod tests {
                 text: "File".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXButton".into(),
                 text: "Edit".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXButton".into(),
                 text: "View".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXButton".into(),
                 text: "Insert".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXButton".into(),
                 text: "Format".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXButton".into(),
                 text: "Tools".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXButton".into(),
                 text: "Help".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Undo".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Redo".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Cut".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Copy".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Paste".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Select All".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXMenuItem".into(),
                 text: "Find and Replace".into(),
                 depth: 1,
                 bounds: None,
+                ..Default::default()
             },
             AccessibilityTreeNode {
                 role: "AXStaticText".into(),
                 text: "Untitled".into(),
                 depth: 0,
                 bounds: None,
+                ..Default::default()
             },
         ]);
         // >70% chrome text
@@ -910,6 +927,7 @@ mod tests {
             text: "Loading...".into(),
             depth: 0,
             bounds: None,
+            ..Default::default()
         }]);
         // < 100 chars total
         assert!(a11y_content_is_thin(&snap, Some("Some App"), None, None));
@@ -919,9 +937,9 @@ mod tests {
     fn test_not_thin_vscode() {
         // VS Code: lots of AXStaticText from editor content
         let snap = make_snap(vec![
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Explorer".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXButton".into(), text: "Search".into(), depth: 0, bounds: None },
-            AccessibilityTreeNode { role: "AXStaticText".into(), text: "fn main() { println!(\"hello world\"); } // This is a Rust program with many lines of code that form a substantial amount of content text in the editor buffer area".into(), depth: 1, bounds: None },
+            AccessibilityTreeNode { role: "AXButton".into(), text: "Explorer".into(), depth: 0, bounds: None, ..Default::default() },
+            AccessibilityTreeNode { role: "AXButton".into(), text: "Search".into(), depth: 0, bounds: None, ..Default::default() },
+            AccessibilityTreeNode { role: "AXStaticText".into(), text: "fn main() { println!(\"hello world\"); } // This is a Rust program with many lines of code that form a substantial amount of content text in the editor buffer area".into(), depth: 1, bounds: None, ..Default::default() },
         ]);
         assert!(!a11y_content_is_thin(
             &snap,
@@ -936,7 +954,7 @@ mod tests {
         // When inside a Google Doc, window title is the doc name, not "Google Docs".
         // Use enough content text so the heuristic alone wouldn't flag it as thin.
         let snap = make_snap(vec![
-            AccessibilityTreeNode { role: "AXStaticText".into(), text: "Docs home Star Add shortcut to Drive Document status Saved to Drive Request edit access Share Anyone with the link Join a call here or present".into(), depth: 0, bounds: None },
+            AccessibilityTreeNode { role: "AXStaticText".into(), text: "Docs home Star Add shortcut to Drive Document status Saved to Drive Request edit access Share Anyone with the link Join a call here or present".into(), depth: 0, bounds: None, ..Default::default() },
         ]);
         // Window title is doc name, but URL reveals it's Google Docs → thin
         assert!(a11y_content_is_thin(

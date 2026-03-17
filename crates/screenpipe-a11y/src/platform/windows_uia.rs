@@ -28,10 +28,12 @@ use windows::Win32::UI::Accessibility::{
     AutomationElementMode_Full, AutomationElementMode_None, CUIAutomation, IUIAutomation,
     IUIAutomationCacheRequest, IUIAutomationElement, IUIAutomationFocusChangedEventHandler,
     IUIAutomationFocusChangedEventHandler_Impl, IUIAutomationTreeWalker, TreeScope_Element,
-    TreeScope_Subtree, UIA_AutomationIdPropertyId, UIA_BoundingRectanglePropertyId,
-    UIA_ClassNamePropertyId, UIA_ControlTypePropertyId, UIA_HasKeyboardFocusPropertyId,
-    UIA_IsEnabledPropertyId, UIA_IsKeyboardFocusablePropertyId, UIA_NamePropertyId,
-    UIA_ValueValuePropertyId, UIA_PROPERTY_ID,
+    TreeScope_Subtree, UIA_AcceleratorKeyPropertyId, UIA_AccessKeyPropertyId,
+    UIA_AutomationIdPropertyId, UIA_BoundingRectanglePropertyId, UIA_ClassNamePropertyId,
+    UIA_ControlTypePropertyId, UIA_HasKeyboardFocusPropertyId, UIA_HelpTextPropertyId,
+    UIA_IsEnabledPropertyId, UIA_IsKeyboardFocusablePropertyId, UIA_IsPasswordPropertyId,
+    UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId, UIA_ValueValuePropertyId,
+    UIA_PROPERTY_ID,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId, PeekMessageW,
@@ -78,6 +80,11 @@ impl UiaContext {
             cache_request.AddProperty(UIA_ValueValuePropertyId)?;
             cache_request.AddProperty(UIA_HasKeyboardFocusPropertyId)?;
             cache_request.AddProperty(UIA_IsKeyboardFocusablePropertyId)?;
+            cache_request.AddProperty(UIA_HelpTextPropertyId)?;
+            cache_request.AddProperty(UIA_IsPasswordPropertyId)?;
+            cache_request.AddProperty(UIA_AcceleratorKeyPropertyId)?;
+            cache_request.AddProperty(UIA_AccessKeyPropertyId)?;
+            cache_request.AddProperty(UIA_LocalizedControlTypePropertyId)?;
 
             // Use Control View (skips raw layout elements, ~50% fewer nodes)
             let control_view_condition = automation.ControlViewCondition()?;
@@ -102,6 +109,11 @@ impl UiaContext {
             walker_cache_request.AddProperty(UIA_ValueValuePropertyId)?;
             walker_cache_request.AddProperty(UIA_HasKeyboardFocusPropertyId)?;
             walker_cache_request.AddProperty(UIA_IsKeyboardFocusablePropertyId)?;
+            walker_cache_request.AddProperty(UIA_HelpTextPropertyId)?;
+            walker_cache_request.AddProperty(UIA_IsPasswordPropertyId)?;
+            walker_cache_request.AddProperty(UIA_AcceleratorKeyPropertyId)?;
+            walker_cache_request.AddProperty(UIA_AccessKeyPropertyId)?;
+            walker_cache_request.AddProperty(UIA_LocalizedControlTypePropertyId)?;
             let control_view_condition2 = automation.ControlViewCondition()?;
             walker_cache_request.SetTreeFilter(&control_view_condition2)?;
             walker_cache_request.SetAutomationElementMode(AutomationElementMode_Full)?;
@@ -199,6 +211,12 @@ impl UiaContext {
         let is_focused = self.get_cached_bool_opt(element, UIA_HasKeyboardFocusPropertyId);
         let is_keyboard_focusable =
             self.get_cached_bool_opt(element, UIA_IsKeyboardFocusablePropertyId);
+        let help_text = self.get_cached_string(element, UIA_HelpTextPropertyId);
+        let is_password = self.get_cached_bool_opt(element, UIA_IsPasswordPropertyId);
+        let accelerator_key = self.get_cached_string(element, UIA_AcceleratorKeyPropertyId);
+        let access_key = self.get_cached_string(element, UIA_AccessKeyPropertyId);
+        let localized_control_type =
+            self.get_cached_string(element, UIA_LocalizedControlTypePropertyId);
 
         let mut children = Vec::new();
         if *count < max_elements {
@@ -237,6 +255,13 @@ impl UiaContext {
             is_enabled,
             is_focused,
             is_keyboard_focusable,
+            help_text,
+            is_password,
+            is_selected: None, // requires SelectionItemPattern, not available via simple cache
+            is_expanded: None, // requires ExpandCollapsePattern, not available via simple cache
+            accelerator_key,
+            access_key,
+            localized_control_type,
             children,
         }
     }
@@ -260,6 +285,12 @@ impl UiaContext {
         let is_focused = self.get_cached_bool_opt(element, UIA_HasKeyboardFocusPropertyId);
         let is_keyboard_focusable =
             self.get_cached_bool_opt(element, UIA_IsKeyboardFocusablePropertyId);
+        let help_text = self.get_cached_string(element, UIA_HelpTextPropertyId);
+        let is_password = self.get_cached_bool_opt(element, UIA_IsPasswordPropertyId);
+        let accelerator_key = self.get_cached_string(element, UIA_AcceleratorKeyPropertyId);
+        let access_key = self.get_cached_string(element, UIA_AccessKeyPropertyId);
+        let localized_control_type =
+            self.get_cached_string(element, UIA_LocalizedControlTypePropertyId);
 
         let mut children = Vec::new();
         if *count < max_elements {
@@ -290,6 +321,13 @@ impl UiaContext {
             is_enabled,
             is_focused,
             is_keyboard_focusable,
+            help_text,
+            is_password,
+            is_selected: None,
+            is_expanded: None,
+            accelerator_key,
+            access_key,
+            localized_control_type,
             children,
         }
     }
@@ -915,6 +953,13 @@ mod tests {
             is_enabled: true,
             is_focused: None,
             is_keyboard_focusable: None,
+            help_text: None,
+            is_password: None,
+            is_selected: None,
+            is_expanded: None,
+            accelerator_key: None,
+            access_key: None,
+            localized_control_type: None,
             children: vec![],
         };
         let node2 = AccessibilityNode {
@@ -927,6 +972,13 @@ mod tests {
             is_enabled: true,
             is_focused: None,
             is_keyboard_focusable: None,
+            help_text: None,
+            is_password: None,
+            is_selected: None,
+            is_expanded: None,
+            accelerator_key: None,
+            access_key: None,
+            localized_control_type: None,
             children: vec![],
         };
         assert_ne!(compute_tree_hash(&node1), compute_tree_hash(&node2));
@@ -949,6 +1001,13 @@ mod tests {
             is_enabled: true,
             is_focused: None,
             is_keyboard_focusable: None,
+            help_text: None,
+            is_password: None,
+            is_selected: None,
+            is_expanded: None,
+            accelerator_key: None,
+            access_key: None,
+            localized_control_type: None,
             children: vec![AccessibilityNode {
                 control_type: "Button".to_string(),
                 name: Some("OK".to_string()),
@@ -959,6 +1018,13 @@ mod tests {
                 is_enabled: true,
                 is_focused: None,
                 is_keyboard_focusable: None,
+                help_text: None,
+                is_password: None,
+                is_selected: None,
+                is_expanded: None,
+                accelerator_key: None,
+                access_key: None,
+                localized_control_type: None,
                 children: vec![],
             }],
         };
@@ -979,6 +1045,13 @@ mod tests {
             is_enabled: true,
             is_focused: None,
             is_keyboard_focusable: None,
+            help_text: None,
+            is_password: None,
+            is_selected: None,
+            is_expanded: None,
+            accelerator_key: None,
+            access_key: None,
+            localized_control_type: None,
             children: vec![
                 AccessibilityNode {
                     control_type: "Button".to_string(),
@@ -1002,6 +1075,13 @@ mod tests {
                     is_enabled: true,
                     is_focused: None,
                     is_keyboard_focusable: None,
+                    help_text: None,
+                    is_password: None,
+                    is_selected: None,
+                    is_expanded: None,
+                    accelerator_key: None,
+                    access_key: None,
+                    localized_control_type: None,
                     children: vec![AccessibilityNode {
                         control_type: "Text".to_string(),
                         name: Some("C".to_string()),
@@ -1012,6 +1092,13 @@ mod tests {
                         is_enabled: true,
                         is_focused: None,
                         is_keyboard_focusable: None,
+                        help_text: None,
+                        is_password: None,
+                        is_selected: None,
+                        is_expanded: None,
+                        accelerator_key: None,
+                        access_key: None,
+                        localized_control_type: None,
                         children: vec![],
                     }],
                 },

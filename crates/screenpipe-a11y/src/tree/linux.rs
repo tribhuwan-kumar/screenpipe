@@ -123,7 +123,11 @@ fn role_name(role: u32) -> &'static str {
 // ---------------------------------------------------------------------------
 
 const STATE_ACTIVE: u32 = 1;
+const STATE_ENABLED: u32 = 7;
+const STATE_EXPANDED: u32 = 9;
+const STATE_FOCUSABLE: u32 = 10;
 const STATE_FOCUSED: u32 = 12;
+const STATE_SELECTED: u32 = 18;
 
 fn has_state(state_set: &[u32], bit: u32) -> bool {
     let word = (bit / 32) as usize;
@@ -553,6 +557,23 @@ fn walk_accessible(conn: &Connection, aref: &AccessibleRef, depth: usize, state:
     }
 }
 
+/// Fill automation state properties from AT-SPI state set (single D-Bus call).
+fn fill_atspi_state(node: &mut AccessibilityTreeNode, conn: &Connection, aref: &AccessibleRef) {
+    let state_set = get_accessible_state(conn, aref);
+    if !state_set.is_empty() {
+        node.is_enabled = Some(has_state(&state_set, STATE_ENABLED));
+        node.is_focused = Some(has_state(&state_set, STATE_FOCUSED));
+        node.is_selected = Some(has_state(&state_set, STATE_SELECTED));
+        node.is_expanded = Some(has_state(&state_set, STATE_EXPANDED));
+        node.is_keyboard_focusable = Some(has_state(&state_set, STATE_FOCUSABLE));
+    }
+    // Description doubles as help_text on Linux
+    let desc = get_accessible_description(conn, aref);
+    if !desc.is_empty() {
+        node.help_text = Some(desc);
+    }
+}
+
 /// Extract text from a text-bearing accessible element.
 fn extract_text(
     conn: &Connection,
@@ -570,12 +591,14 @@ fn extract_text(
     if matches!(role, 79 | 61 | 11) {
         if let Some(text) = get_text_content(conn, aref) {
             append_text(&mut state.text_buffer, &text);
-            state.nodes.push(AccessibilityTreeNode {
-                role: role_str.to_string(),
-                text: text.trim().to_string(),
-                depth: depth.min(255) as u8,
+            let mut node = AccessibilityTreeNode::new(
+                role_str.to_string(),
+                text.trim().to_string(),
+                depth.min(255) as u8,
                 bounds,
-            });
+            );
+            fill_atspi_state(&mut node, conn, aref);
+            state.nodes.push(node);
             return;
         }
     }
@@ -584,12 +607,14 @@ fn extract_text(
     if matches!(role, 29 | 73 | 116) {
         if let Some(text) = get_text_content(conn, aref) {
             append_text(&mut state.text_buffer, &text);
-            state.nodes.push(AccessibilityTreeNode {
-                role: role_str.to_string(),
-                text: text.trim().to_string(),
-                depth: depth.min(255) as u8,
+            let mut node = AccessibilityTreeNode::new(
+                role_str.to_string(),
+                text.trim().to_string(),
+                depth.min(255) as u8,
                 bounds,
-            });
+            );
+            fill_atspi_state(&mut node, conn, aref);
+            state.nodes.push(node);
             return;
         }
     }
@@ -598,12 +623,14 @@ fn extract_text(
     let name = get_accessible_name(conn, aref);
     if !name.is_empty() {
         append_text(&mut state.text_buffer, &name);
-        state.nodes.push(AccessibilityTreeNode {
-            role: role_str.to_string(),
-            text: name.trim().to_string(),
-            depth: depth.min(255) as u8,
+        let mut node = AccessibilityTreeNode::new(
+            role_str.to_string(),
+            name.trim().to_string(),
+            depth.min(255) as u8,
             bounds,
-        });
+        );
+        fill_atspi_state(&mut node, conn, aref);
+        state.nodes.push(node);
         return;
     }
 
@@ -611,12 +638,14 @@ fn extract_text(
     let desc = get_accessible_description(conn, aref);
     if !desc.is_empty() {
         append_text(&mut state.text_buffer, &desc);
-        state.nodes.push(AccessibilityTreeNode {
-            role: role_str.to_string(),
-            text: desc.trim().to_string(),
-            depth: depth.min(255) as u8,
+        let mut node = AccessibilityTreeNode::new(
+            role_str.to_string(),
+            desc.trim().to_string(),
+            depth.min(255) as u8,
             bounds,
-        });
+        );
+        fill_atspi_state(&mut node, conn, aref);
+        state.nodes.push(node);
     }
 }
 
