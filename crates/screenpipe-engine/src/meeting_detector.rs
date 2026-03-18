@@ -380,11 +380,11 @@ impl Default for MeetingUiScanner {
 }
 
 impl MeetingUiScanner {
-    /// Create a new scanner with default settings (depth=25, timeout=500ms).
+    /// Create a new scanner with default settings (depth=25, timeout=5s).
     pub fn new() -> Self {
         Self {
             max_depth: 25,
-            scan_timeout: Duration::from_millis(2000),
+            scan_timeout: Duration::from_millis(5000),
         }
     }
 
@@ -965,7 +965,60 @@ fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
     Arc::try_unwrap(results).unwrap_or_default().into_inner().unwrap_or_default()
 }
 
+/// Enumerate visible windows belonging to a specific PID.
+#[cfg(target_os = "windows")]
+fn enumerate_windows_for_pid(target_pid: u32) -> Vec<windows::Win32::Foundation::HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use std::sync::Mutex;
+
+    let param_data = (target_pid, Mutex::new(Vec::<HWND>::new()));
+
+    unsafe extern "system" fn enum_for_pid(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let (target_pid, hwnds) =
+            &*(lparam.0 as *const (u32, Mutex<Vec<HWND>>));
+
+        if IsWindowVisible(hwnd).as_bool() {
+            let mut win_pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut win_pid));
+            if win_pid == *target_pid {
+                if let Ok(mut h) = hwnds.lock() {
+                    h.push(hwnd);
+                }
+            }
+        }
+        BOOL(1)
+    }
+
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_for_pid),
+            LPARAM(&param_data as *const (u32, Mutex<Vec<HWND>>) as isize),
+        );
+    }
+
+    param_data.1.into_inner().unwrap_or_default()
+}
+
+/// Get a cached string property from a UIA element, returning None for empty/missing.
+#[cfg(target_os = "windows")]
+unsafe fn get_cached_string(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+    prop: windows::Win32::UI::Accessibility::UIA_PROPERTY_ID,
+) -> Option<String> {
+    let variant = element.GetCachedPropertyValue(prop).ok()?;
+    let bstr = windows::core::BSTR::try_from(&variant).ok()?;
+    let s = bstr.to_string();
+    if s.is_empty() { None } else { Some(s) }
+}
+
 /// Scan a process's windows via Windows UI Automation for call control signals.
+///
+/// Uses CacheRequest + TreeScope_Subtree to fetch the entire UI tree in one COM call,
+/// then walks the cached tree in-memory. This is orders of magnitude faster than the
+/// per-element TreeWalker approach for deep trees like Teams (depth 17+).
 #[cfg(target_os = "windows")]
 fn windows_scan_process_uia(
     pid: i32,
@@ -977,12 +1030,12 @@ fn windows_scan_process_uia(
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
-    use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, TreeScope_Subtree, AutomationElementMode_None,
+        UIA_NamePropertyId, UIA_LocalizedControlTypePropertyId,
+        UIA_AutomationIdPropertyId, UIA_HelpTextPropertyId,
+        UIA_AcceleratorKeyPropertyId,
     };
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use std::sync::Mutex;
 
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -990,36 +1043,24 @@ fn windows_scan_process_uia(
         let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)
             .map_err(|e| format!("UIA init failed: {}", e))?;
 
-        let walker = automation
-            .ControlViewWalker()
-            .map_err(|e| format!("walker failed: {}", e))?;
+        // Build CacheRequest with only the properties we need for signal matching
+        let cache_request = automation.CreateCacheRequest()
+            .map_err(|e| format!("cache request failed: {}", e))?;
+        cache_request.AddProperty(UIA_NamePropertyId).ok();
+        cache_request.AddProperty(UIA_LocalizedControlTypePropertyId).ok();
+        cache_request.AddProperty(UIA_AutomationIdPropertyId).ok();
+        cache_request.AddProperty(UIA_HelpTextPropertyId).ok();
+        cache_request.AddProperty(UIA_AcceleratorKeyPropertyId).ok();
+
+        // Control view filter + subtree scope = one COM call fetches everything
+        let control_view = automation.ControlViewCondition()
+            .map_err(|e| format!("control view failed: {}", e))?;
+        cache_request.SetTreeFilter(&control_view).ok();
+        cache_request.SetTreeScope(TreeScope_Subtree).ok();
+        cache_request.SetAutomationElementMode(AutomationElementMode_None).ok();
 
         // Enumerate windows for this PID
-        let target_pid = pid as u32;
-        let param_data = (target_pid, Mutex::new(Vec::<HWND>::new()));
-
-        unsafe extern "system" fn enum_for_pid(hwnd: HWND, lparam: LPARAM) -> BOOL {
-            let (target_pid, hwnds) =
-                &*(lparam.0 as *const (u32, Mutex<Vec<HWND>>));
-
-            if IsWindowVisible(hwnd).as_bool() {
-                let mut win_pid: u32 = 0;
-                GetWindowThreadProcessId(hwnd, Some(&mut win_pid));
-                if win_pid == *target_pid {
-                    if let Ok(mut h) = hwnds.lock() {
-                        h.push(hwnd);
-                    }
-                }
-            }
-            BOOL(1)
-        }
-
-        let _ = EnumWindows(
-            Some(enum_for_pid),
-            LPARAM(&param_data as *const (u32, Mutex<Vec<HWND>>) as isize),
-        );
-
-        let window_handles = param_data.1.into_inner().unwrap_or_default();
+        let window_handles = enumerate_windows_for_pid(pid as u32);
 
         let start = Instant::now();
         let mut found = Vec::new();
@@ -1029,13 +1070,15 @@ fn windows_scan_process_uia(
                 break;
             }
 
-            let element = match automation.ElementFromHandle(hwnd) {
+            // ONE COM call fetches entire cached subtree
+            let element = match automation.ElementFromHandleBuildCache(hwnd, &cache_request) {
                 Ok(el) => el,
                 Err(_) => continue,
             };
 
-            windows_walk_uia(
-                &walker, &element, signals, 0, max_depth,
+            // Walk cached tree in-memory (microseconds per node, not milliseconds)
+            windows_walk_cached(
+                &element, signals, 0, max_depth,
                 &start, timeout, &mut found, min_required,
             );
         }
@@ -1045,10 +1088,12 @@ fn windows_scan_process_uia(
     }
 }
 
-/// Walk UIA element tree looking for call signals (Windows).
+/// Walk a cached UIA element tree looking for call signals (Windows).
+///
+/// All property reads use GetCachedPropertyValue (in-memory, zero COM overhead).
+/// Children are iterated via GetCachedChildren (also in-memory).
 #[cfg(target_os = "windows")]
-unsafe fn windows_walk_uia(
-    walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+unsafe fn windows_walk_cached(
     element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
     signals: &[CallSignal],
     depth: usize,
@@ -1058,20 +1103,23 @@ unsafe fn windows_walk_uia(
     found: &mut Vec<String>,
     min_required: usize,
 ) {
+    use windows::Win32::UI::Accessibility::{
+        UIA_NamePropertyId, UIA_LocalizedControlTypePropertyId,
+        UIA_AutomationIdPropertyId, UIA_HelpTextPropertyId,
+        UIA_AcceleratorKeyPropertyId,
+    };
+
     if depth >= max_depth || start.elapsed() >= timeout || found.len() >= min_required {
         return;
     }
 
-    let role = element
-        .CurrentLocalizedControlType()
-        .ok()
-        .map(|s| s.to_string())
+    // All cached — zero COM overhead
+    let role = get_cached_string(element, UIA_LocalizedControlTypePropertyId)
         .unwrap_or_default();
-
-    let name = element.CurrentName().ok().map(|s| s.to_string());
-    let automation_id = element.CurrentAutomationId().ok().map(|s| s.to_string());
-    let help_text = element.CurrentHelpText().ok().map(|s| s.to_string());
-    let accel_key = element.CurrentAcceleratorKey().ok().map(|s| s.to_string());
+    let name = get_cached_string(element, UIA_NamePropertyId);
+    let automation_id = get_cached_string(element, UIA_AutomationIdPropertyId);
+    let help_text = get_cached_string(element, UIA_HelpTextPropertyId);
+    let accel_key = get_cached_string(element, UIA_AcceleratorKeyPropertyId);
 
     // Windows uses "Button", macOS uses "AXButton" — match both forms
     let ax_role = format!("AX{}", role);
@@ -1139,24 +1187,19 @@ unsafe fn windows_walk_uia(
         return;
     }
 
-    // Walk children
-    if let Ok(child) = walker.GetFirstChildElement(element) {
-        windows_walk_uia(
-            walker, &child, signals, depth + 1, max_depth,
-            start, timeout, found, min_required,
-        );
-
-        let mut current = child;
-        while found.len() < min_required && start.elapsed() < timeout {
-            match walker.GetNextSiblingElement(&current) {
-                Ok(next) => {
-                    windows_walk_uia(
-                        walker, &next, signals, depth + 1, max_depth,
+    // Walk cached children (in-memory iteration, NOT COM calls)
+    if let Ok(children) = element.GetCachedChildren() {
+        if let Ok(len) = children.Length() {
+            for i in 0..len {
+                if found.len() >= min_required || start.elapsed() >= timeout {
+                    break;
+                }
+                if let Ok(child) = children.GetElement(i) {
+                    windows_walk_cached(
+                        &child, signals, depth + 1, max_depth,
                         start, timeout, found, min_required,
                     );
-                    current = next;
                 }
-                Err(_) => break,
             }
         }
     }
@@ -1623,9 +1666,18 @@ pub fn find_running_meeting_apps(
                 });
                 seen_pids.insert(proc.pid as i32);
 
-                // Also add child processes (Teams uses msedgewebview2.exe for UI)
+                // Also add child processes that render UI (Teams uses msedgewebview2.exe).
+                // Only include known UI-hosting children to avoid scanning 10-15+ GPU/utility
+                // worker processes that would each block for 2s+ on timeout.
+                const UI_CHILD_PROCESS_NAMES: &[&str] = &[
+                    "msedgewebview2.exe",
+                    "webview2.exe",
+                ];
                 for child in process_map.iter() {
-                    if child.parent_pid == proc.pid && !seen_pids.contains(&(child.pid as i32)) {
+                    if child.parent_pid == proc.pid
+                        && !seen_pids.contains(&(child.pid as i32))
+                        && UI_CHILD_PROCESS_NAMES.iter().any(|n| child.name.eq_ignore_ascii_case(n))
+                    {
                         results.push(RunningMeetingApp {
                             pid: child.pid as i32,
                             app_name: format!("{} ({})", proc.name, child.name),
