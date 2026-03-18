@@ -2,22 +2,33 @@ use super::get_base_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreBuilder;
 use tracing::error;
+
+/// Cached store instance — built once, reused for the lifetime of the process.
+/// Avoids TOCTOU race in StoreBuilder::build() when called multiple times during
+/// startup (settings init, onboarding init, tray setup all call get_store).
+static STORE_CACHE: OnceLock<Arc<tauri_plugin_store::Store<tauri::Wry>>> = OnceLock::new();
 
 pub fn get_store(
     app: &AppHandle,
     _profile_name: Option<String>, // Keep parameter for API compatibility but ignore it
 ) -> anyhow::Result<Arc<tauri_plugin_store::Store<tauri::Wry>>> {
+    if let Some(cached) = STORE_CACHE.get() {
+        return Ok(cached.clone());
+    }
+
     let base_dir = get_base_dir(app, None)?;
     let store_path = base_dir.join("store.bin");
 
-    // Build and return the store wrapped in Arc
-    StoreBuilder::new(app, store_path)
+    let store = StoreBuilder::new(app, store_path)
         .build()
-        .map_err(|e| anyhow::anyhow!(e))
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    // If another thread raced us, use their instance
+    Ok(STORE_CACHE.get_or_init(|| store).clone())
 }
 
 #[derive(Serialize, Deserialize, Type, Clone)]
@@ -668,7 +679,9 @@ pub fn init_store(app: &AppHandle) -> Result<SettingsStore, String> {
     };
 
     if should_save {
-        store.save(app).unwrap();
+        if let Err(e) = store.save(app) {
+            error!("Failed to save initial settings store (non-fatal): {}", e);
+        }
     }
     Ok(store)
 }
@@ -691,7 +704,9 @@ pub fn init_onboarding_store(app: &AppHandle) -> Result<OnboardingStore, String>
     };
 
     if should_save {
-        onboarding.save(app).unwrap();
+        if let Err(e) = onboarding.save(app) {
+            error!("Failed to save initial onboarding store (non-fatal): {}", e);
+        }
     }
     Ok(onboarding)
 }
