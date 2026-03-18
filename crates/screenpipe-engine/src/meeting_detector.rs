@@ -680,6 +680,7 @@ impl PrecomputedSignal {
 /// `title` and `desc` are expected to be raw (not lowercased) for the original
 /// `check_signal_match` entry point. For the optimized hot path, use
 /// `check_signal_match_precomputed` with pre-lowercased values.
+#[cfg(any(target_os = "windows", test))]
 fn check_signal_match(
     signal: &CallSignal,
     role: &str,

@@ -268,9 +268,7 @@ pub struct PiManager {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
     project_dir: Option<String>,
-    request_id: u64,
     app_handle: AppHandle,
-    /// Tracks last activity (creation or send_command)
     last_activity: std::time::Instant,
     /// Guard: ensures only one `pi_terminated` event is emitted per session.
     terminated_emitted: Arc<AtomicBool>,
@@ -291,7 +289,6 @@ impl PiManager {
             child: None,
             stdin: None,
             project_dir: None,
-            request_id: 0,
             app_handle,
             last_activity: std::time::Instant::now(),
             terminated_emitted: Arc::new(AtomicBool::new(false)),
@@ -375,73 +372,6 @@ impl PiManager {
         self.check_alive()
     }
 
-    /// Send a command to Pi via stdin (fire-and-forget).
-    /// Use this for commands like `prompt` where the result streams via events.
-    pub fn send_command(&mut self, command: Value) -> Result<(), String> {
-        self.send_command_inner(command).map(|_| ())
-    }
-
-    /// Send a command and wait for the Pi process to respond.
-    /// Use this for commands like `abort` and `new_session` that must complete
-    /// before the next command can be sent safely.
-    pub fn send_command_and_wait(
-        &mut self,
-        command: Value,
-        timeout: std::time::Duration,
-    ) -> Result<oneshot::Receiver<RpcResponse>, String> {
-        let req_id = self.send_command_inner(command)?;
-        let (tx, rx) = oneshot::channel();
-        self.pending_responses
-            .lock()
-            .unwrap()
-            .insert(req_id, tx);
-        // Caller awaits `rx` with a timeout
-        let _ = timeout; // timeout is applied by the caller via tokio::time::timeout
-        Ok(rx)
-    }
-
-    /// Shared implementation: stamps the command with an ID, writes to stdin.
-    fn send_command_inner(&mut self, command: Value) -> Result<String, String> {
-        if !self.check_alive() {
-            return Err("Pi process has died".to_string());
-        }
-
-        self.last_activity = std::time::Instant::now();
-        self.request_id += 1;
-        let req_id = format!("req_{}", self.request_id);
-
-        let mut cmd = command;
-        if let Some(obj) = cmd.as_object_mut() {
-            obj.insert("id".to_string(), json!(&req_id));
-        }
-
-        let cmd_str = serde_json::to_string(&cmd).map_err(|e| e.to_string())?;
-        let child_pid = self.child.as_ref().map(|c| c.id());
-        let cmd_type = cmd
-            .get("type")
-            .and_then(|t| t.as_str())
-            .unwrap_or("?")
-            .to_string();
-
-        let stdin = self.stdin.as_mut().ok_or("Pi not running")?;
-
-        info!(
-            "Sending to Pi ({}): type={}, child_pid={:?}, bytes={}",
-            req_id,
-            cmd_type,
-            child_pid,
-            cmd_str.len() + 1
-        );
-
-        writeln!(stdin, "{}", cmd_str)
-            .map_err(|e| format!("Failed to write to Pi stdin: {}", e))?;
-        stdin
-            .flush()
-            .map_err(|e| format!("Failed to flush Pi stdin: {}", e))?;
-        info!("Sent to Pi ({}): flushed ok", req_id);
-
-        Ok(req_id)
-    }
 }
 
 /// Get the Pi config directory (~/.pi/agent)
@@ -1621,34 +1551,6 @@ pub async fn pi_new_session(
         )
         .await?;
     rx.await.map_err(|_| "Pi command queue dropped".to_string())?
-}
-
-/// Timeout for RPC responses that must complete before the next command.
-const RPC_RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// Await an RPC response with a timeout. Returns Ok(()) on success or the error from Pi.
-async fn await_rpc_response(
-    rx: oneshot::Receiver<RpcResponse>,
-    command_name: &str,
-) -> Result<(), String> {
-    match tokio::time::timeout(RPC_RESPONSE_TIMEOUT, rx).await {
-        Ok(Ok(resp)) => {
-            if resp.success == Some(true) {
-                Ok(())
-            } else {
-                Err(resp.error.unwrap_or_else(|| format!("{} failed", command_name)))
-            }
-        }
-        Ok(Err(_)) => {
-            // Channel dropped — process likely died
-            Err(format!("Pi process died while waiting for {} response", command_name))
-        }
-        Err(_) => {
-            warn!("Timed out waiting for Pi {} response", command_name);
-            // Don't error — the command was sent, Pi may still process it
-            Ok(())
-        }
-    }
 }
 
 /// Check if pi is available

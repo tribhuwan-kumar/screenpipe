@@ -48,15 +48,6 @@ pub enum WaitMode {
     WaitDone,
 }
 
-/// Signals from the stdout reader to the queue drain loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SdkSignal {
-    /// The SDK's agent loop completed (received `done` event).
-    Done,
-    /// The SDK process terminated (stdout EOF).
-    Terminated,
-}
-
 /// Handle to submit commands to the queue.
 #[derive(Clone)]
 pub struct PiQueueHandle {

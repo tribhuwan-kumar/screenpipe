@@ -717,14 +717,13 @@ impl DatabaseManager {
     /// Execute a pipe UPDATE/INSERT/DELETE via the write queue.
     pub async fn pipe_execute_write_queued(
         &self,
-        id: i64,
+        _id: i64,
         sql: &str,
         binds: Vec<crate::write_queue::PipeBindValue>,
     ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
         self.write_queue
             .submit(WriteOp::PipeUpdateExecution {
-                id,
                 sql: sql.to_string(),
                 binds,
             })

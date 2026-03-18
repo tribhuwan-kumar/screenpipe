@@ -158,7 +158,6 @@ pub(crate) enum WriteOp {
         started_at: String,
     },
     PipeUpdateExecution {
-        id: i64,
         sql: String,
         binds: Vec<PipeBindValue>,
     },
@@ -1093,7 +1092,7 @@ async fn execute_single_write(
             Ok(WriteResult::Id(row))
         }
 
-        WriteOp::PipeUpdateExecution { id: _, sql, binds } => {
+        WriteOp::PipeUpdateExecution { sql, binds } => {
             let mut query = sqlx::query(&sql);
             for bind in binds {
                 match bind {

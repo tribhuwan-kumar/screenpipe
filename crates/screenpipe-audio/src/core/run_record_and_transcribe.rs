@@ -15,7 +15,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    core::{device::DeviceType, update_device_capture_time},
+    core::update_device_capture_time,
     metrics::AudioPipelineMetrics,
     AudioInput,
 };
