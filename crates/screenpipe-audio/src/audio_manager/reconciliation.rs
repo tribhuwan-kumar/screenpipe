@@ -258,8 +258,11 @@ pub async fn reconcile_untranscribed(
             }
         };
 
-        // Silent audio: delete chunks only if they're old enough (2+ hours) to avoid
-        // nuking audio from active calls where pauses produce empty transcriptions.
+        // Silent audio: insert an empty transcription row so these chunks are not
+        // picked up again on the next sweep. Previously we skipped recent silent
+        // chunks (< 2h old) without marking them — causing them to be re-sent to
+        // Deepgram every 120s in an infinite loop (the "zombie chunk" bug).
+        // Old silent chunks (> 2h) are deleted entirely.
         if full_text.trim().is_empty() {
             let min_age = chrono::Duration::hours(2);
             let cutoff = chrono::Utc::now() - min_age;
@@ -267,32 +270,59 @@ pub async fn reconcile_untranscribed(
                 .iter()
                 .filter(|c| c.timestamp < cutoff)
                 .collect();
-            if old_chunks.is_empty() {
-                debug!(
-                    "reconciliation: batch for {} produced empty transcription, but chunks are too recent to delete — skipping",
-                    device_name
-                );
-                continue;
-            }
-            debug!(
-                "reconciliation: batch for {} produced empty transcription, deleting {} silent chunks (>2h old)",
-                device_name,
-                old_chunks.len()
-            );
-            let old_chunk_ids: Vec<i64> = old_chunks.iter().map(|c| c.id).collect();
-            if let Err(e) = db.delete_audio_chunks_batch_queued(old_chunk_ids.clone()).await {
-                warn!(
-                    "reconciliation: failed to batch-delete {} silent chunks: {}",
-                    old_chunks.len(),
-                    e
-                );
-                consecutive_db_errors += 1;
-            } else {
-                consecutive_db_errors = 0;
-                for chunk in &old_chunks {
-                    let _ = std::fs::remove_file(&chunk.file_path);
+            let recent_chunks: Vec<_> = valid_chunks
+                .iter()
+                .filter(|c| c.timestamp >= cutoff)
+                .collect();
+
+            // Mark recent silent chunks as transcribed (empty) so they don't loop
+            for chunk in &recent_chunks {
+                if let Err(e) = db
+                    .replace_audio_transcription(
+                        chunk.id,
+                        "",
+                        &engine_config.to_string(),
+                        &device_name,
+                        is_input,
+                        chunk.timestamp,
+                        Some(30.0),
+                        None,
+                    )
+                    .await
+                {
+                    warn!(
+                        "reconciliation: failed to mark silent chunk {} as transcribed: {}",
+                        chunk.id, e
+                    );
+                    consecutive_db_errors += 1;
+                } else {
+                    consecutive_db_errors = 0;
+                    success_count += 1;
                 }
-                success_count += old_chunks.len();
+            }
+
+            // Delete old silent chunks entirely
+            if !old_chunks.is_empty() {
+                debug!(
+                    "reconciliation: batch for {} produced empty transcription, deleting {} silent chunks (>2h old)",
+                    device_name,
+                    old_chunks.len()
+                );
+                let old_chunk_ids: Vec<i64> = old_chunks.iter().map(|c| c.id).collect();
+                if let Err(e) = db.delete_audio_chunks_batch_queued(old_chunk_ids.clone()).await {
+                    warn!(
+                        "reconciliation: failed to batch-delete {} silent chunks: {}",
+                        old_chunks.len(),
+                        e
+                    );
+                    consecutive_db_errors += 1;
+                } else {
+                    consecutive_db_errors = 0;
+                    for chunk in &old_chunks {
+                        let _ = std::fs::remove_file(&chunk.file_path);
+                    }
+                    success_count += old_chunks.len();
+                }
             }
             continue;
         }
