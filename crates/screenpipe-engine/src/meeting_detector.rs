@@ -166,7 +166,7 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &[],
                 windows_process_names: &[],
-                browser_url_patterns: &["meet.google.com"],
+                browser_url_patterns: &["meet.google.com", "google meet"],
             },
             call_signals: vec![
                 CallSignal::RoleWithName {
@@ -180,6 +180,8 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                 // Google Meet's "Leave call" button has Ctrl+D shortcut in its description
                 CallSignal::KeyboardShortcut("Ctrl+D"),
                 CallSignal::KeyboardShortcut("\u{2318}D"), // Cmd+D
+                // Fallback: match any element with "leave call" in name (no automation_id on Meet)
+                CallSignal::NameContains("leave call"),
             ],
             min_signals_required: 1,
         },
