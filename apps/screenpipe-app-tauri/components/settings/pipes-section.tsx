@@ -1418,13 +1418,18 @@ export function PipesSection() {
                   </DropdownMenu>
                 </div>
 
-                {/* Toggle — always visible */}
-                <Switch
-                  checked={pipe.config.enabled}
-                  onCheckedChange={(checked) =>
-                    togglePipe(pipe.config.name, checked)
-                  }
-                />
+                {/* Toggle — visible on hover or when disabled */}
+                <div className={cn(
+                  "transition-opacity",
+                  pipe.config.enabled ? "opacity-0 group-hover:opacity-100" : "opacity-100"
+                )}>
+                  <Switch
+                    checked={pipe.config.enabled}
+                    onCheckedChange={(checked) =>
+                      togglePipe(pipe.config.name, checked)
+                    }
+                  />
+                </div>
               </div>
 
               {/* Error line (inline, below row) */}
