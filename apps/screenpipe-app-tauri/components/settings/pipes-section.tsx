@@ -611,12 +611,6 @@ export function PipesSection() {
     return "all";
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "running" | "enabled" | "failed" | "scheduled" | "manual">(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("pipes-status-filter") as "all" | "running" | "enabled" | "failed" | "scheduled" | "manual") || "all";
-    }
-    return "all";
-  });
   const [availableConnections, setAvailableConnections] = useState<AvailableConnection[]>([]);
   const sharedPipeNames = new Set(
     team.configs
@@ -641,12 +635,8 @@ export function PipesSection() {
         if (!p.config.name.toLowerCase().includes(q)) return false;
       }
 
-      // Status filter
-      if (statusFilter === "running" && !p.is_running) return false;
-      if (statusFilter === "enabled" && !p.config.enabled) return false;
-      if (statusFilter === "failed" && p.last_success !== false) return false;
-      if (statusFilter === "scheduled" && !isScheduledPipe(p)) return false;
-      if (statusFilter === "manual" && !isManualPipe(p)) return false;
+      // Only show scheduled pipes
+      if (!isScheduledPipe(p)) return false;
 
       return true;
     })
@@ -661,11 +651,6 @@ export function PipesSection() {
     });
 
   // Counts for filter chips
-  const runningCount = pipes.filter((p) => p.is_running).length;
-  const enabledCount = pipes.filter((p) => p.config.enabled).length;
-  const failedCount = pipes.filter((p) => p.last_success === false).length;
-  const scheduledCount = pipes.filter((p) => isScheduledPipe(p)).length;
-  const manualCount = pipes.filter((p) => isManualPipe(p)).length;
 
   const sharePipeToTeam = async (pipe: PipeStatus) => {
     setSharingPipe(pipe.config.name);
@@ -1105,29 +1090,6 @@ export function PipesSection() {
             className="pl-8 h-8 text-sm"
           />
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {([
-            { key: "all", label: "All", count: pipes.length },
-            { key: "running", label: "Running", count: runningCount },
-            { key: "enabled", label: "Enabled", count: enabledCount },
-            { key: "failed", label: "Failed", count: failedCount },
-            { key: "scheduled", label: "Scheduled", count: scheduledCount },
-            { key: "manual", label: "Manual", count: manualCount },
-          ] as const).map(({ key, label, count }) => (
-            <button
-              key={key}
-              onClick={() => { setStatusFilter(key); localStorage.setItem("pipes-status-filter", key); }}
-              className={cn(
-                "px-2.5 py-1 rounded-full text-xs transition-colors",
-                statusFilter === key
-                  ? "bg-foreground text-background font-medium"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {label} {count > 0 && <span className="ml-0.5">{count}</span>}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* All | Personal | Shared with team tabs */}
@@ -1159,8 +1121,8 @@ export function PipesSection() {
       {filteredPipes.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            {searchQuery || statusFilter !== "all" ? (
-              <p>no pipes match your filters</p>
+            {searchQuery ? (
+              <p>no pipes match your search</p>
             ) : pipeFilter === "all" ? (
               <>
                 <p>no pipes installed</p>
