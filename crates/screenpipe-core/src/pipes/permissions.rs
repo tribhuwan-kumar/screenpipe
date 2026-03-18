@@ -451,6 +451,9 @@ mod tests {
             allow_frames: true,
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let perms = PipePermissions::from_config(&config);
         assert_eq!(perms.allow_apps, vec!["slack"]);
@@ -487,6 +490,9 @@ mod tests {
             allow_frames: true,
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let perms = PipePermissions::from_config(&config);
         // all permissions default to allow — no restrictions

@@ -131,6 +131,16 @@ pub struct PipeConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
 
+    /// Store slug this pipe was installed from (set during store install).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_slug: Option<String>,
+    /// Version at time of install from store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_version: Option<i64>,
+    /// SHA-256 hash of source_md at install time (to detect local edits).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_hash: Option<String>,
+
     /// Catches any extra fields from front-matter (backwards compat).
     #[serde(default, flatten, skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, serde_json::Value>,
@@ -204,6 +214,16 @@ fn is_true(b: &bool) -> bool {
     *b
 }
 
+/// Simple FNV-1a 64-bit hash, sufficient for change detection.
+fn simple_hash(content: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in content.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016x}", hash)
+}
+
 /// Result of a single pipe run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipeRunLog {
@@ -232,6 +252,15 @@ pub struct PipeStatus {
     pub current_execution_id: Option<i64>,
     /// Consecutive scheduled failures from DB state.
     pub consecutive_failures: i32,
+    /// Store slug if installed from registry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_slug: Option<String>,
+    /// Version installed from store.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_version: Option<i64>,
+    /// Whether the user has edited pipe.md since install (source_hash mismatch).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locally_modified: Option<bool>,
 }
 
 // ---------------------------------------------------------------------------
@@ -857,6 +886,15 @@ impl PipeManager {
                     let last_error = last_log.filter(|l| !l.success).map(|l| l.stderr.clone());
                     let mut cfg = config.clone();
                     cfg.name = name.clone();
+                    let locally_modified = config.source_hash.as_ref().map(|expected_hash| {
+                        let pipe_path = self.pipes_dir.join(name).join("pipe.md");
+                        if let Ok(content) = std::fs::read_to_string(&pipe_path) {
+                            let actual_hash = simple_hash(&content);
+                            actual_hash != *expected_hash
+                        } else {
+                            false
+                        }
+                    });
                     let status = PipeStatus {
                         config: cfg,
                         last_run: last_log.map(|l| l.finished_at),
@@ -867,6 +905,9 @@ impl PipeManager {
                         last_error,
                         current_execution_id: exec_ids.get(name).copied(),
                         consecutive_failures: 0,
+                        source_slug: config.source_slug.clone(),
+                        installed_version: config.installed_version,
+                        locally_modified,
                     };
                     (name.clone(), status)
                 })
@@ -906,6 +947,15 @@ impl PipeManager {
                 let last_error = last_log.filter(|l| !l.success).map(|l| l.stderr.clone());
                 let mut cfg = config.clone();
                 cfg.name = name.to_string();
+                let locally_modified = config.source_hash.as_ref().map(|expected_hash| {
+                    let pipe_path = self.pipes_dir.join(name).join("pipe.md");
+                    if let Ok(content) = std::fs::read_to_string(&pipe_path) {
+                        let actual_hash = simple_hash(&content);
+                        actual_hash != *expected_hash
+                    } else {
+                        false
+                    }
+                });
                 PipeStatus {
                     config: cfg,
                     last_run: last_log.map(|l| l.finished_at),
@@ -916,6 +966,9 @@ impl PipeManager {
                     last_error,
                     current_execution_id: exec_ids.get(name).copied(),
                     consecutive_failures: 0,
+                    source_slug: config.source_slug.clone(),
+                    installed_version: config.installed_version,
+                    locally_modified,
                 }
             })
         }?;
@@ -1949,6 +2002,74 @@ impl PipeManager {
             "unrecognized pipe source: '{}' (expected local path or URL)",
             source
         ))
+    }
+
+    /// Install a pipe from the store registry, tracking its origin for updates.
+    pub async fn install_pipe_from_store(
+        &self,
+        source_md: &str,
+        slug: &str,
+        version: i64,
+    ) -> Result<String> {
+        // Parse the source_md to get config + body
+        let (mut config, body) = parse_frontmatter(source_md)?;
+
+        // Set tracking fields
+        config.source_slug = Some(slug.to_string());
+        config.installed_version = Some(version);
+
+        // Hash the source_md content
+        let source_hash = simple_hash(source_md);
+        config.source_hash = Some(source_hash);
+
+        // Derive name from slug
+        let name = slug.to_string();
+        let dest_dir = self.pipes_dir.join(&name);
+        std::fs::create_dir_all(&dest_dir)?;
+
+        // Re-serialize with tracking fields included
+        let content = serialize_pipe(&config, &body)?;
+        std::fs::write(dest_dir.join("pipe.md"), &content)?;
+
+        self.load_pipes().await?;
+        info!("installed pipe '{}' from store (v{})", name, version);
+        Ok(name)
+    }
+
+    /// Update an installed pipe from the store with new content.
+    pub async fn update_pipe_from_store(
+        &self,
+        name: &str,
+        source_md: &str,
+        slug: &str,
+        version: i64,
+    ) -> Result<()> {
+        let dest_dir = self.pipes_dir.join(name);
+        if !dest_dir.exists() {
+            return Err(anyhow!("pipe '{}' not found", name));
+        }
+
+        let (mut config, body) = parse_frontmatter(source_md)?;
+
+        // Preserve user's enabled state and schedule from current config
+        let current_path = dest_dir.join("pipe.md");
+        if let Ok(current_content) = std::fs::read_to_string(&current_path) {
+            if let Ok((current_config, _)) = parse_frontmatter(&current_content) {
+                config.enabled = current_config.enabled;
+                config.preset = current_config.preset.clone();
+            }
+        }
+
+        config.source_slug = Some(slug.to_string());
+        config.installed_version = Some(version);
+        config.source_hash = Some(simple_hash(source_md));
+
+        let content = serialize_pipe(&config, &body)?;
+        std::fs::write(current_path, &content)?;
+
+        self.load_pipes().await?;
+        info!("updated pipe '{}' to store v{}", name, version);
+        Ok(())
     }
 
     /// Delete a pipe and its folder.
@@ -3072,6 +3193,9 @@ mod tests {
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let body = "Do something useful";
         let serialized = serialize_pipe(&config, body).unwrap();
@@ -3168,6 +3292,9 @@ mod tests {
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let prompt = render_prompt_with_port(&config, "body text", 3031, None, None);
         assert!(prompt.contains("http://localhost:3031"));
@@ -3198,6 +3325,9 @@ mod tests {
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let prompt = render_prompt_with_port(&config, "hello", 3030, None, None);
         assert!(prompt.contains("http://localhost:3030"));
@@ -3226,6 +3356,9 @@ mod tests {
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let prompt = render_prompt_with_port(
             &config,
@@ -3262,6 +3395,9 @@ mod tests {
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
         };
         let prompt = render_prompt_with_port(&config, "body text", 3030, None, None);
         assert!(!prompt.contains("System prompt:"));
@@ -3337,6 +3473,9 @@ mod tests {
                 config: HashMap::new(),
                 connections: vec![],
                 timeout: None,
+                source_slug: None,
+                installed_version: None,
+                source_hash: None,
             },
             last_run: None,
             last_success: None,
@@ -3346,6 +3485,9 @@ mod tests {
             last_error: None,
             current_execution_id: Some(99),
             consecutive_failures: 5,
+            source_slug: None,
+            installed_version: None,
+            locally_modified: None,
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains("\"current_execution_id\":99"));

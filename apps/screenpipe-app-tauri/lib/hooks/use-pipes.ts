@@ -21,9 +21,15 @@ interface PipeStatus {
     schedule: string;
     enabled: boolean;
     config: Record<string, unknown>;
+    source_slug?: string;
+    installed_version?: number;
+    source_hash?: string;
   };
   prompt_body: string;
   is_running: boolean;
+  source_slug?: string;
+  installed_version?: number;
+  locally_modified?: boolean;
 }
 
 export function usePipes() {

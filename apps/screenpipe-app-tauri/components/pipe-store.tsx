@@ -330,6 +330,9 @@ function DiscoverView() {
   // Installed pipe names (for "Installed" badge)
   const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
 
+  // Available updates from store
+  const [availableUpdates, setAvailableUpdates] = useState<Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }>>({});
+
   // Fetch installed pipes (cached 30s, invalidated on install)
   useEffect(() => {
     const cacheKey = "pipes/installed";
@@ -345,6 +348,21 @@ function DiscoverView() {
         const names = new Set<string>(list.map((p: any) => p.config?.name || p.name));
         apiCache.set(cacheKey, names, 30_000);
         setInstalledNames(names);
+      })
+      .catch(() => {});
+  }, [showDetail]);
+
+  // Check for pipe updates
+  useEffect(() => {
+    fetch("http://localhost:3030/pipes/store/check-updates")
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (!json) return;
+        const updates: Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }> = {};
+        for (const u of json.data || []) {
+          updates[u.pipe_name] = { latest_version: u.latest_version, installed_version: u.installed_version, locally_modified: u.locally_modified };
+        }
+        setAvailableUpdates(updates);
       })
       .catch(() => {});
   }, [showDetail]);
@@ -560,6 +578,7 @@ function DiscoverView() {
             onSourceReviewedChange={setSourceReviewed}
             onInstall={handleInstall}
             isInstalled={installedNames.has(selectedPipe.slug)}
+            hasUpdate={!!availableUpdates[selectedPipe.slug]}
             reviewExpanded={reviewExpanded}
             onToggleReview={() => setReviewExpanded(!reviewExpanded)}
             reviewRating={reviewRating}
@@ -655,6 +674,7 @@ function DiscoverView() {
                 key={pipe.slug}
                 pipe={pipe}
                 isInstalled={installedNames.has(pipe.slug)}
+                hasUpdate={!!availableUpdates[pipe.slug]}
                 onInstall={() => handleInstall(pipe.slug)}
                 installing={installing === pipe.slug}
                 onClick={() => openDetail(pipe.slug)}
@@ -699,6 +719,7 @@ function DiscoverView() {
               key={pipe.slug}
               pipe={pipe}
               isInstalled={installedNames.has(pipe.slug)}
+              hasUpdate={!!availableUpdates[pipe.slug]}
               onInstall={() => handleInstall(pipe.slug)}
               installing={installing === pipe.slug}
               onClick={() => openDetail(pipe.slug)}
@@ -726,12 +747,14 @@ function DiscoverView() {
 function FeaturedCard({
   pipe,
   isInstalled,
+  hasUpdate,
   onInstall,
   installing,
   onClick,
 }: {
   pipe: StorePipe;
   isInstalled: boolean;
+  hasUpdate?: boolean;
   onInstall: () => void;
   installing: boolean;
   onClick: () => void;
@@ -761,12 +784,13 @@ function FeaturedCard({
           </div>
           <Button
             size="sm"
-            variant={isInstalled ? "outline" : "default"}
+            variant={isInstalled && !hasUpdate ? "outline" : "default"}
             className={cn(
               "h-7 px-3 text-xs font-semibold rounded-none uppercase tracking-wide flex-shrink-0",
-              isInstalled && "pointer-events-none"
+              isInstalled && !hasUpdate && "pointer-events-none",
+              hasUpdate && "bg-amber-500 hover:bg-amber-600 text-white"
             )}
-            disabled={installing || isInstalled}
+            disabled={installing || (isInstalled && !hasUpdate)}
             onClick={(e) => {
               e.stopPropagation();
               onInstall();
@@ -774,6 +798,8 @@ function FeaturedCard({
           >
             {installing ? (
               <Loader2 className="h-3 w-3 animate-spin" />
+            ) : hasUpdate ? (
+              "UPDATE"
             ) : isInstalled ? (
               "INSTALLED"
             ) : (
@@ -809,12 +835,14 @@ function FeaturedCard({
 function PipeCard({
   pipe,
   isInstalled,
+  hasUpdate,
   onInstall,
   installing,
   onClick,
 }: {
   pipe: StorePipe;
   isInstalled: boolean;
+  hasUpdate?: boolean;
   onInstall: () => void;
   installing: boolean;
   onClick: () => void;
@@ -846,12 +874,13 @@ function PipeCard({
             </div>
             <Button
               size="sm"
-              variant={isInstalled ? "outline" : "default"}
+              variant={isInstalled && !hasUpdate ? "outline" : "default"}
               className={cn(
                 "h-7 px-3 text-xs font-semibold rounded-none uppercase tracking-wide flex-shrink-0",
-                isInstalled && "pointer-events-none"
+                isInstalled && !hasUpdate && "pointer-events-none",
+                hasUpdate && "bg-amber-500 hover:bg-amber-600 text-white"
               )}
-              disabled={installing || isInstalled}
+              disabled={installing || (isInstalled && !hasUpdate)}
               onClick={(e) => {
                 e.stopPropagation();
                 onInstall();
@@ -859,6 +888,8 @@ function PipeCard({
             >
               {installing ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
+              ) : hasUpdate ? (
+                "UPDATE"
               ) : isInstalled ? (
                 "INSTALLED"
               ) : (
@@ -916,6 +947,7 @@ function PipeDetailPanel({
   onSourceReviewedChange,
   onInstall,
   isInstalled,
+  hasUpdate,
   reviewExpanded,
   onToggleReview,
   reviewRating,
@@ -937,6 +969,7 @@ function PipeDetailPanel({
   onSourceReviewedChange: (v: boolean) => void;
   onInstall: (slug: string) => void;
   isInstalled: boolean;
+  hasUpdate?: boolean;
   reviewExpanded: boolean;
   onToggleReview: () => void;
   reviewRating: number;
@@ -1036,21 +1069,24 @@ function PipeDetailPanel({
               )}
               <Button
                 size="sm"
-                variant={isInstalled ? "outline" : "default"}
+                variant={isInstalled && !hasUpdate ? "outline" : "default"}
                 className={cn(
                   "h-9 px-5 text-sm font-semibold rounded-none uppercase tracking-wide flex-shrink-0",
-                  isInstalled && "pointer-events-none"
+                  isInstalled && !hasUpdate && "pointer-events-none",
+                  hasUpdate && "bg-amber-500 hover:bg-amber-600 text-white"
                 )}
                 disabled={
-                  installing === pipe.slug || isInstalled || (needsReview && !sourceReviewed)
+                  installing === pipe.slug || (isInstalled && !hasUpdate) || (needsReview && !sourceReviewed)
                 }
                 onClick={() => onInstall(pipe.slug)}
               >
                 {installing === pipe.slug ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                    INSTALLING...
+                    {hasUpdate ? "UPDATING..." : "INSTALLING..."}
                   </>
+                ) : hasUpdate ? (
+                  "UPDATE"
                 ) : isInstalled ? (
                   "INSTALLED"
                 ) : (

@@ -27,6 +27,7 @@ import {
   Share2,
   Link,
   Upload,
+  ArrowUpCircle,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -245,6 +246,9 @@ interface PipeStatus {
   last_error: string | null;
   current_execution_id: number | null;
   consecutive_failures: number;
+  source_slug?: string;
+  installed_version?: number;
+  locally_modified?: boolean;
 }
 
 interface PipeRunLog {
@@ -612,6 +616,8 @@ export function PipesSection() {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [availableConnections, setAvailableConnections] = useState<AvailableConnection[]>([]);
+  const [availableUpdates, setAvailableUpdates] = useState<Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }>>({});
+  const [updatingPipe, setUpdatingPipe] = useState<string | null>(null);
   const sharedPipeNames = new Set(
     team.configs
       .filter((c) => c.config_type === "pipe" && c.scope === "team")
@@ -754,9 +760,53 @@ export function PipesSection() {
     } catch { /* server may not be running */ }
   }, []);
 
+  const checkForUpdates = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:3030/pipes/store/check-updates");
+      if (!res.ok) return;
+      const json = await res.json();
+      const updates: Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }> = {};
+      for (const u of json.data || []) {
+        updates[u.pipe_name] = { latest_version: u.latest_version, installed_version: u.installed_version, locally_modified: u.locally_modified };
+      }
+      setAvailableUpdates(updates);
+    } catch {
+      // silently fail — not critical
+    }
+  }, []);
+
+  const updatePipe = async (pipeName: string, slug: string) => {
+    setUpdatingPipe(pipeName);
+    try {
+      const res = await fetch("http://localhost:3030/pipes/store/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ title: "update failed", description: err.error || "unknown error", variant: "destructive" });
+        return;
+      }
+      toast({ title: "pipe updated", description: `${pipeName} updated successfully` });
+      // Remove from updates map and refresh
+      setAvailableUpdates(prev => {
+        const next = { ...prev };
+        delete next[pipeName];
+        return next;
+      });
+      await fetchPipes();
+    } catch (e) {
+      toast({ title: "update failed", description: String(e), variant: "destructive" });
+    } finally {
+      setUpdatingPipe(null);
+    }
+  };
+
   const trackedPipesView = useRef(false);
   useEffect(() => {
     fetchConnections();
+    checkForUpdates();
     fetchPipes().then(() => {
       if (!trackedPipesView.current) {
         trackedPipesView.current = true;
@@ -1198,6 +1248,32 @@ export function PipesSection() {
                     {pipe.config.schedule}
                   </Badge>
 
+                  {availableUpdates[pipe.config.name] && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs shrink-0 cursor-pointer border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const update = availableUpdates[pipe.config.name];
+                        const slug = (pipe.config as any).config?.source_slug as string || pipe.source_slug || pipe.config.name;
+                        if (update.locally_modified) {
+                          if (confirm(`you have local changes to this pipe. updating to v${update.latest_version} will overwrite them. continue?`)) {
+                            updatePipe(pipe.config.name, slug);
+                          }
+                        } else {
+                          updatePipe(pipe.config.name, slug);
+                        }
+                      }}
+                    >
+                      {updatingPipe === pipe.config.name ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <ArrowUpCircle className="h-3 w-3 mr-1" />
+                      )}
+                      v{availableUpdates[pipe.config.name].installed_version} → v{availableUpdates[pipe.config.name].latest_version}
+                    </Badge>
+                  )}
+
                   {/* Run / Stop button */}
                   {isRunning ? (
                     <Button
@@ -1284,6 +1360,17 @@ export function PipesSection() {
                             {sharedPipeNames.has(pipe.config.name) ? "update team copy" : "share to team"}
                           </DropdownMenuItem>
                         </>
+                      )}
+                      {(pipe.source_slug || (pipe.config as any).config?.source_slug) && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            checkForUpdates();
+                            toast({ title: "checking for updates..." });
+                          }}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                          check for updates
+                        </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
                         onClick={() => setPublishPipeName(pipe.config.name)}

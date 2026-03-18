@@ -237,9 +237,15 @@ pub async fn pipe_store_install(
         }
     };
 
-    // 2. Install locally using PipeManager
+    // Extract version from registry response
+    let version = detail.get("version")
+        .or_else(|| detail.get("data").and_then(|d| d.get("version")))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1);
+
+    // 2. Install locally with store tracking
     let mgr = pm.lock().await;
-    let name = match mgr.install_pipe(&source_md).await {
+    let name = match mgr.install_pipe_from_store(&source_md, &body.slug, version).await {
         Ok(name) => name,
         Err(e) => return Json(json!({ "error": format!("failed to install pipe: {}", e) })),
     };
@@ -249,6 +255,97 @@ pub async fn pipe_store_install(
     let _ = client.post(&increment_url).send().await;
 
     Json(json!({ "success": true, "name": name, "slug": body.slug }))
+}
+
+/// POST /pipes/store/update
+///
+/// Update an installed pipe to the latest version from the registry.
+pub async fn pipe_store_update(
+    State(pm): State<SharedPipeManager>,
+    Json(body): Json<StoreInstallRequest>,
+) -> Json<Value> {
+    let base = api_base_url();
+    let client = &*REGISTRY_CLIENT;
+
+    // 1. Fetch latest from registry
+    let detail_url = format!("{}/api/pipes/store/{}", base, body.slug);
+    let detail = match client.get(&detail_url).send().await {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(body) => body,
+            Err(e) => return Json(json!({ "error": format!("failed to parse registry response: {}", e) })),
+        },
+        Err(e) => return Json(json!({ "error": format!("failed to reach registry: {}", e) })),
+    };
+
+    let source_md = match detail.get("source_md").or_else(|| detail.get("data").and_then(|d| d.get("source_md"))).and_then(|v| v.as_str()) {
+        Some(md) => md.to_string(),
+        None => return Json(json!({ "error": "pipe not found or missing source_md" })),
+    };
+
+    let version = detail.get("version")
+        .or_else(|| detail.get("data").and_then(|d| d.get("version")))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1);
+
+    // 2. Update locally
+    let mgr = pm.lock().await;
+    match mgr.update_pipe_from_store(&body.slug, &source_md, &body.slug, version).await {
+        Ok(()) => Json(json!({ "success": true, "slug": body.slug, "version": version })),
+        Err(e) => Json(json!({ "error": format!("failed to update pipe: {}", e) })),
+    }
+}
+
+/// GET /pipes/store/check-updates
+///
+/// Check for available updates for all store-installed pipes.
+/// Returns a map of slug -> latest_version for pipes that have updates.
+pub async fn pipe_store_check_updates(
+    State(pm): State<SharedPipeManager>,
+) -> Json<Value> {
+    let mgr = pm.lock().await;
+    let pipes = mgr.list_pipes().await;
+    drop(mgr);
+
+    let base = api_base_url();
+    let client = &*REGISTRY_CLIENT;
+
+    let mut updates: Vec<Value> = Vec::new();
+
+    for pipe in &pipes {
+        let slug = match &pipe.source_slug {
+            Some(s) => s.clone(),
+            None => continue,
+        };
+        let installed_version = pipe.installed_version.unwrap_or(0);
+
+        // Fetch latest version from registry
+        let detail_url = format!("{}/api/pipes/store/{}", base, slug);
+        let detail = match client.get(&detail_url).send().await {
+            Ok(resp) => match resp.json::<Value>().await {
+                Ok(v) => v,
+                Err(_) => continue,
+            },
+            Err(_) => continue,
+        };
+
+        let latest_version = detail
+            .get("version")
+            .or_else(|| detail.get("data").and_then(|d| d.get("version")))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+
+        if latest_version > installed_version {
+            updates.push(json!({
+                "slug": slug,
+                "pipe_name": pipe.config.name,
+                "installed_version": installed_version,
+                "latest_version": latest_version,
+                "locally_modified": pipe.locally_modified.unwrap_or(false),
+            }));
+        }
+    }
+
+    Json(json!({ "data": updates }))
 }
 
 /// POST /pipes/store/:slug/review
