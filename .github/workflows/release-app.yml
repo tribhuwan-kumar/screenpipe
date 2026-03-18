@@ -410,29 +410,36 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-brew-
 
-      - name: Cache Pre Build
-        id: cache-pre-build
+      # Cache binary dependencies (ffmpeg, tesseract, ollama, vcredist, WixTools)
+      # These rarely change — keyed on workflow file hash, not lockfiles
+      - name: Cache Binary Dependencies
         uses: actions/cache@v4
         with:
           path: |
             apps/screenpipe-app-tauri/src-tauri/ffmpeg
+            apps/screenpipe-app-tauri/src-tauri/ffmpeg-*
             apps/screenpipe-app-tauri/src-tauri/tesseract-*
-            apps/screenpipe-app-tauri/node_modules
-            apps/screenpipe-app-tauri/src-tauri/target
-            apps/screenpipe-app-tauri/.tauri
             apps/screenpipe-app-tauri/src-tauri/WixTools
             apps/screenpipe-app-tauri/src-tauri/vcredist
-            # Ollama binaries and libs
             apps/screenpipe-app-tauri/src-tauri/ollama-*
             apps/screenpipe-app-tauri/src-tauri/lib/ollama
-            # Swift UI monitoring binaries
             apps/screenpipe-app-tauri/src-tauri/ui_monitor-*
-            # FFmpeg downloads
-            apps/screenpipe-app-tauri/src-tauri/ffmpeg-*
-            # Platform specific bins
-          key: ${{ matrix.platform }}-${{ matrix.target }}-pre-build-${{ hashFiles('**/Cargo.lock', '**/bun.lockb') }}
+          key: ${{ matrix.platform }}-${{ matrix.target }}-bins-v1
           restore-keys: |
-            ${{ matrix.platform }}-${{ matrix.target }}-pre-build-
+            ${{ matrix.platform }}-${{ matrix.target }}-bins-
+
+      # Cache node_modules and tauri CLI — changes with bun.lockb
+      - name: Cache Node Modules
+        id: cache-pre-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/screenpipe-app-tauri/node_modules
+            apps/screenpipe-app-tauri/.tauri
+            apps/screenpipe-app-tauri/src-tauri/target
+          key: ${{ matrix.platform }}-${{ matrix.target }}-node-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ matrix.platform }}-${{ matrix.target }}-node-
 
       - name: Install dependencies
         if: matrix.os_type == 'macos'
@@ -939,39 +946,6 @@ jobs:
             fi
           done
 
-      - name: Upload debug symbols to Sentry (Windows)
-        if: matrix.os_type == 'windows'
-        continue-on-error: true
-        shell: powershell
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: mediar
-          SENTRY_ARCH: ${{ matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64' || 'x86_64' }}
-        run: |
-          # Install sentry-cli (native arch on ARM64 runner)
-          Invoke-WebRequest -Uri "https://release-registry.services.sentry.io/apps/sentry-cli/latest?response=download&arch=$env:SENTRY_ARCH&platform=Windows&package=sentry-cli" -OutFile sentry-cli.exe
-
-          # Upload debug symbols (.pdb files) for the app
-          Write-Host "Uploading debug symbols to Sentry..."
-          .\sentry-cli.exe debug-files upload --org $env:SENTRY_ORG --project screenpipe-app apps/screenpipe-app-tauri/src-tauri/target/${{ matrix.target }}/release/
-
-      - name: Upload debug symbols to Sentry (macOS)
-        if: matrix.os_type == 'macos'
-        continue-on-error: true
-        shell: bash
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: mediar
-        run: |
-          # Install sentry-cli (skip if already installed on self-hosted runners)
-          if ! command -v sentry-cli &> /dev/null; then
-            curl -sL https://sentry.io/get-cli/ | bash
-          fi
-
-          # Upload debug symbols (dSYM files) for the app
-          echo "Uploading debug symbols to Sentry..."
-          sentry-cli debug-files upload --org $SENTRY_ORG --project screenpipe-app apps/screenpipe-app-tauri/src-tauri/target/${{ matrix.target }}/release/
-
       - name: Upload to Cloudflare R2 (macOS)
         if: matrix.os_type == 'macos'
         shell: bash
@@ -1139,6 +1113,34 @@ jobs:
           fi
 
           echo "R2 upload complete for Linux ($UPLOADED files)"
+
+      # Sentry uploads run AFTER R2 so they don't delay release artifacts
+      - name: Upload debug symbols to Sentry (Windows)
+        if: matrix.os_type == 'windows'
+        continue-on-error: true
+        shell: powershell
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: mediar
+          SENTRY_ARCH: ${{ matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64' || 'x86_64' }}
+        run: |
+          Invoke-WebRequest -Uri "https://release-registry.services.sentry.io/apps/sentry-cli/latest?response=download&arch=$env:SENTRY_ARCH&platform=Windows&package=sentry-cli" -OutFile sentry-cli.exe
+          Write-Host "Uploading debug symbols to Sentry..."
+          .\sentry-cli.exe debug-files upload --org $env:SENTRY_ORG --project screenpipe-app apps/screenpipe-app-tauri/src-tauri/target/${{ matrix.target }}/release/
+
+      - name: Upload debug symbols to Sentry (macOS)
+        if: matrix.os_type == 'macos'
+        continue-on-error: true
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: mediar
+        run: |
+          if ! command -v sentry-cli &> /dev/null; then
+            curl -sL https://sentry.io/get-cli/ | bash
+          fi
+          echo "Uploading debug symbols to Sentry..."
+          sentry-cli debug-files upload --org $SENTRY_ORG --project screenpipe-app apps/screenpipe-app-tauri/src-tauri/target/${{ matrix.target }}/release/
 
   generate-changelog:
     needs: [check_commit, publish-tauri]
