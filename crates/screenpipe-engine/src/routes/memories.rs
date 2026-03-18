@@ -50,8 +50,20 @@ pub(crate) struct MemoryResponse {
 }
 
 #[derive(OaSchema, Serialize)]
+pub(crate) struct MemoryListItem {
+    pub id: i64,
+    pub content: String,
+    pub source: String,
+    pub tags: Vec<String>,
+    pub importance: f64,
+    pub frame_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(OaSchema, Serialize)]
 pub(crate) struct MemoryListResponse {
-    pub data: Vec<MemoryResponse>,
+    pub data: Vec<MemoryListItem>,
     pub pagination: PaginationInfo,
 }
 
@@ -179,7 +191,23 @@ pub(crate) async fn list_memories_handler(
     })?;
 
     Ok(JsonResponse(MemoryListResponse {
-        data: memories.into_iter().map(memory_to_response).collect(),
+        data: memories
+            .into_iter()
+            .map(|m| MemoryListItem {
+                id: m.id,
+                content: m.content,
+                source: m.source,
+                tags: m
+                    .tags
+                    .as_ref()
+                    .and_then(|t| serde_json::from_str(t).ok())
+                    .unwrap_or_default(),
+                importance: m.importance,
+                frame_id: m.frame_id,
+                created_at: m.created_at,
+                updated_at: m.updated_at,
+            })
+            .collect(),
         pagination: PaginationInfo {
             limit: query.limit,
             offset: query.offset,
