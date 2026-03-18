@@ -678,6 +678,9 @@ pub struct PiProviderConfig {
     /// Max output tokens (default 4096)
     #[serde(default = "default_max_tokens")]
     pub max_tokens: i32,
+    /// Optional system prompt from AI preset (appended to Pi's built-in system prompt)
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 fn default_max_tokens() -> i32 {
@@ -1187,6 +1190,17 @@ pub async fn pi_start_inner(
             "Response is JSON with data[] array containing type (OCR/Audio/UI) and content with text/transcription, timestamp, app_name."
         );
         cmd.args(["--append-system-prompt", api_hint]);
+    }
+
+    // Append the user's AI preset system prompt (enables Anthropic prompt caching —
+    // Pi's built-in system prompt + this text form the cached prefix, reducing
+    // input costs by 90% on subsequent messages in the same conversation)
+    if let Some(ref config) = provider_config {
+        if let Some(ref prompt) = config.system_prompt {
+            if !prompt.is_empty() {
+                cmd.args(["--append-system-prompt", prompt]);
+            }
+        }
     }
 
     // Bun 1.3+ fixed the readline pipe bug (bun 1.2 needed a PTY workaround).

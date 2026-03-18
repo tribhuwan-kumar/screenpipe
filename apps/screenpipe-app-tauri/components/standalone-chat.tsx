@@ -1512,15 +1512,21 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   // Build Pi provider config from active preset
   const buildProviderConfig = useCallback(() => {
     if (!activePreset) return null;
+    // Combine the screenpipe search instructions with the user's preset prompt.
+    // This is passed via --append-system-prompt to Pi, enabling Anthropic prompt
+    // caching (90% input cost reduction on subsequent messages).
+    const presetPrompt = activePreset.prompt || "";
+    const systemPrompt = `${buildSystemPrompt()}\n\n${presetPrompt}`.trim() || null;
     return {
       provider: activePreset.provider,
       url: activePreset.url || "",
       model: activePreset.model || "",
       apiKey: ("apiKey" in activePreset ? (activePreset.apiKey as string) : null) || null,
       maxTokens: (activePreset as any).maxTokens ?? 4096,
+      systemPrompt,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePreset?.provider, activePreset?.url, activePreset?.model, activePreset?.apiKey, (activePreset as any)?.maxTokens]);
+  }, [activePreset?.provider, activePreset?.url, activePreset?.model, activePreset?.apiKey, (activePreset as any)?.maxTokens, activePreset?.prompt]);
 
   // Check Pi status on mount — Pi is auto-started at app boot by Rust
   useEffect(() => {

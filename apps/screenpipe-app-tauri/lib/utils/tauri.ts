@@ -983,7 +983,11 @@ apiKey: string | null;
 /**
  * Max output tokens (default 4096)
  */
-maxTokens?: number }
+maxTokens?: number;
+/**
+ * Optional system prompt from AI preset (appended to Pi's built-in system prompt)
+ */
+systemPrompt?: string | null }
 export type PipeSuggestionsSettings = { enabled: boolean; frequencyHours: number }
 export type SettingsStore = 
 /**
