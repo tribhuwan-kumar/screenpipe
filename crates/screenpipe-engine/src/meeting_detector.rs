@@ -382,7 +382,7 @@ impl MeetingUiScanner {
     pub fn new() -> Self {
         Self {
             max_depth: 25,
-            scan_timeout: Duration::from_millis(500),
+            scan_timeout: Duration::from_millis(2000),
         }
     }
 
