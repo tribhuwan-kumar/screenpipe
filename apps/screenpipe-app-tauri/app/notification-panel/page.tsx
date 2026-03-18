@@ -124,19 +124,17 @@ export default function NotificationPanelPage() {
             }
             case "deeplink": {
               if (actionObj.url) {
-                // Use Tauri shell open for custom schemes, invoke for internal navigation
                 if (actionObj.url.startsWith("screenpipe://")) {
-                  try {
-                    await invoke("show_window", { window: "Main" });
-                  } catch {
-                    // fallback
-                  }
+                  // Emit to main window's DeeplinkHandler which knows how to
+                  // route screenpipe:// URLs (timeline, frame, settings, etc.)
+                  await emit("deep-link-received", actionObj.url);
                 } else {
+                  // External URL — open in system browser
                   try {
                     const { open } = await import("@tauri-apps/plugin-shell");
                     await open(actionObj.url);
                   } catch {
-                    window.open(actionObj.url, "_blank");
+                    // shell plugin not available in this window
                   }
                 }
               }
