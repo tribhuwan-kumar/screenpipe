@@ -16,11 +16,15 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::pipes_api::SharedPipeManager;
+
 /// Max pending notifications in the queue before oldest get dropped.
 const MAX_QUEUE_SIZE: usize = 50;
 
 /// Shared notification queue state.
 pub type SharedNotificationQueue = Arc<Mutex<VecDeque<PipeNotification>>>;
+/// Combined state for notify handler: queue + optional pipe manager for validation.
+pub type NotifyState = (SharedNotificationQueue, Option<SharedPipeManager>);
 
 pub fn new_notification_queue() -> SharedNotificationQueue {
     Arc::new(Mutex::new(VecDeque::new()))
@@ -82,12 +86,25 @@ pub struct PipeNotification {
 
 /// POST /notify — enqueue a notification from a pipe.
 pub async fn notify_handler(
-    State(queue): State<SharedNotificationQueue>,
+    State((queue, pm)): State<NotifyState>,
     Json(req): Json<NotifyRequest>,
 ) -> Json<Value> {
-    // Validate: max 5 actions, context size capped
+    // Validate: max 5 actions
     if req.actions.len() > 5 {
         return Json(json!({ "error": "max 5 actions per notification" }));
+    }
+
+    // Validate: pipe actions reference existing pipes
+    if let Some(ref pm) = pm {
+        let mgr = pm.lock().await;
+        for action in &req.actions {
+            if action.action_type == "pipe" {
+                let pipe_name = action.pipe.as_deref().unwrap_or(&req.pipe_name);
+                if mgr.get_pipe(pipe_name).await.is_none() {
+                    return Json(json!({ "error": format!("pipe '{}' not found", pipe_name) }));
+                }
+            }
+        }
     }
 
     let id = format!("pipe-{}-{}", req.pipe_name, chrono::Utc::now().timestamp_millis());
@@ -104,7 +121,6 @@ pub async fn notify_handler(
 
     let mut q = queue.lock().await;
     q.push_back(notification);
-    // Drop oldest if over capacity
     while q.len() > MAX_QUEUE_SIZE {
         q.pop_front();
     }
@@ -114,7 +130,7 @@ pub async fn notify_handler(
 
 /// GET /notifications/pending — drain all pending notifications.
 pub async fn pending_notifications_handler(
-    State(queue): State<SharedNotificationQueue>,
+    State((queue, _pm)): State<NotifyState>,
 ) -> Json<Value> {
     let mut q = queue.lock().await;
     let notifications: Vec<PipeNotification> = q.drain(..).collect();

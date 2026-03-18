@@ -669,6 +669,8 @@ impl SCServer {
 
         // Notification routes (pipes can send notifications to the UI)
         let nq = self.notification_queue.clone();
+        let notify_state: crate::notifications_api::NotifyState =
+            (nq, self.pipe_manager.clone());
         let notif_routes = Router::new()
             .route(
                 "/",
@@ -678,13 +680,14 @@ impl SCServer {
                 "/pending",
                 axum::routing::get(crate::notifications_api::pending_notifications_handler),
             )
-            .with_state(nq.clone());
+            .with_state(notify_state.clone());
         let router = router
             .nest("/notifications", notif_routes)
             // Top-level alias: POST /notify
             .route(
                 "/notify",
-                axum::routing::post(crate::notifications_api::notify_handler).with_state(nq),
+                axum::routing::post(crate::notifications_api::notify_handler)
+                    .with_state(notify_state),
             );
 
         // Connections routes (pipe-facing integrations: Telegram, Slack, etc.)
