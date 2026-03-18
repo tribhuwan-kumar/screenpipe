@@ -489,8 +489,9 @@ fn setup_tray_click_handlers(main_tray: &TrayIcon) -> Result<()> {
                     // Instead: spawn onto tokio so we exit the tao callback first, then
                     // safely dispatch to the main thread from outside tao's dispatcher.
                     tauri::async_runtime::spawn(async move {
+                        let app_inner = app.clone();
                         let _ = app.run_on_main_thread(move || {
-                            let _ = ShowRewindWindow::Home { page: None }.show(&app);
+                            let _ = ShowRewindWindow::Home { page: None }.show(&app_inner);
                         });
                     });
                 }
