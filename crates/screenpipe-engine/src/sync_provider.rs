@@ -453,8 +453,10 @@ impl ScreenpipeSyncProvider {
     }
 
     /// Import a sync chunk from another machine into the local database.
-    /// All INSERTs run inside a single transaction to avoid repeated WAL lock
-    /// acquisitions. Existence checks (SELECTs) use the read pool.
+    /// Each record is submitted individually through the WriteQueue so that
+    /// sync imports are interleaved fairly with vision/audio writes instead
+    /// of holding the SQLite write lock for the entire batch.
+    /// Existence checks (SELECTs) use the read pool.
     pub async fn import_chunk(&self, chunk: &SyncChunk) -> SyncResult<ImportResult> {
         let pool = &self.db.pool;
         let mut imported_frames = 0;
@@ -479,12 +481,7 @@ impl ScreenpipeSyncProvider {
             });
         }
 
-        // Acquire a single write transaction for ALL inserts
-        let mut tx = self.db.begin_immediate_with_retry().await.map_err(|e| {
-            SyncError::Database(format!("failed to begin import transaction: {}", e))
-        })?;
-
-        // Import frames
+        // Import frames — each one goes through the WriteQueue individually
         for frame in &chunk.frames {
             // Check if already exists (read-only, uses read pool)
             let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM frames WHERE sync_id = ?")
@@ -498,55 +495,29 @@ impl ScreenpipeSyncProvider {
                 continue;
             }
 
-            // We need a video_chunk for this frame - create a virtual one for synced data
-            let video_chunk_id: i64 = sqlx::query_scalar(
-                r#"
-                INSERT INTO video_chunks (file_path, device_name, sync_id, machine_id)
-                VALUES ('cloud://' || ?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
-                RETURNING id
-                "#,
-            )
-            .bind(&frame.sync_id)
-            .bind(&frame.device_name)
-            .bind(&frame.sync_id)
-            .bind(&chunk.machine_id)
-            .fetch_optional(&mut **tx.conn())
-            .await
-            .map_err(|e| SyncError::Database(format!("failed to create video_chunk: {}", e)))?
-            .unwrap_or(0);
+            let frame_id = self
+                .db
+                .sync_insert_frame(
+                    &frame.sync_id,
+                    &chunk.machine_id,
+                    &frame.timestamp,
+                    frame.offset_index,
+                    frame.app_name.as_deref(),
+                    frame.window_name.as_deref(),
+                    frame.browser_url.as_deref(),
+                    &frame.device_name,
+                )
+                .await
+                .map_err(|e| SyncError::Database(format!("failed to insert frame: {}", e)))?;
 
-            if video_chunk_id == 0 {
+            if frame_id == 0 {
                 skipped += 1;
                 continue;
             }
 
-            // Insert frame
-            sqlx::query(
-                r#"
-                INSERT INTO frames (video_chunk_id, offset_index, timestamp, app_name, window_name, browser_url, device_name, sync_id, machine_id, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#
-            )
-            .bind(video_chunk_id)
-            .bind(frame.offset_index)
-            .bind(&frame.timestamp)
-            .bind(&frame.app_name)
-            .bind(&frame.window_name)
-            .bind(&frame.browser_url)
-            .bind(&frame.device_name)
-            .bind(&frame.sync_id)
-            .bind(&chunk.machine_id)
-            .bind(Utc::now().to_rfc3339())
-            .execute(&mut **tx.conn())
-            .await
-            .map_err(|e| SyncError::Database(format!("failed to insert frame: {}", e)))?;
-
             imported_frames += 1;
+            tokio::task::yield_now().await;
         }
-
-        // Yield to let other async tasks progress after frames section
-        tokio::task::yield_now().await;
 
         // Build sync_id to local frame_id map (read-only, uses read pool)
         let frame_sync_ids: Vec<String> = chunk.frames.iter().map(|f| f.sync_id.clone()).collect();
@@ -600,31 +571,17 @@ impl ScreenpipeSyncProvider {
                     .as_deref()
                     .or_else(|| frame_rec.and_then(|f| f.window_name.as_deref()));
 
-                sqlx::query(
-                    r#"
-                    INSERT INTO ocr_text (frame_id, text, focused, app_name, window_name, sync_id, synced_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                )
-                .bind(frame_id)
-                .bind(&ocr.text)
-                .bind(ocr.focused)
-                .bind(app_name)
-                .bind(window_name)
-                .bind(&ocr.sync_id)
-                .bind(Utc::now().to_rfc3339())
-                .execute(&mut **tx.conn())
-                .await
-                .map_err(|e| SyncError::Database(format!("failed to insert OCR: {}", e)))?;
+                self.db
+                    .sync_insert_ocr(frame_id, &ocr.text, ocr.focused, app_name, window_name, &ocr.sync_id)
+                    .await
+                    .map_err(|e| SyncError::Database(format!("failed to insert OCR: {}", e)))?;
 
                 imported_ocr += 1;
+                tokio::task::yield_now().await;
             } else {
                 skipped += 1;
             }
         }
-
-        // Yield to let other async tasks progress after OCR section
-        tokio::task::yield_now().await;
 
         // Import transcriptions
         for trans in &chunk.transcriptions {
@@ -643,46 +600,22 @@ impl ScreenpipeSyncProvider {
                 continue;
             }
 
-            // Create audio chunk for synced transcription
-            // Note: audio_chunks has no device_name column — device info is on the
-            // audio_transcriptions row (the `device` column) inserted below.
-            let audio_chunk_id: i64 = sqlx::query_scalar(
-                r#"
-                INSERT INTO audio_chunks (file_path, sync_id, machine_id)
-                VALUES ('cloud://' || ?, ?, ?)
-                RETURNING id
-                "#,
-            )
-            .bind(&trans.sync_id)
-            .bind(&trans.sync_id)
-            .bind(&chunk.machine_id)
-            .fetch_one(&mut **tx.conn())
-            .await
-            .map_err(|e| SyncError::Database(format!("failed to create audio_chunk: {}", e)))?;
-
-            sqlx::query(
-                r#"
-                INSERT INTO audio_transcriptions (audio_chunk_id, offset_index, timestamp, transcription, device, is_input_device, speaker_id, sync_id, synced_at)
-                VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?)
-                "#
-            )
-            .bind(audio_chunk_id)
-            .bind(&trans.timestamp)
-            .bind(&trans.transcription)
-            .bind(&trans.device)
-            .bind(trans.is_input_device)
-            .bind(trans.speaker_id)
-            .bind(&trans.sync_id)
-            .bind(Utc::now().to_rfc3339())
-            .execute(&mut **tx.conn())
-            .await
-            .map_err(|e| SyncError::Database(format!("failed to insert transcription: {}", e)))?;
+            self.db
+                .sync_insert_transcription(
+                    &trans.sync_id,
+                    &chunk.machine_id,
+                    &trans.timestamp,
+                    &trans.transcription,
+                    &trans.device,
+                    trans.is_input_device,
+                    trans.speaker_id,
+                )
+                .await
+                .map_err(|e| SyncError::Database(format!("failed to insert transcription: {}", e)))?;
 
             imported_transcriptions += 1;
+            tokio::task::yield_now().await;
         }
-
-        // Yield to let other async tasks progress after transcriptions section
-        tokio::task::yield_now().await;
 
         // Import accessibility records — insert as frames with full_text
         // (accessibility table was dropped; text now lives in frames.full_text)
@@ -702,31 +635,24 @@ impl ScreenpipeSyncProvider {
                 continue;
             }
 
-            sqlx::query(
-                r#"
-                INSERT INTO frames (timestamp, app_name, window_name, browser_url, full_text, text_source, sync_id, machine_id, synced_at)
-                VALUES (?, ?, ?, ?, ?, 'accessibility', ?, ?, ?)
-                "#,
-            )
-            .bind(&acc.timestamp)
-            .bind(&acc.app_name)
-            .bind(&acc.window_name)
-            .bind(&acc.browser_url)
-            .bind(&acc.text_content)
-            .bind(&acc.sync_id)
-            .bind(&chunk.machine_id)
-            .bind(Utc::now().to_rfc3339())
-            .execute(&mut **tx.conn())
-            .await
-            .map_err(|e| {
-                SyncError::Database(format!("failed to insert accessibility as frame: {}", e))
-            })?;
+            self.db
+                .sync_insert_accessibility(
+                    &acc.sync_id,
+                    &chunk.machine_id,
+                    &acc.timestamp,
+                    &acc.app_name,
+                    &acc.window_name,
+                    acc.browser_url.as_deref(),
+                    &acc.text_content,
+                )
+                .await
+                .map_err(|e| {
+                    SyncError::Database(format!("failed to insert accessibility as frame: {}", e))
+                })?;
 
             imported_accessibility += 1;
+            tokio::task::yield_now().await;
         }
-
-        // Yield to let other async tasks progress after accessibility section
-        tokio::task::yield_now().await;
 
         // Import UI events
         let mut imported_ui_events = 0;
@@ -744,56 +670,42 @@ impl ScreenpipeSyncProvider {
                 continue;
             }
 
-            sqlx::query(
-                r#"
-                INSERT INTO ui_events (timestamp, event_type, app_name, window_title, browser_url,
-                    text_content, x, y, key_code, modifiers, element_role, element_name,
-                    session_id, relative_ms, delta_x, delta_y, button, click_count,
-                    text_length, app_pid, element_value, element_description,
-                    element_automation_id, element_bounds, frame_id,
-                    sync_id, machine_id, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind(&event.timestamp)
-            .bind(&event.event_type)
-            .bind(&event.app_name)
-            .bind(&event.window_title)
-            .bind(&event.browser_url)
-            .bind(&event.text_content)
-            .bind(event.x)
-            .bind(event.y)
-            .bind(event.key_code)
-            .bind(event.modifiers)
-            .bind(&event.element_role)
-            .bind(&event.element_name)
-            .bind(&event.session_id)
-            .bind(event.relative_ms)
-            .bind(event.delta_x)
-            .bind(event.delta_y)
-            .bind(event.button)
-            .bind(event.click_count)
-            .bind(event.text_length)
-            .bind(event.app_pid)
-            .bind(&event.element_value)
-            .bind(&event.element_description)
-            .bind(&event.element_automation_id)
-            .bind(&event.element_bounds)
-            .bind(event.frame_id)
-            .bind(&event.sync_id)
-            .bind(&chunk.machine_id)
-            .bind(Utc::now().to_rfc3339())
-            .execute(&mut **tx.conn())
-            .await
-            .map_err(|e| SyncError::Database(format!("failed to insert ui_event: {}", e)))?;
+            self.db
+                .sync_insert_ui_event(
+                    &event.sync_id,
+                    &chunk.machine_id,
+                    &event.timestamp,
+                    &event.event_type,
+                    event.app_name.as_deref(),
+                    event.window_title.as_deref(),
+                    event.browser_url.as_deref(),
+                    event.text_content.as_deref(),
+                    event.x,
+                    event.y,
+                    event.key_code,
+                    event.modifiers,
+                    event.element_role.as_deref(),
+                    event.element_name.as_deref(),
+                    event.session_id.as_deref(),
+                    event.relative_ms,
+                    event.delta_x,
+                    event.delta_y,
+                    event.button,
+                    event.click_count,
+                    event.text_length,
+                    event.app_pid,
+                    event.element_value.as_deref(),
+                    event.element_description.as_deref(),
+                    event.element_automation_id.as_deref(),
+                    event.element_bounds.as_deref(),
+                    event.frame_id,
+                )
+                .await
+                .map_err(|e| SyncError::Database(format!("failed to insert ui_event: {}", e)))?;
 
             imported_ui_events += 1;
+            tokio::task::yield_now().await;
         }
-
-        // Commit the single transaction for all inserts
-        tx.commit().await.map_err(|e| {
-            SyncError::Database(format!("failed to commit import transaction: {}", e))
-        })?;
 
         Ok(ImportResult {
             imported_frames,

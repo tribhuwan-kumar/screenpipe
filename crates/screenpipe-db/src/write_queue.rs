@@ -165,6 +165,76 @@ pub(crate) enum WriteOp {
     PipeDeleteOldExecutions {
         keep_per_pipe: i32,
     },
+    /// Insert a synced frame (video_chunk + frame row) from cloud sync import.
+    SyncInsertFrame {
+        sync_id: String,
+        machine_id: String,
+        timestamp: String,
+        offset_index: i64,
+        app_name: Option<String>,
+        window_name: Option<String>,
+        browser_url: Option<String>,
+        device_name: String,
+    },
+    /// Insert a synced OCR text row from cloud sync import.
+    SyncInsertOcr {
+        frame_id: i64,
+        text: String,
+        focused: bool,
+        app_name: String,
+        window_name: Option<String>,
+        sync_id: String,
+    },
+    /// Insert a synced transcription (audio_chunk + audio_transcription) from cloud sync import.
+    SyncInsertTranscription {
+        sync_id: String,
+        machine_id: String,
+        timestamp: String,
+        transcription: String,
+        device: String,
+        is_input_device: bool,
+        speaker_id: Option<i64>,
+    },
+    /// Insert a synced accessibility record as a frame from cloud sync import.
+    SyncInsertAccessibility {
+        sync_id: String,
+        machine_id: String,
+        timestamp: String,
+        app_name: String,
+        window_name: String,
+        browser_url: Option<String>,
+        text_content: String,
+    },
+    /// Insert a synced UI event from cloud sync import.
+    SyncInsertUiEvent {
+        sync_id: String,
+        machine_id: String,
+        timestamp: String,
+        event_type: String,
+        app_name: Option<String>,
+        window_title: Option<String>,
+        browser_url: Option<String>,
+        text_content: Option<String>,
+        x: Option<i32>,
+        y: Option<i32>,
+        key_code: Option<i32>,
+        modifiers: Option<i32>,
+        element_role: Option<String>,
+        element_name: Option<String>,
+        session_id: Option<String>,
+        relative_ms: Option<i32>,
+        delta_x: Option<i32>,
+        delta_y: Option<i32>,
+        button: Option<i32>,
+        click_count: Option<i32>,
+        text_length: Option<i32>,
+        app_pid: Option<i32>,
+        element_value: Option<String>,
+        element_description: Option<String>,
+        element_automation_id: Option<String>,
+        element_bounds: Option<String>,
+        frame_id: Option<i64>,
+    },
     /// Batch insert frames with OCR text. Replaces the direct
     /// `begin_immediate_with_retry` call in `insert_frames_with_ocr_batch`
     /// so that frame inserts go through the coalescing queue.
@@ -733,6 +803,179 @@ async fn execute_single_write(
                     .bind(id).execute(&mut **conn).await?;
             }
             Ok(WriteResult::Unit)
+        }
+
+        WriteOp::SyncInsertFrame {
+            sync_id, machine_id, timestamp, offset_index,
+            app_name, window_name, browser_url, device_name,
+        } => {
+            // Create a virtual video_chunk for this synced frame
+            let video_chunk_id: Option<i64> = sqlx::query_scalar(
+                r#"INSERT INTO video_chunks (file_path, device_name, sync_id, machine_id)
+                VALUES ('cloud://' || ?1, ?2, ?1, ?3)
+                ON CONFLICT DO NOTHING
+                RETURNING id"#,
+            )
+            .bind(sync_id.as_str())
+            .bind(device_name.as_str())
+            .bind(machine_id.as_str())
+            .fetch_optional(&mut **conn)
+            .await?;
+
+            let video_chunk_id = match video_chunk_id {
+                Some(id) => id,
+                None => return Ok(WriteResult::Id(0)), // conflict = already exists
+            };
+
+            let now = Utc::now().to_rfc3339();
+            let frame_id = sqlx::query(
+                r#"INSERT INTO frames (video_chunk_id, offset_index, timestamp, app_name, window_name, browser_url, device_name, sync_id, machine_id, synced_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
+            )
+            .bind(video_chunk_id)
+            .bind(offset_index)
+            .bind(timestamp.as_str())
+            .bind(app_name.as_deref())
+            .bind(window_name.as_deref())
+            .bind(browser_url.as_deref())
+            .bind(device_name.as_str())
+            .bind(sync_id.as_str())
+            .bind(machine_id.as_str())
+            .bind(now.as_str())
+            .execute(&mut **conn)
+            .await?
+            .last_insert_rowid();
+
+            Ok(WriteResult::Id(frame_id))
+        }
+
+        WriteOp::SyncInsertOcr {
+            frame_id, text, focused, app_name, window_name, sync_id,
+        } => {
+            let now = Utc::now().to_rfc3339();
+            sqlx::query(
+                r#"INSERT INTO ocr_text (frame_id, text, focused, app_name, window_name, sync_id, synced_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+            )
+            .bind(frame_id)
+            .bind(text.as_str())
+            .bind(focused)
+            .bind(app_name.as_str())
+            .bind(window_name.as_deref())
+            .bind(sync_id.as_str())
+            .bind(now.as_str())
+            .execute(&mut **conn)
+            .await?;
+            Ok(WriteResult::Id(*frame_id))
+        }
+
+        WriteOp::SyncInsertTranscription {
+            sync_id, machine_id, timestamp, transcription, device,
+            is_input_device, speaker_id,
+        } => {
+            let now = Utc::now().to_rfc3339();
+            // Create audio chunk for synced transcription
+            let audio_chunk_id: i64 = sqlx::query_scalar(
+                r#"INSERT INTO audio_chunks (file_path, sync_id, machine_id)
+                VALUES ('cloud://' || ?1, ?1, ?2)
+                RETURNING id"#,
+            )
+            .bind(sync_id.as_str())
+            .bind(machine_id.as_str())
+            .fetch_one(&mut **conn)
+            .await?;
+
+            sqlx::query(
+                r#"INSERT INTO audio_transcriptions (audio_chunk_id, offset_index, timestamp, transcription, device, is_input_device, speaker_id, sync_id, synced_at)
+                VALUES (?1, 0, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+            )
+            .bind(audio_chunk_id)
+            .bind(timestamp.as_str())
+            .bind(transcription.as_str())
+            .bind(device.as_str())
+            .bind(is_input_device)
+            .bind(speaker_id)
+            .bind(sync_id.as_str())
+            .bind(now.as_str())
+            .execute(&mut **conn)
+            .await?;
+
+            Ok(WriteResult::Id(audio_chunk_id))
+        }
+
+        WriteOp::SyncInsertAccessibility {
+            sync_id, machine_id, timestamp, app_name, window_name,
+            browser_url, text_content,
+        } => {
+            let now = Utc::now().to_rfc3339();
+            let id = sqlx::query(
+                r#"INSERT INTO frames (timestamp, app_name, window_name, browser_url, full_text, text_source, sync_id, machine_id, synced_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, 'accessibility', ?6, ?7, ?8)"#,
+            )
+            .bind(timestamp.as_str())
+            .bind(app_name.as_str())
+            .bind(window_name.as_str())
+            .bind(browser_url.as_deref())
+            .bind(text_content.as_str())
+            .bind(sync_id.as_str())
+            .bind(machine_id.as_str())
+            .bind(now.as_str())
+            .execute(&mut **conn)
+            .await?
+            .last_insert_rowid();
+            Ok(WriteResult::Id(id))
+        }
+
+        WriteOp::SyncInsertUiEvent {
+            sync_id, machine_id, timestamp, event_type,
+            app_name, window_title, browser_url, text_content,
+            x, y, key_code, modifiers, element_role, element_name,
+            session_id, relative_ms, delta_x, delta_y, button, click_count,
+            text_length, app_pid, element_value, element_description,
+            element_automation_id, element_bounds, frame_id,
+        } => {
+            let now = Utc::now().to_rfc3339();
+            let id = sqlx::query(
+                r#"INSERT INTO ui_events (timestamp, event_type, app_name, window_title, browser_url,
+                    text_content, x, y, key_code, modifiers, element_role, element_name,
+                    session_id, relative_ms, delta_x, delta_y, button, click_count,
+                    text_length, app_pid, element_value, element_description,
+                    element_automation_id, element_bounds, frame_id,
+                    sync_id, machine_id, synced_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)"#,
+            )
+            .bind(timestamp.as_str())
+            .bind(event_type.as_str())
+            .bind(app_name.as_deref())
+            .bind(window_title.as_deref())
+            .bind(browser_url.as_deref())
+            .bind(text_content.as_deref())
+            .bind(x)
+            .bind(y)
+            .bind(key_code)
+            .bind(modifiers)
+            .bind(element_role.as_deref())
+            .bind(element_name.as_deref())
+            .bind(session_id.as_deref())
+            .bind(relative_ms)
+            .bind(delta_x)
+            .bind(delta_y)
+            .bind(button)
+            .bind(click_count)
+            .bind(text_length)
+            .bind(app_pid)
+            .bind(element_value.as_deref())
+            .bind(element_description.as_deref())
+            .bind(element_automation_id.as_deref())
+            .bind(element_bounds.as_deref())
+            .bind(frame_id)
+            .bind(sync_id.as_str())
+            .bind(machine_id.as_str())
+            .bind(now.as_str())
+            .execute(&mut **conn)
+            .await?
+            .last_insert_rowid();
+            Ok(WriteResult::Id(id))
         }
 
         WriteOp::InsertFramesBatch {
