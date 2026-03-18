@@ -1945,31 +1945,6 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
           <CardContent className="px-3 py-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
-                <Terminal className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">Server port</h3>
-                  <p className="text-xs text-muted-foreground">Requires restart</p>
-                </div>
-              </div>
-              <Input
-                id="port"
-                type="number"
-                value={settings.port}
-                onChange={(e) => {
-                  const portValue = parseInt(e.target.value) || 3030;
-                  handleSettingsChange({ port: portValue }, true);
-                }}
-                className="w-20 h-7 text-xs text-right"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-
-        <Card className="border-border bg-card">
-          <CardContent className="px-3 py-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
                 <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <h3 className="text-sm font-medium text-foreground">Chinese mirror</h3>

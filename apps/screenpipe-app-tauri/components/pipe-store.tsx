@@ -1136,7 +1136,7 @@ function PipeDetailPanel({
           {readmeContent ? (
             <MemoizedReactMarkdown
               remarkPlugins={[remarkGfm]}
-              className="prose prose-sm dark:prose-invert max-w-none"
+              className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-pre:rounded-md prose-pre:border prose-pre:border-border prose-pre:text-xs prose-code:bg-muted prose-code:text-foreground prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none"
               components={{
                 a: ({ href, children }) => (
                   <a
@@ -1148,20 +1148,6 @@ function PipeDetailPanel({
                     {children}
                   </a>
                 ),
-                code: ({ className, children, ...props }) => {
-                  const isInline = !className;
-                  return isInline ? (
-                    <code className="bg-muted text-foreground px-1.5 py-0.5 rounded-none text-xs" {...props}>
-                      {children}
-                    </code>
-                  ) : (
-                    <pre className="bg-muted text-foreground p-4 rounded-none overflow-x-auto text-xs">
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    </pre>
-                  );
-                },
               }}
             >
               {readmeContent}
