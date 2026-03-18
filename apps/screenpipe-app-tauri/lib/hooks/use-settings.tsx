@@ -141,6 +141,14 @@ export type Settings = SettingsStore & {
 	powerMode?: "auto" | "performance" | "battery_saver";
 	/** Show restart notifications when audio/vision capture stalls (default: false for now) */
 	showRestartNotifications?: boolean;
+	/** Notification preferences — which notification sources are enabled */
+	notificationPrefs?: {
+		captureStalls: boolean;
+		appUpdates: boolean;
+		pipeSuggestions: boolean;
+		pipeNotifications: boolean;
+		mutedPipes: string[];
+	};
 }
 
 export function getEffectiveFilters(settings: Settings) {

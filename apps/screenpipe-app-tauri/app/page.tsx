@@ -25,6 +25,7 @@ import Timeline from "@/components/rewind/timeline";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { RefreshCw, AlertTriangle, WifiOff, Upload, Loader, Check, Calendar, X } from "lucide-react";
+import { NotificationBell } from "@/components/notification-bell";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { getVersion } from "@tauri-apps/api/app";
@@ -344,6 +345,11 @@ export default function Home() {
     <div className="flex flex-col items-center flex-1 mx-auto relative scrollbar-hide">
       {/* Transparent titlebar area - no drag region to prevent accidental window moves */}
       <div className="h-8 bg-gradient-to-b from-black/15 to-transparent w-full fixed top-0 left-0 z-[1000] pointer-events-none" />
+
+      {/* Notification bell - top right */}
+      <div className="fixed top-2 right-3 z-[1001]">
+        <NotificationBell />
+      </div>
       
       <NotificationHandler />
       <PermissionBanner />

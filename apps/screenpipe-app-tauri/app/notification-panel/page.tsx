@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import posthog from "posthog-js";
 import ReactMarkdown from "react-markdown";
 import { showChatWithPrefill } from "@/lib/chat-utils";
+import localforage from "localforage";
 
 interface NotificationAction {
   label: string;
@@ -203,6 +204,21 @@ export default function NotificationPanelPage() {
         posthog.capture("notification_shown", {
           type: data.type,
           id: data.id,
+        });
+
+        // Save to notification history (max 100 entries)
+        localforage.getItem<any[]>("notification-history").then((history) => {
+          const entry = {
+            id: data.id,
+            type: data.type,
+            title: data.title,
+            body: data.body,
+            pipe_name: data.pipe_name,
+            timestamp: new Date().toISOString(),
+            read: false,
+          };
+          const updated = [entry, ...(history || [])].slice(0, 100);
+          localforage.setItem("notification-history", updated);
         });
 
         const dismissMs = data.autoDismissMs ?? 20000;
@@ -455,6 +471,67 @@ export default function NotificationPanelPage() {
             </span>
           </div>
         )}
+
+        {/* Manage / Mute footer */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "4px 14px 8px 14px",
+            gap: "8px",
+            borderTop: "1px solid rgba(0, 0, 0, 0.06)",
+          }}
+        >
+          <span
+            onClick={async () => {
+              await emit("open-notification-settings");
+              try { await invoke("show_window", { window: "Settings" }); } catch {}
+            }}
+            style={{
+              fontSize: "9px",
+              color: "rgba(0, 0, 0, 0.3)",
+              cursor: "pointer",
+              fontFamily: '"IBM Plex Mono", monospace',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(0, 0, 0, 0.6)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(0, 0, 0, 0.3)")}
+          >
+            ⚙ manage
+          </span>
+          {payload.pipe_name && (
+            <>
+              <span style={{ fontSize: "9px", color: "rgba(0, 0, 0, 0.15)" }}>·</span>
+              <span
+                onClick={async () => {
+                  try {
+                    const raw = await localforage.getItem<string>("screenpipe-settings");
+                    const settings = raw ? JSON.parse(raw) : {};
+                    const prefs = settings.notificationPrefs || {
+                      captureStalls: true, appUpdates: true,
+                      pipeSuggestions: true, pipeNotifications: true, mutedPipes: [],
+                    };
+                    if (!prefs.mutedPipes.includes(payload.pipe_name!)) {
+                      prefs.mutedPipes.push(payload.pipe_name!);
+                    }
+                    settings.notificationPrefs = prefs;
+                    await localforage.setItem("screenpipe-settings", JSON.stringify(settings));
+                  } catch {}
+                  await hide(false);
+                }}
+                style={{
+                  fontSize: "9px",
+                  color: "rgba(0, 0, 0, 0.3)",
+                  cursor: "pointer",
+                  fontFamily: '"IBM Plex Mono", monospace',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "rgba(0, 0, 0, 0.6)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(0, 0, 0, 0.3)")}
+              >
+                mute {payload.pipe_name}
+              </span>
+            </>
+          )}
+        </div>
 
         {/* Progress bar */}
         <div
