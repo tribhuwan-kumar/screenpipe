@@ -288,18 +288,23 @@ jobs:
 
       - name: Notify enterprise build subscribers
         shell: bash
-        continue-on-error: true
         env:
           ENTERPRISE_NOTIFY_SECRET: ${{ secrets.ENTERPRISE_NOTIFY_SECRET }}
         run: |
           VERSION=$(grep '^version = ' apps/screenpipe-app-tauri/src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          if [ -z "$ENTERPRISE_NOTIFY_SECRET" ]; then
+            echo "::error::ENTERPRISE_NOTIFY_SECRET is not set in GitHub secrets"
+            exit 1
+          fi
           HTTP_CODE=$(curl -s -o /tmp/notify_response.txt -w "%{http_code}" -X POST "https://screenpi.pe/api/enterprise/builds/notify" \
             -H "Authorization: Bearer $ENTERPRISE_NOTIFY_SECRET" \
             -H "Content-Type: application/json" \
             -d "{\"version\": \"$VERSION\"}")
+          BODY=$(cat /tmp/notify_response.txt)
+          echo "Response: HTTP $HTTP_CODE — $BODY"
           if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "Notified subscribers for v$VERSION (HTTP $HTTP_CODE)"
+            echo "Notified subscribers for v$VERSION"
           else
-            echo "::warning::Failed to notify subscribers for v$VERSION (HTTP $HTTP_CODE)"
-            cat /tmp/notify_response.txt
+            echo "::error::Notification failed (HTTP $HTTP_CODE). If 401, the ENTERPRISE_NOTIFY_SECRET in GitHub Actions does not match the one in Vercel env."
+            exit 1
           fi
