@@ -784,3 +784,21 @@ mod tests {
         );
     }
 }
+
+/// A notification record from the `notifications` table.
+#[derive(Debug, Clone, Serialize, Deserialize, OaSchema, FromRow)]
+pub struct NotificationRecord {
+    pub id: i64,
+    pub pipe_name: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub icon: Option<String>,
+    pub priority: String,
+    pub timeout_secs: Option<i64>,
+    /// JSON-encoded array of action objects.
+    pub actions: Option<String>,
+    pub status: String,
+    pub actioned_id: Option<String>,
+    pub created_at: String,
+    pub actioned_at: Option<String>,
+}
