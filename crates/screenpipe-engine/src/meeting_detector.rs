@@ -1702,8 +1702,14 @@ pub fn find_running_meeting_apps(
 // Detection Loop
 // ============================================================================
 
-/// Default scan interval (how often we scan for meeting controls).
-const DEFAULT_SCAN_INTERVAL: Duration = Duration::from_secs(5);
+/// Scan interval when actively tracking a meeting (Confirming/Active/Ending).
+const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Scan interval when idle and meeting apps are running but no call detected.
+const IDLE_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Scan interval when idle and no meeting apps are running at all.
+const IDLE_NO_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Run the meeting detection loop.
 ///
@@ -1786,7 +1792,14 @@ pub async fn run_meeting_detection_loop(
     let profiles = load_detection_profiles();
     let scanner = Arc::new(MeetingUiScanner::new());
     let mut state = MeetingState::Idle;
-    let interval = scan_interval.unwrap_or(DEFAULT_SCAN_INTERVAL);
+    let base_interval = scan_interval.unwrap_or(ACTIVE_SCAN_INTERVAL);
+    let mut current_interval = base_interval;
+    let mut idle_scan_count: u64 = 0;
+
+    // Check if any profile uses browser URL patterns (to gate DB query)
+    let has_browser_profiles = profiles
+        .iter()
+        .any(|p| !p.app_identifiers.browser_url_patterns.is_empty());
 
     // Close any orphaned meetings from a prior crash
     match db.close_orphaned_meetings().await {
@@ -1796,14 +1809,14 @@ pub async fn run_meeting_detection_loop(
     }
 
     info!(
-        "meeting v2: detection loop started (interval={:?}, profiles={})",
-        interval,
+        "meeting v2: detection loop started (base_interval={:?}, profiles={})",
+        base_interval,
         profiles.len()
     );
 
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(interval) => {}
+            _ = tokio::time::sleep(current_interval) => {}
             _ = shutdown_rx.recv() => {
                 info!("meeting v2: shutdown received, exiting detection loop");
                 // If we're in an active meeting, end it cleanly
@@ -1838,15 +1851,18 @@ pub async fn run_meeting_detection_loop(
         let tracking = get_active_tracking(&state, &profiles);
 
         // 0. Check recent frames in DB for browser meeting URLs.
-        // Some browsers (Arc) don't expose URLs in AX window titles or AXDocument,
-        // but the screen capture records the actual window name (e.g., "Google Meet").
-        // This gives us reliable browser meeting detection without live AX walks.
-        let db_browser_hints = match db_find_browser_meetings(&db, &profiles).await {
-            Ok(hints) => hints,
-            Err(e) => {
-                debug!("meeting v2: db browser hint query failed: {}", e);
-                Vec::new()
+        // Only run this query if any profile has browser URL patterns configured,
+        // to avoid unnecessary DB work when no browser-based meetings are possible.
+        let db_browser_hints = if has_browser_profiles {
+            match db_find_browser_meetings(&db, &profiles).await {
+                Ok(hints) => hints,
+                Err(e) => {
+                    debug!("meeting v2: db browser hint query failed: {}", e);
+                    Vec::new()
+                }
             }
+        } else {
+            Vec::new()
         };
 
         // 1. Find running meeting app processes (blocking AX calls for native apps)
@@ -1868,7 +1884,7 @@ pub async fn run_meeting_detection_loop(
         }
 
         if !running_apps.is_empty() {
-            info!(
+            debug!(
                 "meeting v2: found {} running meeting app(s): {:?}",
                 running_apps.len(),
                 running_apps.iter().map(|a| format!("{}(pid={})", a.app_name, a.pid)).collect::<Vec<_>>()
@@ -1892,6 +1908,22 @@ pub async fn run_meeting_detection_loop(
                 &in_meeting_flag,
                 &detector,
             );
+
+            // Adaptive interval: slow down when idle with no apps
+            if matches!(state, MeetingState::Idle) {
+                current_interval = IDLE_NO_APPS_SCAN_INTERVAL;
+                idle_scan_count += 1;
+                // Periodic summary every ~60s (2 cycles at 30s)
+                if idle_scan_count % 2 == 0 {
+                    debug!(
+                        "meeting v2: idle, no meeting apps (scans={})",
+                        idle_scan_count
+                    );
+                }
+            } else {
+                // Ending/Confirming state — keep scanning at active rate
+                current_interval = base_interval;
+            }
             continue;
         }
 
@@ -1916,7 +1948,7 @@ pub async fn run_meeting_detection_loop(
             Vec::new()
         });
 
-        info!(
+        debug!(
             "meeting v2: scanned {} apps, {} in call",
             scan_results.len(),
             scan_results.iter().filter(|r| r.is_in_call).count()
@@ -1925,6 +1957,13 @@ pub async fn run_meeting_detection_loop(
         // 3. Advance state machine
         let (new_state, action) = advance_state(state, &scan_results);
         state = new_state;
+
+        // Adaptive interval based on state
+        idle_scan_count = 0; // reset idle counter when apps are present
+        current_interval = match &state {
+            MeetingState::Idle => IDLE_APPS_SCAN_INTERVAL, // apps open but no call
+            _ => base_interval, // Confirming/Active/Ending — scan fast
+        };
 
         // 4. Handle actions
         if let Some(action) = action {
