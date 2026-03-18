@@ -1016,9 +1016,9 @@ unsafe fn get_cached_string(
 
 /// Scan a process's windows via Windows UI Automation for call control signals.
 ///
-/// Uses CacheRequest + TreeScope_Subtree to fetch the entire UI tree in one COM call,
-/// then walks the cached tree in-memory. This is orders of magnitude faster than the
-/// per-element TreeWalker approach for deep trees like Teams (depth 17+).
+/// Strategy: try CacheRequest + TreeScope_Subtree first (one COM call for entire tree).
+/// If the provider doesn't populate cached children (Chromium/Electron/WebView2 apps
+/// like Teams), fall back to TreeWalker with per-element cached property reads.
 #[cfg(target_os = "windows")]
 fn windows_scan_process_uia(
     pid: i32,
@@ -1031,7 +1031,8 @@ fn windows_scan_process_uia(
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, IUIAutomation, TreeScope_Subtree, AutomationElementMode_None,
+        CUIAutomation, IUIAutomation, TreeScope_Subtree, TreeScope_Element,
+        AutomationElementMode_None, AutomationElementMode_Full,
         UIA_NamePropertyId, UIA_LocalizedControlTypePropertyId,
         UIA_AutomationIdPropertyId, UIA_HelpTextPropertyId,
         UIA_AcceleratorKeyPropertyId,
@@ -1043,7 +1044,7 @@ fn windows_scan_process_uia(
         let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL)
             .map_err(|e| format!("UIA init failed: {}", e))?;
 
-        // Build CacheRequest with only the properties we need for signal matching
+        // Build CacheRequest for batch subtree capture
         let cache_request = automation.CreateCacheRequest()
             .map_err(|e| format!("cache request failed: {}", e))?;
         cache_request.AddProperty(UIA_NamePropertyId).ok();
@@ -1052,14 +1053,30 @@ fn windows_scan_process_uia(
         cache_request.AddProperty(UIA_HelpTextPropertyId).ok();
         cache_request.AddProperty(UIA_AcceleratorKeyPropertyId).ok();
 
-        // Control view filter + subtree scope = one COM call fetches everything
         let control_view = automation.ControlViewCondition()
             .map_err(|e| format!("control view failed: {}", e))?;
         cache_request.SetTreeFilter(&control_view).ok();
         cache_request.SetTreeScope(TreeScope_Subtree).ok();
         cache_request.SetAutomationElementMode(AutomationElementMode_None).ok();
 
-        // Enumerate windows for this PID
+        // Build per-element CacheRequest for TreeWalker fallback (Electron/WebView2).
+        // Same properties but Element scope + Full mode (live refs needed for navigation).
+        let walker_cache_request = automation.CreateCacheRequest()
+            .map_err(|e| format!("walker cache request failed: {}", e))?;
+        walker_cache_request.AddProperty(UIA_NamePropertyId).ok();
+        walker_cache_request.AddProperty(UIA_LocalizedControlTypePropertyId).ok();
+        walker_cache_request.AddProperty(UIA_AutomationIdPropertyId).ok();
+        walker_cache_request.AddProperty(UIA_HelpTextPropertyId).ok();
+        walker_cache_request.AddProperty(UIA_AcceleratorKeyPropertyId).ok();
+        let control_view2 = automation.ControlViewCondition()
+            .map_err(|e| format!("control view 2 failed: {}", e))?;
+        walker_cache_request.SetTreeFilter(&control_view2).ok();
+        walker_cache_request.SetTreeScope(TreeScope_Element).ok();
+        walker_cache_request.SetAutomationElementMode(AutomationElementMode_Full).ok();
+
+        let walker = automation.ControlViewWalker()
+            .map_err(|e| format!("walker failed: {}", e))?;
+
         let window_handles = enumerate_windows_for_pid(pid as u32);
 
         let start = Instant::now();
@@ -1070,17 +1087,42 @@ fn windows_scan_process_uia(
                 break;
             }
 
-            // ONE COM call fetches entire cached subtree
+            // Try batch CacheRequest first (one COM call for entire subtree)
             let element = match automation.ElementFromHandleBuildCache(hwnd, &cache_request) {
                 Ok(el) => el,
                 Err(_) => continue,
             };
 
-            // Walk cached tree in-memory (microseconds per node, not milliseconds)
+            // Count cached nodes to detect Chromium/Electron providers that
+            // don't populate the cached subtree
+            let mut cached_node_count = 0;
             windows_walk_cached(
                 &element, signals, 0, max_depth,
                 &start, timeout, &mut found, min_required,
+                &mut cached_node_count,
             );
+
+            // Fallback: if cached tree was nearly empty (<= 10 nodes) and we haven't
+            // found signals yet, try TreeWalker which works for Electron/WebView2 apps
+            if found.len() < min_required && cached_node_count <= 10 && start.elapsed() < timeout {
+                info!(
+                    "meeting scanner: cached tree too small ({} nodes) for pid {}, falling back to walker",
+                    cached_node_count, pid
+                );
+                let live_element = match automation.ElementFromHandle(hwnd) {
+                    Ok(el) => el,
+                    Err(_) => continue,
+                };
+                let cached_root = match live_element.BuildUpdatedCache(&walker_cache_request) {
+                    Ok(el) => el,
+                    Err(_) => continue,
+                };
+                windows_walk_walker(
+                    &walker, &walker_cache_request, &cached_root,
+                    signals, 0, max_depth,
+                    &start, timeout, &mut found, min_required,
+                );
+            }
         }
 
         CoUninitialize();
@@ -1102,6 +1144,7 @@ unsafe fn windows_walk_cached(
     timeout: Duration,
     found: &mut Vec<String>,
     min_required: usize,
+    node_count: &mut usize,
 ) {
     use windows::Win32::UI::Accessibility::{
         UIA_NamePropertyId, UIA_LocalizedControlTypePropertyId,
@@ -1112,6 +1155,8 @@ unsafe fn windows_walk_cached(
     if depth >= max_depth || start.elapsed() >= timeout || found.len() >= min_required {
         return;
     }
+
+    *node_count += 1;
 
     // All cached — zero COM overhead
     let role = get_cached_string(element, UIA_LocalizedControlTypePropertyId)
@@ -1198,8 +1243,133 @@ unsafe fn windows_walk_cached(
                     windows_walk_cached(
                         &child, signals, depth + 1, max_depth,
                         start, timeout, found, min_required,
+                        node_count,
                     );
                 }
+            }
+        }
+    }
+}
+
+/// TreeWalker fallback for Electron/WebView2 apps whose UIA providers don't
+/// populate the cached subtree. Walks element-by-element via COM calls, but
+/// uses BuildUpdatedCache so property reads are still batched per-element.
+#[cfg(target_os = "windows")]
+unsafe fn windows_walk_walker(
+    walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+    walker_cache_request: &windows::Win32::UI::Accessibility::IUIAutomationCacheRequest,
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+    signals: &[CallSignal],
+    depth: usize,
+    max_depth: usize,
+    start: &Instant,
+    timeout: Duration,
+    found: &mut Vec<String>,
+    min_required: usize,
+) {
+    use windows::Win32::UI::Accessibility::{
+        UIA_NamePropertyId, UIA_LocalizedControlTypePropertyId,
+        UIA_AutomationIdPropertyId, UIA_HelpTextPropertyId,
+        UIA_AcceleratorKeyPropertyId,
+    };
+
+    if depth >= max_depth || start.elapsed() >= timeout || found.len() >= min_required {
+        return;
+    }
+
+    // Properties are cached per-element via BuildUpdatedCache
+    let role = get_cached_string(element, UIA_LocalizedControlTypePropertyId)
+        .unwrap_or_default();
+    let name = get_cached_string(element, UIA_NamePropertyId);
+    let automation_id = get_cached_string(element, UIA_AutomationIdPropertyId);
+    let help_text = get_cached_string(element, UIA_HelpTextPropertyId);
+    let accel_key = get_cached_string(element, UIA_AcceleratorKeyPropertyId);
+
+    let ax_role = format!("AX{}", role);
+    let role_lower = role.to_lowercase();
+
+    for signal in signals {
+        let matched = match signal {
+            CallSignal::AutomationId(id) => {
+                automation_id.as_deref().map_or(false, |a| a.eq_ignore_ascii_case(id))
+            }
+            CallSignal::AutomationIdContains(substr) => {
+                automation_id.as_deref().map_or(false, |a| {
+                    a.to_lowercase().contains(&substr.to_lowercase())
+                })
+            }
+            CallSignal::KeyboardShortcut(shortcut) => {
+                let s_lower = shortcut.to_lowercase();
+                help_text.as_deref().map_or(false, |h| h.to_lowercase().contains(&s_lower))
+                    || accel_key.as_deref().map_or(false, |a| a.to_lowercase().contains(&s_lower))
+                    || name.as_deref().map_or(false, |n| n.to_lowercase().contains(&s_lower))
+            }
+            CallSignal::RoleWithName { role: r, name_contains } => {
+                let expected = r.strip_prefix("AX").unwrap_or(r);
+                let role_matches = role == *r || ax_role == *r || role == expected
+                    || role_lower == expected.to_lowercase();
+                if !role_matches {
+                    false
+                } else {
+                    let needle = name_contains.to_lowercase();
+                    name.as_deref().map_or(false, |n| n.to_lowercase().contains(&needle))
+                        || help_text.as_deref().map_or(false, |h| h.to_lowercase().contains(&needle))
+                }
+            }
+            CallSignal::MenuBarItem { title_contains } => {
+                (role_lower == "menu bar" || role_lower == "menubar")
+                    && name.as_deref().map_or(false, |n| {
+                        n.to_lowercase().contains(&title_contains.to_lowercase())
+                    })
+            }
+            CallSignal::MenuItemId(expected_id) => {
+                (role_lower == "menu item" || role_lower == "menuitem")
+                    && automation_id.as_deref().map_or(false, |a| a == *expected_id)
+            }
+            CallSignal::NameContains(needle) => {
+                let n_lower = needle.to_lowercase();
+                name.as_deref().map_or(false, |n| n.to_lowercase().contains(&n_lower))
+                    || help_text.as_deref().map_or(false, |h| h.to_lowercase().contains(&n_lower))
+            }
+        };
+
+        if matched {
+            let label = format_signal_match(signal, &role, name.as_deref(), help_text.as_deref());
+            if !found.contains(&label) {
+                found.push(label);
+            }
+        }
+    }
+
+    if found.len() >= min_required {
+        return;
+    }
+
+    // Skip content areas
+    if role_lower == "edit" || role_lower == "document" || role_lower == "text" || role_lower == "list" {
+        return;
+    }
+
+    // Walk children via TreeWalker (COM calls, but property reads are cached)
+    if let Ok(child) = walker.GetFirstChildElementBuildCache(element, walker_cache_request) {
+        windows_walk_walker(
+            walker, walker_cache_request, &child,
+            signals, depth + 1, max_depth,
+            start, timeout, found, min_required,
+        );
+
+        let mut current = child;
+        while found.len() < min_required && start.elapsed() < timeout {
+            match walker.GetNextSiblingElementBuildCache(&current, walker_cache_request) {
+                Ok(next) => {
+                    windows_walk_walker(
+                        walker, walker_cache_request, &next,
+                        signals, depth + 1, max_depth,
+                        start, timeout, found, min_required,
+                    );
+                    current = next;
+                }
+                Err(_) => break,
             }
         }
     }
