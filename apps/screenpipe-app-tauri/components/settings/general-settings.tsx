@@ -6,11 +6,10 @@
 import React, { useEffect, useState } from "react";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Rocket, Moon, Sun, Monitor, FlaskConical, Shield, ExternalLink, Layers, RefreshCw, Undo2, MessageSquare, Lightbulb } from "lucide-react";
+import { Rocket, Moon, Sun, Monitor, FlaskConical, Shield, ExternalLink, Layers, RefreshCw, Undo2, MessageSquare } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -190,79 +189,6 @@ export default function GeneralSettings() {
           </Card>
         )}
 
-        <Card className="border-border bg-card">
-          <CardContent className="px-3 py-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <Lightbulb className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">Pipe suggestions</h3>
-                  <p className="text-xs text-muted-foreground">Get periodic notifications with automation ideas based on your data</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Select
-                  value={String(settings?.pipeSuggestionFrequencyHours ?? 24)}
-                  onValueChange={(value) => {
-                    const freq = parseInt(value, 10);
-                    handleSettingsChange({ pipeSuggestionFrequencyHours: freq });
-                    commands.pipeSuggestionsUpdateSettings(
-                      settings?.pipeSuggestionsEnabled !== false,
-                      freq
-                    ).catch(() => {});
-                  }}
-                  disabled={settings?.pipeSuggestionsEnabled === false}
-                >
-                  <SelectTrigger className="h-7 w-[110px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">every 1h</SelectItem>
-                    <SelectItem value="2">every 2h</SelectItem>
-                    <SelectItem value="3">every 3h</SelectItem>
-                    <SelectItem value="6">every 6h</SelectItem>
-                    <SelectItem value="12">every 12h</SelectItem>
-                    <SelectItem value="24">daily</SelectItem>
-                    <SelectItem value="72">every 3 days</SelectItem>
-                    <SelectItem value="168">weekly</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Switch
-                  checked={settings?.pipeSuggestionsEnabled !== false}
-                  onCheckedChange={(checked) => {
-                    handleSettingsChange({ pipeSuggestionsEnabled: checked });
-                    commands.pipeSuggestionsUpdateSettings(
-                      checked,
-                      settings?.pipeSuggestionFrequencyHours ?? 24
-                    ).catch(() => {});
-                  }}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* restart notifications */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <Label className="text-sm font-medium">
-                  restart notifications
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  show a notification when audio or screen capture stalls
-                </p>
-              </div>
-              <Switch
-                checked={settings?.showRestartNotifications === true}
-                onCheckedChange={(checked) =>
-                  handleSettingsChange({ showRestartNotifications: checked })
-                }
-              />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
     </div>

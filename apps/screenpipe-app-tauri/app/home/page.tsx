@@ -29,6 +29,7 @@ import {
   PanelLeftOpen,
   Phone,
   Sparkles,
+  Bell,
 } from "lucide-react";
 import { useOverlayData } from "@/app/shortcut-reminder/use-overlay-data";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ import { PrivacySection } from "@/components/settings/privacy-section";
 import { StorageSection } from "@/components/settings/storage-section";
 import { MeetingsSection } from "@/components/settings/meetings-section";
 import { MemoriesSection } from "@/components/settings/memories-section";
+import { NotificationsSettings } from "@/components/settings/notifications-settings";
 import { StandaloneChat } from "@/components/standalone-chat";
 import Timeline from "@/components/rewind/timeline";
 import { useQueryState } from "nuqs";
@@ -78,19 +80,20 @@ type SettingsModalSection =
   | "meetings"
   | "memories"
   | "team"
+  | "notifications"
   | "referral";
 
 // All valid URL sections (main + modal)
 const ALL_SECTIONS = [
   "home", "timeline", "pipes", "help",
-  "account", "recording", "ai", "general", "display", "shortcuts",
+  "account", "recording", "ai", "general", "display", "shortcuts", "notifications",
   "connections", "privacy", "storage", "meetings", "memories", "team", "referral",
   "feedback", // backwards compat → maps to "help"
   "disk-usage", "cloud-archive", "cloud-sync", // backwards compat → maps to "storage"
 ];
 
 const MODAL_SECTIONS = new Set<string>([
-  "account", "recording", "ai", "general", "display", "shortcuts",
+  "account", "recording", "ai", "general", "display", "shortcuts", "notifications",
   "connections", "privacy", "storage", "meetings", "memories", "team", "referral",
 ]);
 
@@ -301,6 +304,8 @@ function SettingsPageContent() {
         return <ConnectionsSection />;
       case "team":
         return <TeamSection />;
+      case "notifications":
+        return <NotificationsSettings />;
       case "referral":
         return <ReferralSection />;
     }
@@ -316,6 +321,7 @@ function SettingsPageContent() {
   // Settings modal sidebar items
   const settingsModalSections: { id: SettingsModalSection; label: string; icon: React.ReactNode; group?: string }[] = [
     { id: "general", label: "General", icon: <SettingsIcon className="h-4 w-4" />, group: "app" },
+    { id: "notifications", label: "Notifications", icon: <Bell className="h-4 w-4" />, group: "app" },
     { id: "display", label: "Display", icon: <Layout className="h-4 w-4" />, group: "app" },
     { id: "recording", label: "Recording", icon: <Video className="h-4 w-4" />, group: "app" },
     { id: "ai", label: "AI models", icon: <Brain className="h-4 w-4" />, group: "app" },
