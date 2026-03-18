@@ -288,12 +288,18 @@ jobs:
 
       - name: Notify enterprise build subscribers
         shell: bash
+        continue-on-error: true
         env:
           ENTERPRISE_NOTIFY_SECRET: ${{ secrets.ENTERPRISE_NOTIFY_SECRET }}
         run: |
           VERSION=$(grep '^version = ' apps/screenpipe-app-tauri/src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          curl -sf -X POST "https://screenpi.pe/api/enterprise/builds/notify" \
+          HTTP_CODE=$(curl -s -o /tmp/notify_response.txt -w "%{http_code}" -X POST "https://screenpi.pe/api/enterprise/builds/notify" \
             -H "Authorization: Bearer $ENTERPRISE_NOTIFY_SECRET" \
             -H "Content-Type: application/json" \
-            -d "{\"version\": \"$VERSION\"}"
-          echo "Notified subscribers for v$VERSION"
+            -d "{\"version\": \"$VERSION\"}")
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "Notified subscribers for v$VERSION (HTTP $HTTP_CODE)"
+          else
+            echo "::warning::Failed to notify subscribers for v$VERSION (HTTP $HTTP_CODE)"
+            cat /tmp/notify_response.txt
+          fi
