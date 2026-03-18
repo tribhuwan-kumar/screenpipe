@@ -200,7 +200,7 @@ const DEFAULT_PI_PRESET: AIPreset = {
 	id: "pi-agent",
 	provider: "pi",
 	url: "",
-	model: "gemini-3.1-pro",
+	model: "claude-haiku-4-5",
 	maxContextChars: 1000000,
 	defaultPreset: true,
 	prompt: "",
