@@ -645,8 +645,15 @@ impl SettingsStore {
 pub fn init_store(app: &AppHandle) -> Result<SettingsStore, String> {
     println!("Initializing settings store");
 
+    let should_persist_restart_notification_migration = get_store(app, None)
+        .ok()
+        .and_then(|store| store.get("settings"))
+        .and_then(|raw| raw.as_object().cloned())
+        .map(|obj| !obj.contains_key("restartNotificationsDefaultedOff"))
+        .unwrap_or(false);
+
     let (store, should_save) = match SettingsStore::get(app) {
-        Ok(Some(store)) => (store, false), // Loaded successfully, don't overwrite
+        Ok(Some(store)) => (store, should_persist_restart_notification_migration),
         Ok(None) => (SettingsStore::default(), true), // New store, save defaults
         Err(e) => {
             // Fallback to defaults when deserialization fails (e.g., corrupted store)

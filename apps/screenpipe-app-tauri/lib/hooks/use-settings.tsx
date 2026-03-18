@@ -359,6 +359,15 @@ function createSettingsStore() {
 			needsUpdate = true;
 		}
 
+		// Temporary one-time migration: force restart notifications off for all
+		// existing users until the stall detector is more reliable. Users can
+		// still manually opt back in afterward; the marker prevents re-overriding.
+		if (!(settings as any).restartNotificationsDefaultedOff) {
+			settings.showRestartNotifications = false;
+			(settings as any).restartNotificationsDefaultedOff = true;
+			needsUpdate = true;
+		}
+
 		// Migration: Add default presets if user has none
 		if (!settings.aiPresets || settings.aiPresets.length === 0) {
 			settings.aiPresets = [DEFAULT_PI_PRESET as any];
