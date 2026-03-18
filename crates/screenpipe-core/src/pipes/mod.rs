@@ -690,6 +690,16 @@ impl PipeManager {
         }
     }
 
+    /// Take the current extra context, leaving None in its place.
+    pub fn take_extra_context(&mut self) -> Option<String> {
+        self.extra_context.take()
+    }
+
+    /// Clear extra context.
+    pub fn clear_extra_context(&mut self) {
+        self.extra_context = None;
+    }
+
     /// Set a token registry for server-side permission enforcement.
     pub fn set_token_registry(&mut self, registry: Arc<dyn permissions::PipeTokenRegistry>) {
         self.token_registry = Some(registry);

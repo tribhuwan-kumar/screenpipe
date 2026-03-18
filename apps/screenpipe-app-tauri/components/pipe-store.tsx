@@ -392,9 +392,12 @@ function DiscoverView() {
       setLoading(true);
     }
 
-    // Fetch fresh data in background
+    // Fetch fresh data in background (10s timeout to avoid infinite skeletons)
     try {
-      const res = await fetch(`http://localhost:3030/pipes/store?${params}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+      const res = await fetch(`http://localhost:3030/pipes/store?${params}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = data.data || data.pipes || (Array.isArray(data) ? data : []);

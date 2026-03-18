@@ -507,6 +507,14 @@ pub async fn event_driven_capture_loop(
                     }
                     Ok(Err(e)) => {
                         consecutive_capture_errors += 1;
+
+                        // Mark captured on failure to reset idle timer — without
+                        // this, needs_idle_capture() fires every poll tick (50ms)
+                        // once 30s elapses, creating ~20 capture attempts/second
+                        // on systems where capture fundamentally can't work
+                        // (e.g. Wayland without ZwlrScreencopy).
+                        state.mark_captured();
+
                         if consecutive_capture_errors == 1 {
                             // First failure — log at error level (shows in Sentry)
                             error!(
@@ -527,8 +535,20 @@ pub async fn event_driven_capture_loop(
                                 monitor_id, consecutive_capture_errors, e
                             );
                         }
+
+                        // Exponential backoff for persistent failures — avoids
+                        // hammering a broken capture path (missing Wayland
+                        // protocol, permission denied, etc.) while still
+                        // recovering quickly from transient errors.
+                        if consecutive_capture_errors >= 3 {
+                            let backoff_secs = (consecutive_capture_errors as u64 / 3)
+                                .min(30); // cap at 30s
+                            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+                        }
                     }
                     Err(_timeout) => {
+                        consecutive_capture_errors += 1;
+                        state.mark_captured();
                         warn!(
                             "event capture timed out (trigger={}, monitor={}) — DB pool may be saturated",
                             trigger.as_str(),

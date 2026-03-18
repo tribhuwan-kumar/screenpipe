@@ -15,6 +15,15 @@ interface NotificationAction {
   label: string;
   action: string;
   primary?: boolean;
+  // Pipe notification action fields
+  id?: string;
+  type?: "pipe" | "api" | "deeplink" | "dismiss";
+  pipe?: string;
+  context?: Record<string, unknown>;
+  url?: string;
+  method?: string;
+  body?: Record<string, unknown>;
+  toast?: string;
 }
 
 interface NotificationPayload {
@@ -24,6 +33,7 @@ interface NotificationPayload {
   body: string;
   actions: NotificationAction[];
   autoDismissMs?: number;
+  pipe_name?: string;
 }
 
 export default function NotificationPanelPage() {
@@ -59,26 +69,69 @@ export default function NotificationPanelPage() {
   );
 
   const handleAction = useCallback(
-    async (action: string) => {
+    async (actionOrObj: string | NotificationAction) => {
+      // Support both old string-based actions and new typed action objects
+      const actionStr = typeof actionOrObj === "string" ? actionOrObj : actionOrObj.action;
+      const actionObj = typeof actionOrObj === "object" ? actionOrObj : null;
+
       posthog.capture("notification_action", {
         type: payload?.type,
         id: payload?.id,
-        action,
+        action: actionStr,
+        actionType: actionObj?.type,
       });
 
       try {
-        if (action === "open_timeline") {
+        // New typed action dispatch (pipe notifications)
+        if (actionObj?.type) {
+          switch (actionObj.type) {
+            case "pipe": {
+              const pipeName = actionObj.pipe || payload?.pipe_name;
+              if (pipeName) {
+                await fetch(`http://localhost:3030/pipes/${pipeName}/run`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ notification_context: actionObj.context }),
+                });
+              }
+              break;
+            }
+            case "api": {
+              if (actionObj.url) {
+                await fetch(`http://localhost:3030${actionObj.url}`, {
+                  method: actionObj.method || "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: actionObj.body ? JSON.stringify(actionObj.body) : undefined,
+                });
+              }
+              break;
+            }
+            case "deeplink": {
+              if (actionObj.url) {
+                window.location.href = actionObj.url;
+              }
+              break;
+            }
+            case "dismiss":
+              break;
+          }
+          await hide(false);
+          return;
+        }
+
+        // Legacy string-based action handlers
+        if (actionStr === "open_timeline") {
           await invoke("show_window", { window: "Main" });
-        } else if (action === "open_chat") {
+        } else if (actionStr === "open_chat") {
           await invoke("show_window", { window: "Chat" });
-        } else if (action === "open_pipe_suggestions") {
+        } else if (actionStr === "open_pipe_suggestions") {
           await showChatWithPrefill({
             context: PIPE_SUGGESTION_PROMPT,
             prompt: "what pipes should i create based on my recent activity?",
             autoSend: true,
             source: "pipe-suggestion-notification",
           });
-        } else if (action === "restart_recording") {
+        } else if (actionStr === "restart_recording") {
           setRestartState("restarting");
           setRestartError(null);
           // Pause auto-dismiss while restarting
@@ -133,7 +186,7 @@ export default function NotificationPanelPage() {
 
       await hide(false);
     },
-    [payload?.type, payload?.id, hide]
+    [payload?.type, payload?.id, payload?.pipe_name, hide]
   );
 
   // Listen for notification payloads from Rust
@@ -354,8 +407,8 @@ export default function NotificationPanelPage() {
             ) : (
               payload.actions.map((action) => (
                 <button
-                  key={action.action}
-                  onClick={() => handleAction(action.action)}
+                  key={action.id || action.action}
+                  onClick={() => handleAction(action.type ? action : action.action)}
                   style={{
                     background: action.primary
                       ? "rgba(0, 0, 0, 0.06)"

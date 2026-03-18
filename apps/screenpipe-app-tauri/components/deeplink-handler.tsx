@@ -52,10 +52,11 @@ export function DeeplinkHandler() {
               console.log("[deeplink] Pi restart after login skipped:", e);
             }
           } catch (error) {
-            console.error("failed to load user:", error);
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error("failed to load user:", msg);
             toast({
               title: "failed to load user",
-              description: "failed to load user",
+              description: msg || "unknown error",
             });
           }
         }

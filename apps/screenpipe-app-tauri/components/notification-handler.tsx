@@ -69,6 +69,53 @@ const NotificationHandler: React.FC = () => {
     checkAndRequestPermission();
   }, []);
 
+  // Poll for pending pipe notifications and show them via the notification panel
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      while (active) {
+        try {
+          const res = await fetch("http://localhost:3030/notifications/pending");
+          if (res.ok) {
+            const json = await res.json();
+            const notifications = json.data || [];
+            for (const n of notifications) {
+              // Convert pipe notification actions to the format the panel expects
+              const actions = (n.actions || []).map((a: { id?: string; label: string; type?: string; pipe?: string; context?: Record<string, unknown>; url?: string; method?: string; body?: Record<string, unknown>; toast?: string; primary?: boolean }) => ({
+                id: a.id,
+                label: a.label,
+                action: a.id || a.label,
+                type: a.type,
+                pipe: a.pipe,
+                context: a.context,
+                url: a.url,
+                method: a.method,
+                body: a.body,
+                toast: a.toast,
+                primary: a.primary || false,
+              }));
+
+              await showNotificationPanel({
+                id: n.id,
+                type: "pipe",
+                title: n.title,
+                body: n.body || "",
+                actions,
+                autoDismissMs: (n.timeout_secs || 20) * 1000,
+                pipe_name: n.pipe_name,
+              });
+            }
+          }
+        } catch {
+          // server not available, skip
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    };
+    poll();
+    return () => { active = false; };
+  }, []);
+
   // listen for pipe suggestion action from notification panel
   useEffect(() => {
     const unlisten = listen("open-pipe-suggestions", async () => {

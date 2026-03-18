@@ -1711,6 +1711,64 @@ const DEFAULT_SCAN_INTERVAL: Duration = Duration::from_secs(5);
 /// periodic UI scanning approach.
 ///
 /// The loop:
+/// Query recent frames from the DB to find browser windows with meeting URLs.
+/// This is more reliable than live AX queries because some browsers (Arc) don't
+/// expose URLs via AXDocument or AX window titles.
+async fn db_find_browser_meetings(
+    db: &DatabaseManager,
+    profiles: &[MeetingDetectionProfile],
+) -> Result<Vec<RunningMeetingApp>, sqlx::Error> {
+    let mut results = Vec::new();
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT DISTINCT app_name, window_name FROM frames \
+         WHERE timestamp > datetime('now', '-30 seconds') \
+         AND app_name IS NOT NULL AND window_name IS NOT NULL"
+    )
+    .fetch_all(&db.pool)
+    .await?;
+
+    for (app_name, window_name) in &rows {
+        let window_lower = window_name.to_lowercase();
+        let app_lower = app_name.to_lowercase();
+        for (idx, profile) in profiles.iter().enumerate() {
+            if profile.app_identifiers.browser_url_patterns.is_empty() {
+                continue;
+            }
+            let matches = profile.app_identifiers.browser_url_patterns.iter()
+                .any(|p| window_lower.contains(&p.to_lowercase()));
+            if matches {
+                #[cfg(target_os = "macos")]
+                let pid = cidre::objc::ar_pool(|| -> i32 {
+                    let ws = cidre::ns::Workspace::shared();
+                    let apps = ws.running_apps();
+                    for i in 0..apps.len() {
+                        let a = &apps[i];
+                        if let Some(n) = a.localized_name() {
+                            if n.to_string().to_lowercase() == app_lower {
+                                return a.pid();
+                            }
+                        }
+                    }
+                    -1
+                });
+                #[cfg(not(target_os = "macos"))]
+                let pid = -1i32;
+                if pid > 0 {
+                    debug!("meeting v2: DB hint — {} window {:?} matches profile {}", app_name, window_name, idx);
+                    results.push(RunningMeetingApp {
+                        pid,
+                        app_name: app_name.clone(),
+                        profile_index: idx,
+                        browser_url: Some(window_name.clone()),
+                    });
+                }
+                break;
+            }
+        }
+    }
+    Ok(results)
+}
+
 /// 1. Discovers running meeting app processes
 /// 2. Scans their AX trees for call control signals (on a blocking thread)
 /// 3. Advances the state machine
@@ -1778,9 +1836,21 @@ pub async fn run_meeting_detection_loop(
         // keeps scanning a browser process even after the tab title changes.
         let tracking = get_active_tracking(&state, &profiles);
 
-        // 1. Find running meeting app processes (blocking AX calls)
+        // 0. Check recent frames in DB for browser meeting URLs.
+        // Some browsers (Arc) don't expose URLs in AX window titles or AXDocument,
+        // but the screen capture records the actual window name (e.g., "Google Meet").
+        // This gives us reliable browser meeting detection without live AX walks.
+        let db_browser_hints = match db_find_browser_meetings(&db, &profiles).await {
+            Ok(hints) => hints,
+            Err(e) => {
+                debug!("meeting v2: db browser hint query failed: {}", e);
+                Vec::new()
+            }
+        };
+
+        // 1. Find running meeting app processes (blocking AX calls for native apps)
         let profiles_clone = profiles.clone();
-        let running_apps = tokio::task::spawn_blocking(move || {
+        let mut running_apps = tokio::task::spawn_blocking(move || {
             find_running_meeting_apps(&profiles_clone, tracking.as_ref())
         })
         .await
@@ -1788,6 +1858,13 @@ pub async fn run_meeting_detection_loop(
             error!("meeting v2: spawn_blocking panicked: {}", e);
             Vec::new()
         });
+
+        // Merge DB browser hints (avoids missing meetings when AX doesn't expose URLs)
+        for hint in db_browser_hints {
+            if !running_apps.iter().any(|a| a.profile_index == hint.profile_index) {
+                running_apps.push(hint);
+            }
+        }
 
         if !running_apps.is_empty() {
             info!(
@@ -2761,5 +2838,137 @@ mod tests {
             None,
             None
         ));
+    }
+}
+
+#[cfg(test)]
+#[cfg(target_os = "macos")]
+mod live_tests {
+    use super::*;
+
+    /// Run with: cargo test -p screenpipe-engine --lib -- live_tests::test_live_meeting_detection --nocapture --ignored
+    #[test]
+    #[ignore]
+    fn test_live_meeting_detection() {
+        let profiles = load_detection_profiles();
+        println!("\n=== Loaded {} profiles ===", profiles.len());
+
+        // Step 1: find running meeting apps
+        println!("\n=== Step 1: find_running_meeting_apps ===");
+        let apps = find_running_meeting_apps(&profiles, None);
+        println!("Found {} running meeting app(s)", apps.len());
+        for app in &apps {
+            println!("  {} (pid={}, profile={})", app.app_name, app.pid, app.profile_index);
+        }
+
+        if apps.is_empty() {
+            // Debug: list all browsers and their window titles
+            println!("\n=== DEBUG: listing all browser apps ===");
+            cidre::objc::ar_pool(|| {
+                let workspace = cidre::ns::Workspace::shared();
+                let running = workspace.running_apps();
+                for i in 0..running.len() {
+                    let app = &running[i];
+                    let name = app.localized_name().map(|s| s.to_string()).unwrap_or_default();
+                    let name_lower = name.to_lowercase();
+                    if BROWSER_NAMES.iter().any(|b| name_lower.contains(b)) {
+                        println!("\nBROWSER: {} (pid={})", name, app.pid());
+                        let ax_app = cidre::ax::UiElement::with_app_pid(app.pid());
+                        let _ = ax_app.set_messaging_timeout_secs(2.0);
+                        match ax_app.children() {
+                            Ok(children) => {
+                                println!("  children count: {}", children.len());
+                                for j in 0..children.len() {
+                                    let child = &children[j];
+                                    let _ = child.set_messaging_timeout_secs(0.5);
+                                    if let Some(title) = get_ax_string_attr(child, cidre::ax::attr::title()) {
+                                        let has_meet = title.to_lowercase().contains("google meet") || title.to_lowercase().contains("meet.google.com");
+                                        if has_meet {
+                                            println!("  *** MEET WINDOW [{}]: {:?}", j, title);
+                                        } else {
+                                            println!("  window[{}]: {:?}", j, &title[..title.len().min(80)]);
+                                        }
+                                    }
+                                    if let Some(doc) = get_ax_string_attr(child, cidre::ax::attr::document()) {
+                                        if doc.to_lowercase().contains("meet.google") {
+                                            println!("  *** MEET DOC [{}]: {:?}", j, doc);
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => println!("  children ERROR: {:?}", e),
+                        }
+                    }
+                }
+            });
+        }
+
+        // Step 2: scan for call controls
+        if !apps.is_empty() {
+            println!("\n=== Step 2: scanning for call controls ===");
+            let scanner = MeetingUiScanner::new();
+            for app in &apps {
+                let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
+                println!("  {} => in_call={}, signals={}, matched={:?}",
+                    app.app_name, result.is_in_call, result.signals_found, result.matched_signals);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg(target_os = "macos")]
+mod live_tests2 {
+    use super::*;
+
+    /// Run with: cargo test -p screenpipe-engine --lib -- live_tests2::test_arc_deep_window_check --nocapture --ignored
+    #[test]
+    #[ignore]
+    fn test_arc_deep_window_check() {
+        cidre::objc::ar_pool(|| {
+            let workspace = cidre::ns::Workspace::shared();
+            let running = workspace.running_apps();
+            for i in 0..running.len() {
+                let app = &running[i];
+                let name = app.localized_name().map(|s| s.to_string()).unwrap_or_default();
+                if name != "Arc" { continue; }
+                
+                println!("Arc pid={}", app.pid());
+                let ax_app = cidre::ax::UiElement::with_app_pid(app.pid());
+                let _ = ax_app.set_messaging_timeout_secs(2.0);
+                
+                let windows = ax_app.children().unwrap();
+                for j in 0..windows.len() {
+                    let window = &windows[j];
+                    let _ = window.set_messaging_timeout_secs(1.0);
+                    
+                    let title = get_ax_string_attr(window, cidre::ax::attr::title()).unwrap_or_default();
+                    let doc = get_ax_string_attr(window, cidre::ax::attr::document()).unwrap_or_default();
+                    println!("\nwindow[{}] title={:?} doc={:?}", j, title, doc);
+                    
+                    // Check role
+                    let role = get_ax_string_attr(window, cidre::ax::attr::role()).unwrap_or_default();
+                    println!("  role={:?}", role);
+                    
+                    // Walk 2 levels deep looking for URL or "Google Meet"
+                    if let Ok(children) = window.children() {
+                        println!("  children: {}", children.len());
+                        for k in 0..children.len().min(20) {
+                            let child = &children[k];
+                            let _ = child.set_messaging_timeout_secs(0.3);
+                            let crole = get_ax_string_attr(child, cidre::ax::attr::role()).unwrap_or_default();
+                            let ctitle = get_ax_string_attr(child, cidre::ax::attr::title()).unwrap_or_default();
+                            let cdoc = get_ax_string_attr(child, cidre::ax::attr::document()).unwrap_or_default();
+                            let cval = get_ax_string_attr(child, cidre::ax::attr::value()).unwrap_or_default();
+                            
+                            if !ctitle.is_empty() || !cdoc.is_empty() || cval.contains("meet") || cval.contains("google") {
+                                println!("  child[{}] role={:?} title={:?} doc={:?} val={:?}", 
+                                    k, crole, &ctitle[..ctitle.len().min(60)], &cdoc[..cdoc.len().min(60)], &cval[..cval.len().min(80)]);
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 }

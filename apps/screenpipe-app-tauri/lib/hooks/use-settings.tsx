@@ -705,7 +705,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 			});
 
 			if (!response.ok) {
-				throw new Error("failed to verify token");
+				const body = await response.text().catch(() => "<no body>");
+				throw new Error(`failed to verify token: ${response.status} ${response.statusText} - ${body}`);
 			}
 
 			const data = await response.json();
@@ -740,7 +741,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 			await updateSettings({ user: userData });
 		} catch (err) {
-			console.error("failed to load user:", err);
+			console.error("failed to load user:", err instanceof Error ? err.message : err);
 			throw err;
 		}
 	};

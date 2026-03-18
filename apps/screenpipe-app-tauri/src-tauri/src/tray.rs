@@ -61,6 +61,8 @@ struct MenuState {
     has_permission_issue: bool,
     /// Device names + active status for change detection
     devices: Vec<(String, bool)>,
+    /// Whether user has a pro subscription (triggers menu rebuild on login)
+    cloud_subscribed: bool,
 }
 
 pub fn setup_tray(app: &AppHandle, update_item: Option<&tauri::menu::MenuItem<Wry>>) -> Result<()> {
@@ -730,6 +732,13 @@ async fn update_menu_if_needed(
         false
     };
 
+    let cloud_subscribed = SettingsStore::get(app)
+        .unwrap_or_default()
+        .unwrap_or_default()
+        .user
+        .cloud_subscribed
+        == Some(true);
+
     let recording_info = get_recording_info();
     let new_state = MenuState {
         shortcuts: get_current_shortcuts(app)?,
@@ -741,6 +750,7 @@ async fn update_menu_if_needed(
             .iter()
             .map(|d| (d.name.clone(), d.active))
             .collect(),
+        cloud_subscribed,
     };
 
     // Compare with last state (poison-safe: run handler must not panic)

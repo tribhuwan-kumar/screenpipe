@@ -361,16 +361,30 @@ async fn handle_stream_frames_socket(
                                                     .frames
                                                     .sort_by_key(|a| (a.timestamp, a.offset_index));
                                             }
-                                            let mut sent = sent_ids_backfill.lock().await;
-                                            for chunk in chunks.frames {
-                                                if sent.contains(&chunk.frame_id) {
-                                                    continue;
-                                                }
-                                                sent.insert(chunk.frame_id);
-                                                let frame = create_time_series_frame(chunk);
-                                                if !frame.frame_data.is_empty()
-                                                    && frame_tx_db.send(frame).await.is_err()
-                                                {
+                                            // Record sent IDs first, then drop lock
+                                            // before sending frames. Previously the
+                                            // lock was held across channel sends,
+                                            // deadlocking with the send_handle which
+                                            // needs the same lock to process live
+                                            // frames (the only channel consumer).
+                                            let frames_to_send: Vec<_> = {
+                                                let mut sent = sent_ids_backfill.lock().await;
+                                                chunks.frames.into_iter().filter_map(|chunk| {
+                                                    if sent.contains(&chunk.frame_id) {
+                                                        return None;
+                                                    }
+                                                    sent.insert(chunk.frame_id);
+                                                    let frame = create_time_series_frame(chunk);
+                                                    if frame.frame_data.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(frame)
+                                                    }
+                                                }).collect()
+                                            }; // lock dropped
+
+                                            for frame in frames_to_send {
+                                                if frame_tx_db.send(frame).await.is_err() {
                                                     break;
                                                 }
                                             }
@@ -630,23 +644,29 @@ async fn fetch_and_process_frames_with_tracking(
         chunks.frames.sort_by_key(|a| (a.timestamp, a.offset_index));
     }
 
-    for chunk in chunks.frames {
-        // Track this frame as sent
-        {
-            let mut sent = sent_frame_ids.lock().await;
+    // Record all sent IDs in one lock acquisition, then drop the lock
+    // before sending frames through the channel. Acquiring the lock per-frame
+    // or holding it across async sends can contend with the send_handle's
+    // live-frame path which also needs this lock.
+    let frames_to_send: Vec<_> = {
+        let mut sent = sent_frame_ids.lock().await;
+        chunks.frames.into_iter().filter_map(|chunk| {
             sent.insert(chunk.frame_id);
-        }
+            let ts = chunk.timestamp;
+            let frame = create_time_series_frame(chunk);
+            if frame.frame_data.is_empty() {
+                None
+            } else {
+                Some((ts, frame))
+            }
+        }).collect()
+    }; // lock dropped
 
-        // Track latest timestamp
-        if latest_timestamp.is_none() || chunk.timestamp > latest_timestamp.unwrap() {
-            latest_timestamp = Some(chunk.timestamp);
+    for (ts, frame) in frames_to_send {
+        if latest_timestamp.is_none() || ts > latest_timestamp.unwrap() {
+            latest_timestamp = Some(ts);
         }
-
-        let frame = create_time_series_frame(chunk);
-        // Skip frames with empty frame_data (all entries filtered out, e.g., screenpipe-only frames)
-        if !frame.frame_data.is_empty() {
-            frame_tx.send(frame).await?;
-        }
+        frame_tx.send(frame).await?;
     }
 
     Ok(latest_timestamp)

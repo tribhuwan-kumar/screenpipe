@@ -8,6 +8,15 @@ export interface NotificationAction {
   label: string;
   action: string;
   primary?: boolean;
+  // New fields for pipe notification actions
+  id?: string;
+  type?: "pipe" | "api" | "deeplink" | "dismiss";
+  pipe?: string;
+  context?: Record<string, unknown>;
+  url?: string;
+  method?: string;
+  body?: Record<string, unknown>;
+  toast?: string;
 }
 
 export interface NotificationPayload {
@@ -17,6 +26,7 @@ export interface NotificationPayload {
   body: string;
   actions: NotificationAction[];
   autoDismissMs?: number;
+  pipe_name?: string;
 }
 
 export async function showNotificationPanel(

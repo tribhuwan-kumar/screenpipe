@@ -182,6 +182,8 @@ pub struct SCServer {
         Arc<DashMap<String, Arc<screenpipe_core::pipes::permissions::PipePermissions>>>,
     /// Shared manual meeting lock — pass in from binary so persister and server share the same state.
     pub manual_meeting: Option<Arc<tokio::sync::RwLock<Option<i64>>>>,
+    /// In-memory notification queue for pipe notifications.
+    pub notification_queue: crate::notifications_api::SharedNotificationQueue,
 }
 
 impl SCServer {
@@ -214,6 +216,7 @@ impl SCServer {
             power_manager: None,
             pipe_permissions: Arc::new(DashMap::new()),
             manual_meeting: None,
+            notification_queue: crate::notifications_api::new_notification_queue(),
         }
     }
 
@@ -662,6 +665,26 @@ impl SCServer {
         } else {
             router
         };
+
+        // Notification routes (pipes can send notifications to the UI)
+        let nq = self.notification_queue.clone();
+        let notif_routes = Router::new()
+            .route(
+                "/",
+                axum::routing::post(crate::notifications_api::notify_handler),
+            )
+            .route(
+                "/pending",
+                axum::routing::get(crate::notifications_api::pending_notifications_handler),
+            )
+            .with_state(nq.clone());
+        let router = router
+            .nest("/notifications", notif_routes)
+            // Top-level alias: POST /notify
+            .route(
+                "/notify",
+                axum::routing::post(crate::notifications_api::notify_handler).with_state(nq),
+            );
 
         // Connections routes (pipe-facing integrations: Telegram, Slack, etc.)
         let cm: crate::connections_api::SharedConnectionManager = Arc::new(Mutex::new(
