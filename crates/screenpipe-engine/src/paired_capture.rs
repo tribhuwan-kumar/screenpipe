@@ -184,7 +184,12 @@ pub async fn paired_capture(
         // only returns window chrome ("System, Minimize, Restore, Close") which
         // is noise. If OCR fails, store nothing rather than chrome.
         if !ocr_text.is_empty() {
-            (Some(ocr_text.clone()), None, None, None)
+            (
+                Some(ocr_text.clone()),
+                None,
+                Some(TreeSnapshot::compute_hash(&ocr_text) as i64),
+                None,
+            )
         } else {
             (None, None, None, None)
         }
@@ -204,7 +209,12 @@ pub async fn paired_capture(
                 if ocr_text.is_empty() {
                     (None, None, None, None)
                 } else {
-                    (Some(ocr_text.clone()), None, None, None)
+                    (
+                        Some(ocr_text.clone()),
+                        None,
+                        Some(TreeSnapshot::compute_hash(&ocr_text) as i64),
+                        None,
+                    )
                 }
             }
         }

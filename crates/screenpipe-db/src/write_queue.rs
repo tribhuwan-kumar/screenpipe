@@ -235,6 +235,15 @@ pub(crate) enum WriteOp {
         element_bounds: Option<String>,
         frame_id: Option<i64>,
     },
+    /// Deferred element insertion: inserts OCR and/or accessibility elements
+    /// for a frame in a separate transaction from the frame insert itself.
+    /// This avoids holding the write lock during the 30-80+ individual
+    /// INSERT...RETURNING id queries that element insertion requires.
+    InsertDeferredElements {
+        frame_id: i64,
+        ocr_text_json: Option<String>,
+        accessibility_tree_json: Option<String>,
+    },
     /// Batch insert frames with OCR text. Replaces the direct
     /// `begin_immediate_with_retry` call in `insert_frames_with_ocr_batch`
     /// so that frame inserts go through the coalescing queue.
@@ -680,6 +689,7 @@ async fn execute_single_write(
             .last_insert_rowid();
 
             // Insert OCR text in same transaction (always — needed for search)
+            // Element inserts are deferred to a separate transaction (see caller).
             if let (Some(text), Some(text_json), Some(engine)) = (
                 ocr_text.as_deref(),
                 ocr_text_json.as_deref(),
@@ -696,21 +706,6 @@ async fn execute_single_write(
                 .bind(text_length)
                 .execute(&mut **conn)
                 .await?;
-
-                // Skip OCR element insertion when referencing another frame's elements
-                if elements_ref_frame_id.is_none() {
-                    crate::db::DatabaseManager::insert_ocr_elements(conn, id, text_json).await;
-                }
-            }
-
-            // Skip accessibility element insertion when referencing another frame's elements
-            if elements_ref_frame_id.is_none() {
-                if let Some(tree_json) = accessibility_tree_json.as_deref() {
-                    if !tree_json.is_empty() {
-                        crate::db::DatabaseManager::insert_accessibility_elements(conn, id, tree_json)
-                            .await;
-                    }
-                }
             }
 
             if let Some(ref_id) = elements_ref_frame_id {
@@ -725,6 +720,25 @@ async fn execute_single_write(
                 id, capture_trigger
             );
             Ok(WriteResult::Id(id))
+        }
+
+        WriteOp::InsertDeferredElements {
+            frame_id,
+            ocr_text_json,
+            accessibility_tree_json,
+        } => {
+            if let Some(ref text_json) = ocr_text_json {
+                if !text_json.is_empty() {
+                    crate::db::DatabaseManager::insert_ocr_elements(conn, *frame_id, text_json).await;
+                }
+            }
+            if let Some(ref tree_json) = accessibility_tree_json {
+                if !tree_json.is_empty() {
+                    crate::db::DatabaseManager::insert_accessibility_elements(conn, *frame_id, tree_json)
+                        .await;
+                }
+            }
+            Ok(WriteResult::Unit)
         }
 
         WriteOp::InsertVideoChunkWithFps {
