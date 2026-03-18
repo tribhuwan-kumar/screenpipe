@@ -8,7 +8,8 @@ import { apiCache } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Trash2, Check, X, Loader2, Brain, ExternalLink, Copy } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Trash2, Check, X, Loader2, ExternalLink, Copy } from "lucide-react";
 
 interface MemoryRecord {
   id: number;
@@ -27,16 +28,6 @@ interface MemoryListResponse {
   pagination: { limit: number; offset: number; total: number };
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(ms / 60000);
@@ -45,6 +36,40 @@ function timeAgo(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function MemoriesSkeleton() {
+  return (
+    <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex items-start gap-2 rounded-md border border-border p-2.5"
+        >
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="space-y-1.5">
+              <Skeleton className="h-4 w-[78%] rounded-sm" />
+              <Skeleton className="h-4 w-[62%] rounded-sm" />
+              {index % 2 === 0 && (
+                <Skeleton className="h-4 w-[48%] rounded-sm" />
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton className="h-3 w-12 rounded-sm" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-5 w-20 rounded-full" />
+              {index % 3 === 0 && <Skeleton className="h-3 w-14 rounded-sm" />}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-0.5 shrink-0 pt-0.5">
+            <Skeleton className="h-7 w-7 rounded-md" />
+            <Skeleton className="h-7 w-7 rounded-md" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function MemoriesSection() {
@@ -73,7 +98,8 @@ export function MemoriesSection() {
       const data: MemoryListResponse = await res.json();
       apiCache.set(cacheKey, data, 60_000); // 1 min TTL
       const sorted = data.data.sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
       setMemories(sorted);
       setTotal(data.pagination.total);
@@ -125,18 +151,17 @@ export function MemoriesSection() {
       </p>
 
       <div className="flex items-center gap-2">
-          {total > 0 && (
-            <Badge variant="secondary" className="text-xs">
-              {total}
-            </Badge>
-          )}
+        {loading ? (
+          <Skeleton className="h-6 w-12 rounded-full" />
+        ) : total > 0 ? (
+          <Badge variant="secondary" className="text-xs">
+            {total}
+          </Badge>
+        ) : null}
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          loading memories…
-        </div>
+        <MemoriesSkeleton />
       ) : memories.length === 0 ? (
         <div className="text-sm text-muted-foreground py-8 space-y-2">
           <p>no memories yet</p>
@@ -156,9 +181,7 @@ export function MemoriesSection() {
                 className="group flex items-start gap-2 rounded-md border border-border p-2.5 transition-colors hover:bg-muted/30"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground">
-                    {memory.content}
-                  </p>
+                  <p className="text-sm text-foreground">{memory.content}</p>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-xs text-muted-foreground">
                       {timeAgo(memory.created_at)}

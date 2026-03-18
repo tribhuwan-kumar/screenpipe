@@ -7,7 +7,16 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Trash2, Pencil, Check, X, Loader2, GitMerge, ArrowUpDown } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  Loader2,
+  GitMerge,
+  ArrowUpDown,
+} from "lucide-react";
 
 interface MeetingRecord {
   id: number;
@@ -60,6 +69,71 @@ function toDatetimeLocal(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function MeetingsSkeleton() {
+  const rows = [
+    {
+      title: "w-[34%]",
+      app: "w-16",
+      badge: "w-14",
+      time: "w-[52%]",
+    },
+    {
+      title: "w-[48%]",
+      app: "w-20",
+      badge: "w-20",
+      time: "w-[58%]",
+    },
+    {
+      title: "w-[28%]",
+      app: "w-14",
+      badge: "w-16",
+      time: "w-[46%]",
+    },
+    {
+      title: "w-[42%]",
+      app: "w-24",
+      badge: "w-[4.5rem]",
+      time: "w-[61%]",
+    },
+    {
+      title: "w-[31%]",
+      app: "w-16",
+      badge: "w-24",
+      time: "w-[49%]",
+    },
+  ];
+
+  return (
+    <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+      {rows.map((row, index) => (
+        <div
+          key={index}
+          className="flex items-start gap-2 rounded-md border border-border p-2.5"
+        >
+          <Skeleton className="mt-1 h-4 w-4 rounded-sm" />
+
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Skeleton className={`h-4 rounded-sm ${row.title}`} />
+              <Skeleton className={`h-3 rounded-sm ${row.app}`} />
+              <Skeleton className={`h-5 rounded-full ${row.badge}`} />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton className={`h-3 rounded-sm ${row.time}`} />
+              <Skeleton className="h-3 w-12 rounded-sm" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-0.5 shrink-0 pt-0.5">
+            <Skeleton className="h-7 w-7 rounded-md" />
+            <Skeleton className="h-7 w-7 rounded-md" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function MeetingsSection() {
@@ -246,16 +320,20 @@ export function MeetingsSection() {
   return (
     <div className="space-y-4 h-full flex flex-col">
       <div className="flex items-center justify-end">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setSortAsc((v) => !v)}
-          className="gap-1.5 text-xs"
-          title={sortAsc ? "sort newest first" : "sort oldest first"}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5" />
-          {sortAsc ? "oldest first" : "newest first"}
-        </Button>
+        {loading ? (
+          <Skeleton className="h-8 w-28 rounded-md" />
+        ) : (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setSortAsc((v) => !v)}
+            className="gap-1.5 text-xs"
+            title={sortAsc ? "sort newest first" : "sort oldest first"}
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            {sortAsc ? "oldest first" : "newest first"}
+          </Button>
+        )}
       </div>
 
       {/* Bulk actions */}
@@ -296,10 +374,7 @@ export function MeetingsSection() {
 
       {/* List */}
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          loading meetings…
-        </div>
+        <MeetingsSkeleton />
       ) : meetings.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8">no meetings found</p>
       ) : (
@@ -399,7 +474,12 @@ export function MeetingsSection() {
                           </span>
                         )}
                         <span className="ml-1.5 text-muted-foreground/60">
-                          ({formatDuration(meeting.meeting_start, meeting.meeting_end)})
+                          (
+                          {formatDuration(
+                            meeting.meeting_start,
+                            meeting.meeting_end,
+                          )}
+                          )
                         </span>
                       </div>
                     </>

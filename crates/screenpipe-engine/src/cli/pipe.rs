@@ -137,27 +137,59 @@ pub async fn handle_pipe_command(command: &PipeCommand) -> anyhow::Result<()> {
 }
 
 /// Get the API base URL from env or default.
-fn api_base_url() -> String {
+pub fn api_base_url() -> String {
     std::env::var("SCREENPIPE_API_BASE_URL").unwrap_or_else(|_| "https://screenpi.pe".to_string())
 }
 
-/// Get the auth token from SCREENPIPE_API_KEY env var or ~/.screenpipe/auth.json.
-fn get_auth_token() -> Option<String> {
+/// Get the auth token, checking in order:
+/// 1. SCREENPIPE_API_KEY env var
+/// 2. ~/.screenpipe/auth.json (token or api_key field)
+/// 3. ~/.screenpipe/store.bin (settings.user.token — written by the desktop app)
+pub fn get_auth_token() -> Option<String> {
+    // 1. Environment variable
     if let Ok(key) = std::env::var("SCREENPIPE_API_KEY") {
         return Some(key);
     }
-    let auth_path = screenpipe_core::paths::default_screenpipe_data_dir().join("auth.json");
+
+    let data_dir = screenpipe_core::paths::default_screenpipe_data_dir();
+
+    // 2. auth.json (written by `screenpipe login`)
+    let auth_path = data_dir.join("auth.json");
     if auth_path.exists() {
-        let content = std::fs::read_to_string(&auth_path).ok()?;
-        let parsed: Value = serde_json::from_str(&content).ok()?;
-        parsed
-            .get("token")
-            .or_else(|| parsed.get("api_key"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-    } else {
-        None
+        if let Ok(content) = std::fs::read_to_string(&auth_path) {
+            if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
+                let token = parsed
+                    .get("token")
+                    .or_else(|| parsed.get("api_key"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                if token.is_some() {
+                    return token;
+                }
+            }
+        }
     }
+
+    // 3. store.bin (written by the desktop app on login)
+    let store_path = data_dir.join("store.bin");
+    if store_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&store_path) {
+            if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
+                let token = parsed
+                    .pointer("/state/settings/user/token")
+                    .or_else(|| parsed.pointer("/settings/user/token"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                if token.is_some() {
+                    return token;
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Publish a local pipe to the registry.

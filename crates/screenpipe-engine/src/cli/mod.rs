@@ -4,6 +4,7 @@
 
 pub mod audio;
 pub mod connection;
+pub mod login;
 pub mod mcp;
 pub mod pipe;
 pub mod status;
@@ -197,6 +198,12 @@ pub enum Command {
         #[command(subcommand)]
         subcommand: VaultCommand,
     },
+
+    /// Authenticate with screenpipe cloud
+    Login,
+
+    /// Show current auth status
+    Whoami,
 }
 
 // =============================================================================

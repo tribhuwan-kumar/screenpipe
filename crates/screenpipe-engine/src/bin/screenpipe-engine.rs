@@ -279,6 +279,14 @@ async fn main() -> anyhow::Result<()> {
             screenpipe_engine::cli::vault::handle_vault_command(subcommand).await?;
             return Ok(());
         }
+        Command::Login => {
+            screenpipe_engine::cli::login::handle_login_command().await?;
+            return Ok(());
+        }
+        Command::Whoami => {
+            screenpipe_engine::cli::login::handle_whoami_command().await?;
+            return Ok(());
+        }
         Command::Record(args) => args,
     };
 
