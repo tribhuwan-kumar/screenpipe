@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/select";
 import {
   Search,
-  Star,
   Download,
   Shield,
   ChevronDown,
@@ -51,6 +50,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ExternalLink,
+  GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/lib/hooks/use-settings";
@@ -59,6 +59,7 @@ import { MemoizedReactMarkdown } from "@/components/markdown";
 import remarkGfm from "remark-gfm";
 import posthog from "posthog-js";
 import { PipesSection } from "@/components/settings/pipes-section";
+import { ChatPrefillData } from "@/lib/chat-utils";
 
 // --- Types ---
 
@@ -123,7 +124,6 @@ const PUBLISH_CATEGORIES = ["Productivity", "Dev", "Health", "Social", "Other"];
 const SORT_OPTIONS = [
   { value: "popular", label: "Popular" },
   { value: "newest", label: "Newest" },
-  { value: "top_rated", label: "Top Rated" },
 ];
 
 const PERMISSION_LABELS: { key: string; label: string; icon: React.ReactNode }[] = [
@@ -164,51 +164,14 @@ function getReadmeFromPipeMd(raw: string): string {
   return trimmed.slice(end + 3).trim();
 }
 
-function StarRating({
-  rating,
-  size = "sm",
-  interactive = false,
-  onChange,
-}: {
-  rating: number;
-  size?: "sm" | "md";
-  interactive?: boolean;
-  onChange?: (r: number) => void;
-}) {
-  const [hovered, setHovered] = useState(0);
-  const iconSize = size === "sm" ? "h-3 w-3" : "h-4 w-4";
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => {
-        const filled = interactive ? i <= (hovered || rating) : i <= Math.round(rating);
-        return (
-          <button
-            key={i}
-            type="button"
-            disabled={!interactive}
-            className={cn(
-              "transition-colors",
-              interactive && "cursor-pointer hover:scale-110",
-              !interactive && "cursor-default"
-            )}
-            onMouseEnter={() => interactive && setHovered(i)}
-            onMouseLeave={() => interactive && setHovered(0)}
-            onClick={() => interactive && onChange?.(i)}
-          >
-            <Star
-              className={cn(
-                iconSize,
-                filled
-                  ? "fill-foreground text-foreground"
-                  : "text-muted-foreground/30"
-              )}
-            />
-          </button>
-        );
-      })}
-    </div>
-  );
+function navigateHomeAndPrefill(data: ChatPrefillData): void {
+  sessionStorage.setItem("pendingChatPrefill", JSON.stringify(data));
+  const url = new URL(window.location.href);
+  url.searchParams.set("section", "home");
+  window.location.href = url.toString();
 }
+
+
 
 function formatCount(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -607,17 +570,8 @@ function DiscoverView() {
             onInstall={handleInstall}
             isInstalled={installedNames.has(selectedPipe.slug)}
             hasUpdate={!!availableUpdates[selectedPipe.slug]}
-            reviewExpanded={reviewExpanded}
-            onToggleReview={() => setReviewExpanded(!reviewExpanded)}
-            reviewRating={reviewRating}
-            onReviewRatingChange={setReviewRating}
-            reviewComment={reviewComment}
-            onReviewCommentChange={setReviewComment}
-            submittingReview={submittingReview}
-            onSubmitReview={handleSubmitReview}
             sourceExpanded={sourceExpanded}
             onToggleSource={() => setSourceExpanded(!sourceExpanded)}
-            token={token}
             currentUserId={settings.user?.id}
             onUnpublish={handleUnpublish}
             unpublishing={unpublishing}
@@ -844,10 +798,6 @@ function FeaturedCard({
           </Badge>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <StarRating rating={pipe.rating ?? 0} />
-              <span>{(pipe.rating ?? 0).toFixed(1)}</span>
-            </span>
-            <span className="flex items-center gap-1">
               <Download className="h-3 w-3" />
               {formatCount(pipe.install_count ?? 0)}
             </span>
@@ -952,10 +902,6 @@ function PipeCard({
 
       <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <StarRating rating={pipe.rating ?? 0} />
-          <span>{(pipe.rating ?? 0).toFixed(1)}</span>
-        </span>
-        <span className="flex items-center gap-1">
           <Download className="h-3 w-3" />
           {formatCount(pipe.install_count ?? 0)}
         </span>
@@ -974,17 +920,8 @@ function PipeDetailPanel({
   onInstall,
   isInstalled,
   hasUpdate,
-  reviewExpanded,
-  onToggleReview,
-  reviewRating,
-  onReviewRatingChange,
-  reviewComment,
-  onReviewCommentChange,
-  submittingReview,
-  onSubmitReview,
   sourceExpanded,
   onToggleSource,
-  token,
   currentUserId,
   onUnpublish,
   unpublishing,
@@ -996,17 +933,8 @@ function PipeDetailPanel({
   onInstall: (slug: string) => void;
   isInstalled: boolean;
   hasUpdate?: boolean;
-  reviewExpanded: boolean;
-  onToggleReview: () => void;
-  reviewRating: number;
-  onReviewRatingChange: (r: number) => void;
-  reviewComment: string;
-  onReviewCommentChange: (c: string) => void;
-  submittingReview: boolean;
-  onSubmitReview: () => void;
   sourceExpanded: boolean;
   onToggleSource: () => void;
-  token?: string | null;
   currentUserId?: string | null;
   onUnpublish?: (slug: string) => void;
   unpublishing?: boolean;
@@ -1057,13 +985,6 @@ function PipeDetailPanel({
                 ) : null}
               </div>
               <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <StarRating rating={pipe.rating ?? 0} size="md" />
-                  <span>
-                    {(pipe.rating ?? 0).toFixed(1)} ({pipe.review_count ?? 0}{" "}
-                    {(pipe.review_count ?? 0) === 1 ? "review" : "reviews"})
-                  </span>
-                </span>
                 <span className="flex items-center gap-1">
                   <Download className="h-3.5 w-3.5" />
                   {formatCount(pipe.install_count ?? 0)} installs
@@ -1075,6 +996,31 @@ function PipeDetailPanel({
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Fork — open chat with pipe content to customize */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 px-4 text-sm font-semibold rounded-none uppercase tracking-wide"
+                onClick={() => {
+                  const pipeSource = pipe.source || "";
+                  navigateHomeAndPrefill({
+                    context: `the user wants to fork/customize an existing pipe from the store.
+
+here is the original pipe content (pipe.md):
+
+\`\`\`
+${pipeSource}
+\`\`\`
+
+IMPORTANT: first read the screenpipe skill file to understand how pipes work, then ask the user how they want to customize/improve this pipe for their specific needs. do NOT auto-send or auto-create — have a conversation first to understand what they want to change.`,
+                    prompt: `i want to fork the "${pipe.title}" pipe and adapt it to my needs. here is the original pipe.md:\n\n${pipeSource}`,
+                    autoSend: true,
+                  });
+                }}
+              >
+                <GitFork className="h-4 w-4 mr-1.5" />
+                FORK
+              </Button>
               {isOwner && onUnpublish && (
                 <Button
                   size="sm"
@@ -1227,92 +1173,6 @@ function PipeDetailPanel({
             )}
           </div>
         )}
-      </div>
-
-      {/* Reviews */}
-      <div className="space-y-3">
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
-          Reviews ({pipe.review_count ?? 0})
-        </h4>
-        <div className="space-y-3">
-          {pipe.reviews && pipe.reviews.length > 0 ? (
-            pipe.reviews.map((review) => (
-              <div
-                key={review.id}
-                className="border border-border rounded-none p-4 space-y-1.5"
-              >
-                <div className="flex items-center gap-2">
-                  <StarRating rating={review.rating} />
-                  <span className="text-xs font-medium">{review.author}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {relativeDate(review.created_at)}
-                  </span>
-                </div>
-                {review.comment && (
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {review.comment}
-                  </p>
-                )}
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">no reviews yet</p>
-          )}
-
-          {/* Write review */}
-          {token ? (
-            <div>
-              <button
-                onClick={onToggleReview}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-              >
-                {reviewExpanded ? "cancel review" : "write a review"}
-              </button>
-              {reviewExpanded && (
-                <div className="mt-3 space-y-3 border border-border rounded-none p-4">
-                  <div>
-                    <Label className="text-xs">rating</Label>
-                    <div className="mt-1">
-                      <StarRating
-                        rating={reviewRating}
-                        size="md"
-                        interactive
-                        onChange={onReviewRatingChange}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs">comment (optional)</Label>
-                    <Textarea
-                      value={reviewComment}
-                      onChange={(e) => onReviewCommentChange(e.target.value)}
-                      placeholder="your experience with this pipe..."
-                      className="text-sm min-h-[80px] mt-1"
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={onSubmitReview}
-                    disabled={reviewRating === 0 || submittingReview}
-                  >
-                    {submittingReview ? (
-                      <>
-                        <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
-                        SUBMITTING...
-                      </>
-                    ) : (
-                      "SUBMIT REVIEW"
-                    )}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              sign in to write a review
-            </p>
-          )}
-        </div>
       </div>
 
       {/* Source */}
