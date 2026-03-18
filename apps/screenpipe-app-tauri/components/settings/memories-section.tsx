@@ -8,7 +8,7 @@ import { apiCache } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { Trash2, Check, X, Loader2, Brain, ExternalLink } from "lucide-react";
+import { Trash2, Check, X, Loader2, Brain, ExternalLink, Copy } from "lucide-react";
 
 interface MemoryRecord {
   id: number;
@@ -54,6 +54,7 @@ export function MemoriesSection() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const fetchMemories = useCallback(async () => {
     const cacheKey = "memories/list";
@@ -188,6 +189,23 @@ export function MemoriesSection() {
                 </div>
 
                 <div className="flex items-center gap-0.5 shrink-0">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => {
+                      navigator.clipboard.writeText(memory.content);
+                      setCopiedId(memory.id);
+                      setTimeout(() => setCopiedId(null), 2000);
+                    }}
+                    title="copy"
+                  >
+                    {copiedId === memory.id ? (
+                      <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </Button>
                   {confirmDeleteId === memory.id ? (
                     <div className="flex items-center gap-0.5">
                       <Button
