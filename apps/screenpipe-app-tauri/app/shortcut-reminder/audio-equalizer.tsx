@@ -57,7 +57,10 @@ export function AudioEqualizer({ active, speechRatio, variant = "dark" }: AudioE
 
     const startTime = performance.now();
 
+    let stopped = false;
+
     const draw = (time: number) => {
+      if (stopped) return;
       const elapsed = (time - startTime) * 0.001;
       ctx.clearRect(0, 0, canvasW, CANVAS_H);
 
@@ -86,10 +89,24 @@ export function AudioEqualizer({ active, speechRatio, variant = "dark" }: AudioE
       rafRef.current = requestAnimationFrame(draw);
     };
 
-    rafRef.current = requestAnimationFrame(draw);
+    // Pause RAF when tab/window is hidden to prevent freeze on resume
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(rafRef.current);
+      } else if (!stopped) {
+        rafRef.current = requestAnimationFrame(draw);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    if (!document.hidden) {
+      rafRef.current = requestAnimationFrame(draw);
+    }
 
     return () => {
+      stopped = true;
       cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 

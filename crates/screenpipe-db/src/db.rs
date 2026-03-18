@@ -5989,6 +5989,15 @@ LIMIT ? OFFSET ?
         Ok(rows)
     }
 
+    pub async fn has_active_meeting(&self) -> Result<bool, SqlxError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM meetings WHERE meeting_end IS NULL",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0 > 0)
+    }
+
     pub async fn list_meetings(
         &self,
         start_time: Option<&str>,

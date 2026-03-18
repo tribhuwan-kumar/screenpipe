@@ -38,7 +38,7 @@ pub struct BulkDeleteMeetingsRequest {
 
 #[derive(OaSchema, Deserialize, Debug)]
 pub struct StartMeetingRequest {
-    pub app: String,
+    pub app: Option<String>,
     pub title: Option<String>,
     pub attendees: Option<String>,
 }
@@ -198,14 +198,35 @@ pub(crate) async fn merge_meetings_handler(
 }
 
 #[oasgen]
+pub(crate) async fn meeting_status_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
+    // Check manual meeting first
+    let manual_active = {
+        let lock = state.manual_meeting.read().await;
+        lock.is_some()
+    };
+
+    // Also check DB for any ongoing meeting (auto-detected)
+    let any_active = if manual_active {
+        true
+    } else {
+        state.db.has_active_meeting().await.unwrap_or(false)
+    };
+
+    Ok(JsonResponse(json!({ "active": any_active })))
+}
+
+#[oasgen]
 pub(crate) async fn start_meeting_handler(
     State(state): State<Arc<AppState>>,
     axum::Json(body): axum::Json<StartMeetingRequest>,
 ) -> Result<JsonResponse<MeetingRecord>, (StatusCode, JsonResponse<Value>)> {
+    let app = body.app.as_deref().unwrap_or("manual");
     let id = state
         .db
         .insert_meeting(
-            &body.app,
+            app,
             "manual",
             body.title.as_deref(),
             body.attendees.as_deref(),

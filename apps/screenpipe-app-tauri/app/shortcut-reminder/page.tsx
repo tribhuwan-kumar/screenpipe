@@ -24,15 +24,21 @@ function useMeetingState() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let abortCtrl: AbortController | null = null;
     const check = () => {
-      fetch("http://localhost:3030/meetings/status")
+      abortCtrl?.abort();
+      abortCtrl = new AbortController();
+      fetch("http://localhost:3030/meetings/status", { signal: abortCtrl.signal })
         .then((r) => r.json())
         .then((d) => setActive(!!d.active))
         .catch(() => {});
     };
     check();
     const id = setInterval(check, 5000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      abortCtrl?.abort();
+    };
   }, []);
 
   const toggle = useCallback(async () => {
