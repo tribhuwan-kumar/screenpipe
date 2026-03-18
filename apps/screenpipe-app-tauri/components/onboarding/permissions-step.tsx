@@ -63,9 +63,9 @@ function PermissionRow({
         </div>
       </div>
 
-      <div className="flex flex-col items-start min-w-0">
+      <div className="flex flex-col items-start min-w-0 text-left">
         <span className="font-mono text-xs font-medium">{title}</span>
-        <span className="font-mono text-[10px] text-muted-foreground group-hover:enabled:text-background/50 leading-tight">
+        <span className="font-mono text-[10px] text-muted-foreground group-hover:enabled:text-background/50 leading-tight text-left">
           {subtitle}
         </span>
       </div>
