@@ -65,6 +65,8 @@ function formatTime(iso: string): string {
   });
 }
 
+const PAGE_SIZE = 20;
+
 function toDatetimeLocal(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -140,6 +142,8 @@ export function MeetingsSection() {
   const { toast } = useToast();
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editState, setEditState] = useState<EditState>({
@@ -153,34 +157,67 @@ export function MeetingsSection() {
   const [merging, setMerging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [sortAsc, setSortAsc] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
 
-  const initialLoadDone = useRef(false);
-  const fetchMeetings = useCallback(async () => {
-    if (!initialLoadDone.current) setLoading(true);
-    try {
-      const res = await fetch("http://localhost:3030/meetings?limit=100");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: MeetingRecord[] = await res.json();
-      setMeetings(data);
-    } catch (err) {
-      if (!initialLoadDone.current) {
-        toast({
-          title: "failed to load meetings",
-          description: String(err),
-          variant: "destructive",
-        });
+  const fetchPage = useCallback(
+    async (offset: number, append: boolean) => {
+      if (offset === 0) setLoading(true);
+      else {
+        setLoadingMore(true);
+        loadingMoreRef.current = true;
       }
-    } finally {
-      setLoading(false);
-      initialLoadDone.current = true;
-    }
-  }, [toast]);
+
+      try {
+        const res = await fetch(
+          `http://localhost:3030/meetings?limit=${PAGE_SIZE}&offset=${offset}`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: MeetingRecord[] = await res.json();
+        if (data.length < PAGE_SIZE) setHasMore(false);
+        setMeetings((prev) => (append ? [...prev, ...data] : data));
+      } catch (err) {
+        if (offset === 0) {
+          toast({
+            title: "failed to load meetings",
+            description: String(err),
+            variant: "destructive",
+          });
+        }
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+        loadingMoreRef.current = false;
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
-    fetchMeetings();
-    const interval = setInterval(fetchMeetings, 10000);
-    return () => clearInterval(interval);
-  }, [fetchMeetings]);
+    fetchPage(0, false);
+  }, [fetchPage]);
+
+  // infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0].isIntersecting &&
+          !loadingMoreRef.current &&
+          hasMore
+        ) {
+          fetchPage(meetings.length, true);
+        }
+      },
+      { root: scrollRef.current, threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [meetings.length, hasMore, fetchPage]);
 
   const sortedMeetings = React.useMemo(() => {
     if (!sortAsc) return meetings;
@@ -229,7 +266,8 @@ export function MeetingsSection() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast({ title: "meeting updated" });
       setEditingId(null);
-      await fetchMeetings();
+      setHasMore(true);
+      await fetchPage(0, false);
     } catch (err) {
       toast({
         title: "failed to update meeting",
@@ -250,12 +288,12 @@ export function MeetingsSection() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast({ title: "meeting deleted" });
+      setMeetings((prev) => prev.filter((m) => m.id !== id));
       setSelected((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
-      await fetchMeetings();
     } catch (err) {
       toast({
         title: "failed to delete meeting",
@@ -280,7 +318,8 @@ export function MeetingsSection() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast({ title: "meetings merged" });
       setSelected(new Set());
-      await fetchMeetings();
+      setHasMore(true);
+      await fetchPage(0, false);
     } catch (err) {
       toast({
         title: "failed to merge meetings",
@@ -305,7 +344,8 @@ export function MeetingsSection() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast({ title: `${ids.length} meeting(s) deleted` });
       setSelected(new Set());
-      await fetchMeetings();
+      setHasMore(true);
+      await fetchPage(0, false);
     } catch (err) {
       toast({
         title: "failed to delete meetings",
@@ -378,7 +418,10 @@ export function MeetingsSection() {
       ) : meetings.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8">no meetings found</p>
       ) : (
-        <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+        <div
+          ref={scrollRef}
+          className="space-y-1.5 flex-1 overflow-y-auto pr-1"
+        >
           {sortedMeetings.map((meeting) => {
             const isEditing = editingId === meeting.id;
             const isSaving = savingId === meeting.id;
@@ -574,6 +617,13 @@ export function MeetingsSection() {
               </div>
             );
           })}
+
+          {/* sentinel + loading more indicator */}
+          <div ref={sentinelRef} className="py-2 flex justify-center">
+            {loadingMore && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
         </div>
       )}
     </div>
