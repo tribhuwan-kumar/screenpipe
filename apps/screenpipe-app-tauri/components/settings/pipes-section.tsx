@@ -1191,7 +1191,7 @@ export function PipesSection() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="border border-border rounded-md divide-y divide-border">
           {/* Global daily limit / credits exhausted banner — shown once at top */}
           {(() => {
             const errors = filteredPipes
@@ -1202,7 +1202,7 @@ export function PipesSection() {
             );
             if (!limitError) return null;
             return (
-              <div className="flex items-center gap-2 text-xs px-4 py-2 border rounded-md">
+              <div className="flex items-center gap-2 text-xs px-4 py-2">
                 <span className="text-muted-foreground">
                   {limitError.type === "credits_exhausted"
                     ? "no credits remaining — buy more at screenpi.pe"
@@ -1226,54 +1226,89 @@ export function PipesSection() {
             const recentExecs = pipeExecutions[pipe.config.name] || [];
             const isRunning = pipe.is_running || runningPipe === pipe.config.name;
             const runningExec = recentExecs.find((e) => e.status === "running");
+            const lastExec = recentExecs[0];
+            const lastStatus = isRunning
+              ? "running"
+              : pipe.last_success === false
+                ? "error"
+                : lastExec?.status === "completed"
+                  ? "ok"
+                  : lastExec?.status === "failed"
+                    ? "error"
+                    : "idle";
 
             return (
-            <Card key={pipe.config.name} className={cn(!pipe.config.enabled && "opacity-50")}>
-              <CardContent className="p-4">
-                {/* Header row */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleExpand(pipe.config.name)}
-                    className="flex items-center gap-1 text-sm font-medium flex-1 text-left min-w-0"
-                  >
-                    {expanded === pipe.config.name ? (
-                      <ChevronDown className="h-4 w-4 shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 shrink-0" />
-                    )}
-                    <span className="truncate">{pipe.config.name}</span>
-                  </button>
+            <div key={pipe.config.name} className={cn("group", !pipe.config.enabled && "opacity-50")}>
+              {/* Table row */}
+              <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/50 transition-colors">
+                {/* Status dot */}
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full shrink-0",
+                    lastStatus === "ok" && "bg-green-500",
+                    lastStatus === "running" && "bg-blue-500 animate-pulse",
+                    lastStatus === "error" && "bg-red-500",
+                    lastStatus === "idle" && "bg-muted-foreground/30",
+                  )}
+                  title={lastStatus}
+                />
 
-                  <Badge variant="outline" className="text-xs shrink-0">
-                    {pipe.config.schedule}
-                  </Badge>
+                {/* Pipe name — click to expand */}
+                <button
+                  onClick={() => toggleExpand(pipe.config.name)}
+                  className="text-sm font-medium truncate text-left min-w-0 flex-1 hover:underline"
+                >
+                  {pipe.config.name}
+                </button>
 
-                  {availableUpdates[pipe.config.name] && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs shrink-0 cursor-pointer border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const update = availableUpdates[pipe.config.name];
-                        const slug = (pipe.config as any).config?.source_slug as string || pipe.source_slug || pipe.config.name;
-                        if (update.locally_modified) {
-                          if (confirm(`you have local changes to this pipe. updating to v${update.latest_version} will overwrite them. continue?`)) {
-                            updatePipe(pipe.config.name, slug);
-                          }
-                        } else {
+                {/* Update badge */}
+                {availableUpdates[pipe.config.name] && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] shrink-0 cursor-pointer border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const update = availableUpdates[pipe.config.name];
+                      const slug = (pipe.config as any).config?.source_slug as string || pipe.source_slug || pipe.config.name;
+                      if (update.locally_modified) {
+                        if (confirm(`you have local changes to this pipe. updating to v${update.latest_version} will overwrite them. continue?`)) {
                           updatePipe(pipe.config.name, slug);
                         }
-                      }}
-                    >
-                      {updatingPipe === pipe.config.name ? (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <ArrowUpCircle className="h-3 w-3 mr-1" />
-                      )}
-                      v{availableUpdates[pipe.config.name].installed_version} → v{availableUpdates[pipe.config.name].latest_version}
-                    </Badge>
-                  )}
+                      } else {
+                        updatePipe(pipe.config.name, slug);
+                      }
+                    }}
+                  >
+                    {updatingPipe === pipe.config.name ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <ArrowUpCircle className="h-3 w-3 mr-1" />
+                    )}
+                    v{availableUpdates[pipe.config.name].installed_version} → v{availableUpdates[pipe.config.name].latest_version}
+                  </Badge>
+                )}
 
+                {/* Schedule */}
+                <span className="text-xs text-muted-foreground shrink-0 w-24 text-right font-mono">
+                  {pipe.config.schedule || "manual"}
+                </span>
+
+                {/* Last run time */}
+                <span className="text-xs text-muted-foreground shrink-0 w-20 text-right font-mono">
+                  {isRunning && runningExec?.started_at ? (
+                    <span className="flex items-center justify-end gap-1">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      <ElapsedTimer startedAt={runningExec.started_at} />
+                    </span>
+                  ) : lastExec?.started_at ? (
+                    relativeTime(lastExec.started_at)
+                  ) : (
+                    "—"
+                  )}
+                </span>
+
+                {/* Hover-reveal actions */}
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                   {/* Run / Stop button */}
                   {isRunning ? (
                     <Button
@@ -1302,13 +1337,6 @@ export function PipesSection() {
                       <Play className="h-3.5 w-3.5" />
                     </Button>
                   )}
-
-                  <Switch
-                    checked={pipe.config.enabled}
-                    onCheckedChange={(checked) =>
-                      togglePipe(pipe.config.name, checked)
-                    }
-                  />
 
                   {/* Optimize with AI */}
                   <Button
@@ -1390,109 +1418,30 @@ export function PipesSection() {
                   </DropdownMenu>
                 </div>
 
-                {/* Live running indicator */}
-                {isRunning && (
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">running</span>
-                    {runningExec?.started_at && (
-                      <span className="font-mono text-muted-foreground">
-                        <ElapsedTimer startedAt={runningExec.started_at} />
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Per-pipe error (skip daily_limit/credits_exhausted — shown globally above) */}
-                {!isRunning && pipe.last_success === false && pipe.last_error && (() => {
-                  const error = parsePipeError(pipe.last_error);
-                  if (error.type === "daily_limit" || error.type === "credits_exhausted") return null;
-                  if (error.type === "rate_limit") {
-                    return (
-                      <p className="mt-2 text-xs text-muted-foreground">{error.message}</p>
-                    );
+                {/* Toggle — always visible */}
+                <Switch
+                  checked={pipe.config.enabled}
+                  onCheckedChange={(checked) =>
+                    togglePipe(pipe.config.name, checked)
                   }
-                  return (
-                    <p className="mt-2 text-xs text-muted-foreground truncate max-w-full">
+                />
+              </div>
+
+              {/* Error line (inline, below row) */}
+              {!isRunning && pipe.last_success === false && pipe.last_error && (() => {
+                const error = parsePipeError(pipe.last_error);
+                if (error.type === "daily_limit" || error.type === "credits_exhausted") return null;
+                return (
+                  <div className="px-4 pb-2 -mt-1">
+                    <p className="text-[11px] text-red-500/80 truncate max-w-full pl-5">
                       {error.message}
                     </p>
-                  );
-                })()}
-
-                {/* Last run — single line summary */}
-                {recentExecs.length > 0 && (() => {
-                  const exec = recentExecs[0];
-                  return (
-                  <div className="mt-1.5 flex items-center gap-2 text-[11px] font-mono text-muted-foreground">
-                    <span>
-                      {exec.started_at ? relativeTime(exec.started_at) : "queued"}
-                    </span>
-                    <span className="text-muted-foreground/50">·</span>
-                    {exec.status === "completed" ? (
-                      <span className="text-foreground">ok</span>
-                    ) : exec.status === "running" ? (
-                      <span className="flex items-center gap-1">
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        running
-                        {exec.started_at && <ElapsedTimer startedAt={exec.started_at} />}
-                        <button
-                          className="text-[10px] text-primary underline hover:no-underline ml-1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            sessionStorage.setItem(
-                              "watchPipe",
-                              JSON.stringify({
-                                pipeName: pipe.config.name,
-                                executionId: exec.id,
-                                presetId: (Array.isArray(pipe.config.preset) ? pipe.config.preset[0] : pipe.config.preset) || null,
-                              })
-                            );
-                            emit("watch_pipe", {
-                              pipeName: pipe.config.name,
-                              executionId: exec.id,
-                              presetId: (Array.isArray(pipe.config.preset) ? pipe.config.preset[0] : pipe.config.preset) || null,
-                            });
-                          }}
-                          title="watch live output"
-                        >
-                          watch
-                        </button>
-                      </span>
-                    ) : exec.status === "failed" ? (
-                      <span className="text-foreground font-medium">failed</span>
-                    ) : exec.status === "timed_out" ? (
-                      <span className="text-muted-foreground">timeout</span>
-                    ) : (
-                      <span>{exec.status}</span>
-                    )}
-                    {exec.duration_ms != null && exec.status !== "running" && (
-                      <>
-                        <span className="text-muted-foreground/50">·</span>
-                        <span>{formatDuration(exec.duration_ms)}</span>
-                      </>
-                    )}
-                    {exec.error_type && (
-                      <>
-                        <span className="text-muted-foreground/50">·</span>
-                        <span className="text-muted-foreground">
-                          {exec.error_type.replace("_", " ")}
-                        </span>
-                      </>
-                    )}
-                    {exec.status === "completed" && exec.stdout && !exec.error_type && (
-                      <>
-                        <span className="text-muted-foreground/50">·</span>
-                        <span className="truncate max-w-[200px]">
-                          {cleanPipeStdout(exec.stdout).split("\n")[0].slice(0, 50) || "done"}
-                        </span>
-                      </>
-                    )}
                   </div>
-                  );
-                })()}
+                );
+              })()}
 
-                {/* Expanded detail */}
-                {expanded === pipe.config.name && (
+              {/* Expanded detail */}
+              {expanded === pipe.config.name && (
                   <div className="mt-4 space-y-4 border-t pt-4">
                     <PipePresetSelector
                       pipe={pipe}
@@ -1832,8 +1781,7 @@ export function PipesSection() {
 
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </div>
             );
           })}
         </div>

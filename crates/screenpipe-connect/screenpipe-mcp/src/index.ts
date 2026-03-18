@@ -193,6 +193,39 @@ const TOOLS: Tool[] = [
       },
     },
   },
+  {
+    name: "send-notification",
+    description:
+      "Send a notification to the screenpipe desktop UI with optional action buttons. " +
+      "Actions can re-run pipes with context, call API endpoints, or open deep links.",
+    annotations: { title: "Send Notification", destructiveHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Notification title" },
+        body: { type: "string", description: "Notification body (markdown supported)" },
+        pipe_name: { type: "string", description: "Name of the pipe sending this notification" },
+        timeout_secs: { type: "integer", description: "Auto-dismiss seconds (default 20)", default: 20 },
+        actions: {
+          type: "array",
+          description: "Up to 5 action buttons",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Unique action ID" },
+              label: { type: "string", description: "Button label" },
+              type: { type: "string", enum: ["pipe", "api", "deeplink", "dismiss"], description: "Action type" },
+              pipe: { type: "string", description: "Pipe name to run (type=pipe)" },
+              context: { type: "object", description: "Context passed to pipe (type=pipe)" },
+              url: { type: "string", description: "URL for api/deeplink actions" },
+            },
+            required: ["id", "label", "type"],
+          },
+        },
+      },
+      required: ["title", "pipe_name"],
+    },
+  },
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -748,6 +781,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             { type: "text", text: `Memory created (id: ${newMemory.id}): "${newMemory.content}"` },
           ],
+        };
+      }
+
+      case "send-notification": {
+        const notifBody: Record<string, unknown> = {
+          title: args.title,
+          pipe_name: args.pipe_name,
+        };
+        if (args.body) notifBody.body = args.body;
+        if (args.timeout_secs) notifBody.timeout_secs = args.timeout_secs;
+        if (args.actions) notifBody.actions = args.actions;
+        const notifResponse = await fetchAPI("/notify", {
+          method: "POST",
+          body: JSON.stringify(notifBody),
+        });
+        if (!notifResponse.ok) throw new Error(`HTTP error: ${notifResponse.status}`);
+        const notifResult = await notifResponse.json();
+        return {
+          content: [{ type: "text", text: `Notification sent (id: ${notifResult.id})` }],
         };
       }
 

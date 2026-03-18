@@ -368,7 +368,36 @@ Memories also appear in `/search?content_type=memory`. Use sparingly — only st
 
 ---
 
-## 12. Other Endpoints
+## 12. Notifications — `POST /notify`
+
+Send a notification to the screenpipe desktop UI with optional action buttons.
+
+```bash
+curl -X POST http://localhost:3030/notify \
+  -H "Content-Type: application/json" \
+  -d '{"title": "3 new voice memos", "body": "found recordings from today", "pipe_name": "my-pipe", "actions": [{"id": "view", "label": "view", "type": "deeplink", "url": "screenpipe://timeline"}, {"id": "skip", "label": "skip", "type": "dismiss"}]}'
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | **Yes** | Notification title |
+| `body` | string | No | Markdown body |
+| `pipe_name` | string | **Yes** | Pipe sending the notification |
+| `timeout_secs` | integer | No | Auto-dismiss (default 20) |
+| `actions` | array | No | Up to 5 action buttons |
+
+**Action types**: `pipe` (re-run a pipe with context), `api` (call a local API endpoint), `deeplink` (open a screenpipe URL), `dismiss` (close notification).
+
+`type: "pipe"` example — re-runs a pipe with injected context:
+```json
+{"id": "transcribe", "label": "transcribe all", "type": "pipe", "pipe": "voice-memos", "context": {"files": ["a.m4a"]}}
+```
+
+Returns `{"id": "pipe-my-pipe-1710000000000"}`.
+
+---
+
+## 13. Other Endpoints
 
 ```bash
 curl http://localhost:3030/health              # Health check

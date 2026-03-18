@@ -117,7 +117,9 @@ interface LocalPipe {
 
 // --- Helpers ---
 
-const CATEGORIES = ["All", "Productivity", "Dev", "Health", "Social", "Other"];
+// Categories are derived dynamically from pipe metadata — no hardcoded taxonomy.
+// Only PUBLISH_CATEGORIES is kept as a suggestion list for the publish form.
+const PUBLISH_CATEGORIES = ["Productivity", "Dev", "Health", "Social", "Other"];
 const SORT_OPTIONS = [
   { value: "popular", label: "Popular" },
   { value: "newest", label: "Newest" },
@@ -303,6 +305,18 @@ function DiscoverView() {
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("popular");
 
+  // Derive unique categories from pipe data
+  const dynamicCategories = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of pipes) {
+      const cat = p.category || "other";
+      const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    // Sort by count descending
+    return ["All", ...Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([name]) => name)];
+  }, [pipes]);
+
   // Detail view
   const [selectedPipe, setSelectedPipe] = useState<PipeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -375,10 +389,10 @@ function DiscoverView() {
   }, [searchQuery]);
 
   // Fetch pipes with stale-while-revalidate caching
+  // Category filtering is done client-side so we always have all categories for the pills
   const fetchPipes = useCallback(async () => {
     const params = new URLSearchParams();
     if (debouncedQuery) params.set("q", debouncedQuery);
-    if (category !== "All") params.set("category", category.toLowerCase());
     if (sort) params.set("sort", sort);
     const cacheKey = `pipes/store?${params}`;
 
@@ -410,7 +424,7 @@ function DiscoverView() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, category, sort]);
+  }, [debouncedQuery, sort]);
 
   useEffect(() => {
     fetchPipes();
@@ -602,7 +616,16 @@ function DiscoverView() {
     );
   }
 
-  const featuredPipes = pipes.filter((p) => p.featured);
+  // Client-side category filter
+  const filteredPipes = useMemo(() => {
+    if (category === "All") return pipes;
+    return pipes.filter((p) => {
+      const cat = (p.category || "other").charAt(0).toUpperCase() + (p.category || "other").slice(1);
+      return cat === category;
+    });
+  }, [pipes, category]);
+
+  const featuredPipes = filteredPipes.filter((p) => p.featured);
 
   return (
     <div className="space-y-6">
@@ -648,7 +671,7 @@ function DiscoverView() {
 
         {/* Category pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          {CATEGORIES.map((c) => (
+          {dynamicCategories.map((c) => (
             <button
               key={c}
               onClick={() => setCategory(c)}
@@ -717,7 +740,7 @@ function DiscoverView() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pipes.map((pipe) => (
+          {filteredPipes.map((pipe) => (
             <PipeCard
               key={pipe.slug}
               pipe={pipe}
@@ -1530,7 +1553,7 @@ export function PublishDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIES.filter((c) => c !== "All").map((c) => (
+                    {PUBLISH_CATEGORIES.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
