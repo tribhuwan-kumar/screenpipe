@@ -92,7 +92,6 @@ jobs:
       with:
         workspaces: apps/screenpipe-app-tauri/src-tauri
         shared-key: screenpipe-tauri-e2e
-        key: "1" # increment this to bust the cache if needed
 
     - name: Configure Bun cache on same drive as workspace (Windows perf fix)
       shell: pwsh
@@ -133,8 +132,10 @@ jobs:
 
     - name: Build
       uses: tauri-apps/tauri-action@v0.5.17
+      env:
+        OPENBLAS_PATH: ${{ github.workspace }}/apps/screenpipe-app-tauri/src-tauri/openblas
       with:
-        args: "--no-sign --debug --no-bundle -- --features e2e --locked"
+        args: "--no-sign --debug --no-bundle -- --features e2e"
         projectPath: "./apps/screenpipe-app-tauri"
         tauriScript: bunx tauri -v
 
@@ -219,7 +220,6 @@ jobs:
       with:
         workspaces: apps/screenpipe-app-tauri/src-tauri
         shared-key: screenpipe-tauri-e2e
-        key: "1" # increment this to bust the cache if needed
 
     - name: Install frontend dependencies
       working-directory: ./apps/screenpipe-app-tauri
@@ -247,7 +247,7 @@ jobs:
     - name: Build
       uses: tauri-apps/tauri-action@v0.5.17
       with:
-        args: "--no-sign --debug --no-bundle -- --features e2e --locked"
+        args: "--no-sign --debug --no-bundle -- --features e2e"
         projectPath: "./apps/screenpipe-app-tauri"
         tauriScript: bunx tauri -v
 
