@@ -228,15 +228,15 @@ export function stringToColor(str: string): string {
 export function getFrameAppName(frame: StreamTimeSeriesResponse | undefined): string {
 	if (!frame?.devices?.length) return 'Unknown';
 	// Find first device with a non-empty app_name
-	const deviceWithApp = frame.devices.find(d => d.metadata?.app_name);
-	return deviceWithApp?.metadata?.app_name || 'Unknown';
+	const deviceWithApp = frame.devices.find(d => d.metadata?.app_name?.trim());
+	return deviceWithApp?.metadata?.app_name?.trim() || 'Unknown';
 }
 
 // Get ALL app names from a frame (for multi-app display)
 export function getFrameAppNames(frame: StreamTimeSeriesResponse | undefined): string[] {
 	if (!frame?.devices?.length) return ['Unknown'];
 	const appNames = frame.devices
-		.map(d => d.metadata?.app_name)
+		.map(d => d.metadata?.app_name?.trim())
 		.filter((name): name is string => Boolean(name));
 	return appNames.length > 0 ? [...new Set(appNames)] : ['Unknown'];
 }

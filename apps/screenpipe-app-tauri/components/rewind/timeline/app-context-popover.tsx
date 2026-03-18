@@ -63,7 +63,8 @@ export function AppContextPopover({
 	onClose,
 	onSearch,
 }: AppContextPopoverProps) {
-	const allApps = appNames && appNames.length > 1 ? appNames : [appName];
+	// Deduplicate app names (trim + unique) to prevent showing same icon twice
+	const allApps = [...new Set((appNames && appNames.length > 0 ? appNames : [appName]).map(n => n.trim()).filter(Boolean))];
 	const [copied, setCopied] = useState(false);
 
 	// compute time range from frames
