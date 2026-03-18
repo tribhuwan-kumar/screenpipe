@@ -1241,13 +1241,13 @@ export function PipesSection() {
             <div key={pipe.config.name} className={cn("group", !pipe.config.enabled && "opacity-50")}>
               {/* Table row */}
               <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/50 transition-colors">
-                {/* Status dot */}
+                {/* Status indicator — monochrome, brand-aligned */}
                 <span
                   className={cn(
-                    "h-2 w-2 rounded-full shrink-0",
-                    lastStatus === "ok" && "bg-green-500",
-                    lastStatus === "running" && "bg-blue-500 animate-pulse",
-                    lastStatus === "error" && "bg-red-500",
+                    "h-1.5 w-1.5 shrink-0",
+                    lastStatus === "ok" && "bg-foreground",
+                    lastStatus === "running" && "bg-foreground animate-pulse",
+                    lastStatus === "error" && "border border-foreground bg-transparent",
                     lastStatus === "idle" && "bg-muted-foreground/30",
                   )}
                   title={lastStatus}
@@ -1265,7 +1265,7 @@ export function PipesSection() {
                 {availableUpdates[pipe.config.name] && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] shrink-0 cursor-pointer border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                    className="text-[10px] shrink-0 cursor-pointer border-foreground/30 text-muted-foreground hover:bg-accent transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       const update = availableUpdates[pipe.config.name];
@@ -1418,11 +1418,8 @@ export function PipesSection() {
                   </DropdownMenu>
                 </div>
 
-                {/* Toggle — visible on hover or when disabled */}
-                <div className={cn(
-                  "transition-opacity",
-                  pipe.config.enabled ? "opacity-0 group-hover:opacity-100" : "opacity-100"
-                )}>
+                {/* Toggle — only visible on hover */}
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                   <Switch
                     checked={pipe.config.enabled}
                     onCheckedChange={(checked) =>
