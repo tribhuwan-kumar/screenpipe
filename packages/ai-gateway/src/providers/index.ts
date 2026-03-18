@@ -16,15 +16,10 @@ export function createProvider(model: string, env: Env): AIProvider {
 		return new AnthropicProvider(env.ANTHROPIC_API_KEY);
 	}
 	if (model.toLowerCase().includes('gemini')) {
-		// Use Vertex AI for Gemini models
-		if (!env.VERTEX_SERVICE_ACCOUNT_JSON || !env.VERTEX_PROJECT_ID) {
-			throw new Error('Vertex AI credentials not configured for Gemini');
+		if (!env.GEMINI_API_KEY) {
+			throw new Error('Gemini API key not configured');
 		}
-		return new GeminiProvider(
-			env.VERTEX_SERVICE_ACCOUNT_JSON,
-			env.VERTEX_PROJECT_ID,
-			'us-central1' // Gemini uses us-central1 region
-		);
+		return new GeminiProvider(env.GEMINI_API_KEY);
 	}
 	return new OpenAIProvider(env.OPENAI_API_KEY);
 }

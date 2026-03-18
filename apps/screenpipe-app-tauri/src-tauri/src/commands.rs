@@ -944,6 +944,9 @@ pub async fn show_shortcut_reminder(
                     // Exclude from screen capture (NSWindowSharingNone = 0)
                     let _: () = unsafe { msg_send![&*panel, setSharingType: 0_u64] };
 
+                    // Accept mouse events without requiring click-to-activate
+                    let _: () = unsafe { msg_send![&*panel, setAcceptsMouseMovedEvents: true] };
+
                     // CanJoinAllSpaces: visible on ALL Spaces simultaneously
                     // (not MoveToActiveSpace which only follows the active Space)
                     panel.set_collection_behaviour(
@@ -1159,6 +1162,11 @@ pub async fn show_notification_panel(
 
                     // Exclude from screen capture (NSWindowSharingNone = 0)
                     let _: () = unsafe { msg_send![&*panel, setSharingType: 0_u64] };
+
+                    // Accept mouse events without requiring click-to-activate.
+                    // NSNonactivatingPanelMask prevents the panel from becoming key,
+                    // which blocks webview hover events. This re-enables mouse tracking.
+                    let _: () = unsafe { msg_send![&*panel, setAcceptsMouseMovedEvents: true] };
 
                     panel.set_collection_behaviour(
                         NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces

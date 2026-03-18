@@ -48,6 +48,8 @@ export default function NotificationPanelPage() {
   const [restartError, setRestartError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDismissMsRef = useRef(20000);
+  const hoveredRef = useRef(false);
+  const pausedProgressRef = useRef<number | null>(null);
 
   const hide = useCallback(
     async (auto: boolean) => {
@@ -264,11 +266,26 @@ export default function NotificationPanelPage() {
   useEffect(() => {
     if (!visible) return;
 
-    const startTime = Date.now();
     const totalMs = autoDismissMsRef.current;
+    let elapsedBeforePause = 0;
+    let resumedAt = Date.now();
+    let wasHovered = false;
 
     intervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTime;
+      if (hoveredRef.current) {
+        if (!wasHovered) {
+          // Just entered hover — snapshot elapsed time
+          elapsedBeforePause += Date.now() - resumedAt;
+          wasHovered = true;
+        }
+        return;
+      }
+      if (wasHovered) {
+        // Just left hover — restart the clock
+        resumedAt = Date.now();
+        wasHovered = false;
+      }
+      const elapsed = elapsedBeforePause + (Date.now() - resumedAt);
       const remaining = Math.max(0, 100 - (elapsed / totalMs) * 100);
       setProgress(remaining);
 
@@ -290,7 +307,11 @@ export default function NotificationPanelPage() {
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", background: "transparent" }}>
+    <div
+      style={{ width: "100%", height: "100%", background: "transparent" }}
+      onMouseEnter={() => { hoveredRef.current = true; }}
+      onMouseLeave={() => { hoveredRef.current = false; }}
+    >
       <div
         style={{
           background: "rgba(255, 255, 255, 0.92)",
@@ -511,8 +532,9 @@ export default function NotificationPanelPage() {
         >
           <span
             onClick={async () => {
-              await emit("open-notification-settings");
-              try { await invoke("show_window", { window: "Settings" }); } catch {}
+              await hide(false);
+              await emit("navigate", { url: "/home?section=notifications" });
+              try { await invoke("show_window", { window: "home" }); } catch {}
             }}
             style={{
               fontSize: "9px",

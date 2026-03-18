@@ -20,18 +20,14 @@ export async function handleWebSearch(request: Request, env: Env): Promise<Respo
 			})));
 		}
 
-		if (!env.VERTEX_SERVICE_ACCOUNT_JSON || !env.VERTEX_PROJECT_ID) {
+		if (!env.GEMINI_API_KEY) {
 			return addCorsHeaders(createErrorResponse(500, JSON.stringify({
 				error: 'configuration_error',
-				message: 'Search backend not configured',
+				message: 'Gemini API key not configured',
 			})));
 		}
 
-		const provider = new GeminiProvider(
-			env.VERTEX_SERVICE_ACCOUNT_JSON,
-			env.VERTEX_PROJECT_ID,
-			'us-central1'
-		);
+		const provider = new GeminiProvider(env.GEMINI_API_KEY);
 
 		const result = await provider.executeWebSearch(body.query.trim());
 

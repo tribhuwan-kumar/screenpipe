@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Calendar as CalendarIcon, Eye, EyeOff } from "lucide-react";
+import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Calendar as CalendarIcon, Eye, EyeOff, Globe, Mic } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { commands } from "@/lib/utils/tauri";
 import { showChatWithPrefill } from "@/lib/chat-utils";
@@ -25,6 +25,8 @@ import { CalendarCard } from "./calendar-card";
 import { GoogleCalendarCard } from "./google-calendar-card";
 import { IcsCalendarCard } from "./ics-calendar-card";
 import { OpenClawCard } from "./openclaw-card";
+import { BrowserUrlCard } from "./browser-url-card";
+import { VoiceMemosCard } from "./voice-memos-card";
 
 // ---------------------------------------------------------------------------
 // Utility functions (unchanged)
@@ -232,6 +234,8 @@ function IntegrationIcon({ icon }: { icon: string }) {
     pushover: <img src="/images/pushover.png" alt="Pushover" className="w-5 h-5 rounded" />,
     ntfy: <img src="/images/ntfy.png" alt="ntfy" className="w-5 h-5 rounded" />,
     toggl: <img src="/images/toggl.png" alt="Toggl" className="w-5 h-5 rounded" />,
+    "browser-url": <img src="/images/browser-url.svg" alt="Browser URL" className="w-5 h-5 rounded" />,
+    "voice-memos": <img src="/images/voice-memos.svg" alt="Voice Memos" className="w-5 h-5 rounded" />,
   };
   return (
     <div className="w-10 h-10 bg-muted rounded-xl flex items-center justify-center">
@@ -959,6 +963,8 @@ export function ConnectionsSection() {
   const [integrations, setIntegrations] = useState<IntegrationInfo[]>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
 
+  const os = platform();
+
   // Hardcoded connection status
   const [claudeInstalled, setClaudeInstalled] = useState(false);
   const [cursorInstalled, setCursorInstalled] = useState(false);
@@ -1014,6 +1020,10 @@ export function ConnectionsSection() {
       { id: "cursor", name: "Cursor", icon: "cursor", connected: cursorInstalled },
       { id: "claude-code", name: "Claude Code", icon: "claude-code", connected: false },
       { id: "chatgpt", name: "ChatGPT", icon: "chatgpt", connected: chatgptConnected },
+      ...(os === "macos" ? [
+        { id: "browser-url", name: "Browser URL Capture", icon: "browser-url", connected: false },
+        { id: "voice-memos", name: "Voice Memos", icon: "voice-memos", connected: false },
+      ] : []),
       { id: "apple-intelligence", name: "Apple Intelligence", icon: "apple-intelligence", connected: false },
       { id: "apple-calendar", name: "Apple Calendar", icon: "apple-calendar", connected: false },
       { id: "google-calendar", name: "Google Calendar", icon: "google-calendar", connected: false },
@@ -1040,7 +1050,7 @@ export function ConnectionsSection() {
       if (api) h.connected = api.connected;
     }
     return [...hardcoded, ...apiTiles];
-  }, [claudeInstalled, cursorInstalled, chatgptConnected, integrations]);
+  }, [os, claudeInstalled, cursorInstalled, chatgptConnected, integrations]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allTiles;
@@ -1057,6 +1067,8 @@ export function ConnectionsSection() {
       case "cursor": return <CursorPanel />;
       case "claude-code": return <ClaudeCodePanel />;
       case "chatgpt": return <ChatGptPanel />;
+      case "browser-url": return <BrowserUrlCard />;
+      case "voice-memos": return <VoiceMemosCard />;
       case "apple-intelligence": return <AppleIntelligenceCard />;
       case "apple-calendar": return <CalendarCard />;
       case "google-calendar": return <GoogleCalendarCard />;
@@ -1125,7 +1137,7 @@ export function ConnectionsSection() {
 
       {/* Expanded panel */}
       {selected && selectedTile && (() => {
-        const standaloneIds = ["apple-intelligence", "apple-calendar", "google-calendar", "ics-calendar", "openclaw"];
+        const standaloneIds = ["browser-url", "voice-memos", "apple-intelligence", "apple-calendar", "google-calendar", "ics-calendar", "openclaw"];
         if (standaloneIds.includes(selected)) {
           // These components render their own Card
           return <div ref={panelRef}>{renderPanel()}</div>;
