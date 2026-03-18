@@ -17,6 +17,7 @@ export interface NotificationAction {
   method?: string;
   body?: Record<string, unknown>;
   toast?: string;
+  open_in_chat?: boolean;
 }
 
 export interface NotificationPayload {

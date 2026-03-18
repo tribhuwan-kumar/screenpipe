@@ -25,6 +25,7 @@ interface NotificationAction {
   method?: string;
   body?: Record<string, unknown>;
   toast?: string;
+  open_in_chat?: boolean;
 }
 
 interface NotificationPayload {
@@ -89,11 +90,25 @@ export default function NotificationPanelPage() {
             case "pipe": {
               const pipeName = actionObj.pipe || payload?.pipe_name;
               if (pipeName) {
-                await fetch(`http://localhost:3030/pipes/${pipeName}/run`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ notification_context: actionObj.context }),
-                });
+                if (actionObj.open_in_chat) {
+                  // Open in chat UI so user sees the output live
+                  const contextStr = actionObj.context
+                    ? JSON.stringify(actionObj.context, null, 2)
+                    : "";
+                  await showChatWithPrefill({
+                    context: `run pipe "${pipeName}" with this context:\n${contextStr}`,
+                    prompt: `run the ${pipeName} pipe${actionObj.context ? " with the provided context" : ""}`,
+                    autoSend: true,
+                    source: `notification-${payload?.id}`,
+                  });
+                } else {
+                  // Run in background
+                  await fetch(`http://localhost:3030/pipes/${pipeName}/run`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ notification_context: actionObj.context }),
+                  });
+                }
               }
               break;
             }
@@ -109,7 +124,21 @@ export default function NotificationPanelPage() {
             }
             case "deeplink": {
               if (actionObj.url) {
-                window.location.href = actionObj.url;
+                // Use Tauri shell open for custom schemes, invoke for internal navigation
+                if (actionObj.url.startsWith("screenpipe://")) {
+                  try {
+                    await invoke("show_window", { window: "Main" });
+                  } catch {
+                    // fallback
+                  }
+                } else {
+                  try {
+                    const { open } = await import("@tauri-apps/plugin-shell");
+                    await open(actionObj.url);
+                  } catch {
+                    window.open(actionObj.url, "_blank");
+                  }
+                }
               }
               break;
             }

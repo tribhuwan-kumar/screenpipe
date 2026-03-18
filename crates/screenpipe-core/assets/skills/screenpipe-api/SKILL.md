@@ -393,6 +393,11 @@ curl -X POST http://localhost:3030/notify \
 {"id": "transcribe", "label": "transcribe all", "type": "pipe", "pipe": "voice-memos", "context": {"files": ["a.m4a"]}}
 ```
 
+Add `"open_in_chat": true` to show the pipe output in the chat UI instead of running silently in the background:
+```json
+{"id": "summarize", "label": "view summary", "type": "pipe", "pipe": "meeting-summary", "context": {"action": "summarize_last"}, "open_in_chat": true}
+```
+
 Returns `{"id": "pipe-my-pipe-1710000000000"}`.
 
 ---

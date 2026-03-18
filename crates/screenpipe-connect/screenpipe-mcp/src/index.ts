@@ -217,6 +217,7 @@ const TOOLS: Tool[] = [
               type: { type: "string", enum: ["pipe", "api", "deeplink", "dismiss"], description: "Action type" },
               pipe: { type: "string", description: "Pipe name to run (type=pipe)" },
               context: { type: "object", description: "Context passed to pipe (type=pipe)" },
+              open_in_chat: { type: "boolean", description: "Open pipe run in chat UI instead of background (type=pipe)" },
               url: { type: "string", description: "URL for api/deeplink actions" },
             },
             required: ["id", "label", "type"],

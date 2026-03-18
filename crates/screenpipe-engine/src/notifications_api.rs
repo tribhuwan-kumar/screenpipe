@@ -51,6 +51,10 @@ pub struct NotificationAction {
     pub toast: Option<String>,
     #[serde(default)]
     pub primary: bool,
+    /// When true for type=pipe, opens the pipe run in the chat UI instead of background.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub open_in_chat: bool,
 }
 
 /// Incoming notification request from a pipe.

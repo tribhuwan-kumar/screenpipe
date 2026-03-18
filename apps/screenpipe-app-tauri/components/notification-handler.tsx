@@ -103,7 +103,7 @@ const NotificationHandler: React.FC = () => {
               if (n.pipe_name && prefs.mutedPipes.includes(n.pipe_name)) continue;
 
               // Convert pipe notification actions to the format the panel expects
-              const actions = (n.actions || []).map((a: { id?: string; label: string; type?: string; pipe?: string; context?: Record<string, unknown>; url?: string; method?: string; body?: Record<string, unknown>; toast?: string; primary?: boolean }) => ({
+              const actions = (n.actions || []).map((a: { id?: string; label: string; type?: string; pipe?: string; context?: Record<string, unknown>; url?: string; method?: string; body?: Record<string, unknown>; toast?: string; primary?: boolean; open_in_chat?: boolean }) => ({
                 id: a.id,
                 label: a.label,
                 action: a.id || a.label,
@@ -115,6 +115,7 @@ const NotificationHandler: React.FC = () => {
                 body: a.body,
                 toast: a.toast,
                 primary: a.primary || false,
+                open_in_chat: a.open_in_chat || false,
               }));
 
               await showNotificationPanel({
