@@ -141,6 +141,48 @@ function navigateHomeAndPrefill(data: ChatPrefillData): void {
   window.location.href = url.toString();
 }
 
+/** Convert a raw schedule string to a short human-readable label. */
+function humanizeSchedule(schedule: string | undefined): string {
+  if (!schedule || schedule === "manual") return "manual";
+  // Simple "every Xm/h/d" patterns
+  const everyMatch = schedule.match(/^every\s+(\d+)\s*(m|h|d|s)/i);
+  if (everyMatch) {
+    const n = parseInt(everyMatch[1]);
+    const unit = everyMatch[2].toLowerCase();
+    if (unit === "m") return n < 60 ? `${n}min` : `${n / 60}h`;
+    if (unit === "h") return `${n}h`;
+    if (unit === "d") return `${n}d`;
+    return schedule;
+  }
+  // "every day at Xpm/am"
+  if (schedule.startsWith("every day")) return schedule;
+  // Cron: try to make it readable
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length === 5) {
+    const [min, hour, dom, mon, dow] = parts;
+    // */N * * * * → every Nmin
+    if (min.startsWith("*/") && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+      return `${min.slice(2)}min`;
+    }
+    // 0 */N * * * → every Nh
+    if (min === "0" && hour.startsWith("*/") && dom === "*" && mon === "*" && dow === "*") {
+      return `${hour.slice(2)}h`;
+    }
+    // */N with hour range → e.g. "30min, 3pm-11pm"
+    if (min.startsWith("*/") && hour !== "*") {
+      const interval = `${min.slice(2)}min`;
+      // Try to humanize hour range
+      const humanHours = hour.replace(/(\d+)/g, (_, h) => {
+        const n = parseInt(h);
+        return n === 0 ? "12am" : n < 12 ? `${n}am` : n === 12 ? "12pm" : `${n - 12}pm`;
+      }).replace("-", "–");
+      return `${interval} · ${humanHours}`;
+    }
+  }
+  // Fallback: truncate long crons
+  return schedule.length > 12 ? schedule.slice(0, 12) + "…" : schedule;
+}
+
 function buildOptimizePrompt(pipeName: string): string {
   const sessionDir = `~/.pi/agent/sessions/`;
   return `i need help optimizing my screenpipe pipe "${pipeName}".
@@ -1289,8 +1331,11 @@ export function PipesSection() {
                 )}
 
                 {/* Schedule */}
-                <span className="text-xs text-muted-foreground shrink-0 w-24 text-right font-mono">
-                  {pipe.config.schedule || "manual"}
+                <span
+                  className="text-xs text-muted-foreground shrink-0 text-right font-mono truncate max-w-[120px]"
+                  title={pipe.config.schedule || "manual"}
+                >
+                  {humanizeSchedule(pipe.config.schedule)}
                 </span>
 
                 {/* Last run time */}
@@ -1338,23 +1383,6 @@ export function PipesSection() {
                     </Button>
                   )}
 
-                  {/* Optimize with AI */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0"
-                    title="optimize with ai"
-                    onClick={() => {
-                      navigateHomeAndPrefill({
-                        context: "the user wants to optimize their pipe",
-                        prompt: buildOptimizePrompt(pipe.config.name),
-                        autoSend: true,
-                      });
-                    }}
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                  </Button>
-
                   {/* Overflow menu */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1363,6 +1391,18 @@ export function PipesSection() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          navigateHomeAndPrefill({
+                            context: "the user wants to optimize their pipe",
+                            prompt: buildOptimizePrompt(pipe.config.name),
+                            autoSend: true,
+                          });
+                        }}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-2" />
+                        optimize with ai
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={sharingPublic === pipe.config.name}
                         onClick={() => sharePipePublic(pipe)}
