@@ -636,6 +636,10 @@ export function RecordingSettings() {
     const checkPlatform = async () => {
       const currentPlatform = platform();
       setIsMacOS(currentPlatform === "macos");
+      // Auto-migrate macOS users off qwen3-asr (CPU-only, no Metal support)
+      if (currentPlatform === "macos" && settings.audioTranscriptionEngine === "qwen3-asr") {
+        handleSettingsChange({ audioTranscriptionEngine: "whisper-large-v3-turbo-quantized" }, true);
+      }
     };
     checkPlatform();
   }, []);
@@ -1303,7 +1307,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                     <SelectItem value="whisper-large-v3-turbo-quantized">Whisper Turbo (fast)</SelectItem>
                     <SelectItem value="whisper-tiny">Whisper Tiny</SelectItem>
                     <SelectItem value="whisper-tiny-quantized">Whisper Tiny (fast)</SelectItem>
-                    <SelectItem value="qwen3-asr">Qwen3-ASR</SelectItem>
+                    {!isMacOS && <SelectItem value="qwen3-asr">Qwen3-ASR</SelectItem>}
                   </SelectGroup>
                   <SelectGroup>
                     <SelectLabel className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">other</SelectLabel>
