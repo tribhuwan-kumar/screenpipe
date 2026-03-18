@@ -470,16 +470,32 @@ fn setup_tray_click_handlers(main_tray: &TrayIcon) -> Result<()> {
     {
         main_tray.set_show_menu_on_left_click(false)?;
         main_tray.on_tray_icon_event(|tray, event| {
-            if let tauri::tray::TrayIconEvent::Click {
-                button: tauri::tray::MouseButton::Left,
-                button_state: tauri::tray::MouseButtonState::Up,
-                ..
-            } = event
-            {
-                let app = tray.app_handle().clone();
-                let _ = tray.app_handle().run_on_main_thread(move || {
-                    let _ = ShowRewindWindow::Home { page: None }.show(&app);
-                });
+            // Fix for issue #2495: on_tray_icon_event fires INSIDE the tao Windows event
+            // loop dispatcher (synchronously). Calling run_on_main_thread() directly from
+            // here causes re-entrancy — tao panics at runner.rs:245 with:
+            //   "either event handler is re-entrant (likely), or no event handler is registered"
+            // Solution: wrap in catch_unwind for safety, and use async_runtime::spawn to
+            // exit the tao callback context before dispatching work to the main thread.
+            if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if let tauri::tray::TrayIconEvent::Click {
+                    button: tauri::tray::MouseButton::Left,
+                    button_state: tauri::tray::MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    let app = tray.app_handle().clone();
+                    // ⚠️  Do NOT call run_on_main_thread() directly here — that would
+                    // re-enter the tao event loop and trigger the panic.
+                    // Instead: spawn onto tokio so we exit the tao callback first, then
+                    // safely dispatch to the main thread from outside tao's dispatcher.
+                    tauri::async_runtime::spawn(async move {
+                        let _ = app.run_on_main_thread(move || {
+                            let _ = ShowRewindWindow::Home { page: None }.show(&app);
+                        });
+                    });
+                }
+            })) {
+                tracing::error!("panic caught in on_tray_icon_event (Windows): {:?}", e);
             }
         });
     }

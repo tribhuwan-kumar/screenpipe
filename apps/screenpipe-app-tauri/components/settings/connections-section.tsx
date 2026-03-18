@@ -164,6 +164,21 @@ function CursorLogo({ className }: { className?: string }) {
   );
 }
 
+function MstyLogo({ className }: { className?: string }) {
+  const gradientId = React.useId();
+  return (
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className={className ?? "w-5 h-5"}>
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#7c3aed" />
+        </linearGradient>
+      </defs>
+      <rect width="100" height="100" rx="20" fill={`url(#${gradientId})`} />
+      <text x="50" y="65" textAnchor="middle" fontSize="50" fontWeight="bold" fontFamily="system-ui, sans-serif" fill="white">M</text>
+    </svg>
+  );
+}
 
 function IntegrationIcon({ icon }: { icon: string }) {
   const icons: Record<string, React.ReactNode> = {
@@ -209,7 +224,7 @@ function IntegrationIcon({ icon }: { icon: string }) {
       </svg>
     ),
     anythingllm: <img src="/images/anythingllm.png" alt="AnythingLLM" className="w-5 h-5 rounded" />,
-    msty: <img src="/images/msty.webp" alt="Msty" className="w-5 h-5 rounded" />,
+    msty: <MstyLogo />,
     ollama: <img src="/images/ollama.png" alt="Ollama" className="w-5 h-5 rounded" />,
     lmstudio: <img src="/images/lmstudio.png" alt="LM Studio" className="w-5 h-5 rounded" />,
     whatsapp: <img src="/images/whatsapp.svg" alt="WhatsApp" className="w-5 h-5" />,
