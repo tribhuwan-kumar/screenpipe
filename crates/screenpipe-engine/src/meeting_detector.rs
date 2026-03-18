@@ -531,7 +531,7 @@ impl MeetingUiScanner {
         let signals_found = matched_signals.len();
         let is_in_call = signals_found >= profile.min_signals_required;
 
-        debug!(
+        info!(
             "meeting scanner: pid={} app={} signals={} in_call={} matched={:?}",
             pid, app_name, signals_found, is_in_call, matched_signals,
         );
@@ -2012,6 +2012,14 @@ pub async fn run_meeting_detection_loop(
             Vec::new()
         });
 
+        if !running_apps.is_empty() {
+            info!(
+                "meeting v2: found {} running meeting app(s): {:?}",
+                running_apps.len(),
+                running_apps.iter().map(|a| format!("{}(pid={})", a.app_name, a.pid)).collect::<Vec<_>>()
+            );
+        }
+
         if running_apps.is_empty() {
             // No meeting apps running — handle fast path for process exit
             let (new_state, ended_id) = handle_no_apps_running(state);
@@ -2053,7 +2061,7 @@ pub async fn run_meeting_detection_loop(
             Vec::new()
         });
 
-        debug!(
+        info!(
             "meeting v2: scanned {} apps, {} in call",
             scan_results.len(),
             scan_results.iter().filter(|r| r.is_in_call).count()
