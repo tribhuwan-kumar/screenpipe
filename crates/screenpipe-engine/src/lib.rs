@@ -7,7 +7,6 @@ pub mod analytics;
 mod apple_intelligence_api;
 pub mod archive;
 mod auto_destruct;
-pub mod calendar_bridge;
 pub mod calendar_speaker_id;
 pub mod cli;
 pub mod cloud_search;

@@ -1331,11 +1331,29 @@ pub async fn pi_start_inner(
             }
 
             // Signal the command queue when the SDK's agent loop finishes.
-            // "done" = agent turn complete; "response" for new_session/abort = command ack.
-            // We signal done on BOTH because new_session/abort emit "response" not "done".
-            if matches!(event_type.as_deref(), Some("done") | Some("response")) {
-                if let Some(ref qs) = queue_state_for_reader {
-                    qs.signal_done();
+            // "done" = agent turn complete (prompt finished).
+            // "response" = command ACK (new_session/abort acknowledged).
+            // For "response", the SDK's internal agent state machine may still be
+            // transitioning — a small delay prevents the next queued command from
+            // hitting "Agent is already processing".
+            if let Some(ref qs) = queue_state_for_reader {
+                match event_type.as_deref() {
+                    Some("done") => {
+                        qs.signal_done();
+                    }
+                    Some("response") => {
+                        // The SDK ACKed a non-prompt command (new_session/abort)
+                        // but its agent loop may not be fully idle yet. Wait a
+                        // beat before unblocking the queue.
+                        // Note: this runs on a std::thread (not tokio), so use
+                        // std::thread::spawn + std::thread::sleep.
+                        let qs = qs.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            qs.signal_done();
+                        });
+                    }
+                    _ => {}
                 }
             }
 

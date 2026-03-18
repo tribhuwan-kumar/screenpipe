@@ -4,7 +4,7 @@
 
 //! HTTP API for connection credential management.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -71,6 +71,25 @@ async fn list_connections(State(state): State<ConnectionsState>) -> Json<Value> 
 
     let mut data = serde_json::to_value(&list).unwrap_or(json!([]));
     if let Some(arr) = data.as_array_mut() {
+        // Native calendar (macOS / Windows)
+        let cal_available =
+            tokio::task::spawn_blocking(is_native_calendar_available)
+                .await
+                .unwrap_or(false);
+        arr.push(json!({
+            "id": "calendar",
+            "name": "Calendar",
+            "icon": "calendar",
+            "category": "productivity",
+            "description": format!(
+                "Read-only access to your native {} calendar. \
+                Query events via GET /connections/calendar/events?hours_back=1&hours_ahead=8",
+                std::env::consts::OS
+            ),
+            "fields": [],
+            "connected": cal_available,
+        }));
+
         arr.push(json!({
             "id": "whatsapp",
             "name": "WhatsApp",
@@ -185,6 +204,118 @@ async fn whatsapp_disconnect(State(state): State<ConnectionsState>) -> Json<Valu
     Json(json!({ "success": true }))
 }
 
+// ---------------------------------------------------------------------------
+// Calendar routes — exposes native OS calendar (EventKit / WinRT)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct CalendarEventsQuery {
+    pub hours_back: Option<i64>,
+    pub hours_ahead: Option<i64>,
+}
+
+/// GET /connections/calendar/events — fetch native OS calendar events.
+async fn calendar_events(
+    Query(params): Query<CalendarEventsQuery>,
+) -> (StatusCode, Json<Value>) {
+    let hours_back = params.hours_back.unwrap_or(1);
+    let hours_ahead = params.hours_ahead.unwrap_or(8);
+
+    match tokio::task::spawn_blocking(move || get_native_calendar_events(hours_back, hours_ahead))
+        .await
+    {
+        Ok(Ok(events)) => (StatusCode::OK, Json(json!({ "data": events }))),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("task join error: {}", e) })),
+        ),
+    }
+}
+
+/// GET /connections/calendar/status — check native calendar access.
+async fn calendar_status() -> Json<Value> {
+    let available =
+        tokio::task::spawn_blocking(is_native_calendar_available)
+            .await
+            .unwrap_or(false);
+    Json(json!({ "available": available, "platform": std::env::consts::OS }))
+}
+
+#[cfg(target_os = "macos")]
+fn get_native_calendar_events(hours_back: i64, hours_ahead: i64) -> Result<Vec<Value>, String> {
+    use screenpipe_connect::calendar::ScreenpipeCalendar;
+    let cal = ScreenpipeCalendar::new();
+    let events = cal.get_events(hours_back, hours_ahead).map_err(|e| format!("{:?}", e))?;
+    Ok(events
+        .into_iter()
+        .map(|e| {
+            json!({
+                "id": e.id,
+                "title": e.title,
+                "start": e.start.to_rfc3339(),
+                "end": e.end.to_rfc3339(),
+                "start_display": e.start_local.format("%H:%M").to_string(),
+                "end_display": e.end_local.format("%H:%M").to_string(),
+                "attendees": e.attendees,
+                "location": e.location,
+                "calendar_name": e.calendar_name,
+                "is_all_day": e.is_all_day,
+            })
+        })
+        .collect())
+}
+
+#[cfg(target_os = "windows")]
+fn get_native_calendar_events(hours_back: i64, hours_ahead: i64) -> Result<Vec<Value>, String> {
+    use screenpipe_connect::calendar_windows::ScreenpipeCalendar;
+    let cal = ScreenpipeCalendar::new()?;
+    let events = cal.get_events(hours_back, hours_ahead)?;
+    Ok(events
+        .into_iter()
+        .map(|e| {
+            json!({
+                "id": e.id,
+                "title": e.title,
+                "start": e.start.to_rfc3339(),
+                "end": e.end.to_rfc3339(),
+                "start_display": e.start_local.format("%H:%M").to_string(),
+                "end_display": e.end_local.format("%H:%M").to_string(),
+                "attendees": e.attendees,
+                "location": e.location,
+                "calendar_name": e.calendar_name,
+                "is_all_day": e.is_all_day,
+            })
+        })
+        .collect())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn get_native_calendar_events(_hours_back: i64, _hours_ahead: i64) -> Result<Vec<Value>, String> {
+    Err("native calendar not supported on this platform".into())
+}
+
+#[cfg(target_os = "macos")]
+fn is_native_calendar_available() -> bool {
+    use screenpipe_connect::calendar::ScreenpipeCalendar;
+    // Try fetching a tiny window — if it succeeds, we have access
+    let cal = ScreenpipeCalendar::new();
+    cal.get_events(0, 1).is_ok()
+}
+
+#[cfg(target_os = "windows")]
+fn is_native_calendar_available() -> bool {
+    screenpipe_connect::calendar_windows::ScreenpipeCalendar::is_available()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn is_native_calendar_available() -> bool {
+    false
+}
+
 pub fn router<S>(cm: SharedConnectionManager, wa: SharedWhatsAppGateway) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
@@ -192,6 +323,9 @@ where
     let state = ConnectionsState { cm, wa };
     Router::new()
         .route("/", get(list_connections))
+        // Calendar routes (must be before /:id to avoid conflict)
+        .route("/calendar/events", get(calendar_events))
+        .route("/calendar/status", get(calendar_status))
         // WhatsApp-specific routes (must be before /:id to avoid conflict)
         .route("/whatsapp/pair", post(whatsapp_pair))
         .route("/whatsapp/status", get(whatsapp_status))
