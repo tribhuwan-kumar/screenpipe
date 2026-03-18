@@ -568,6 +568,17 @@ function DiscoverView() {
     }
   };
 
+  // Client-side category filter (must be before any early returns to keep hook count stable)
+  const filteredPipes = useMemo(() => {
+    if (category === "All") return pipes;
+    return pipes.filter((p) => {
+      const cat = (p.category || "other").charAt(0).toUpperCase() + (p.category || "other").slice(1);
+      return cat === category;
+    });
+  }, [pipes, category]);
+
+  const featuredPipes = filteredPipes.filter((p) => p.featured);
+
   // If showing detail view, render full-width detail panel
   if (showDetail) {
     return (
@@ -615,17 +626,6 @@ function DiscoverView() {
       </div>
     );
   }
-
-  // Client-side category filter
-  const filteredPipes = useMemo(() => {
-    if (category === "All") return pipes;
-    return pipes.filter((p) => {
-      const cat = (p.category || "other").charAt(0).toUpperCase() + (p.category || "other").slice(1);
-      return cat === category;
-    });
-  }, [pipes, category]);
-
-  const featuredPipes = filteredPipes.filter((p) => p.featured);
 
   return (
     <div className="space-y-6">
