@@ -1168,6 +1168,7 @@ impl PipeManager {
                     Some(pid_tx),
                     line_tx,
                     history_enabled,
+                    None, // manual run — gateway-side caching still applies
                 ),
             )
             .await;
@@ -1571,6 +1572,7 @@ impl PipeManager {
                 Some(pid_tx),
                 line_tx,
                 history_enabled,
+                None, // manual run — gateway-side caching still applies
             ),
         )
         .await;
@@ -2192,6 +2194,11 @@ impl PipeManager {
 
                     let pipe_dir = pipes_dir.join(name);
 
+                    let pipe_system_prompt = render_pipe_system_prompt(
+                        body,
+                        api_port,
+                        preset_prompt.as_deref(),
+                    );
                     let prompt = render_prompt_with_port(
                         config,
                         body,
@@ -2298,6 +2305,7 @@ impl PipeManager {
                                 Some(pid_tx),
                                 line_tx,
                                 history_enabled,
+                                Some(&pipe_system_prompt),
                             ),
                         )
                         .await;
@@ -2670,11 +2678,41 @@ pub fn serialize_pipe(config: &PipeConfig, body: &str) -> Result<String> {
 ///
 /// The header gives the LLM all the context it needs (time range, date,
 /// timezone). No template variables needed in the prompt body.
-fn render_prompt_with_port(
-    config: &PipeConfig,
+/// Build the static system prompt for a pipe.
+///
+/// Contains the pipe body (instructions from pipe.md) and the preset system prompt.
+/// These are identical across runs and across turns within a run, making them
+/// ideal for Anthropic prompt caching (90% input cost reduction on cache hits).
+fn render_pipe_system_prompt(
     body: &str,
     api_port: u16,
     system_prompt: Option<&str>,
+) -> String {
+    let os = std::env::consts::OS;
+    let mut sys = String::new();
+
+    // Prepend preset system prompt if present
+    if let Some(sp) = system_prompt {
+        sys.push_str(sp);
+        sys.push_str("\n\n");
+    }
+
+    sys.push_str(&format!(
+        "OS: {os}\nOutput directory: ./output/\nScreenpipe API: http://localhost:{api_port}\n\n"
+    ));
+    sys.push_str(body);
+    sys
+}
+
+/// Build the dynamic user prompt for a pipe.
+///
+/// Contains time-varying context (time range, date, timezone) and any extra context.
+/// This changes every run so it won't be cached.
+fn render_prompt_with_port(
+    config: &PipeConfig,
+    _body: &str,
+    _api_port: u16,
+    _system_prompt: Option<&str>,
     extra_context: Option<&str>,
 ) -> String {
     let now = Local::now();
@@ -2695,22 +2733,10 @@ fn render_prompt_with_port(
 
     let mut prompt = String::new();
 
-    // Prepend preset system prompt if present
-    if let Some(sp) = system_prompt {
-        prompt.push_str("System prompt:\n");
-        prompt.push_str(sp);
-        prompt.push_str("\n\n");
-    }
-
-    let os = std::env::consts::OS; // "windows", "macos", "linux"
-
     let header = format!(
         r#"Time range: {start_time} to {end_time}
 Date: {date}
 Timezone: {timezone} (UTC{tz_offset})
-OS: {os}
-Output directory: ./output/
-Screenpipe API: http://localhost:{api_port}
 "#
     );
 
@@ -2720,8 +2746,6 @@ Screenpipe API: http://localhost:{api_port}
         prompt.push_str(ctx);
     }
 
-    prompt.push('\n');
-    prompt.push_str(body);
     prompt
 }
 

@@ -486,6 +486,7 @@ impl PiExecutor {
         provider_api_key: Option<&str>,
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         continue_session: bool,
+        pipe_system_prompt: Option<&str>,
     ) -> Result<AgentOutput> {
         let mut cmd = build_async_command(pi_path);
         cmd.current_dir(working_dir);
@@ -497,6 +498,9 @@ impl PiExecutor {
         }
         cmd.arg("--provider").arg(resolved_provider);
         cmd.arg("--model").arg(model);
+        if let Some(sys) = pipe_system_prompt {
+            cmd.arg("--append-system-prompt").arg(sys);
+        }
         cmd.arg("-p").arg(prompt);
 
         if let Some(ref token) = self.user_token {
@@ -585,6 +589,7 @@ impl PiExecutor {
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         line_tx: tokio::sync::mpsc::UnboundedSender<String>,
         continue_session: bool,
+        pipe_system_prompt: Option<&str>,
     ) -> Result<AgentOutput> {
         let mut cmd = build_async_command(pi_path);
         cmd.current_dir(working_dir);
@@ -599,6 +604,11 @@ impl PiExecutor {
         }
         cmd.arg("--provider").arg(resolved_provider);
         cmd.arg("--model").arg(model);
+        // Pass pipe instructions as system prompt for Anthropic prompt caching.
+        // Pi's internal system prompt + this appended text form the cached prefix.
+        if let Some(sys) = pipe_system_prompt {
+            cmd.arg("--append-system-prompt").arg(sys);
+        }
         cmd.arg("-p").arg(prompt);
 
         if let Some(ref token) = self.user_token {
@@ -798,6 +808,7 @@ impl AgentExecutor for PiExecutor {
                 provider_api_key,
                 pid_tx,
                 continue_session,
+                None, // no pipe system prompt for trait-based calls
             )
             .await?;
 
@@ -828,6 +839,7 @@ impl AgentExecutor for PiExecutor {
                     provider_api_key,
                     None,
                     continue_session,
+                    None,
                 )
                 .await;
         }
@@ -846,6 +858,7 @@ impl AgentExecutor for PiExecutor {
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         line_tx: tokio::sync::mpsc::UnboundedSender<String>,
         continue_session: bool,
+        pipe_system_prompt: Option<&str>,
     ) -> Result<AgentOutput> {
         let resolved_provider = provider.unwrap_or("screenpipe").to_string();
         let resolved_model = Self::resolve_model(model, &resolved_provider);
@@ -884,6 +897,7 @@ impl AgentExecutor for PiExecutor {
                 pid_tx,
                 line_tx.clone(),
                 continue_session,
+                pipe_system_prompt,
             )
             .await?;
 
@@ -914,6 +928,7 @@ impl AgentExecutor for PiExecutor {
                     None,
                     line_tx,
                     continue_session,
+                    pipe_system_prompt,
                 )
                 .await;
         }

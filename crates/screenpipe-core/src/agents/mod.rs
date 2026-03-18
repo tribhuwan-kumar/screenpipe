@@ -73,6 +73,7 @@ pub trait AgentExecutor: Send + Sync {
         pid_tx: Option<tokio::sync::oneshot::Sender<u32>>,
         line_tx: tokio::sync::mpsc::UnboundedSender<String>,
         continue_session: bool,
+        _pipe_system_prompt: Option<&str>,
     ) -> Result<AgentOutput> {
         let output = self
             .run(
