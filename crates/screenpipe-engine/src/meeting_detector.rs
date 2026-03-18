@@ -688,7 +688,7 @@ fn check_signal_match(
     identifier: Option<&str>,
 ) -> bool {
     match signal {
-        CallSignal::AutomationId(id) => identifier.map_or(false, |ident| ident == *id),
+        CallSignal::AutomationId(id) => identifier.map_or(false, |ident| ident.eq_ignore_ascii_case(id)),
         CallSignal::AutomationIdContains(substr) => identifier.map_or(false, |ident| {
             ident.to_lowercase().contains(&substr.to_lowercase())
         }),
@@ -745,8 +745,7 @@ fn check_signal_match_precomputed(
 ) -> bool {
     match &ps.signal {
         CallSignal::AutomationId(id) => {
-            // exact match (not lowercased — automation IDs are case-sensitive)
-            identifier_lower.map_or(false, |ident| ident == *id)
+            identifier_lower.map_or(false, |ident| ident.eq_ignore_ascii_case(id))
         }
         CallSignal::AutomationIdContains(_) => {
             identifier_lower.map_or(false, |ident| ident.contains(&ps.lower[..]))
@@ -870,6 +869,7 @@ fn get_app_name_for_pid(pid: i32) -> Option<String> {
 #[derive(Debug, Clone)]
 struct WindowsProcessInfo {
     pid: u32,
+    parent_pid: u32,
     name: String,
 }
 
@@ -901,6 +901,7 @@ fn windows_enumerate_processes() -> Vec<WindowsProcessInfo> {
                 );
                 results.push(WindowsProcessInfo {
                     pid: entry.th32ProcessID,
+                    parent_pid: entry.th32ParentProcessID,
                     name,
                 });
                 if Process32NextW(snapshot, &mut entry).is_err() {
@@ -1079,7 +1080,7 @@ unsafe fn windows_walk_uia(
     for signal in signals {
         let matched = match signal {
             CallSignal::AutomationId(id) => {
-                automation_id.as_deref().map_or(false, |a| a == *id)
+                automation_id.as_deref().map_or(false, |a| a.eq_ignore_ascii_case(id))
             }
             CallSignal::AutomationIdContains(substr) => {
                 automation_id.as_deref().map_or(false, |a| {
@@ -1602,7 +1603,7 @@ pub fn find_running_meeting_apps(
         }
     }
 
-    // Match native app processes
+    // Match native app processes + their child processes (e.g., Teams spawns msedgewebview2.exe)
     for (idx, profile) in profiles.iter().enumerate() {
         for proc in process_map.iter() {
             let proc_name_lower = proc.name.to_lowercase();
@@ -1613,6 +1614,7 @@ pub fn find_running_meeting_apps(
                 .any(|n| proc_name_lower == n.to_lowercase());
 
             if matches_native && !seen_pids.contains(&(proc.pid as i32)) {
+                // Add the main process
                 results.push(RunningMeetingApp {
                     pid: proc.pid as i32,
                     app_name: proc.name.clone(),
@@ -1620,6 +1622,19 @@ pub fn find_running_meeting_apps(
                     browser_url: None,
                 });
                 seen_pids.insert(proc.pid as i32);
+
+                // Also add child processes (Teams uses msedgewebview2.exe for UI)
+                for child in process_map.iter() {
+                    if child.parent_pid == proc.pid && !seen_pids.contains(&(child.pid as i32)) {
+                        results.push(RunningMeetingApp {
+                            pid: child.pid as i32,
+                            app_name: format!("{} ({})", proc.name, child.name),
+                            profile_index: idx,
+                            browser_url: None,
+                        });
+                        seen_pids.insert(child.pid as i32);
+                    }
+                }
             }
         }
     }
