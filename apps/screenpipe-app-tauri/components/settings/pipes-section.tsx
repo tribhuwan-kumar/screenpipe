@@ -26,6 +26,7 @@ import {
   Search,
   Share2,
   Link,
+  Upload,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,7 @@ import { useTeam } from "@/lib/hooks/use-team";
 import { useToast } from "@/components/ui/use-toast";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
+import { PublishDialog } from "@/components/pipe-store";
 import posthog from "posthog-js";
 
 const PIPE_CREATION_PROMPT = `create a screenpipe pipe that does the following.
@@ -601,6 +603,7 @@ export function PipesSection() {
   const isTeamAdmin = !!team.team && team.role === "admin";
   const [sharingPipe, setSharingPipe] = useState<string | null>(null);
   const [sharingPublic, setSharingPublic] = useState<string | null>(null);
+  const [publishPipeName, setPublishPipeName] = useState<string | null>(null);
   const [pipeFilter, setPipeFilter] = useState<"all" | "personal" | "team">(() => {
     if (typeof window !== "undefined") {
       return (localStorage.getItem("pipes-pipe-filter") as "all" | "personal" | "team") || "all";
@@ -1320,6 +1323,12 @@ export function PipesSection() {
                           </DropdownMenuItem>
                         </>
                       )}
+                      <DropdownMenuItem
+                        onClick={() => setPublishPipeName(pipe.config.name)}
+                      >
+                        <Upload className="h-3.5 w-3.5 mr-2" />
+                        publish to store
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
@@ -1812,6 +1821,17 @@ export function PipesSection() {
         onOpenChange={setShowUpgrade}
         reason="daily_limit"
         source="pipes"
+      />
+
+      <PublishDialog
+        open={!!publishPipeName}
+        onOpenChange={(v) => { if (!v) setPublishPipeName(null); }}
+        token={settings.user?.token}
+        onPublished={() => {
+          setPublishPipeName(null);
+          toast({ title: "pipe published to store" });
+        }}
+        defaultPipe={publishPipeName || undefined}
       />
 
     </div>

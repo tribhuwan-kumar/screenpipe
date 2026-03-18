@@ -1320,21 +1320,23 @@ function redactSecrets(text: string): { redacted: string; count: number } {
   return { redacted: result, count };
 }
 
-function PublishDialog({
+export function PublishDialog({
   open,
   onOpenChange,
   token,
   onPublished,
+  defaultPipe,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   token?: string | null;
   onPublished: () => void;
+  defaultPipe?: string;
 }) {
   const { toast } = useToast();
   const [localPipes, setLocalPipes] = useState<LocalPipe[]>([]);
   const [loadingPipes, setLoadingPipes] = useState(false);
-  const [selectedPipe, setSelectedPipe] = useState("");
+  const [selectedPipe, setSelectedPipe] = useState(defaultPipe || "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [icon, setIcon] = useState("🔧");
@@ -1344,6 +1346,7 @@ function PublishDialog({
 
   useEffect(() => {
     if (!open) return;
+    if (defaultPipe) setSelectedPipe(defaultPipe);
     setLoadingPipes(true);
     fetch("http://localhost:3030/pipes")
       .then((r) => r.json())
@@ -1353,7 +1356,7 @@ function PublishDialog({
       })
       .catch(() => setLocalPipes([]))
       .finally(() => setLoadingPipes(false));
-  }, [open]);
+  }, [open, defaultPipe]);
 
   const handlePublish = async () => {
     if (!selectedPipe || !title) return;
