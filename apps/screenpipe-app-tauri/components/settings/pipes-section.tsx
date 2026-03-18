@@ -1484,7 +1484,7 @@ export function PipesSection() {
 
               {/* Expanded detail */}
               {expanded === pipe.config.name && (
-                  <div className="mt-4 space-y-4 border-t pt-4">
+                  <div className="mt-4 space-y-4 border-t pt-4 px-4">
                     <PipePresetSelector
                       pipe={pipe}
                       setPipes={setPipes}
