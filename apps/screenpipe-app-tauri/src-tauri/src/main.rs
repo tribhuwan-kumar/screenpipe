@@ -641,11 +641,26 @@ async fn main() {
             .typ::<hardware::HardwareCapability>()
             .typ::<chatgpt_oauth::ChatGptOAuthStatus>();
 
+        // Export to a temp file first, then only overwrite if content changed.
+        // This avoids triggering the Tauri dev watcher on every launch which
+        // causes an infinite rebuild loop.
+        let bindings_path = "lib/utils/tauri.ts";
+        let tmp_path = format!("{}.tmp", bindings_path);
         if let Err(e) = builder.export(
             Typescript::default().bigint(specta_typescript::BigIntExportBehavior::BigInt),
-            "lib/utils/tauri.ts",
+            &tmp_path,
         ) {
             eprintln!("Warning: Failed to export TypeScript bindings: {e}");
+        } else {
+            let new_content = std::fs::read(&tmp_path).unwrap_or_default();
+            let old_content = std::fs::read(bindings_path).unwrap_or_default();
+            if new_content != old_content {
+                if let Err(e) = std::fs::rename(&tmp_path, bindings_path) {
+                    eprintln!("Warning: Failed to move TypeScript bindings: {e}");
+                }
+            } else {
+                let _ = std::fs::remove_file(&tmp_path);
+            }
         }
     }
 
