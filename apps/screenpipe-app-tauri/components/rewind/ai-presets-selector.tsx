@@ -194,7 +194,7 @@ export function AIProviderConfig({
   const [piAvailable, setPiAvailable] = useState(false);
   const [piModels, setPiModels] = useState<{ id: string; name: string; free?: boolean }[]>([]);
 
-  // Fetch PI models from gateway (same source of truth as settings)
+  // Fetch PI models from gateway (single source of truth)
   useEffect(() => {
     if (selectedProvider !== "pi") return;
     const fetchPiModels = async () => {
@@ -210,22 +210,11 @@ export function AIProviderConfig({
             name: m.name || m.id,
             free: m.free,
           }));
-          if (models.length > 0) {
-            setPiModels(models);
-            return;
-          }
+          setPiModels(models);
         }
       } catch {
-        // fallback below
+        // gateway down — model list stays empty, user sees empty dropdown
       }
-      // Fallback if gateway is unreachable
-      setPiModels([
-        { id: "claude-haiku-4-5", name: "Haiku 4.5 (fast)", free: false },
-        { id: "claude-sonnet-4-5", name: "Sonnet 4.5 (balanced)", free: false },
-        { id: "claude-opus-4-6", name: "Opus 4.6 (powerful)", free: false },
-        { id: "gemini-3-flash", name: "Gemini 3 Flash (fast)", free: false },
-        { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro (balanced)", free: false },
-      ]);
     };
     fetchPiModels();
   }, [selectedProvider, settings?.user?.token]);
