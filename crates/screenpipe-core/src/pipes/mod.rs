@@ -224,6 +224,70 @@ fn simple_hash(content: &str) -> String {
     format!("{:016x}", hash)
 }
 
+// ---------------------------------------------------------------------------
+// Tombstone tracking — prevents deleted pipes from being restored by
+// builtin installation or cloud sync.
+// ---------------------------------------------------------------------------
+
+/// A single tombstone entry for a deleted pipe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TombstoneEntry {
+    /// When the pipe was deleted (UTC ISO 8601).
+    pub deleted_at: String,
+    /// FNV-1a hash of the pipe.md content at the time of deletion.
+    /// Used by `install_builtin_pipes` to detect updated builtins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+}
+
+/// File name for the tombstone registry inside the pipes directory.
+const TOMBSTONES_FILE: &str = ".tombstones.json";
+
+/// Read the tombstone file from a pipes directory.
+/// Returns an empty map on any error (missing file, corrupt JSON).
+pub fn read_tombstones(pipes_dir: &Path) -> HashMap<String, TombstoneEntry> {
+    let path = pipes_dir.join(TOMBSTONES_FILE);
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+            warn!("tombstones file corrupt, ignoring: {}", e);
+            HashMap::new()
+        }),
+        Err(_) => HashMap::new(),
+    }
+}
+
+/// Write the tombstone file atomically (write to temp, then rename).
+fn write_tombstones(pipes_dir: &Path, tombstones: &HashMap<String, TombstoneEntry>) -> Result<()> {
+    let path = pipes_dir.join(TOMBSTONES_FILE);
+    let tmp_path = pipes_dir.join(".tombstones.json.tmp");
+    let json = serde_json::to_string_pretty(tombstones)?;
+    std::fs::write(&tmp_path, &json)?;
+    std::fs::rename(&tmp_path, &path)?;
+    Ok(())
+}
+
+/// Add a tombstone for a deleted pipe.
+fn add_tombstone(pipes_dir: &Path, name: &str, content_hash: Option<String>) -> Result<()> {
+    let mut tombstones = read_tombstones(pipes_dir);
+    tombstones.insert(
+        name.to_string(),
+        TombstoneEntry {
+            deleted_at: Utc::now().to_rfc3339(),
+            content_hash,
+        },
+    );
+    write_tombstones(pipes_dir, &tombstones)
+}
+
+/// Remove a tombstone (e.g. when a pipe is re-installed explicitly).
+fn remove_tombstone(pipes_dir: &Path, name: &str) -> Result<()> {
+    let mut tombstones = read_tombstones(pipes_dir);
+    if tombstones.remove(name).is_some() {
+        write_tombstones(pipes_dir, &tombstones)?;
+    }
+    Ok(())
+}
+
 /// Result of a single pipe run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipeRunLog {
@@ -2020,6 +2084,8 @@ impl PipeManager {
                     std::fs::copy(source_path, &dest_file)?;
                 }
                 self.load_pipes().await?;
+                // Clear any tombstone — user is explicitly re-installing
+                let _ = remove_tombstone(&self.pipes_dir, &name);
                 info!("installed pipe '{}' from local file", name);
                 return Ok(name);
             } else if source_path.is_dir() {
@@ -2038,6 +2104,7 @@ impl PipeManager {
                     copy_dir_recursive(source_path, &dest_dir)?;
                 }
                 self.load_pipes().await?;
+                let _ = remove_tombstone(&self.pipes_dir, &name);
                 info!("installed pipe '{}' from local dir", name);
                 return Ok(name);
             }
@@ -2059,6 +2126,7 @@ impl PipeManager {
             let content = response.text().await?;
             std::fs::write(dest_dir.join("pipe.md"), &content)?;
             self.load_pipes().await?;
+            let _ = remove_tombstone(&self.pipes_dir, &name);
             info!("installed pipe '{}' from URL", name);
             return Ok(name);
         }
@@ -2097,6 +2165,7 @@ impl PipeManager {
         std::fs::write(dest_dir.join("pipe.md"), &content)?;
 
         self.load_pipes().await?;
+        let _ = remove_tombstone(&self.pipes_dir, &name);
         info!("installed pipe '{}' from store (v{})", name, version);
         Ok(name)
     }
@@ -2138,6 +2207,8 @@ impl PipeManager {
     }
 
     /// Delete a pipe and its folder.
+    /// Writes a tombstone so the pipe is not restored by builtin installation
+    /// or cloud sync.
     pub async fn delete_pipe(&self, name: &str) -> Result<()> {
         let dir = self.pipes_dir.join(name);
         if !dir.exists() {
@@ -2160,7 +2231,17 @@ impl PipeManager {
             }
         }
 
+        // Compute content hash before deleting (for builtin upgrade detection)
+        let content_hash = std::fs::read_to_string(dir.join("pipe.md"))
+            .ok()
+            .map(|c| simple_hash(&c));
+
         std::fs::remove_dir_all(&dir)?;
+
+        // Write tombstone so builtin install and cloud sync don't restore it
+        if let Err(e) = add_tombstone(&self.pipes_dir, name, content_hash) {
+            warn!("failed to write tombstone for '{}': {}", name, e);
+        }
 
         let mut pipes = self.pipes.lock().await;
         pipes.remove(name);
@@ -2772,10 +2853,33 @@ impl PipeManager {
             ),
         ];
 
+        let tombstones = read_tombstones(&self.pipes_dir);
+
         for (name, content) in builtins {
             let dir = self.pipes_dir.join(name);
             let pipe_md = dir.join("pipe.md");
             if !pipe_md.exists() {
+                // Check tombstone — user may have intentionally deleted this pipe
+                if let Some(entry) = tombstones.get(name) {
+                    let new_hash = simple_hash(content);
+                    if entry.content_hash.as_deref() == Some(&new_hash) {
+                        // Same content as when deleted — respect user's deletion
+                        debug!(
+                            "skipping tombstoned builtin pipe '{}' (content unchanged)",
+                            name
+                        );
+                        continue;
+                    }
+                    // Content changed (new app version) — install updated version
+                    // and clear the tombstone so user gets the improvement
+                    info!(
+                        "builtin pipe '{}' updated since deletion, re-installing",
+                        name
+                    );
+                    if let Err(e) = remove_tombstone(&self.pipes_dir, name) {
+                        warn!("failed to remove tombstone for '{}': {}", name, e);
+                    }
+                }
                 std::fs::create_dir_all(&dir)?;
                 std::fs::write(&pipe_md, content)?;
                 info!("installed built-in pipe: {}", name);

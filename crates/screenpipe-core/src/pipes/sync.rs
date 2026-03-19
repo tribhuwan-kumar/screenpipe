@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use tracing::{info, warn};
 
-use super::parse_frontmatter;
+use super::{parse_frontmatter, read_tombstones};
 
 /// Current schema version for the sync manifest.
 pub const PIPE_SYNC_SCHEMA: u32 = 1;
@@ -144,6 +144,16 @@ pub fn build_local_manifest(pipes_dir: &Path, machine_id: &str) -> PipeSyncManif
                 last_modified_by: machine_id.to_string(),
             },
         );
+    }
+
+    // Load local tombstones so cloud sync doesn't re-import deleted pipes
+    let tombstones = read_tombstones(pipes_dir);
+    for (name, entry) in &tombstones {
+        if !manifest.pipes.contains_key(name) {
+            manifest
+                .tombstones
+                .insert(name.clone(), entry.deleted_at.clone());
+        }
     }
 
     manifest

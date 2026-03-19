@@ -188,6 +188,7 @@ const AISection = ({
   piAvailable?: boolean;
 }) => {
   const { settings, updateSettings } = useSettings();
+  const isEnterprise = useIsEnterpriseBuild();
   const [settingsPreset, setSettingsPreset] = useState<
     Partial<AIPreset> | undefined
   >(preset);
@@ -201,16 +202,22 @@ const AISection = ({
   const [chatgptLoggedIn, setChatgptLoggedIn] = useState(false);
   const [chatgptLoading, setChatgptLoading] = useState(false);
 
+  // Filter presets the same way the UI does so hidden presets don't block creation
+  const visiblePresets = useMemo(
+    () => settings.aiPresets.filter((p) => !isEnterprise || p.provider !== "pi"),
+    [settings.aiPresets, isEnterprise]
+  );
+
   // Optimized validation with debouncing
   const debouncedValidatePreset = useMemo(
     () => debounce((presetData: Partial<AIPreset>) => {
       const errors: Record<string, string> = {};
-      
+
       // Validate name
       if (presetData.id) {
         const nameValidation = validatePresetName(
-          presetData.id, 
-          settings.aiPresets, 
+          presetData.id,
+          visiblePresets,
           preset?.id
         );
         if (!nameValidation.isValid && nameValidation.error) {
@@ -338,8 +345,14 @@ const AISection = ({
           defaultPreset: false,
         } as AIPreset;
 
+        // Remove any hidden preset with the same name (e.g. filtered Pi preset
+        // in enterprise builds) so it doesn't ghost-block future operations
+        const cleanedPresets = settings.aiPresets.filter(
+          (p) => p.id.toLowerCase() !== newPreset.id.toLowerCase()
+        );
+
         await updateSettings({
-          aiPresets: [...settings.aiPresets, newPreset],
+          aiPresets: [...cleanedPresets, newPreset],
         });
 
         toast({
@@ -1038,7 +1051,7 @@ const AISection = ({
         label="Preset Name"
         value={settingsPreset?.id || ""}
         onChange={(value, isValid) => updateSettingsPreset({ id: value })}
-        validation={(value) => validatePresetName(value, settings.aiPresets, preset?.id)}
+        validation={(value) => validatePresetName(value, visiblePresets, preset?.id)}
         placeholder="Enter preset name"
         required={true}
         disabled={!!preset && !isDuplicating && preset.id !== undefined}
