@@ -1987,6 +1987,9 @@ impl PipeManager {
         let source_path = Path::new(source);
 
         if source_path.exists() {
+            // Canonicalize source for reliable same-path detection
+            let source_canonical = source_path.canonicalize().unwrap_or_else(|_| source_path.to_path_buf());
+
             // Local file or directory
             if source_path.is_file() && source_path.extension().is_some_and(|e| e == "md") {
                 // Single .md file — derive name from filename
@@ -2007,8 +2010,15 @@ impl PipeManager {
                 };
 
                 let dest_dir = self.pipes_dir.join(&name);
-                std::fs::create_dir_all(&dest_dir)?;
-                std::fs::copy(source_path, dest_dir.join("pipe.md"))?;
+                let dest_file = dest_dir.join("pipe.md");
+                let dest_canonical = dest_file.canonicalize().unwrap_or_else(|_| dest_file.clone());
+
+                // Skip copy if source and destination are the same file — copying
+                // a file onto itself can truncate it to 0 bytes on some platforms.
+                if source_canonical != dest_canonical {
+                    std::fs::create_dir_all(&dest_dir)?;
+                    std::fs::copy(source_path, &dest_file)?;
+                }
                 self.load_pipes().await?;
                 info!("installed pipe '{}' from local file", name);
                 return Ok(name);
@@ -2020,7 +2030,13 @@ impl PipeManager {
                     .to_string_lossy()
                     .to_string();
                 let dest_dir = self.pipes_dir.join(&name);
-                copy_dir_recursive(source_path, &dest_dir)?;
+                let dest_canonical = dest_dir.canonicalize().unwrap_or_else(|_| dest_dir.clone());
+
+                // Skip copy if source and destination are the same directory —
+                // copying a directory onto itself can clobber file contents.
+                if source_canonical != dest_canonical {
+                    copy_dir_recursive(source_path, &dest_dir)?;
+                }
                 self.load_pipes().await?;
                 info!("installed pipe '{}' from local dir", name);
                 return Ok(name);
