@@ -79,6 +79,40 @@ const STATIC_MENTION_SUGGESTIONS: MentionSuggestion[] = [
 
 // TOOLS definition removed — search is now handled by Pi's screenpipe-search skill
 
+/**
+ * Extract tier info from gateway error JSON embedded in error strings and
+ * return a user-facing message appropriate to their actual subscription tier.
+ */
+function buildDailyLimitMessage(errorStr: string): string {
+  try {
+    const tierMatch = errorStr.match(/"tier":\s*"([^"]+)"/);
+    const limitMatch = errorStr.match(/"limit_today":\s*(\d+)/);
+    const tier = tierMatch?.[1];
+    const limit = limitMatch ? parseInt(limitMatch[1]) : null;
+
+    if (tier === "subscribed") {
+      return `You've hit your daily Pro limit${limit ? ` (${limit} queries)` : ""}. Resets at midnight UTC.`;
+    } else if (tier === "logged_in") {
+      return `You've used all ${limit ?? 50} free queries for today. Upgrade to Pro for more.`;
+    } else {
+      return `You've used all ${limit ?? 25} free queries for today. Sign in for more, or upgrade to Pro.`;
+    }
+  } catch {
+    return "You've reached your daily query limit.";
+  }
+}
+
+/** Extract the gateway-reported tier from an error string, if present. */
+function extractTierFromError(errorStr: string): "anonymous" | "logged_in" | "subscribed" | undefined {
+  try {
+    const match = errorStr.match(/"tier":\s*"([^"]+)"/);
+    if (match?.[1] === "subscribed" || match?.[1] === "logged_in" || match?.[1] === "anonymous") {
+      return match[1] as "anonymous" | "logged_in" | "subscribed";
+    }
+  } catch {}
+  return undefined;
+}
+
 // Helper to get timezone offset string (e.g., "+1" or "-5")
 function getTimezoneOffsetString(): string {
   const offsetMinutes = new Date().getTimezoneOffset();
@@ -865,6 +899,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<"daily_limit" | "model_not_allowed" | "rate_limit">("daily_limit");
   const [upgradeResetsAt, setUpgradeResetsAt] = useState<string | undefined>();
+  const [upgradeTier, setUpgradeTier] = useState<"anonymous" | "logged_in" | "subscribed" | undefined>();
   const [scheduleDialogMessage, setScheduleDialogMessage] = useState<{ prompt: string; response: string } | null>(null);
   const [prefillContext, setPrefillContext] = useState<string | null>(null);
   const [prefillSource, setPrefillSource] = useState<string>("search");
@@ -1744,6 +1779,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
             if (isDailyLimit) {
               setUpgradeReason("daily_limit");
+              setUpgradeTier(extractTierFromError(errorStr));
               posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
             } else {
               setUpgradeReason("rate_limit");
@@ -1753,7 +1789,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               const msgId = piMessageIdRef.current;
               let content: string;
               if (isDailyLimit) {
-                content = "You've used all your free queries for today.";
+                content = buildDailyLimitMessage(errorStr);
               } else if (isPerMinuteRate) {
                 // Extract wait time from error
                 const waitMatch = errorStr.match(/wait (\d+) seconds/i);
@@ -1795,8 +1831,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                   if (match) setUpgradeResetsAt(match[1]);
                 } catch {}
                 setUpgradeReason("daily_limit");
+                setUpgradeTier(extractTierFromError(fullError));
                 setMessages((prev) =>
-                  prev.map((m) => m.id === msgId ? { ...m, content: "You've used all your free queries for today." } : m)
+                  prev.map((m) => m.id === msgId ? { ...m, content: buildDailyLimitMessage(fullError) } : m)
                 );
               } else {
                 setUpgradeReason("rate_limit");
@@ -1839,9 +1876,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
               } catch {}
               setUpgradeReason("daily_limit");
+              setUpgradeTier(extractTierFromError(errMsg));
               posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
               setMessages((prev) =>
-                prev.map((m) => m.id === msgId ? { ...m, content: "You've used all your free queries for today." } : m)
+                prev.map((m) => m.id === msgId ? { ...m, content: buildDailyLimitMessage(errMsg) } : m)
               );
             } else if (errMsg.includes("rate limit") || errMsg.includes("rate_limit")) {
               setUpgradeReason("rate_limit");
@@ -1897,7 +1935,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                   if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
                 } catch {}
                 setUpgradeReason("daily_limit");
-                content = "You've used all your free queries for today.";
+                setUpgradeTier(extractTierFromError(errStr));
+                content = buildDailyLimitMessage(errStr);
               } else if (errStr.includes("rate limit")) {
                 setUpgradeReason("rate_limit");
                 content = "Rate limited — try again in a moment.";
@@ -1915,7 +1954,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             setMessages((prev) => {
               const existing = prev.find((m) => m.id === msgId);
               // Don't overwrite error messages with "Done" or empty content
-              const isErrorMessage = existing?.content?.includes("used all your free queries") ||
+              const isErrorMessage = existing?.content?.includes("daily") && existing?.content?.includes("limit") ||
+                existing?.content?.includes("free queries") ||
+                existing?.content?.includes("daily Pro limit") ||
+                existing?.content?.includes("daily query limit") ||
                 existing?.content?.includes("requires an upgrade") ||
                 existing?.content?.includes("Rate limited") ||
                 existing?.content?.includes("rate limit") ||
@@ -1980,8 +2022,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                   if (match) setUpgradeResetsAt(match[1]);
                 } catch {}
                 setUpgradeReason("daily_limit");
+                setUpgradeTier(extractTierFromError(errorStr));
                 setMessages((prev) =>
-                  prev.map((m) => m.id === msgId ? { ...m, content: "You've used all your free queries for today." } : m)
+                  prev.map((m) => m.id === msgId ? { ...m, content: buildDailyLimitMessage(errorStr) } : m)
                 );
               } else {
                 setUpgradeReason("rate_limit");
@@ -3111,7 +3154,9 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 <MessageContent message={message} onImageClick={(images, index) => setImageViewer({ images, index })} />
                 {/* Upgrade button for daily limit errors */}
                 {message.role === "assistant" &&
-                 (message.content.includes("used all your free queries") ||
+                 (message.content.includes("free queries") ||
+                  message.content.includes("daily Pro limit") ||
+                  message.content.includes("daily query limit") ||
                   message.content.includes("requires an upgrade")) && (
                   <button
                     onClick={() => setShowUpgradeDialog(true)}
@@ -3709,6 +3754,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         reason={upgradeReason}
         resetsAt={upgradeResetsAt}
         source="chat"
+        gatewayTier={upgradeTier}
       />
 
       {scheduleDialogMessage && (

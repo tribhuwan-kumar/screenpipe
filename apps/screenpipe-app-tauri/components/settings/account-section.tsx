@@ -55,7 +55,7 @@ export function AccountSection() {
                     stripe_connected: true,
                   },
                 });
-                loadUser(settings.user.token!, true);
+                loadUser(settings.user.token!);
               }
               toast({
                 title: "stripe connected!",

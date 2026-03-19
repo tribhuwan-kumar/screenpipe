@@ -4,7 +4,6 @@ import { platform } from "@tauri-apps/plugin-os";
 import { Store } from "@tauri-apps/plugin-store";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import posthog from "posthog-js";
-import localforage from "localforage";
 import { User } from "../utils/tauri";
 import { SettingsStore } from "../utils/tauri";
 export type VadSensitivity = "low" | "medium" | "high";
@@ -549,7 +548,7 @@ interface SettingsContextType {
 	resetSettings: () => Promise<void>;
 	resetSetting: <K extends keyof Settings>(key: K) => Promise<void>;
 	reloadStore: () => Promise<void>;
-	loadUser: (token: string, forceReload?: boolean) => Promise<void>;
+	loadUser: (token: string) => Promise<void>;
 	getDataDir: () => Promise<string>;
 	isSettingsLoaded: boolean;
 	loadingError: string | null;
@@ -592,15 +591,38 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 	// Auto-refresh user data from API when app starts with a stored token.
 	// This ensures subscription status (cloud_subscribed) stays current —
 	// e.g. when a subscription is granted after the user last logged in.
+	// Retries with exponential backoff so transient network failures don't
+	// leave the user stuck on a stale tier for the entire session.
 	useEffect(() => {
 		if (!isSettingsLoaded) return;
 		const token = settings.user?.token;
 		if (!token) return;
 
-		// Force reload to bypass localforage cache
-		loadUser(token, true).catch((err) => {
-			console.warn("auto-refresh user data failed:", err);
-		});
+		let cancelled = false;
+		const MAX_RETRIES = 3;
+		const BASE_DELAY_MS = 2000; // 2s, 4s, 8s
+
+		const attemptLoad = async () => {
+			for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+				if (cancelled) return;
+				try {
+					await loadUser(token);
+					return; // success
+				} catch (err) {
+					console.warn(
+						`auto-refresh user data failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}):`,
+						err
+					);
+					if (attempt < MAX_RETRIES && !cancelled) {
+						const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+						await new Promise((r) => setTimeout(r, delay));
+					}
+				}
+			}
+		};
+
+		attemptLoad();
+		return () => { cancelled = true; };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [isSettingsLoaded]);
 
@@ -687,23 +709,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 		return `${homeDirPath}/.screenpipe`;
 	};
 
-	const loadUser = async (token: string, forceReload = false) => {
+	const loadUser = async (token: string) => {
 		try {
-			// try to get from cache first (unless force reload)
-			const cacheKey = `user_data_${token}`;
-			if (!forceReload) {
-				const cached = await localforage.getItem<{
-					data: User;
-					timestamp: number;
-				}>(cacheKey);
-
-				// use cache if less than 30s old
-				if (cached && Date.now() - cached.timestamp < 30000) {
-					await updateSettings({ user: cached.data });
-					return;
-				}
-			}
-
 			const response = await fetch(`https://screenpi.pe/api/user`, {
 				method: "POST",
 				headers: {
@@ -740,12 +747,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 					});
 				}
 			}
-
-			// cache the result
-			await localforage.setItem(cacheKey, {
-				data: userData,
-				timestamp: Date.now(),
-			});
 
 			await updateSettings({ user: userData });
 		} catch (err) {
