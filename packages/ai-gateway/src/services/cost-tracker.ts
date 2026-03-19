@@ -19,15 +19,6 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-opus-4-6': { input: 15.00, output: 75.00 },
   'claude-3-5-sonnet': { input: 3.00, output: 15.00 },
   'claude-3-5-haiku': { input: 0.80, output: 4.00 },
-  // OpenAI
-  'gpt-4o': { input: 2.50, output: 10.00 },
-  'gpt-4o-mini': { input: 0.15, output: 0.60 },
-  'gpt-4-turbo': { input: 10.00, output: 30.00 },
-  'gpt-4': { input: 30.00, output: 60.00 },
-  'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
-  'o1': { input: 15.00, output: 60.00 },
-  'o1-mini': { input: 3.00, output: 12.00 },
-  'o3-mini': { input: 1.10, output: 4.40 },
   // OpenRouter models
   'qwen3.5-flash': { input: 0.065, output: 0.26 },
   'qwen3.5-397b': { input: 0.39, output: 2.34 },
@@ -35,7 +26,9 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'deepseek-v3.2-speciale': { input: 0.40, output: 1.20 },
   'llama-4-maverick': { input: 0.20, output: 0.60 },
   'llama-4-scout': { input: 0.11, output: 0.34 },
+  'qwen3-coder:free': { input: 0.00, output: 0.00 },
   'qwen3-coder': { input: 0.22, output: 1.00 },
+  'step-3.5-flash:free': { input: 0.00, output: 0.00 },
   'step-3.5-flash': { input: 0.00, output: 0.00 },
   // Google Gemini
   'gemini-2.5-flash': { input: 0.15, output: 0.60 },
@@ -138,6 +131,12 @@ export function inferProvider(model: string): string {
   if (lower.includes('gemini')) return 'google';
   if (lower.includes('deepseek') || lower.includes('llama') || lower.includes('qwen') || lower.includes('mistral') || lower.includes('step-3.5') || lower.includes('stepfun')) return 'openrouter';
   return 'unknown';
+}
+
+/** Returns true for models that cost us $0 (free on OpenRouter, free Gemini tier, etc.) */
+export function isZeroCostModel(model: string): boolean {
+  const pricing = findPricing(model);
+  return pricing !== null && pricing.input === 0 && pricing.output === 0;
 }
 
 // Default max daily cost per user in USD (overridable via env.MAX_DAILY_COST_PER_USER)

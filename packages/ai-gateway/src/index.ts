@@ -10,7 +10,7 @@ import { handleFileTranscription, handleWebSocketUpgrade } from './handlers/tran
 import { handleVoiceTranscription, handleVoiceQuery, handleTextToSpeech, handleVoiceChat } from './handlers/voice';
 import { handleVertexProxy, handleVertexModels } from './handlers/vertex-proxy';
 import { handleWebSearch } from './handlers/web-search';
-import { logCost, getModelCost, inferProvider, getSpendSummary, getDailyUserCost, getMaxDailyCostPerUser } from './services/cost-tracker';
+import { logCost, getModelCost, inferProvider, getSpendSummary, getDailyUserCost, getMaxDailyCostPerUser, isZeroCostModel } from './services/cost-tracker';
 import { trackResponseUsage } from './utils/stream-usage-tracker';
 import { getModelWeight } from './services/usage-tracker';
 // import { handleTTSWebSocketUpgrade } from './handlers/voice-ws';
@@ -91,16 +91,19 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				})));
 			}
 
-			// Per-user daily cost cap — only check for expensive models to avoid latency on cheap ones
-			const modelWeight = getModelWeight(body.model);
-			if (modelWeight >= 3) {
-				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
-				const maxCost = getMaxDailyCostPerUser(env);
-				if (dailyCost >= maxCost) {
-					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
-						error: 'daily_cost_limit_exceeded',
-						message: `You've reached your daily AI usage limit. Try again tomorrow or use a lighter model like Haiku.`,
-					})));
+			// Per-user daily cost cap — skip for zero-cost models (they're free to us)
+			if (!isZeroCostModel(body.model)) {
+				const modelWeight = getModelWeight(body.model);
+				if (modelWeight >= 3) {
+					const dailyCost = await getDailyUserCost(env, authResult.deviceId);
+					const maxCost = getMaxDailyCostPerUser(env);
+					if (dailyCost >= maxCost) {
+						return addCorsHeaders(createErrorResponse(429, JSON.stringify({
+							error: 'daily_cost_limit_exceeded',
+							message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+							free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
+						})));
+					}
 				}
 			}
 
@@ -293,7 +296,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached your daily AI usage limit. Try again tomorrow or use a lighter model like Haiku.`,
+						message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
 					})));
 				}
 			}
@@ -391,7 +395,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached your daily AI usage limit. Try again tomorrow or use a lighter model like Haiku.`,
+						message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
 					})));
 				}
 			}

@@ -85,20 +85,29 @@ const STATIC_MENTION_SUGGESTIONS: MentionSuggestion[] = [
  */
 function buildDailyLimitMessage(errorStr: string): string {
   try {
+    const isCostLimit = errorStr.includes("daily_cost_limit_exceeded");
+    const isRateLimit = errorStr.includes("rate limit") || errorStr.includes("Rate limit");
+
+    if (isRateLimit) {
+      return "This model is temporarily overloaded. Try switching to another free model like Gemini 3 Flash or Qwen3 Coder.";
+    }
+
+    if (isCostLimit) {
+      return "You've reached your daily usage limit for paid models. Switch to a free model (Qwen3 Coder, Step 3.5 Flash, or Gemini Flash) for unlimited usage.";
+    }
+
     const tierMatch = errorStr.match(/"tier":\s*"([^"]+)"/);
-    const limitMatch = errorStr.match(/"limit_today":\s*(\d+)/);
     const tier = tierMatch?.[1];
-    const limit = limitMatch ? parseInt(limitMatch[1]) : null;
 
     if (tier === "subscribed") {
-      return `You've hit your daily Pro limit${limit ? ` (${limit} queries)` : ""}. Resets at midnight UTC.`;
+      return "You've hit your daily limit. Switch to a free model (Qwen3 Coder, Gemini Flash) for unlimited usage.";
     } else if (tier === "logged_in") {
-      return `You've used all ${limit ?? 50} free queries for today. Upgrade to Pro for more.`;
+      return "You've used your free queries for today. Switch to a free model (Qwen3 Coder, Gemini Flash) for unlimited usage, or upgrade to Pro.";
     } else {
-      return `You've used all ${limit ?? 25} free queries for today. Sign in for more, or upgrade to Pro.`;
+      return "You've used your free queries for today. Sign in for more, or switch to a free model (Qwen3 Coder, Gemini Flash).";
     }
   } catch {
-    return "You've reached your daily query limit.";
+    return "You've reached your daily limit. Try a free model like Qwen3 Coder or Gemini Flash.";
   }
 }
 
@@ -3152,8 +3161,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 )}
               >
                 <MessageContent message={message} onImageClick={(images, index) => setImageViewer({ images, index })} />
-                {/* Upgrade button for daily limit errors */}
+                {/* Upgrade button for daily limit errors (not shown for free model suggestions) */}
                 {message.role === "assistant" &&
+                 !message.content.includes("Switch to a free model") &&
+                 !message.content.includes("temporarily overloaded") &&
                  (message.content.includes("free queries") ||
                   message.content.includes("daily Pro limit") ||
                   message.content.includes("daily query limit") ||

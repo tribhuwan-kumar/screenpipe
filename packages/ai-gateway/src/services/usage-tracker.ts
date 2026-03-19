@@ -118,11 +118,8 @@ const MODEL_WEIGHTS: Record<string, number> = {
   'gemini-3-pro': 3,
   'gemini-3.1-pro': 3,
   'gemini-2.5-pro': 3,
-  'gemini-3-flash': 1,
-  'gemini-2.5-flash': 1,
-  'gpt-4o-mini': 1,
-  'gpt-4o': 3,
-  'gpt-4': 3,
+  'gemini-3-flash': 0,
+  'gemini-2.5-flash': 0,
   // OpenRouter models
   'qwen3.5-flash': 1,
   'qwen3.5-397b': 3,
@@ -130,8 +127,10 @@ const MODEL_WEIGHTS: Record<string, number> = {
   'deepseek-v3.2-speciale': 3,
   'llama-4-maverick': 1,
   'llama-4-scout': 1,
+  'qwen3-coder:free': 0,
   'qwen3-coder': 1,
-  'step-3.5-flash': 1,
+  'step-3.5-flash:free': 0,
+  'step-3.5-flash': 0,
 };
 
 export function getModelWeight(model?: string): number {
@@ -171,7 +170,6 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
     allowedModels: [
       'claude-haiku-4-5',
       'claude-sonnet-4-5',
-      'gpt-4o-mini',
       'gemini-3-flash',
       'gemini-2.5-flash',
       'gemini-3-pro',
