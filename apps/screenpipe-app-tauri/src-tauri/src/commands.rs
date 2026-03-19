@@ -12,7 +12,8 @@ use std::sync::OnceLock;
 static GLOBAL_APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 /// Callback invoked from Swift when user clicks a notification action.
-/// The JSON string is forwarded as a Tauri event to the main window.
+/// Handles "manage" directly in Rust (opens home window to notifications settings).
+/// Other actions are forwarded as Tauri events to JS.
 extern "C" fn native_notif_action_callback(json_ptr: *const std::os::raw::c_char) {
     if json_ptr.is_null() {
         return;
@@ -21,8 +22,28 @@ extern "C" fn native_notif_action_callback(json_ptr: *const std::os::raw::c_char
         .to_string_lossy()
         .to_string();
     info!("native notification action: {}", json);
+
     if let Some(app) = GLOBAL_APP_HANDLE.get() {
-        // Emit to the main window so the existing notification-handler.tsx can process it
+        // Handle "manage" directly in Rust — opens the Home window to notifications section.
+        // This avoids relying on JS event listeners which may not be active.
+        if json.contains("\"type\":\"manage\"") {
+            let app_clone = app.clone();
+            // Spawn a thread so we don't block the Swift main thread
+            std::thread::spawn(move || {
+                // Show the home window (needs main thread on macOS)
+                let app_for_show = app_clone.clone();
+                let _ = app_clone.run_on_main_thread(move || {
+                    if let Err(e) = ShowRewindWindow::Home { page: None }.show(&app_for_show) {
+                        error!("failed to show home window for manage: {}", e);
+                    }
+                });
+                // Give the window time to mount its React listener
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let _ = app_clone.emit("navigate", serde_json::json!({ "url": "/home?section=notifications" }));
+            });
+            return;
+        }
+
         let _ = app.emit("native-notification-action", &json);
     }
 }
