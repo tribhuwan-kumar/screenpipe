@@ -460,6 +460,37 @@ struct VisualEffectView: NSViewRepresentable {
 
 // MARK: - Panel controller (manages the NSPanel + SwiftUI hosting)
 
+/// Transparent overlay placed ON TOP of the NSHostingView to force pointer
+/// cursor. Passes all clicks through to SwiftUI underneath via hitTest returning nil.
+/// cursorUpdate works because the tracking area is on the topmost view.
+@available(macOS 13.0, *)
+private class CursorOverlayView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Pass all clicks through to SwiftUI views underneath
+        return nil
+    }
+
+    override func resetCursorRects() {
+        discardCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for ta in trackingAreas { removeTrackingArea(ta) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+}
+
 /// Custom NSView that forwards mouse enter/exit to the controller.
 @available(macOS 13.0, *)
 private class HoverTrackingView: NSView {
@@ -470,7 +501,7 @@ private class HoverTrackingView: NSView {
         for ta in trackingAreas { removeTrackingArea(ta) }
         let ta = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
@@ -478,22 +509,10 @@ private class HoverTrackingView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        // Disable cursor rects on the window so NSHostingView's I-beam
-        // cursors don't override ours. Set pointer cursor manually.
-        window?.disableCursorRects()
-        NSCursor.pointingHand.set()
         controller?.handleMouseEntered()
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        // Keep forcing pointer cursor as mouse moves over the panel
-        NSCursor.pointingHand.set()
-    }
-
     override func mouseExited(with event: NSEvent) {
-        // Re-enable cursor rects so other windows work normally
-        window?.enableCursorRects()
-        NSCursor.arrow.set()
         controller?.handleMouseExited()
     }
 }
@@ -505,6 +524,7 @@ class NotificationPanelController: NSObject {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<AnyView>?
     private var hoverView: HoverTrackingView?
+    private var cursorOverlay: CursorOverlayView?
     private var currentPayload: NotificationPayload?
     private var timer: Timer?
     private var progress: Double = 1.0
@@ -610,7 +630,7 @@ class NotificationPanelController: NSObject {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
                 // Use visibleFrame to avoid overlapping the menu bar / notch area
                 let visible = screen.visibleFrame
-                let margin: CGFloat = 12
+                let margin: CGFloat = 20
                 let x = visible.origin.x + visible.size.width - 320 - margin
                 let y = visible.origin.y + visible.size.height - 180 - margin
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
@@ -650,6 +670,14 @@ class NotificationPanelController: NSObject {
             hosting.autoresizingMask = [.width, .height]
             contentView.addSubview(hosting)
             self.hostingView = hosting
+
+            // Add a transparent cursor overlay ON TOP of the hosting view.
+            // It returns nil from hitTest so clicks pass through to SwiftUI,
+            // but its cursorUpdate/resetCursorRects force the pointer cursor.
+            let overlay = CursorOverlayView(frame: contentView.bounds)
+            overlay.autoresizingMask = [.width, .height]
+            contentView.addSubview(overlay, positioned: .above, relativeTo: hosting)
+            self.cursorOverlay = overlay
         }
     }
 
