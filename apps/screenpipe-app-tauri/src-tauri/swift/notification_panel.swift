@@ -465,8 +465,16 @@ struct VisualEffectView: NSViewRepresentable {
 private class HoverTrackingView: NSView {
     weak var controller: NotificationPanelController?
 
+    // Force pointer (hand) cursor over the entire notification panel.
+    // This overrides SwiftUI Text's default I-beam cursor.
+    override func resetCursorRects() {
+        discardCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
+        window?.invalidateCursorRects(for: self)
         for ta in trackingAreas { removeTrackingArea(ta) }
         let ta = NSTrackingArea(
             rect: bounds,
