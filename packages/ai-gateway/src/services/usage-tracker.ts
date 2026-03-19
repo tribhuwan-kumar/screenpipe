@@ -123,6 +123,13 @@ const MODEL_WEIGHTS: Record<string, number> = {
   'gpt-4o-mini': 1,
   'gpt-4o': 3,
   'gpt-4': 3,
+  // OpenRouter models
+  'deepseek-chat': 1,
+  'deepseek-reasoner': 1,
+  'llama-4-maverick': 1,
+  'llama-4-scout': 1,
+  'qwen3': 1,
+  'mistral-medium': 2,
 };
 
 export function getModelWeight(model?: string): number {
@@ -149,6 +156,8 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'claude-haiku-4-5',
       'gemini-3-flash',
       'gemini-2.5-flash',
+      'deepseek/deepseek-chat',
+      'meta-llama/llama-4-scout',
     ],
   },
   logged_in: {
@@ -162,6 +171,10 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'gemini-2.5-flash',
       'gemini-3-pro',
       'gemini-3.1-pro',
+      'deepseek/deepseek-chat',
+      'deepseek/deepseek-reasoner',
+      'meta-llama/llama-4-scout',
+      'meta-llama/llama-4-maverick',
     ],
   },
   subscribed: {

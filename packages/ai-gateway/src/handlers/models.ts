@@ -25,13 +25,23 @@ export async function handleModelListing(env: Env, tier: UserTier = 'subscribed'
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google' },
     ];
 
+    const openRouterModels = env.OPENROUTER_API_KEY ? [
+      { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3.2', provider: 'openrouter' },
+      { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1', provider: 'openrouter' },
+      { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'openrouter' },
+      { id: 'meta-llama/llama-4-scout', name: 'Llama 4 Scout', provider: 'openrouter' },
+      { id: 'qwen/qwen3-235b', name: 'Qwen 3 235B', provider: 'openrouter' },
+      { id: 'mistralai/mistral-medium-3', name: 'Mistral Medium 3', provider: 'openrouter' },
+    ] : [];
+
     let models: { id: string; name: string; provider: string; tier_available?: boolean }[] = [
       ...anthropicModels.map(m => ({
         id: m.id,
-        name: m.id, // Anthropic API returns id, display_name handled in listAnthropicModels
+        name: m.id,
         provider: 'anthropic',
       })),
       ...geminiModels,
+      ...openRouterModels,
     ];
 
     // Filter models based on tier
