@@ -4,7 +4,6 @@
 
 import { useSettings } from "@/lib/hooks/use-settings";
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
   Command,
   CommandEmpty,
@@ -193,6 +192,43 @@ export function AIProviderConfig({
   const [showApiKey, setShowApiKey] = useState(false);
   const isEnterprise = useIsEnterpriseBuild();
   const [piAvailable, setPiAvailable] = useState(false);
+  const [piModels, setPiModels] = useState<{ id: string; name: string; free?: boolean }[]>([]);
+
+  // Fetch PI models from gateway (same source of truth as settings)
+  useEffect(() => {
+    if (selectedProvider !== "pi") return;
+    const fetchPiModels = async () => {
+      try {
+        const token = settings?.user?.token || "";
+        const resp = await fetch("https://api.screenpi.pe/v1/models", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const models = (data.data || []).map((m: any) => ({
+            id: m.id,
+            name: m.name || m.id,
+            free: m.free,
+          }));
+          if (models.length > 0) {
+            setPiModels(models);
+            return;
+          }
+        }
+      } catch {
+        // fallback below
+      }
+      // Fallback if gateway is unreachable
+      setPiModels([
+        { id: "claude-haiku-4-5", name: "Haiku 4.5 (fast)", free: false },
+        { id: "claude-sonnet-4-5", name: "Sonnet 4.5 (balanced)", free: false },
+        { id: "claude-opus-4-6", name: "Opus 4.6 (powerful)", free: false },
+        { id: "gemini-3-flash", name: "Gemini 3 Flash (fast)", free: false },
+        { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro (balanced)", free: false },
+      ]);
+    };
+    fetchPiModels();
+  }, [selectedProvider, settings?.user?.token]);
 
   // Check Pi availability (installed at app startup by Rust background thread)
   useEffect(() => {
@@ -721,24 +757,6 @@ export function AIProviderConfig({
             <Select
               value={formData.model}
               onValueChange={async (value) => {
-                if (value === "claude-opus-4-6" && !settings.user?.cloud_subscribed) {
-                  if (!settings.user?.token) {
-                    await commands.openLoginWindow();
-                  } else {
-                    try {
-                      const res = await fetch("https://screenpi.pe/api/cloud-sync/checkout", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${settings.user.token}` },
-                        body: JSON.stringify({ tier: "pro", billingPeriod: "monthly", userId: settings.user.id, email: settings.user.email }),
-                      });
-                      const data = await res.json();
-                      if (data.url) await openUrl(data.url);
-                    } catch (e) {
-                      console.error("checkout failed:", e);
-                    }
-                  }
-                  return;
-                }
                 setFormData({ ...formData, model: value });
               }}
             >
@@ -746,11 +764,11 @@ export function AIProviderConfig({
                 <SelectValue placeholder="select model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="claude-haiku-4-5">Haiku 4.5 (fast)</SelectItem>
-                <SelectItem value="claude-sonnet-4-5">Sonnet 4.5 (balanced)</SelectItem>
-                <SelectItem value="claude-opus-4-6">
-                  Opus 4.6 {settings.user?.cloud_subscribed ? "(powerful)" : "(pro)"}
-                </SelectItem>
+                {piModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name}{m.free ? " (free)" : ""}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
