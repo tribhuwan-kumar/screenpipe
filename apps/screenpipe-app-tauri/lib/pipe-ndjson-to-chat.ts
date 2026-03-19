@@ -19,8 +19,10 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
   let currentToolCall: { name: string; input: string } | null = null;
   let turnTimestamp = Date.now();
   let messageCounter = 0;
+  let inAssistantTurn = false;
 
   function flushAssistant() {
+    if (!inAssistantTurn) return;
     const text = currentText.trim();
     if (text || currentBlocks.length > 0) {
       messages.push({
@@ -34,6 +36,7 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
     currentText = "";
     currentBlocks = [];
     currentToolCall = null;
+    inAssistantTurn = false;
   }
 
   for (const line of raw.split("\n")) {
@@ -49,7 +52,7 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
 
     const evtType = evt.type;
 
-    // -- User messages (turn_start with user prompt) --
+    // -- User messages --
     if (evtType === "message_start" && evt.message?.role === "user") {
       flushAssistant();
       const userContent = evt.message.content;
@@ -75,7 +78,9 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
 
     // -- Assistant message start --
     if (evtType === "message_start" && evt.message?.role === "assistant") {
+      // Flush previous assistant turn if any (new turn starting)
       flushAssistant();
+      inAssistantTurn = true;
       turnTimestamp = Date.now();
       continue;
     }
@@ -84,11 +89,11 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
     if (evtType === "message_update") {
       const ae = evt.assistantMessageEvent;
       if (!ae) continue;
+      inAssistantTurn = true;
 
       if (ae.type === "text_delta" && ae.delta) {
         currentText += ae.delta;
       } else if (ae.type === "thinking_delta" && ae.delta) {
-        // Collect thinking as a content block
         const lastBlock = currentBlocks[currentBlocks.length - 1];
         if (lastBlock?.type === "thinking") {
           lastBlock.text += ae.delta;
@@ -96,7 +101,6 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
           currentBlocks.push({ type: "thinking", text: ae.delta });
         }
       } else if (ae.type === "toolcall_start") {
-        // Flush any text before the tool call
         if (currentText.trim()) {
           currentBlocks.push({ type: "text", text: currentText.trim() });
           currentText = "";
@@ -116,6 +120,9 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
     }
 
     // -- Tool execution results --
+    // These arrive AFTER message_end but BEFORE turn_end, so they belong
+    // to the current assistant turn. We keep inAssistantTurn=true until
+    // turn_end or the next message_start flushes.
     if (evtType === "tool_execution_end") {
       const result = evt.result;
       if (result?.content) {
@@ -135,13 +142,15 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
       continue;
     }
 
-    // -- Turn end / message end: flush --
-    if (evtType === "turn_end" || evtType === "message_end") {
-      if (evt.message?.role === "assistant") {
-        flushAssistant();
-      }
+    // -- Turn end: flush the accumulated assistant turn --
+    if (evtType === "turn_end") {
+      flushAssistant();
       continue;
     }
+
+    // -- message_end: do NOT flush here — tool_execution_end events
+    //    arrive between message_end and turn_end. We flush on turn_end
+    //    or on the next message_start. --
 
     // -- agent_end: extract final messages if we have nothing --
     if (evtType === "agent_end" && messages.length === 0 && Array.isArray(evt.messages)) {
@@ -174,7 +183,8 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
     }
   }
 
-  // Flush any remaining assistant content
+  // Flush any remaining assistant content (handles truncated stdout
+  // where turn_end was never received)
   flushAssistant();
 
   return messages;
