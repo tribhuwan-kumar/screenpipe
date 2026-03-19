@@ -1497,6 +1497,33 @@ async fn main() {
                 }
             });
 
+            // Reload webviews after system wake to fix black screen (WKWebView content process dies during sleep)
+            #[cfg(target_os = "macos")]
+            {
+                let app_handle_wake = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut was_asleep = false;
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        let woke = screenpipe_engine::sleep_monitor::recently_woke_from_sleep();
+                        if woke && !was_asleep {
+                            // System just woke — wait a moment for display to stabilize, then reload
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                            for label in &["main", "home", "chat"] {
+                                if let Some(window) = app_handle_wake.get_webview_window(label) {
+                                    if let Err(e) = window.eval("window.location.reload()") {
+                                        tracing::warn!("failed to reload webview '{}' after wake: {}", label, e);
+                                    } else {
+                                        tracing::info!("reloaded webview '{}' after wake", label);
+                                    }
+                                }
+                            }
+                        }
+                        was_asleep = woke;
+                    }
+                });
+            }
+
             // Start permission monitor (polls permissions and emits events when lost)
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
