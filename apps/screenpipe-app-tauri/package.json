@@ -33,8 +33,6 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@screenpipe/browser": "^0.1.40",
-    "@screenpipe/js": "^1.0.21",
     "@sentry/react": "^8.55.0",
     "@supabase/supabase-js": "^2.98.0",
     "@tanstack/react-virtual": "^3.13.21",

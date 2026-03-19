@@ -1,7 +1,11 @@
 import { stat } from "@tauri-apps/plugin-fs";
 import { platform } from "@tauri-apps/plugin-os";
 import { twMerge } from "tailwind-merge";
-import { ContentItem } from "@screenpipe/js";
+type ContentItem =
+	| { type: "OCR"; content: { text: string } }
+	| { type: "Audio"; content: { transcription: string } }
+	| { type: "UI"; content: { text: string } }
+	| { type: "Input"; content: Record<string, unknown> };
 import { clsx, type ClassValue } from "clsx";
 import levenshtein from "js-levenshtein";
 import {

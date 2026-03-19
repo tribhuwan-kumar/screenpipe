@@ -52,7 +52,7 @@ import {
 import { Badge } from "../ui/badge";
 import { toast } from "../ui/use-toast";
 import { Card, CardContent } from "../ui/card";
-import { AIProviderType } from "@screenpipe/browser";
+import { AIProviderType } from "@/lib/hooks/use-settings";
 import { useIsEnterpriseBuild } from "@/lib/hooks/use-is-enterprise-build";
 import {
   AlertDialog,

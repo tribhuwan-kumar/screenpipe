@@ -15,9 +15,6 @@ Automate releasing all components of the screenpipe monorepo.
 | Desktop App | `screenpipe-app-tauri/src-tauri/Cargo.toml` | `version = "X.Y.Z"` | `release-app.yml` |
 | CLI/Server | `Cargo.toml` (workspace.package) | `version = "0.2.X"` | `release-cli.yml` |
 | MCP | `screenpipe-integrations/screenpipe-mcp/package.json` | `"version": "X.Y.Z"` | `release-mcp.yml` |
-| JS Browser SDK | `screenpipe-js/browser-sdk/package.json` | `"version": "X.Y.Z"` | npm publish |
-| JS Node SDK | `screenpipe-js/node-sdk/package.json` | `"version": "X.Y.Z"` | npm publish |
-| JS CLI | `screenpipe-js/cli/package.json` | `"version": "X.Y.Z"` | npm publish |
 
 ## When to Release What
 
