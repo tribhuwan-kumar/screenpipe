@@ -1768,13 +1768,13 @@ export function PipesSection() {
                                 </p>
                               )}
                               {exec.status === "completed" && exec.stdout && cleanPipeStdout(exec.stdout) && (
-                                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-20 overflow-y-auto">
-                                  {cleanPipeStdout(exec.stdout).slice(0, 500)}
+                                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-y-auto">
+                                  {cleanPipeStdout(exec.stdout).slice(0, 5000)}
                                 </pre>
                               )}
                               {exec.status === "failed" && exec.stderr && !exec.error_message && (
-                                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-20 overflow-y-auto">
-                                  {exec.stderr.slice(0, 500)}
+                                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-y-auto">
+                                  {exec.stderr.slice(0, 5000)}
                                 </pre>
                               )}
                             </div>
@@ -1806,13 +1806,13 @@ export function PipesSection() {
                                   </span>
                                 </div>
                                 {log.success && log.stdout && cleanPipeStdout(log.stdout) && (
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-20 overflow-y-auto">
-                                    {cleanPipeStdout(log.stdout).slice(0, 500)}
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-y-auto">
+                                    {cleanPipeStdout(log.stdout).slice(0, 5000)}
                                   </pre>
                                 )}
                                 {!log.success && log.stderr && (
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-20 overflow-y-auto">
-                                    {log.stderr.slice(0, 500)}
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-y-auto">
+                                    {log.stderr.slice(0, 5000)}
                                   </pre>
                                 )}
                               </div>
