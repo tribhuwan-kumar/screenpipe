@@ -840,6 +840,8 @@ interface AIPresetsSelectorProps {
   recommendedPresets?: RecommendedPreset[];
   shortcutKey?: string;
   onPresetChange?: (preset: AIPreset) => void;
+  /** Called when user saves a preset (explicit action) — use to restart Pi deterministically */
+  onPresetSaved?: (preset: AIPreset) => void;
   showLoginCta?: boolean;
   /** Controlled mode: override which preset id is shown as selected */
   controlledPresetId?: string | null;
@@ -924,6 +926,7 @@ export const AIPresetsSelector = ({
   recommendedPresets,
   shortcutKey = "/",
   onPresetChange,
+  onPresetSaved,
   showLoginCta = true,
   controlledPresetId,
   onControlledSelect,
@@ -1116,6 +1119,16 @@ export const AIPresetsSelector = ({
       });
     }
 
+    // Notify parent to restart Pi if the saved preset is the active/default one
+    if (onPresetSaved) {
+      const savedFull = { ...preset } as AIPreset;
+      const isDefault = selectedPresetToEdit?.defaultPreset ||
+        (!selectedPresetToEdit && settings.aiPresets.length === 0);
+      if (isDefault) {
+        onPresetSaved(savedFull);
+      }
+    }
+
     setDialogOpen(false);
     setSelectedPresetToEdit(undefined);
   };
@@ -1146,6 +1159,11 @@ export const AIPresetsSelector = ({
     updateSettings({
       aiPresets: updatedPresets,
     });
+
+    // Restart Pi with the new default preset
+    if (onPresetSaved) {
+      onPresetSaved(preset);
+    }
 
     toast.success("Default preset updated", {
       description: `${preset.id} is now the default preset`,

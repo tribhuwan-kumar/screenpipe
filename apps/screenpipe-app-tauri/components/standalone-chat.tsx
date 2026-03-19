@@ -1575,19 +1575,20 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   // Pi project dir is managed Rust-side at boot
 
   // Build Pi provider config from active preset
-  const buildProviderConfig = useCallback(() => {
-    if (!activePreset) return null;
+  const buildProviderConfig = useCallback((preset?: AIPreset | null) => {
+    const p = preset || activePreset;
+    if (!p) return null;
     // Combine the screenpipe search instructions with the user's preset prompt.
     // This is passed via --append-system-prompt to Pi, enabling Anthropic prompt
     // caching (90% input cost reduction on subsequent messages).
-    const presetPrompt = activePreset.prompt || "";
+    const presetPrompt = p.prompt || "";
     const systemPrompt = `${buildSystemPrompt()}\n\n${presetPrompt}`.trim() || null;
     return {
-      provider: activePreset.provider,
-      url: activePreset.url || "",
-      model: activePreset.model || "",
-      apiKey: ("apiKey" in activePreset ? (activePreset.apiKey as string) : null) || null,
-      maxTokens: (activePreset as any).maxTokens ?? 4096,
+      provider: p.provider,
+      url: p.url || "",
+      model: p.model || "",
+      apiKey: ("apiKey" in p ? (p.apiKey as string) : null) || null,
+      maxTokens: (p as any).maxTokens ?? 4096,
       systemPrompt,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1618,54 +1619,17 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     return () => clearInterval(interval);
   }, []);
 
-  // Track what provider+model Pi is actually running with (survives remounts via ref)
-  const piRunningConfigRef = useRef<{ provider?: string; model?: string; token?: string | null }>({});
-  const piRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Restart Pi when user switches preset so the new model takes effect immediately.
-  // Pi uses CLI args from startup, so config-only updates don't change the running model.
-  // Debounced to collapse rapid settings saves into a single restart.
-  useEffect(() => {
-    if (!activePreset || !isSettingsLoaded) return;
-    const running = piRunningConfigRef.current;
-    const currentToken = settings.user?.token ?? null;
-    const configChanged = running.provider !== undefined &&
-      (running.provider !== activePreset.provider || running.model !== activePreset.model);
-    // Only treat token change as meaningful if it's a real switch (not initial load from null)
-    const tokenChanged = running.token !== undefined && running.token !== currentToken
-      && running.token !== null; // null → real token = initial load, not a user action
-
-    if (!configChanged && !tokenChanged) {
-      // First mount or same config — just record what we expect Pi to be running
-      if (running.provider === undefined) {
-        piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
-      } else if (running.token !== currentToken) {
-        // Token loaded but config same — update ref without restarting
-        piRunningConfigRef.current.token = currentToken;
-      }
-      return;
-    }
-
-    // Debounce: cancel any pending restart, schedule new one (2s to collapse boot-time events)
-    if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
-    piRestartTimerRef.current = setTimeout(() => {
-      piRestartTimerRef.current = null;
-      const providerConfig = buildProviderConfig();
-      console.log("[Pi] Preset changed, restarting:", providerConfig?.provider, providerConfig?.model);
-      piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
-      // Reset session sync flag — Pi restarts fresh without conversation context,
-      // so the next message will re-inject chat history.
-      piSessionSyncedRef.current = false;
-      commands.piUpdateConfig(settings.user?.token ?? null, providerConfig).catch((e) => {
-        console.error("[Pi] Preset switch failed:", e);
-      });
-    }, 2000);
-
-    return () => {
-      if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePreset?.provider, activePreset?.model, settings.user?.token, isSettingsLoaded]);
+  // Restart Pi explicitly when user saves a preset — no useEffect, no debounce.
+  // Called directly from the AIPresetsSelector onPresetSaved callback.
+  const handlePiRestart = useCallback((preset: AIPreset) => {
+    const providerConfig = buildProviderConfig(preset);
+    console.log("[Pi] User saved preset, restarting:", providerConfig?.provider, providerConfig?.model);
+    piSessionSyncedRef.current = false;
+    commands.piUpdateConfig(settings.user?.token ?? null, providerConfig).catch((e) => {
+      console.error("[Pi] Preset switch failed:", e);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.user?.token]);
 
   // Listen for Pi events (all providers route through Pi) and pipe events
   useEffect(() => {
@@ -3639,6 +3603,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           <div className="flex-1 min-w-0">
             <AIPresetsSelector
               onPresetChange={setActivePreset}
+              onPresetSaved={handlePiRestart}
               controlledPresetId={activePipeExecution ? activePreset?.id : undefined}
               onControlledSelect={activePipeExecution ? (id) => {
                 const match = settings.aiPresets?.find((p) => p.id === id);
