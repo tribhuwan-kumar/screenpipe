@@ -143,9 +143,11 @@ pub fn init_magnify_handler(_app: tauri::AppHandle) {}
 
 /// Attach an NSMagnificationGestureRecognizer to the given view.
 /// Safe to call multiple times — skips if already attached.
+/// Safe to call before init_magnify_handler — returns early if the class isn't registered yet.
 #[cfg(target_os = "macos")]
 pub(crate) unsafe fn attach_magnify_gesture_to_view(view: tauri_nspanel::cocoa::base::id) {
     with_autorelease_pool(|| {
+        use objc::runtime::Class;
         use objc::{class, msg_send, sel, sel_impl};
         use tauri_nspanel::cocoa::base::{id, nil};
         use tauri_nspanel::cocoa::foundation::NSArray;
@@ -154,11 +156,20 @@ pub(crate) unsafe fn attach_magnify_gesture_to_view(view: tauri_nspanel::cocoa::
             return;
         }
 
+        // Look up the handler class safely — if init_magnify_handler hasn't run
+        // yet the class won't exist. Return early instead of panicking.
+        let handler_class = match Class::get("ScreenpipeMagnifyHandler") {
+            Some(cls) => cls,
+            None => {
+                tracing::warn!("ScreenpipeMagnifyHandler class not registered yet — skipping gesture attach");
+                return;
+            }
+        };
+
         // Check if we already added our recognizer (look for ScreenpipeMagnifyHandler target)
         let recognizers: id = msg_send![view, gestureRecognizers];
         if recognizers != nil {
             let count: u64 = NSArray::count(recognizers);
-            let handler_class = class!(ScreenpipeMagnifyHandler);
             for i in 0..count {
                 let r: id = NSArray::objectAtIndex(recognizers, i);
                 let target: id = msg_send![r, target];
@@ -172,7 +183,6 @@ pub(crate) unsafe fn attach_magnify_gesture_to_view(view: tauri_nspanel::cocoa::
         }
 
         // Create handler instance
-        let handler_class = class!(ScreenpipeMagnifyHandler);
         let handler: id = msg_send![handler_class, new];
 
         // Create NSMagnificationGestureRecognizer
