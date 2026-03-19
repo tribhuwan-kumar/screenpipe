@@ -1631,17 +1631,22 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     const currentToken = settings.user?.token ?? null;
     const configChanged = running.provider !== undefined &&
       (running.provider !== activePreset.provider || running.model !== activePreset.model);
-    const tokenChanged = running.token !== undefined && running.token !== currentToken;
+    // Only treat token change as meaningful if it's a real switch (not initial load from null)
+    const tokenChanged = running.token !== undefined && running.token !== currentToken
+      && running.token !== null; // null → real token = initial load, not a user action
 
     if (!configChanged && !tokenChanged) {
       // First mount or same config — just record what we expect Pi to be running
       if (running.provider === undefined) {
         piRunningConfigRef.current = { provider: activePreset.provider, model: activePreset.model, token: currentToken };
+      } else if (running.token !== currentToken) {
+        // Token loaded but config same — update ref without restarting
+        piRunningConfigRef.current.token = currentToken;
       }
       return;
     }
 
-    // Debounce: cancel any pending restart, schedule new one
+    // Debounce: cancel any pending restart, schedule new one (2s to collapse boot-time events)
     if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
     piRestartTimerRef.current = setTimeout(() => {
       piRestartTimerRef.current = null;
@@ -1654,7 +1659,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       commands.piUpdateConfig(settings.user?.token ?? null, providerConfig).catch((e) => {
         console.error("[Pi] Preset switch failed:", e);
       });
-    }, 400);
+    }, 2000);
 
     return () => {
       if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
