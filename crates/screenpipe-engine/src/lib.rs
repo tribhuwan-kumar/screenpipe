@@ -13,7 +13,6 @@ pub mod cloud_search;
 pub mod connections_api;
 pub mod core;
 pub mod logging;
-pub mod notifications_api;
 pub mod pipe_permissions_middleware;
 pub mod pipe_store;
 pub mod pipes_api;

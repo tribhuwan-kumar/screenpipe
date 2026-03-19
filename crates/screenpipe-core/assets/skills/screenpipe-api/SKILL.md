@@ -368,37 +368,37 @@ Memories also appear in `/search?content_type=memory`. Use sparingly — only st
 
 ---
 
-## 12. Notifications — `POST /notify`
+## 12. Notifications — `POST http://localhost:11435/notify`
 
-Send a notification to the screenpipe desktop UI with optional action buttons.
+Send a notification to the screenpipe desktop UI. This uses the Tauri sidecar server (port 11435), **not** the main API (port 3030).
 
 ```bash
-curl -X POST http://localhost:3030/notify \
+# Simple notification
+curl -X POST http://localhost:11435/notify \
   -H "Content-Type: application/json" \
-  -d '{"title": "3 new voice memos", "body": "found recordings from today", "pipe_name": "my-pipe", "actions": [{"id": "view", "label": "view", "type": "deeplink", "url": "screenpipe://timeline"}, {"id": "skip", "label": "skip", "type": "dismiss"}]}'
+  -d '{"title": "3 new voice memos", "body": "found recordings from today"}'
+
+# With action buttons
+curl -X POST http://localhost:11435/notify \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Meeting summary", "body": "**Q3 Planning**\n- Budget approved", "actions": [{"id": "view", "label": "view", "type": "deeplink", "url": "screenpipe://timeline"}, {"id": "skip", "label": "skip", "type": "dismiss"}]}'
+
+# Custom auto-dismiss (5 seconds)
+curl -X POST http://localhost:11435/notify \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Saved", "body": "Note saved", "timeout": 5000}'
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `title` | string | **Yes** | Notification title |
-| `body` | string | No | Markdown body |
-| `pipe_name` | string | **Yes** | Pipe sending the notification |
-| `timeout_secs` | integer | No | Auto-dismiss (default 20) |
-| `actions` | array | No | Up to 5 action buttons |
+| `body` | string | **Yes** | Markdown body |
+| `type` | string | No | Category (default "pipe") |
+| `timeout` | integer | No | Auto-dismiss in ms (default 20000) |
+| `autoDismissMs` | integer | No | Alias for timeout |
+| `actions` | array | No | Action buttons |
 
-**Action types**: `pipe` (re-run a pipe with context), `api` (call a local API endpoint), `deeplink` (open a screenpipe URL), `dismiss` (close notification).
-
-`type: "pipe"` example — re-runs a pipe with injected context:
-```json
-{"id": "transcribe", "label": "transcribe all", "type": "pipe", "pipe": "voice-memos", "context": {"files": ["a.m4a"]}}
-```
-
-Add `"open_in_chat": true` to show the pipe output in the chat UI instead of running silently in the background:
-```json
-{"id": "summarize", "label": "view summary", "type": "pipe", "pipe": "meeting-summary", "context": {"action": "summarize_last"}, "open_in_chat": true}
-```
-
-Returns `{"id": "pipe-my-pipe-1710000000000"}`.
+Returns `{"success": true, "message": "Notification sent successfully"}`.
 
 ---
 

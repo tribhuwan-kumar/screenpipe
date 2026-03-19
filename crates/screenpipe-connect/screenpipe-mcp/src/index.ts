@@ -788,19 +788,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "send-notification": {
         const notifBody: Record<string, unknown> = {
           title: args.title,
-          pipe_name: args.pipe_name,
+          body: args.body || "",
+          type: "pipe",
         };
-        if (args.body) notifBody.body = args.body;
-        if (args.timeout_secs) notifBody.timeout_secs = args.timeout_secs;
+        if (args.timeout_secs) notifBody.timeout = args.timeout_secs * 1000;
         if (args.actions) notifBody.actions = args.actions;
-        const notifResponse = await fetchAPI("/notify", {
+        const notifResponse = await fetch("http://localhost:11435/notify", {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(notifBody),
         });
         if (!notifResponse.ok) throw new Error(`HTTP error: ${notifResponse.status}`);
         const notifResult = await notifResponse.json();
         return {
-          content: [{ type: "text", text: `Notification sent (id: ${notifResult.id})` }],
+          content: [{ type: "text", text: `Notification sent: ${notifResult.message}` }],
         };
       }
 

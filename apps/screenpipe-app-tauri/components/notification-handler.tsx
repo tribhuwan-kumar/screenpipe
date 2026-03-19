@@ -11,23 +11,6 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { showNotificationPanel } from "@/lib/hooks/use-notification-panel";
 import { showChatWithPrefill } from "@/lib/chat-utils";
-import localforage from "localforage";
-
-async function getNotificationPrefs() {
-  try {
-    const raw = await localforage.getItem<string>("screenpipe-settings");
-    const settings = raw ? JSON.parse(raw) : {};
-    return settings.notificationPrefs || {
-      captureStalls: true,
-      appUpdates: true,
-      pipeSuggestions: true,
-      pipeNotifications: true,
-      mutedPipes: [] as string[],
-    };
-  } catch {
-    return { captureStalls: true, appUpdates: true, pipeSuggestions: true, pipeNotifications: true, mutedPipes: [] };
-  }
-}
 
 type NotificationRequested = {
   title: string;
@@ -86,58 +69,6 @@ const NotificationHandler: React.FC = () => {
     checkAndRequestPermission();
   }, []);
 
-  // Poll for pending pipe notifications and show them via the notification panel
-  useEffect(() => {
-    let active = true;
-    const poll = async () => {
-      while (active) {
-        try {
-          const res = await fetch("http://localhost:3030/notifications/pending");
-          if (res.ok) {
-            const json = await res.json();
-            const notifications = json.data || [];
-            const prefs = await getNotificationPrefs();
-            for (const n of notifications) {
-              // Skip if pipe notifications disabled or this pipe is muted
-              if (!prefs.pipeNotifications) continue;
-              if (n.pipe_name && prefs.mutedPipes.includes(n.pipe_name)) continue;
-
-              // Convert pipe notification actions to the format the panel expects
-              const actions = (n.actions || []).map((a: { id?: string; label: string; type?: string; pipe?: string; context?: Record<string, unknown>; url?: string; method?: string; body?: Record<string, unknown>; toast?: string; primary?: boolean; open_in_chat?: boolean }) => ({
-                id: a.id,
-                label: a.label,
-                action: a.id || a.label,
-                type: a.type,
-                pipe: a.pipe,
-                context: a.context,
-                url: a.url,
-                method: a.method,
-                body: a.body,
-                toast: a.toast,
-                primary: a.primary || false,
-                open_in_chat: a.open_in_chat || false,
-              }));
-
-              await showNotificationPanel({
-                id: n.id,
-                type: "pipe",
-                title: n.title,
-                body: n.body || "",
-                actions,
-                autoDismissMs: (n.timeout_secs || 20) * 1000,
-                pipe_name: n.pipe_name,
-              });
-            }
-          }
-        } catch {
-          // server not available, skip
-        }
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-    };
-    poll();
-    return () => { active = false; };
-  }, []);
 
   // listen for pipe suggestion action from notification panel
   useEffect(() => {
