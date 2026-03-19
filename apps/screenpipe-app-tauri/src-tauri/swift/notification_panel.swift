@@ -307,7 +307,7 @@ struct NotificationContentView: View {
 }
 
 // MARK: - Basic Markdown text renderer
-// Supports **bold**, `code`, and plain text — no external dependencies
+// Supports **bold**, `code`, [links](url), and plain text
 
 @available(macOS 13.0, *)
 struct MarkdownText: View {
@@ -356,6 +356,31 @@ struct MarkdownText: View {
                         .foregroundColor(.primary.opacity(0.6))
                     remaining = after[after.index(after: end)...]
                     continue
+                }
+            }
+            if remaining.hasPrefix("[") {
+                // Link: [text](url)
+                let afterBracket = remaining[remaining.index(after: remaining.startIndex)...]
+                if let closeBracket = afterBracket.firstIndex(of: "]") {
+                    let linkText = afterBracket[afterBracket.startIndex..<closeBracket]
+                    let afterClose = afterBracket[afterBracket.index(after: closeBracket)...]
+                    if afterClose.hasPrefix("(") {
+                        let urlStart = afterClose.index(after: afterClose.startIndex)
+                        let urlPart = afterClose[urlStart...]
+                        if let closeParen = urlPart.firstIndex(of: ")") {
+                            let urlStr = String(urlPart[urlPart.startIndex..<closeParen])
+                            if let url = URL(string: urlStr) {
+                                var linkAttr = AttributedString(String(linkText))
+                                linkAttr.link = url
+                                linkAttr.underlineStyle = .single
+                                result = result + Text(linkAttr)
+                                    .font(Brand.swiftUIMonoFont(size: 11))
+                                    .foregroundColor(.primary.opacity(0.7))
+                                remaining = urlPart[urlPart.index(after: closeParen)...]
+                                continue
+                            }
+                        }
+                    }
                 }
             }
             // Plain character
