@@ -368,8 +368,15 @@ struct MarkdownText: View {
                         let urlStart = afterClose.index(after: afterClose.startIndex)
                         let urlPart = afterClose[urlStart...]
                         if let closeParen = urlPart.firstIndex(of: ")") {
-                            let urlStr = String(urlPart[urlPart.startIndex..<closeParen])
-                            if let url = URL(string: urlStr) {
+                            var urlStr = String(urlPart[urlPart.startIndex..<closeParen])
+                            // Support bare file paths: /path/to/file or ~/path/to/file
+                            if urlStr.hasPrefix("~/") {
+                                urlStr = NSString(string: urlStr).expandingTildeInPath
+                            }
+                            if urlStr.hasPrefix("/") && !urlStr.hasPrefix("//") {
+                                urlStr = "file://" + urlStr
+                            }
+                            if let url = URL(string: urlStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? urlStr) ?? URL(string: urlStr) {
                                 var linkAttr = AttributedString(String(linkText))
                                 linkAttr.link = url
                                 linkAttr.underlineStyle = .single
