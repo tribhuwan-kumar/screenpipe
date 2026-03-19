@@ -64,11 +64,6 @@ jobs:
       - name: Run cargo tests
         run: cargo test
 
-      # todo: need to run backend ...
-      # - name: Run bun tests
-      #   run: bun test
-      #   working-directory: ./packages/screenpipe-js
-
   test-windows:
     runs-on: windows-2019
     steps:
