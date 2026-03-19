@@ -701,7 +701,7 @@ function DiscoverView() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredPipes.map((pipe) => (
+          {filteredPipes.filter((p) => !p.featured || !!debouncedQuery || category !== "All").map((pipe) => (
             <PipeCard
               key={pipe.slug}
               pipe={pipe}
