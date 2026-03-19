@@ -195,6 +195,126 @@ void lt_free_string(char* ptr) { if (ptr) free(ptr); }
     println!("cargo:rustc-link-lib=static=livetext_bridge");
 }
 
+/// Compile notification_panel.swift into a static library for native macOS notifications.
+#[cfg(target_os = "macos")]
+fn build_notification_panel() {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let swift_src = PathBuf::from("swift/notification_panel.swift");
+    let lib_path = out_dir.join("libnotification_panel.a");
+
+    println!("cargo:rerun-if-changed=swift/notification_panel.swift");
+
+    if !swift_src.exists() {
+        println!("cargo:warning=swift/notification_panel.swift not found, skipping native notification panel");
+        build_notification_panel_stub(&out_dir, &lib_path);
+        return;
+    }
+
+    let sdk_path = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+    let sdk_path = sdk_path.trim().to_string();
+
+    let target_arch =
+        std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".to_string());
+    let swift_target = if target_arch == "x86_64" {
+        "x86_64-apple-macos13.0"
+    } else {
+        "arm64-apple-macos13.0"
+    };
+
+    let output = Command::new("swiftc")
+        .args([
+            "-emit-library",
+            "-static",
+            "-module-name",
+            "NotificationPanel",
+            "-swift-version",
+            "5",
+            "-sdk",
+            &sdk_path,
+            "-target",
+            swift_target,
+            "-O",
+            "-whole-module-optimization",
+            "-o",
+        ])
+        .arg(&lib_path)
+        .arg(&swift_src)
+        .output()
+        .expect("failed to run swiftc for notification_panel");
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        println!(
+            "cargo:warning=swiftc failed for notification_panel.swift: {}",
+            stderr.chars().take(500).collect::<String>()
+        );
+        build_notification_panel_stub(&out_dir, &lib_path);
+        return;
+    }
+
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=notification_panel");
+    // SwiftUI needs AppKit (already linked) and SwiftUI framework
+    println!("cargo:rustc-link-arg=-Wl,-weak_framework,SwiftUI");
+}
+
+/// Build a C stub when SwiftUI notification panel is not available.
+#[cfg(target_os = "macos")]
+fn build_notification_panel_stub(out_dir: &std::path::Path, lib_path: &std::path::Path) {
+    use std::process::Command;
+
+    let stub_src = out_dir.join("notification_panel_stub.c");
+    std::fs::write(
+        &stub_src,
+        r#"// Stub: SwiftUI notification panel not available
+#include <stdlib.h>
+
+typedef void (*action_callback_t)(const char*);
+
+void notif_set_action_callback(action_callback_t cb) { (void)cb; }
+int notif_show(const char* json) { (void)json; return -2; }
+int notif_hide(void) { return -2; }
+int notif_is_available(void) { return 0; }
+void notif_free_string(char* ptr) { if (ptr) free(ptr); }
+"#,
+    )
+    .expect("failed to write notification panel stub");
+
+    let target_arch =
+        std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".to_string());
+    let cc_arch = if target_arch == "x86_64" {
+        "x86_64"
+    } else {
+        "arm64"
+    };
+    let status = Command::new("cc")
+        .args(["-c", "-arch", cc_arch, "-o"])
+        .arg(out_dir.join("notification_panel_stub.o").to_str().unwrap())
+        .arg(stub_src.to_str().unwrap())
+        .status()
+        .expect("failed to compile notification panel stub");
+    assert!(status.success(), "notification panel stub compilation failed");
+
+    let status = Command::new("ar")
+        .args(["rcs"])
+        .arg(lib_path)
+        .arg(out_dir.join("notification_panel_stub.o").to_str().unwrap())
+        .status()
+        .expect("failed to create notification panel stub archive");
+    assert!(status.success(), "notification panel stub archive failed");
+
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=notification_panel");
+}
+
 fn main() {
     #[cfg(target_os = "macos")]
     {
@@ -227,6 +347,9 @@ fn main() {
 
         // Build Live Text bridge (VisionKit ImageAnalysisOverlayView)
         build_livetext_bridge();
+
+        // Build SwiftUI notification panel
+        build_notification_panel();
     }
 
     tauri_build::build()

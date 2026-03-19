@@ -98,6 +98,7 @@ use tauri::AppHandle;
 mod dock_menu;
 mod health;
 mod log_files;
+mod native_notification;
 mod safe_icon;
 mod shortcuts;
 mod vault;
