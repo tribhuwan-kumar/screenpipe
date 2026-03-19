@@ -467,35 +467,38 @@ impl ShowRewindWindow {
 
                 #[cfg(target_os = "macos")]
                 {
-                    use objc::{msg_send, sel, sel_impl};
-                    use tauri_nspanel::cocoa::base::{id as cocoa_id, nil as cocoa_nil};
-                    if let Ok(ns_win) = window.ns_window() {
-                        unsafe {
-                            // Activate the app so it comes to the foreground
-                            let ns_app: cocoa_id =
-                                msg_send![objc::class!(NSApplication), sharedApplication];
-                            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+                    let window_clone = window.clone();
+                    run_on_main_thread_safe(app, move || {
+                        use objc::{msg_send, sel, sel_impl};
+                        use tauri_nspanel::cocoa::base::{id as cocoa_id, nil as cocoa_nil};
+                        if let Ok(ns_win) = window_clone.ns_window() {
+                            unsafe {
+                                // Activate the app so it comes to the foreground
+                                let ns_app: cocoa_id =
+                                    msg_send![objc::class!(NSApplication), sharedApplication];
+                                let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
 
-                            // Move the window to the active space (current workspace)
-                            // NSWindowCollectionBehaviorMoveToActiveSpace = 1 << 1 = 2
-                            let behavior: u64 = msg_send![ns_win as cocoa_id, collectionBehavior];
-                            let move_to_active: u64 = 1 << 1;
-                            let _: () = msg_send![ns_win as cocoa_id, setCollectionBehavior: behavior | move_to_active];
+                                // Move the window to the active space (current workspace)
+                                // NSWindowCollectionBehaviorMoveToActiveSpace = 1 << 1 = 2
+                                let behavior: u64 = msg_send![ns_win as cocoa_id, collectionBehavior];
+                                let move_to_active: u64 = 1 << 1;
+                                let _: () = msg_send![ns_win as cocoa_id, setCollectionBehavior: behavior | move_to_active];
 
-                            // Bring window to front and make it key
-                            let _: () =
-                                msg_send![ns_win as cocoa_id, makeKeyAndOrderFront: cocoa_nil];
+                                // Bring window to front and make it key
+                                let _: () =
+                                    msg_send![ns_win as cocoa_id, makeKeyAndOrderFront: cocoa_nil];
 
-                            // Set WKWebView as first responder so keyboard input works.
-                            // Without this, re-showing an existing Settings window may
-                            // leave the content_view as first responder (tao#208).
-                            make_nswindow_webview_first_responder(ns_win as cocoa_id);
+                                // Set WKWebView as first responder so keyboard input works.
+                                // Without this, re-showing an existing Settings window may
+                                // leave the content_view as first responder (tao#208).
+                                make_nswindow_webview_first_responder(ns_win as cocoa_id);
 
-                            // Remove MoveToActiveSpace so the window stays pinned to this space
-                            let _: () =
-                                msg_send![ns_win as cocoa_id, setCollectionBehavior: behavior];
+                                // Remove MoveToActiveSpace so the window stays pinned to this space
+                                let _: () =
+                                    msg_send![ns_win as cocoa_id, setCollectionBehavior: behavior];
+                            }
                         }
-                    }
+                    });
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -1452,6 +1455,45 @@ impl ShowRewindWindow {
         };
 
         Ok(window)
+    }
+
+    /// Hide Main panel without restoring the previous frontmost app.
+    /// Used when transitioning from Main to another screenpipe window (e.g. Home/Settings)
+    /// so that focus stays with the app instead of bouncing to the previous app.
+    pub fn hide_without_restore(&self, app: &AppHandle) -> tauri::Result<()> {
+        let id = self.id();
+        if id.label() == RewindWindowId::Main.label() {
+            #[cfg(target_os = "macos")]
+            {
+                MAIN_PANEL_SHOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+                let app_clone = app.clone();
+                run_on_main_thread_safe(app, move || {
+                    for label in &["main", "main-window"] {
+                        if let Ok(panel) = app_clone.get_webview_panel(label) {
+                            if panel.is_visible() {
+                                unsafe {
+                                    use objc::{msg_send, sel, sel_impl};
+                                    let _: () = msg_send![&*panel, setAlphaValue: 0.0f64];
+                                }
+                                panel.order_out(None);
+                            }
+                        }
+                    }
+                    // Intentionally do NOT call restore_frontmost_app() here —
+                    // we're transitioning to another screenpipe window.
+                });
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                for label in &["main", "main-window"] {
+                    if let Some(window) = app.get_webview_window(label) {
+                        window.hide().ok();
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn close(&self, app: &AppHandle) -> tauri::Result<()> {

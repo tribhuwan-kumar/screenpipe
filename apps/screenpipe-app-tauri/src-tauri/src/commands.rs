@@ -492,8 +492,11 @@ pub async fn show_window(
     // Chat overlays on top of Main (level 1002 vs 1001)
     let window_id = window.id();
     if !matches!(window_id, RewindWindowId::Main | RewindWindowId::Chat | RewindWindowId::Search) {
+        // Hide Main without restoring the previous frontmost app — we're
+        // transitioning to another screenpipe window so focus should stay
+        // with us, not bounce to the previous app.
         ShowRewindWindow::Main
-            .close(&app_handle)
+            .hide_without_restore(&app_handle)
             .map_err(|e| e.to_string())?;
     }
 

@@ -150,7 +150,7 @@ export function NotificationBell() {
           <button
             onClick={() => {
               setOpen(false);
-              openSettingsWindow();
+              openSettingsWindow("notifications");
             }}
             className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
           >
