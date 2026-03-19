@@ -1458,6 +1458,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   };
 
   useEffect(() => {
+    // Don't resolve preset until settings are loaded from the store —
+    // before that, settings.aiPresets contains only the hardcoded default,
+    // which would cause Pi to start with the wrong model then immediately restart.
+    if (!isSettingsLoaded) return;
     // Don't overwrite pipe-specific preset when watching a pipe execution
     if (activePipeExecution) return;
     const defaultPreset = settings.aiPresets?.find((p) => p.defaultPreset);
@@ -1469,7 +1473,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       }
       return next;
     });
-  }, [settings.aiPresets]);
+  }, [settings.aiPresets, isSettingsLoaded]);
 
   const hasPresets = settings.aiPresets && settings.aiPresets.length > 0;
   // All providers now route through Pi — isPi is always true when we have a preset
@@ -1605,7 +1609,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   // Pi uses CLI args from startup, so config-only updates don't change the running model.
   // Debounced to collapse rapid settings saves into a single restart.
   useEffect(() => {
-    if (!activePreset) return;
+    if (!activePreset || !isSettingsLoaded) return;
     const running = piRunningConfigRef.current;
     const currentToken = settings.user?.token ?? null;
     const configChanged = running.provider !== undefined &&
@@ -1639,7 +1643,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       if (piRestartTimerRef.current) clearTimeout(piRestartTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePreset?.provider, activePreset?.model, settings.user?.token]);
+  }, [activePreset?.provider, activePreset?.model, settings.user?.token, isSettingsLoaded]);
 
   // Listen for Pi events (all providers route through Pi) and pipe events
   useEffect(() => {
