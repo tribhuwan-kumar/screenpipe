@@ -237,14 +237,14 @@ pub enum PipePermissionsConfig {
 
 impl Default for PipePermissionsConfig {
     fn default() -> Self {
-        // No permissions block = safe defaults (reader preset)
-        PipePermissionsConfig::Preset("reader".to_string())
+        // No permissions block = full access, no restrictions
+        PipePermissionsConfig::Preset("none".to_string())
     }
 }
 
 impl PipePermissionsConfig {
     pub fn is_default(&self) -> bool {
-        matches!(self, PipePermissionsConfig::Preset(s) if s == "reader")
+        matches!(self, PipePermissionsConfig::Preset(s) if s == "none")
     }
 }
 
@@ -740,30 +740,36 @@ async fn setup_pipe_permissions(
 
     let mut perms = permissions::PipePermissions::from_config(config);
 
-    // All pipes get a token — endpoint enforcement is always active.
-    use rand::Rng;
-    let suffix: u64 = rand::thread_rng().gen();
-    let t = format!("sp_pipe_{:016x}", suffix);
-    perms.pipe_token = Some(t.clone());
+    if perms.has_any_restrictions() {
+        // Generate a unique pipe token for server-side enforcement
+        use rand::Rng;
+        let suffix: u64 = rand::thread_rng().gen();
+        let t = format!("sp_pipe_{:016x}", suffix);
+        perms.pipe_token = Some(t.clone());
 
-    // Register with server middleware — must complete before Pi starts
-    // to avoid race where Pi's first API call arrives before token is registered
-    if let Some(registry) = token_registry {
-        registry.register_token(t.clone(), perms.clone()).await;
-    }
-
-    // Write permissions JSON for the extension to read
-    let perms_path = pipe_dir.join(".screenpipe-permissions.json");
-    match serde_json::to_string(&perms) {
-        Ok(json) => {
-            if let Err(e) = std::fs::write(&perms_path, &json) {
-                warn!("failed to write permissions file: {}", e);
-            }
+        // Register with server middleware — must complete before Pi starts
+        // to avoid race where Pi's first API call arrives before token is registered
+        if let Some(registry) = token_registry {
+            registry.register_token(t.clone(), perms.clone()).await;
         }
-        Err(e) => warn!("failed to serialize permissions: {}", e),
-    }
 
-    Some(t)
+        // Write permissions JSON for the extension to read
+        let perms_path = pipe_dir.join(".screenpipe-permissions.json");
+        match serde_json::to_string(&perms) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&perms_path, &json) {
+                    warn!("failed to write permissions file: {}", e);
+                }
+            }
+            Err(e) => warn!("failed to serialize permissions: {}", e),
+        }
+
+        Some(t)
+    } else {
+        // No restrictions — clean up any stale permissions file
+        let _ = std::fs::remove_file(pipe_dir.join(".screenpipe-permissions.json"));
+        None
+    }
 }
 
 /// Remove a pipe token from the server registry.

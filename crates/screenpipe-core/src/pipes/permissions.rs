@@ -39,12 +39,12 @@ pub trait PipeTokenRegistry: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
-// Default allowlist — safe endpoints that any pipe can call without opt-in.
-// Everything NOT on this list is denied by default.
+// Default allowlist — safe endpoints used by the `reader` preset.
+// Only applied when a pipe explicitly opts in via `permissions: reader`.
+// Pipes with no `permissions` block have full access (no restrictions).
 // ---------------------------------------------------------------------------
 
-/// Default allowed endpoints for the `reader` preset (and pipes with no
-/// explicit `permissions` block). Format: `"METHOD /path"` with glob support.
+/// Allowed endpoints for the `reader` preset. Format: `"METHOD /path"` with glob support.
 pub const DEFAULT_ALLOWED_ENDPOINTS: &[&str] = &[
     "GET /search",
     "GET /activity-summary",
@@ -193,16 +193,31 @@ impl PipePermissions {
             || self.days.is_some()
     }
 
-    /// All pipes now get tokens for endpoint enforcement. This always returns
-    /// true since every pipe needs at least the default allowlist enforced.
+    /// Returns true if any permission field differs from the fully-open default.
+    /// Used to decide whether to generate a token and install the permissions
+    /// extension. Pipes with no restrictions run with full API access.
     pub fn has_any_restrictions(&self) -> bool {
-        true
+        self.has_filter_rules()
+            || !self.allow_raw_sql
+            || !self.allow_frames
+            || !self.allow_endpoints.is_empty()
+            || !self.deny_endpoints.is_empty()
+            || self.use_default_allowlist // true = restricted to defaults
     }
 
     /// Check if an HTTP request (method + path) is allowed for this pipe.
     ///
-    /// Evaluation order: **deny → explicit allow → default allowlist → reject**.
+    /// - No endpoint rules and no default allowlist → **allow everything** (full access)
+    /// - Otherwise: **deny → explicit allow → default allowlist → reject**
     pub fn is_endpoint_allowed(&self, method: &str, path: &str) -> bool {
+        // No endpoint restrictions at all → full access
+        if self.allow_endpoints.is_empty()
+            && self.deny_endpoints.is_empty()
+            && !self.use_default_allowlist
+        {
+            return true;
+        }
+
         let method_upper = method.to_uppercase();
 
         // Step 1: deny rules always win
@@ -228,7 +243,6 @@ impl PipePermissions {
         if self.use_default_allowlist {
             for pattern in DEFAULT_ALLOWED_ENDPOINTS {
                 if let Some(rule) = parse_endpoint_rule(pattern) {
-                    // Respect allow_frames and allow_raw_sql overrides
                     if rule.path.starts_with("/frames") && !self.allow_frames {
                         continue;
                     }
@@ -394,8 +408,12 @@ fn resolve_endpoint_rules(
                     }
                     (allow, vec![], true) // use_default_allowlist = true
                 }
-                // "reader" or anything else → safe defaults only
-                _ => (vec![], vec![], true),
+                "reader" => {
+                    // Reader: only safe read endpoints via default allowlist
+                    (vec![], vec![], true)
+                }
+                // "none" or anything unrecognized → no restrictions
+                _ => (vec![], vec![], false),
             }
         }
         PipePermissionsConfig::Rules { allow, deny } => {
@@ -508,6 +526,7 @@ mod tests {
     use super::*;
 
     fn make_perms() -> PipePermissions {
+        // Fully-open pipe — no restrictions (default when no permissions block)
         PipePermissions {
             pipe_name: "test".to_string(),
             allow_apps: vec![],
@@ -522,7 +541,7 @@ mod tests {
             allow_frames: true,
             allow_endpoints: vec![],
             deny_endpoints: vec![],
-            use_default_allowlist: true,
+            use_default_allowlist: false,
             pipe_token: None,
         }
     }
@@ -691,8 +710,19 @@ mod tests {
     // -- Endpoint permission tests -------------------------------------------
 
     #[test]
-    fn default_allowlist_permits_search() {
-        let p = make_perms();
+    fn no_permissions_allows_everything() {
+        let p = make_perms(); // fully open, no restrictions
+        assert!(p.is_endpoint_allowed("GET", "/search"));
+        assert!(p.is_endpoint_allowed("POST", "/meetings/start"));
+        assert!(p.is_endpoint_allowed("POST", "/meetings/stop"));
+        assert!(p.is_endpoint_allowed("DELETE", "/data/delete-range"));
+        assert!(p.is_endpoint_allowed("POST", "/raw_sql"));
+    }
+
+    #[test]
+    fn reader_preset_permits_search() {
+        let mut p = make_perms();
+        p.use_default_allowlist = true; // reader preset
         assert!(p.is_endpoint_allowed("GET", "/search"));
         assert!(p.is_endpoint_allowed("GET", "/activity-summary"));
         assert!(p.is_endpoint_allowed("GET", "/meetings"));
@@ -701,8 +731,9 @@ mod tests {
     }
 
     #[test]
-    fn default_allowlist_blocks_mutations() {
-        let p = make_perms();
+    fn reader_preset_blocks_mutations() {
+        let mut p = make_perms();
+        p.use_default_allowlist = true; // reader preset
         assert!(!p.is_endpoint_allowed("POST", "/meetings/start"));
         assert!(!p.is_endpoint_allowed("POST", "/meetings/stop"));
         assert!(!p.is_endpoint_allowed("DELETE", "/meetings/42"));
@@ -712,8 +743,9 @@ mod tests {
     }
 
     #[test]
-    fn default_allowlist_respects_allow_frames() {
+    fn reader_preset_respects_allow_frames() {
         let mut p = make_perms();
+        p.use_default_allowlist = true;
         assert!(p.is_endpoint_allowed("GET", "/frames/123"));
 
         p.allow_frames = false;
@@ -753,6 +785,7 @@ mod tests {
     #[test]
     fn deny_wins_over_default_allowlist() {
         let mut p = make_perms();
+        p.use_default_allowlist = true; // reader preset
         // Deny search even though it's in the default allowlist
         p.deny_endpoints = vec![
             parse_endpoint_rule("GET /search").unwrap(),
@@ -869,7 +902,7 @@ mod tests {
             days: None,
             allow_raw_sql: true,
             allow_frames: true,
-            permissions: PipePermissionsConfig::default(), // reader
+            permissions: PipePermissionsConfig::Preset("reader".to_string()),
             connections: vec![],
             timeout: None,
             source_slug: None,
@@ -884,8 +917,59 @@ mod tests {
     }
 
     #[test]
-    fn has_any_restrictions_always_true() {
+    fn from_config_no_permissions_allows_everything() {
+        let config = PipeConfig {
+            name: "test".to_string(),
+            schedule: "manual".to_string(),
+            enabled: true,
+            agent: "pi".to_string(),
+            model: "claude-haiku-4-5".to_string(),
+            provider: None,
+            preset: vec![],
+            config: std::collections::HashMap::new(),
+            allow_apps: vec![],
+            deny_apps: vec![],
+            allow_windows: vec![],
+            deny_windows: vec![],
+            allow_content_types: vec![],
+            deny_content_types: vec![],
+            time_range: None,
+            days: None,
+            allow_raw_sql: true,
+            allow_frames: true,
+            permissions: PipePermissionsConfig::default(), // "none" → full access
+            connections: vec![],
+            timeout: None,
+            source_slug: None,
+            installed_version: None,
+            source_hash: None,
+        };
+        let perms = PipePermissions::from_config(&config);
+        assert!(!perms.use_default_allowlist);
+        assert!(!perms.has_any_restrictions());
+        assert!(perms.is_endpoint_allowed("GET", "/search"));
+        assert!(perms.is_endpoint_allowed("POST", "/meetings/stop"));
+        assert!(perms.is_endpoint_allowed("DELETE", "/data/delete-range"));
+    }
+
+    #[test]
+    fn no_restrictions_when_fully_open() {
         let p = make_perms();
+        // Default perms (no endpoint rules, use_default_allowlist=false) → no restrictions
+        assert!(!p.has_any_restrictions());
+    }
+
+    #[test]
+    fn has_restrictions_with_endpoint_rules() {
+        let mut p = make_perms();
+        p.deny_endpoints = vec![parse_endpoint_rule("* /meetings/stop").unwrap()];
+        assert!(p.has_any_restrictions());
+    }
+
+    #[test]
+    fn has_restrictions_with_default_allowlist() {
+        let mut p = make_perms();
+        p.use_default_allowlist = true;
         assert!(p.has_any_restrictions());
     }
 }
