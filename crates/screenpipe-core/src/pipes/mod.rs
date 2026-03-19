@@ -775,26 +775,25 @@ impl PipeManager {
             if !pipe_md.exists() {
                 continue;
             }
+            let dir_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             match std::fs::read_to_string(&pipe_md) {
                 Ok(content) => {
                     match parse_frontmatter(&content) {
                         Ok((mut config, body)) => {
-                            // Use directory name as canonical name
-                            let dir_name = path
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string();
                             config.name = dir_name.clone();
                             info!("loaded pipe: {}", dir_name);
                             pipes.insert(dir_name, (config, body, content));
                         }
                         Err(e) => {
-                            warn!("failed to parse {:?}: {}", pipe_md, e);
+                            warn!("pipe '{}': failed to parse pipe.md: {}", dir_name, e);
                         }
                     }
                 }
-                Err(e) => warn!("failed to read {:?}: {}", pipe_md, e),
+                Err(e) => warn!("pipe '{}': failed to read pipe.md: {}", dir_name, e),
             }
         }
 
@@ -1037,6 +1036,46 @@ impl PipeManager {
             .collect()
     }
 
+    /// Build a diagnostic error when a pipe name isn't in the in-memory map.
+    /// Checks the filesystem to explain *why* it wasn't loaded.
+    fn pipe_not_found_error(&self, name: &str) -> anyhow::Error {
+        let pipe_dir = self.pipes_dir.join(name);
+        if !pipe_dir.exists() {
+            return anyhow!(
+                "pipe '{}' not found — directory does not exist: {}\nhint: install it first with `screenpipe pipe install <source>`",
+                name,
+                pipe_dir.display()
+            );
+        }
+        let pipe_md = pipe_dir.join("pipe.md");
+        if !pipe_md.exists() {
+            return anyhow!(
+                "pipe '{}' not found — directory exists but pipe.md is missing: {}",
+                name,
+                pipe_md.display()
+            );
+        }
+        match std::fs::read_to_string(&pipe_md) {
+            Ok(content) => match parse_frontmatter(&content) {
+                Ok(_) => anyhow!(
+                    "pipe '{}' not found in registry but pipe.md looks valid — try restarting or listing pipes first",
+                    name
+                ),
+                Err(e) => anyhow!(
+                    "pipe '{}' not found — pipe.md has invalid frontmatter: {}\nhint: check the YAML between the --- delimiters in {}",
+                    name,
+                    e,
+                    pipe_md.display()
+                ),
+            },
+            Err(e) => anyhow!(
+                "pipe '{}' not found — could not read pipe.md: {}",
+                name,
+                e
+            ),
+        }
+    }
+
     /// Run a pipe once (manual trigger or scheduled).
     /// NOTE: this blocks for the entire execution — avoid calling while
     /// holding the outer PipeManager mutex from an API handler.
@@ -1051,10 +1090,10 @@ impl PipeManager {
     pub async fn start_pipe_background(&self, name: &str) -> Result<()> {
         let (config, body, _raw) = {
             let pipes = self.pipes.lock().await;
-            pipes
-                .get(name)
-                .cloned()
-                .ok_or_else(|| anyhow!("pipe '{}' not found", name))?
+            match pipes.get(name).cloned() {
+                Some(v) => v,
+                None => return Err(self.pipe_not_found_error(name)),
+            }
         };
 
         let executor = self
@@ -1428,10 +1467,10 @@ impl PipeManager {
         Box::pin(async move {
         let (config, body, _raw) = {
             let pipes = self.pipes.lock().await;
-            pipes
-                .get(name)
-                .cloned()
-                .ok_or_else(|| anyhow!("pipe '{}' not found", name))?
+            match pipes.get(name).cloned() {
+                Some(v) => v,
+                None => return Err(self.pipe_not_found_error(name)),
+            }
         };
 
         let executor = self
@@ -1822,7 +1861,7 @@ impl PipeManager {
     pub async fn enable_pipe(&self, name: &str, enabled: bool) -> Result<()> {
         let pipe_md = self.pipes_dir.join(name).join("pipe.md");
         if !pipe_md.exists() {
-            return Err(anyhow!("pipe '{}' not found", name));
+            return Err(self.pipe_not_found_error(name));
         }
 
         let content = std::fs::read_to_string(&pipe_md)?;
@@ -2086,7 +2125,7 @@ impl PipeManager {
     pub async fn delete_pipe(&self, name: &str) -> Result<()> {
         let dir = self.pipes_dir.join(name);
         if !dir.exists() {
-            return Err(anyhow!("pipe '{}' not found", name));
+            return Err(self.pipe_not_found_error(name));
         }
 
         // Stop if running

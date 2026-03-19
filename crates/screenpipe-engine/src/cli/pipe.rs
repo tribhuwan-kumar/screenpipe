@@ -58,7 +58,7 @@ pub async fn handle_pipe_command(command: &PipeCommand) -> anyhow::Result<()> {
         }
         PipeCommand::Install { source } => match manager.install_pipe(source).await {
             Ok(name) => println!("installed pipe: {}", name),
-            Err(e) => eprintln!("error: {}", e),
+            Err(e) => anyhow::bail!("failed to install pipe: {}", e),
         },
         PipeCommand::Enable { name } => {
             manager.enable_pipe(name, true).await?;
@@ -81,19 +81,31 @@ pub async fn handle_pipe_command(command: &PipeCommand) -> anyhow::Result<()> {
                             println!("\n{}", log.stdout);
                         }
                     } else {
-                        eprintln!("✗ failed");
+                        let mut msg = format!("pipe '{}' execution failed", name);
                         if !log.stderr.is_empty() {
-                            eprintln!("{}", log.stderr);
+                            msg.push_str(&format!(":\n{}", log.stderr));
                         }
+                        anyhow::bail!(msg);
                     }
                 }
-                Err(e) => eprintln!("error: {}", e),
+                Err(e) => return Err(e),
             }
         }
         PipeCommand::Logs { name, follow: _ } => {
+            // Verify the pipe exists before showing logs
+            if manager.get_pipe(name).await.is_none() {
+                let pipe_dir = pipes_dir.join(name);
+                if !pipe_dir.exists() {
+                    anyhow::bail!(
+                        "pipe '{}' not found — directory does not exist: {}\nhint: install it first with `screenpipe pipe install <source>`",
+                        name,
+                        pipe_dir.display()
+                    );
+                }
+            }
             let logs = manager.get_logs(name).await;
             if logs.is_empty() {
-                println!("no logs for pipe '{}'", name);
+                println!("no logs for pipe '{}' (it hasn't been run yet)", name);
             } else {
                 for log in &logs {
                     let status = if log.success { "✓" } else { "✗" };

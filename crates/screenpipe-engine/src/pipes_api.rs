@@ -84,8 +84,12 @@ pub async fn list_pipes(
 }
 
 /// GET /pipes/:id — single pipe detail.
+/// Re-scans disk so pipes installed externally are picked up.
 pub async fn get_pipe(State(pm): State<SharedPipeManager>, Path(id): Path<String>) -> Json<Value> {
     let mgr = pm.lock().await;
+    if let Err(e) = mgr.reload_pipes().await {
+        tracing::warn!("failed to reload pipes from disk: {}", e);
+    }
     match mgr.get_pipe(&id).await {
         Some(pipe) => Json(json!({ "data": pipe })),
         None => Json(json!({ "error": format!("pipe '{}' not found", id) })),
@@ -123,6 +127,11 @@ pub async fn run_pipe_now(
     body: Option<Json<RunPipeBody>>,
 ) -> Json<Value> {
     let mut mgr = pm.lock().await;
+
+    // Re-scan disk so newly installed pipes are discovered before lookup
+    if let Err(e) = mgr.reload_pipes().await {
+        tracing::warn!("failed to reload pipes from disk: {}", e);
+    }
 
     // If notification_context is provided, temporarily set it as extra context
     let prev_context = if let Some(Json(ref b)) = body {
