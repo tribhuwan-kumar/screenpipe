@@ -8,15 +8,16 @@ import OpenAI from 'openai';
 import type { ChatCompletionMessage, ChatCompletionCreateParams } from 'openai/resources/chat';
 import type { ResponseFormatJSONSchema } from 'openai/resources';
 
-// Models we expose through OpenRouter (curated for quality/price)
+// Models we expose through OpenRouter (curated for quality/price, March 2026)
 const OPENROUTER_MODELS = [
+	{ id: 'qwen/qwen3.5-flash-02-23', name: 'Qwen3.5 Flash (1M ctx, cheapest)', provider: 'openrouter' },
 	{ id: 'deepseek/deepseek-chat', name: 'DeepSeek V3.2', provider: 'openrouter' },
-	{ id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1', provider: 'openrouter' },
-	{ id: 'qwen/qwen3-coder', name: 'Qwen3 Coder 480B', provider: 'openrouter' },
-	{ id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder 480B (free)', provider: 'openrouter' },
-	{ id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'openrouter' },
+	{ id: 'deepseek/deepseek-v3.2-speciale', name: 'DeepSeek V3.2 Speciale (reasoning)', provider: 'openrouter' },
+	{ id: 'qwen/qwen3.5-397b-a17b', name: 'Qwen3.5 397B (vision, SOTA)', provider: 'openrouter' },
 	{ id: 'meta-llama/llama-4-scout', name: 'Llama 4 Scout', provider: 'openrouter' },
-	{ id: 'mistralai/mistral-medium-3', name: 'Mistral Medium 3', provider: 'openrouter' },
+	{ id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'openrouter' },
+	{ id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder 480B (free)', provider: 'openrouter' },
+	{ id: 'stepfun/step-3.5-flash:free', name: 'Step 3.5 Flash (free, 256K)', provider: 'openrouter' },
 ];
 
 export class OpenRouterProvider implements AIProvider {

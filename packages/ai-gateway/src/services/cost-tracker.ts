@@ -28,13 +28,15 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'o1': { input: 15.00, output: 60.00 },
   'o1-mini': { input: 3.00, output: 12.00 },
   'o3-mini': { input: 1.10, output: 4.40 },
-  // OpenRouter models (DeepSeek, Llama, Qwen, Mistral)
-  'deepseek-chat': { input: 0.28, output: 0.42 },
-  'deepseek-reasoner': { input: 0.28, output: 0.42 },
+  // OpenRouter models
+  'qwen3.5-flash': { input: 0.065, output: 0.26 },
+  'qwen3.5-397b': { input: 0.39, output: 2.34 },
+  'deepseek-chat': { input: 0.26, output: 0.38 },
+  'deepseek-v3.2-speciale': { input: 0.40, output: 1.20 },
   'llama-4-maverick': { input: 0.20, output: 0.60 },
   'llama-4-scout': { input: 0.11, output: 0.34 },
   'qwen3-coder': { input: 0.22, output: 1.00 },
-  'mistral-medium-3': { input: 0.40, output: 2.00 },
+  'step-3.5-flash': { input: 0.00, output: 0.00 },
   // Google Gemini
   'gemini-2.5-flash': { input: 0.15, output: 0.60 },
   'gemini-2.5-pro': { input: 1.25, output: 10.00 },
@@ -125,7 +127,7 @@ export function inferProvider(model: string): string {
   if (lower.includes('claude')) return 'anthropic';
   if (lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) return 'openai';
   if (lower.includes('gemini')) return 'google';
-  if (lower.includes('deepseek') || lower.includes('llama') || lower.includes('qwen') || lower.includes('mistral')) return 'openrouter';
+  if (lower.includes('deepseek') || lower.includes('llama') || lower.includes('qwen') || lower.includes('mistral') || lower.includes('step-3.5') || lower.includes('stepfun')) return 'openrouter';
   return 'unknown';
 }
 

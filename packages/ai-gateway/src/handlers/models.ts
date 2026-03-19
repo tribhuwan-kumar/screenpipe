@@ -26,13 +26,14 @@ export async function handleModelListing(env: Env, tier: UserTier = 'subscribed'
     ];
 
     const openRouterModels = env.OPENROUTER_API_KEY ? [
+      { id: 'qwen/qwen3.5-flash-02-23', name: 'Qwen3.5 Flash (1M ctx, cheapest)', provider: 'openrouter' },
       { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3.2', provider: 'openrouter' },
-      { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1', provider: 'openrouter' },
-      { id: 'qwen/qwen3-coder', name: 'Qwen3 Coder 480B', provider: 'openrouter' },
-      { id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder 480B (free)', provider: 'openrouter' },
-      { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'openrouter' },
+      { id: 'deepseek/deepseek-v3.2-speciale', name: 'DeepSeek V3.2 Speciale (reasoning)', provider: 'openrouter' },
+      { id: 'qwen/qwen3.5-397b-a17b', name: 'Qwen3.5 397B (vision, SOTA)', provider: 'openrouter' },
       { id: 'meta-llama/llama-4-scout', name: 'Llama 4 Scout', provider: 'openrouter' },
-      { id: 'mistralai/mistral-medium-3', name: 'Mistral Medium 3', provider: 'openrouter' },
+      { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'openrouter' },
+      { id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder 480B (free)', provider: 'openrouter' },
+      { id: 'stepfun/step-3.5-flash:free', name: 'Step 3.5 Flash (free, 256K)', provider: 'openrouter' },
     ] : [];
 
     let models: { id: string; name: string; provider: string; tier_available?: boolean }[] = [

@@ -124,12 +124,14 @@ const MODEL_WEIGHTS: Record<string, number> = {
   'gpt-4o': 3,
   'gpt-4': 3,
   // OpenRouter models
+  'qwen3.5-flash': 1,
+  'qwen3.5-397b': 3,
   'deepseek-chat': 1,
-  'deepseek-reasoner': 1,
+  'deepseek-v3.2-speciale': 3,
   'llama-4-maverick': 1,
   'llama-4-scout': 1,
   'qwen3-coder': 1,
-  'mistral-medium': 2,
+  'step-3.5-flash': 1,
 };
 
 export function getModelWeight(model?: string): number {
@@ -157,7 +159,10 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'gemini-3-flash',
       'gemini-2.5-flash',
       'deepseek/deepseek-chat',
+      'qwen/qwen3.5-flash',
       'meta-llama/llama-4-scout',
+      'qwen/qwen3-coder:free',
+      'stepfun/step-3.5-flash:free',
     ],
   },
   logged_in: {
@@ -172,9 +177,13 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'gemini-3-pro',
       'gemini-3.1-pro',
       'deepseek/deepseek-chat',
-      'deepseek/deepseek-reasoner',
+      'deepseek/deepseek-v3.2-speciale',
+      'qwen/qwen3.5-flash',
+      'qwen/qwen3.5-397b',
       'meta-llama/llama-4-scout',
       'meta-llama/llama-4-maverick',
+      'qwen/qwen3-coder:free',
+      'stepfun/step-3.5-flash:free',
     ],
   },
   subscribed: {

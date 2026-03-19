@@ -930,8 +930,9 @@ const AISection = ({
             { id: "claude-opus-4-6", name: "Opus 4.6 (powerful, pro)", provider: "screenpipe" },
             { id: "gemini-3-flash", name: "Gemini 3 Flash (fast)", provider: "screenpipe" },
             { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro (balanced)", provider: "screenpipe" },
-            { id: "deepseek/deepseek-chat", name: "DeepSeek V3.2 (fast, cheap)", provider: "screenpipe" },
-            { id: "meta-llama/llama-4-scout", name: "Llama 4 Scout (free)", provider: "screenpipe" },
+            { id: "qwen/qwen3.5-flash-02-23", name: "Qwen3.5 Flash (cheapest, 1M ctx)", provider: "screenpipe" },
+            { id: "deepseek/deepseek-chat", name: "DeepSeek V3.2 (fast)", provider: "screenpipe" },
+            { id: "meta-llama/llama-4-scout", name: "Llama 4 Scout", provider: "screenpipe" },
           ]);
           break;
         }
