@@ -365,6 +365,49 @@ pipe.md (prompt + config)
 - **lookback = schedule interval** (capped at 8h to prevent context overflow)
 - **logs saved** to `~/.screenpipe/pipes/{name}/logs/` as JSON
 
+## security & permissions
+
+by default, pipes have **full API access** — they can call any screenpipe endpoint. this is fine for pipes you write yourself, but if a pipe doesn't need write access, you can restrict it.
+
+add `permissions` to your frontmatter:
+
+```yaml
+---
+schedule: every 30m
+permissions: reader
+---
+```
+
+### presets
+
+| preset | what it allows |
+|--------|----------------|
+| (none) | **full access** — no restrictions, same as always |
+| `reader` | read-only: `/search`, `/activity-summary`, `/meetings` (GET), `/notify`, `/health` |
+| `writer` | reader + meeting writes, memory writes |
+| `admin` | everything (explicit opt-in, useful for logging) |
+
+### custom rules
+
+use `Api(METHOD /path)` patterns for fine-grained control:
+
+```yaml
+---
+schedule: every 1h
+permissions:
+  deny:
+    - Api(* /meetings/stop)
+    - Api(* /meetings/start)
+    - Api(DELETE /meetings/*)
+---
+```
+
+this pipe has full access **except** it can't start, stop, or delete meetings.
+
+<Tip>if your pipe doesn't need to write data, add `permissions: reader` — it prevents accidental side effects like ending a meeting or deleting data.</Tip>
+
+see the full reference: [pipe permissions →](/pipe-permissions)
+
 ## built-in pipes
 
 screenpipe ships with three template pipes (disabled by default):
