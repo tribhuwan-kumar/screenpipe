@@ -2448,11 +2448,11 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             piRunningConfigRef.current = { provider: providerConfig.provider, model: providerConfig.model, token: settings.user?.token ?? null };
           }
         } else {
-          toast({ title: "Failed to start Pi", description: result.status === "error" ? result.error : "Unknown error", variant: "destructive" });
+          toast({ title: "Failed to start Screenpipe Cloud", description: result.status === "error" ? result.error : "Unknown error", variant: "destructive" });
           return;
         }
       } catch (e) {
-        toast({ title: "Failed to start Pi", description: String(e), variant: "destructive" });
+        toast({ title: "Failed to start Screenpipe Cloud", description: String(e), variant: "destructive" });
         return;
       } finally {
         setPiStarting(false);

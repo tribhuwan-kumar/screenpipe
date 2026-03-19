@@ -203,7 +203,7 @@ const DEFAULT_IGNORED_WINDOWS_PER_OS: Record<string, string[]> = {
 	linux: ["Info center", "Discover", "Parted"],
 };
 
-// Default Pi agent preset — local coding agent with screenpipe search skill
+// Default Screenpipe Cloud preset
 const DEFAULT_PI_PRESET: AIPreset = {
 	id: "pi-agent",
 	provider: "pi",
