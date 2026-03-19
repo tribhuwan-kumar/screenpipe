@@ -628,10 +628,13 @@ class NotificationPanelController: NSObject {
         let mouseLocation = NSEvent.mouseLocation
         for screen in NSScreen.screens {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
-                // Use visibleFrame to avoid overlapping the menu bar / notch area
+                let frame = screen.frame
                 let visible = screen.visibleFrame
                 let margin: CGFloat = 20
-                let x = visible.origin.x + visible.size.width - 320 - margin
+                // Use screen.frame for X (right edge) — visibleFrame may be
+                // inset by the Dock and cause wrong positioning
+                let x = frame.origin.x + frame.size.width - 320 - margin
+                // Use visibleFrame for Y (top edge) — avoids menu bar / notch
                 let y = visible.origin.y + visible.size.height - 180 - margin
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
