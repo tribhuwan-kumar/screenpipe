@@ -460,6 +460,37 @@ fn seed_pi_package_json(install_dir: &std::path::Path) {
     }
 }
 
+/// Check if the locally-installed pi version matches the expected version.
+fn is_local_pi_version_current(install_dir: &std::path::Path) -> bool {
+    let pkg_json = install_dir
+        .join("node_modules")
+        .join("@mariozechner")
+        .join("pi-coding-agent")
+        .join("package.json");
+    let contents = match std::fs::read_to_string(&pkg_json) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let installed = match parsed.get("version").and_then(|v| v.as_str()) {
+        Some(v) => v,
+        None => return false,
+    };
+    // PI_PACKAGE is "@mariozechner/pi-coding-agent@0.60.0" — extract version after last '@'
+    let expected = PI_PACKAGE.rsplit('@').next().unwrap_or("");
+    if installed != expected {
+        info!(
+            "local pi version {} differs from expected {}",
+            installed, expected
+        );
+        return false;
+    }
+    true
+}
+
 /// Find the JS entrypoint for the locally-installed pi package.
 fn find_local_pi_entrypoint() -> Option<String> {
     let dir = pi_local_install_dir()?;
@@ -2029,27 +2060,44 @@ fn ensure_bash_available() -> Option<String> {
 /// Runs on a dedicated thread, never panics, never blocks the caller.
 /// Sets `PI_INSTALL_DONE` when finished so `pi_start` can wait for it.
 pub fn ensure_pi_installed_background() {
-    // If Pi is already installed locally, check if it needs the lru-cache fix.
+    // If Pi is already installed locally, check if it needs the lru-cache fix
+    // or a version upgrade.
     if find_local_pi_entrypoint().is_some() {
         if let Some(install_dir) = pi_local_install_dir() {
             let pkg_path = install_dir.join("package.json");
-            let needs_fix = pkg_path.exists()
+            let needs_lru_fix = pkg_path.exists()
                 && std::fs::read_to_string(&pkg_path)
                     .map(|c| !c.contains("overrides"))
                     .unwrap_or(false);
-            if needs_fix {
-                info!("Pi installed but missing lru-cache overrides — patching and reinstalling");
+            let needs_upgrade = !is_local_pi_version_current(&install_dir);
+
+            if needs_lru_fix || needs_upgrade {
+                if needs_lru_fix {
+                    info!("Pi installed but missing lru-cache overrides — patching");
+                }
+                if needs_upgrade {
+                    info!("Pi version mismatch — upgrading to {} in background", PI_PACKAGE);
+                }
                 seed_pi_package_json(&install_dir);
-                // Delete bun.lock so bun resolves deps with new overrides
-                let _ = std::fs::remove_file(install_dir.join("bun.lock"));
-                let _ = std::fs::remove_file(install_dir.join("bun.lockb"));
-                // Trigger reinstall in background (don't block)
+                if needs_lru_fix {
+                    // Delete bun.lock so bun resolves deps with new overrides
+                    let _ = std::fs::remove_file(install_dir.join("bun.lock"));
+                    let _ = std::fs::remove_file(install_dir.join("bun.lockb"));
+                }
+                // Run upgrade/reinstall in background but do NOT set PI_INSTALL_DONE
+                // until it completes — otherwise pi_start will launch the stale version
+                // while node_modules is being overwritten, causing import errors.
                 if let Some(bun) = find_bun_executable() {
                     let _ = std::thread::Builder::new()
-                        .name("pi-lru-fix".to_string())
+                        .name("pi-upgrade".to_string())
                         .spawn(move || {
+                            let args = if needs_upgrade {
+                                vec!["add", PI_PACKAGE]
+                            } else {
+                                vec!["install"]
+                            };
                             let mut cmd = std::process::Command::new(&bun);
-                            cmd.current_dir(&install_dir).args(["install"]);
+                            cmd.current_dir(&install_dir).args(&args);
                             #[cfg(windows)]
                             {
                                 use std::os::windows::process::CommandExt;
@@ -2058,21 +2106,26 @@ pub fn ensure_pi_installed_background() {
                             }
                             match cmd.output() {
                                 Ok(output) if output.status.success() => {
-                                    info!("Pi lru-cache fix: reinstall successful");
+                                    info!("Pi upgrade/fix: install successful");
                                 }
                                 Ok(output) => {
                                     let stderr = String::from_utf8_lossy(&output.stderr);
-                                    warn!("Pi lru-cache fix: reinstall failed: {}", stderr);
+                                    warn!("Pi upgrade/fix: install failed: {}", stderr);
                                 }
-                                Err(e) => warn!("Pi lru-cache fix: bun error: {}", e),
+                                Err(e) => warn!("Pi upgrade/fix: bun error: {}", e),
                             }
+                            PI_INSTALL_DONE.store(true, Ordering::SeqCst);
                         });
+                } else {
+                    PI_INSTALL_DONE.store(true, Ordering::SeqCst);
                 }
             } else {
                 debug!("Pi already installed locally, skipping background install");
+                PI_INSTALL_DONE.store(true, Ordering::SeqCst);
             }
+        } else {
+            PI_INSTALL_DONE.store(true, Ordering::SeqCst);
         }
-        PI_INSTALL_DONE.store(true, Ordering::SeqCst);
         return;
     }
 
