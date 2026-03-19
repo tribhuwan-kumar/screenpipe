@@ -465,20 +465,12 @@ struct VisualEffectView: NSViewRepresentable {
 private class HoverTrackingView: NSView {
     weak var controller: NotificationPanelController?
 
-    // Force pointer (hand) cursor over the entire notification panel.
-    // This overrides SwiftUI Text's default I-beam cursor.
-    override func resetCursorRects() {
-        discardCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        window?.invalidateCursorRects(for: self)
         for ta in trackingAreas { removeTrackingArea(ta) }
         let ta = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
@@ -486,10 +478,22 @@ private class HoverTrackingView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        // Disable cursor rects on the window so NSHostingView's I-beam
+        // cursors don't override ours. Set pointer cursor manually.
+        window?.disableCursorRects()
+        NSCursor.pointingHand.set()
         controller?.handleMouseEntered()
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        // Keep forcing pointer cursor as mouse moves over the panel
+        NSCursor.pointingHand.set()
+    }
+
     override func mouseExited(with event: NSEvent) {
+        // Re-enable cursor rects so other windows work normally
+        window?.enableCursorRects()
+        NSCursor.arrow.set()
         controller?.handleMouseExited()
     }
 }
@@ -606,8 +610,9 @@ class NotificationPanelController: NSObject {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
                 // Use visibleFrame to avoid overlapping the menu bar / notch area
                 let visible = screen.visibleFrame
-                let x = visible.origin.x + visible.size.width - 320 - 24
-                let y = visible.origin.y + visible.size.height - 180 - 8
+                let margin: CGFloat = 12
+                let x = visible.origin.x + visible.size.width - 320 - margin
+                let y = visible.origin.y + visible.size.height - 180 - margin
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
             }
