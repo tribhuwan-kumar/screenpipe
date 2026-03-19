@@ -1150,7 +1150,7 @@ export function PipesSection() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={refreshing} onClick={async () => {
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={refreshing} onClick={async () => {
             setRefreshing(true);
             await Promise.all([
               fetchPipes(),
