@@ -301,6 +301,12 @@ struct NotificationContentView: View {
         )
         .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 4)
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+        // Override link handling — SwiftUI's default openURL doesn't work
+        // in non-activating panels. Use NSWorkspace to open links directly.
+        .environment(\.openURL, OpenURLAction { url in
+            NSWorkspace.shared.open(url)
+            return .handled
+        })
     }
 
     private func sendActionJson(_ json: String) {
