@@ -115,49 +115,6 @@ private enum Brand {
 
 // MARK: - SwiftUI Views
 
-/// NSView-based cursor override that works in non-key NSPanel windows.
-/// SwiftUI's .onHover + NSCursor.push/pop doesn't reliably fire in
-/// non-activating panels, so we use resetCursorRects instead.
-struct PointerCursorView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let v = PointerNSView()
-        return v
-    }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-private class PointerNSView: NSView {
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        // Force cursor rect refresh
-        window?.invalidateCursorRects(for: self)
-    }
-}
-
-/// Button that always shows pointer cursor, even in non-key panels.
-@available(macOS 13.0, *)
-struct PointerCursorButton<Label: View>: View {
-    let action: () -> Void
-    let label: () -> Label
-
-    init(action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
-        self.action = action
-        self.label = label
-    }
-
-    var body: some View {
-        Button(action: action) {
-            label()
-        }
-        .buttonStyle(.plain)
-        .overlay(PointerCursorView())
-        .contentShape(Rectangle())
-    }
-}
-
 /// Button with brand-compliant hover: color inversion, sharp corners, 1px border
 @available(macOS 13.0, *)
 struct BrandButton: View {
@@ -184,7 +141,6 @@ struct BrandButton: View {
             Rectangle()
                 .stroke(Color.primary.opacity(0.12), lineWidth: 1)
         )
-        .overlay(PointerCursorView())
         .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.linear(duration: Brand.animDuration)) {
@@ -209,7 +165,6 @@ struct BrandTextButton: View {
                 .foregroundColor(isHovered ? .primary.opacity(0.8) : .primary.opacity(0.3))
         }
         .buttonStyle(.plain)
-        .overlay(PointerCursorView())
         .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.linear(duration: Brand.animDuration)) {
@@ -243,12 +198,14 @@ struct NotificationContentView: View {
                     .font(Brand.swiftUIMonoFont(size: 10, weight: .medium))
                     .foregroundColor(.primary.opacity(0.4))
                 Spacer()
-                PointerCursorButton(action: onDismiss) {
+                Button(action: onDismiss) {
                     Text("✕")
                         .font(Brand.swiftUIMonoFont(size: 12))
                         .foregroundColor(closeHovered ? .primary.opacity(0.9) : .primary.opacity(0.35))
                         .frame(width: 20, height: 20)
                 }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .onHover { h in
                     withAnimation(.linear(duration: Brand.animDuration)) { closeHovered = h }
                 }
@@ -466,41 +423,16 @@ struct VisualEffectView: NSViewRepresentable {
 
 // MARK: - Panel controller (manages the NSPanel + SwiftUI hosting)
 
-/// Transparent overlay placed ON TOP of the NSHostingView to force pointer
-/// cursor. Passes all clicks through to SwiftUI underneath via hitTest returning nil.
-/// cursorUpdate works because the tracking area is on the topmost view.
-@available(macOS 13.0, *)
-private class CursorOverlayView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        // Pass all clicks through to SwiftUI views underneath
-        return nil
-    }
-
-    override func resetCursorRects() {
-        discardCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-
-    override func cursorUpdate(with event: NSEvent) {
-        NSCursor.pointingHand.set()
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        for ta in trackingAreas { removeTrackingArea(ta) }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        ))
-    }
-}
-
 /// Custom NSView that forwards mouse enter/exit to the controller.
+/// acceptsFirstMouse ensures clicks are delivered immediately in
+/// non-activating panels without needing to activate the window first.
 @available(macOS 13.0, *)
 private class HoverTrackingView: NSView {
     weak var controller: NotificationPanelController?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -530,7 +462,6 @@ class NotificationPanelController: NSObject {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<AnyView>?
     private var hoverView: HoverTrackingView?
-    private var cursorOverlay: CursorOverlayView?
     private var currentPayload: NotificationPayload?
     private var timer: Timer?
     private var progress: Double = 1.0
@@ -679,14 +610,6 @@ class NotificationPanelController: NSObject {
             hosting.autoresizingMask = [.width, .height]
             contentView.addSubview(hosting)
             self.hostingView = hosting
-
-            // Add a transparent cursor overlay ON TOP of the hosting view.
-            // It returns nil from hitTest so clicks pass through to SwiftUI,
-            // but its cursorUpdate/resetCursorRects force the pointer cursor.
-            let overlay = CursorOverlayView(frame: contentView.bounds)
-            overlay.autoresizingMask = [.width, .height]
-            contentView.addSubview(overlay, positioned: .above, relativeTo: hosting)
-            self.cursorOverlay = overlay
         }
     }
 
