@@ -392,18 +392,6 @@ async hideNotificationPanel() : Promise<Result<null, string>> {
 }
 },
 /**
- * Check if the mouse cursor is inside a given window's bounds.
- * Used by NSPanel webviews where JS mouse events don't fire (non-key window).
- */
-async isMouseInsideWindow(label: string) : Promise<Result<boolean, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("is_mouse_inside_window", { label }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
  * Register window-specific shortcuts (Escape, search shortcut) when main window is visible
  * These should only be active when the overlay is open to avoid blocking other apps
  */
