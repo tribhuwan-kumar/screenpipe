@@ -54,7 +54,14 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		// Usage status endpoint - returns current usage without incrementing
 		if (path === '/v1/usage' && request.method === 'GET') {
 			const status = await getUsageStatus(env, authResult.deviceId, authResult.tier, authResult.userId);
-			return addCorsHeaders(createSuccessResponse(status));
+			// Enrich with cost-based limit info
+			const dailyCost = await getDailyUserCost(env, authResult.deviceId);
+			const maxCost = getMaxDailyCostPerUser(env);
+			const enriched = {
+				...status,
+				cost_limit_reached: dailyCost >= maxCost,
+			};
+			return addCorsHeaders(createSuccessResponse(enriched));
 		}
 
 		// Admin spend endpoint - aggregated AI cost data
@@ -92,9 +99,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached the daily cost limit ($${maxCost.toFixed(2)}). Try again tomorrow or use a lighter model like Haiku.`,
-						daily_cost_usd: dailyCost,
-						daily_cost_limit_usd: maxCost,
+						message: `You've reached your daily AI usage limit. Try again tomorrow or use a lighter model like Haiku.`,
 					})));
 				}
 			}
@@ -288,9 +293,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached the daily cost limit ($${maxCost.toFixed(2)}). Try again tomorrow or use a lighter model like Haiku.`,
-						daily_cost_usd: dailyCost,
-						daily_cost_limit_usd: maxCost,
+						message: `You've reached your daily AI usage limit. Try again tomorrow or use a lighter model like Haiku.`,
 					})));
 				}
 			}
@@ -388,9 +391,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached the daily cost limit ($${maxCost.toFixed(2)}). Try again tomorrow or use a lighter model like Haiku.`,
-						daily_cost_usd: dailyCost,
-						daily_cost_limit_usd: maxCost,
+						message: `You've reached your daily AI usage limit. Try again tomorrow or use a lighter model like Haiku.`,
 					})));
 				}
 			}
