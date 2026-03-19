@@ -192,7 +192,7 @@ export function AIProviderConfig({
   const [showApiKey, setShowApiKey] = useState(false);
   const isEnterprise = useIsEnterpriseBuild();
   const [piAvailable, setPiAvailable] = useState(false);
-  const [piModels, setPiModels] = useState<{ id: string; name: string; free?: boolean }[]>([]);
+  const [piModels, setPiModels] = useState<{ id: string; name: string; free?: boolean; health?: { status: string; error_rate_5m: number } }[]>([]);
 
   // Fetch PI models from gateway (single source of truth)
   useEffect(() => {
@@ -209,6 +209,7 @@ export function AIProviderConfig({
             id: m.id,
             name: m.name || m.id,
             free: m.free,
+            health: m.health,
           }));
           setPiModels(models);
         }
@@ -755,7 +756,12 @@ export function AIProviderConfig({
               <SelectContent>
                 {piModels.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.name}{m.free ? " (free)" : ""}
+                    <span className="flex items-center gap-1.5">
+                      {m.health?.status === 'down' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" title="overloaded" />}
+                      {m.health?.status === 'degraded' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500" title="degraded" />}
+                      {m.name}{m.free ? " (free)" : ""}
+                      {m.health?.status === 'down' && <span className="text-[9px] text-red-400 ml-1">overloaded</span>}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

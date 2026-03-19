@@ -13,6 +13,7 @@ import { handleWebSearch } from './handlers/web-search';
 import { logCost, getModelCost, inferProvider, getSpendSummary, getDailyUserCost, getMaxDailyCostPerUser, isZeroCostModel } from './services/cost-tracker';
 import { trackResponseUsage } from './utils/stream-usage-tracker';
 import { getModelWeight } from './services/usage-tracker';
+import { pruneModelHealth } from './services/model-health';
 // import { handleTTSWebSocketUpgrade } from './handlers/voice-ws';
 
 export { RateLimiter };
@@ -229,7 +230,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		}
 
 		if (path === '/v1/models' && request.method === 'GET') {
-			// Return tier-filtered models for non-subscribed users
+			// Prune old health records opportunistically (fire-and-forget)
+			ctx.waitUntil(pruneModelHealth(env));
+			// Return tier-filtered models with live health status
 			return await handleModelListing(env, authResult.tier);
 		}
 

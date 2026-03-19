@@ -6,6 +6,7 @@ import { Env, UserTier } from '../types';
 import { createSuccessResponse, createErrorResponse, addCorsHeaders } from '../utils/cors';
 import { getTierConfig } from '../services/usage-tracker';
 import { listAnthropicModels } from '../providers/anthropic-proxy';
+import { getModelHealth, ModelHealthStatus } from '../services/model-health';
 
 /** Enriched model metadata — OpenAI-compatible (extra fields ignored by standard clients) */
 interface ModelEntry {
@@ -20,6 +21,8 @@ interface ModelEntry {
   best_for: string[];
   speed: 'fast' | 'medium' | 'slow';
   intelligence: 'standard' | 'high' | 'highest';
+  /** Live health status from rolling 5-minute error rate */
+  health?: ModelHealthStatus;
 }
 
 /** Curated model catalog — single source of truth */
@@ -216,7 +219,7 @@ const CURATED_MODELS: ModelEntry[] = [
  */
 export async function handleModelListing(env: Env, tier: UserTier = 'subscribed'): Promise<Response> {
   try {
-    let models = [...CURATED_MODELS];
+    let models: ModelEntry[] = [...CURATED_MODELS];
 
     // Filter models based on tier allowlist
     if (tier !== 'subscribed') {
@@ -227,6 +230,15 @@ export async function handleModelListing(env: Env, tier: UserTier = 'subscribed'
           allowed.toLowerCase().includes(model.id.toLowerCase())
         )
       );
+    }
+
+    // Attach live health status from rolling 5-minute error rates
+    const health = await getModelHealth(env);
+    for (const model of models) {
+      if (health[model.id]) {
+        model.health = health[model.id];
+      }
+      // Default: healthy (no data = no errors)
     }
 
     return addCorsHeaders(createSuccessResponse({
