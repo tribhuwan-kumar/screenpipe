@@ -243,16 +243,17 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
             ],
             min_signals_required: 1,
         },
-        // Discord (native + browser)
+        // Discord native (macOS + Windows)
         // Native macOS: Electron exposes 0 windows but menu bar has "Mute"/"Deafen"
         // items ONLY when in a voice channel — these are reliable call signals.
-        // Browser: standard AX tree with "Voice Connected" and "Disconnect" buttons.
         // Windows: full Electron AX tree works via UIA.
+        // NOTE: Mute/Deafen are NOT used for browser detection because Discord's
+        // web UI shows them permanently in the user panel, even outside voice channels.
         MeetingDetectionProfile {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &["discord"],
                 windows_process_names: &["discord.exe"],
-                browser_url_patterns: &["discord.com", "discordapp.com"],
+                browser_url_patterns: &[],
             },
             call_signals: vec![
                 // macOS native: menu items only present during voice channel
@@ -262,18 +263,30 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                 CallSignal::MenuBarItem {
                     title_contains: "Mute",
                 },
-                // Browser: "Voice Connected" bar and disconnect button
-                CallSignal::NameContains("Voice Connected"),
-                CallSignal::RoleWithName {
-                    role: "AXButton",
-                    name_contains: "disconnect",
-                },
                 // Windows native: buttons in Electron AX tree
                 CallSignal::RoleWithName {
                     role: "AXButton",
                     name_contains: "Disconnect",
                 },
                 CallSignal::NameContains("Disconnect"),
+            ],
+            min_signals_required: 1,
+        },
+        // Discord in browser — only match signals specific to active voice channels.
+        // The "Voice Connected" bar and "Disconnect" button only appear when in a call.
+        // Do NOT use Mute/Deafen here — they're always visible in the user panel.
+        MeetingDetectionProfile {
+            app_identifiers: AppIdentifiers {
+                macos_app_names: &[],
+                windows_process_names: &[],
+                browser_url_patterns: &["discord.com", "discordapp.com"],
+            },
+            call_signals: vec![
+                CallSignal::NameContains("Voice Connected"),
+                CallSignal::RoleWithName {
+                    role: "AXButton",
+                    name_contains: "disconnect",
+                },
             ],
             min_signals_required: 1,
         },
