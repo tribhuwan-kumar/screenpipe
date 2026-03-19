@@ -42,6 +42,8 @@ export default function NotificationPanelPage() {
   const [payload, setPayload] = useState<NotificationPayload | null>(null);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
+  // Incremented on each new notification so the auto-dismiss timer restarts
+  const [notificationEpoch, setNotificationEpoch] = useState(0);
   const [restartState, setRestartState] = useState<
     "idle" | "restarting" | "success" | "error"
   >("idle");
@@ -252,6 +254,7 @@ export default function NotificationPanelPage() {
 
         const dismissMs = data.autoDismissMs ?? 20000;
         autoDismissMsRef.current = dismissMs;
+        setNotificationEpoch((n) => n + 1);
       } catch (e) {
         console.error("failed to parse notification payload:", e);
       }
@@ -263,6 +266,8 @@ export default function NotificationPanelPage() {
   }, []);
 
   // Auto-dismiss countdown
+  // Depends on notificationEpoch so a new notification restarts the timer
+  // even when `visible` was already true.
   useEffect(() => {
     if (!visible) return;
 
@@ -300,7 +305,8 @@ export default function NotificationPanelPage() {
         intervalRef.current = null;
       }
     };
-  }, [visible, hide]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, hide, notificationEpoch]);
 
   if (!payload || !visible) {
     return null;
