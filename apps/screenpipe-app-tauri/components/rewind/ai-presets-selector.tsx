@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AIPreset, commands } from "@/lib/utils/tauri";
+import { ensureChatGptPreset } from "@/lib/utils/chatgpt-preset";
 import { useIsEnterpriseBuild } from "@/lib/hooks/use-is-enterprise-build";
 
 // Helper to detect UUID-like strings and format preset names nicely
@@ -125,6 +126,7 @@ export const DEFAULT_PROMPT = `Rules:
 function ChatGptSignInButton() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { settings, updateSettings } = useSettings();
 
   useEffect(() => {
     commands.chatgptOauthStatus().then((res) => {
@@ -148,7 +150,14 @@ function ChatGptSignInButton() {
           setLoading(true);
           try {
             const res = await commands.chatgptOauthLogin();
-            if (res.status === "ok" && res.data) setLoggedIn(true);
+            if (res.status === "ok" && res.data) {
+              setLoggedIn(true);
+              // auto-create a ChatGPT preset on first connection
+              await ensureChatGptPreset(
+                settings.aiPresets || [],
+                (presets) => updateSettings({ aiPresets: presets })
+              );
+            }
           } catch (e) {
             console.error("chatgpt oauth failed:", e);
           }

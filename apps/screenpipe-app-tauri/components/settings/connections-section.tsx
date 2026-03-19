@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Download, ExternalLink, Check, Loader2, Copy, Terminal, LogIn, LogOut, Send, X, HelpCircle, Search, Calendar as CalendarIcon, Eye, EyeOff } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { commands } from "@/lib/utils/tauri";
+import { useSettings } from "@/lib/hooks/use-settings";
+import { ensureChatGptPreset } from "@/lib/utils/chatgpt-preset";
 import { showChatWithPrefill } from "@/lib/chat-utils";
 import { Command } from "@tauri-apps/plugin-shell";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -749,6 +751,7 @@ function WhatsAppPanel() {
 
 function ChatGptPanel() {
   const [status, setStatus] = useState<"idle" | "loading" | "logged_in">("idle");
+  const { settings, updateSettings } = useSettings();
   useEffect(() => {
     commands.chatgptOauthStatus().then(res => {
       if (res.status === "ok" && res.data.logged_in) setStatus("logged_in");
@@ -768,7 +771,16 @@ function ChatGptPanel() {
             setStatus("loading");
             try {
               const res = await commands.chatgptOauthLogin();
-              setStatus(res.status === "ok" && res.data ? "logged_in" : "idle");
+              if (res.status === "ok" && res.data) {
+                setStatus("logged_in");
+                // auto-create a ChatGPT preset on first connection
+                await ensureChatGptPreset(
+                  settings.aiPresets || [],
+                  (presets) => updateSettings({ aiPresets: presets })
+                );
+              } else {
+                setStatus("idle");
+              }
             } catch { setStatus("idle"); }
           }} disabled={status === "loading"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
             {status === "loading" ? (<><Loader2 className="h-3 w-3 animate-spin" />connecting...</>) : (<><LogIn className="h-3 w-3" />sign in with ChatGPT</>)}
