@@ -154,7 +154,7 @@ export const AIProviderCard = ({
     <Card
       onClick={onClick}
       className={cn(
-        "flex py-4 px-4 rounded-lg hover:bg-accent transition-colors h-[145px] w-full cursor-pointer",
+        "flex py-3 px-4 rounded-lg hover:bg-accent transition-colors h-[110px] w-full cursor-pointer",
         selected ? "border-black/60 border-[1.5px]" : "",
         disabled && "opacity-50 cursor-not-allowed",
       )}
@@ -1010,7 +1010,7 @@ const AISection = ({
   }, []);
 
   return (
-    <div className="w-full space-y-6 py-4">
+    <div className="w-full space-y-4 py-3">
       <div className="flex flex-col gap-2">
         <Button
           className="w-max flex gap-2"
@@ -1019,7 +1019,7 @@ const AISection = ({
         >
           <ArrowLeft className="w-4 h-4" /> back
         </Button>
-        <h1 className="text-2xl font-bold">
+        <h1 className="text-xl font-semibold">
           {preset ? "Update preset" : "Create preset"}
         </h1>
       </div>

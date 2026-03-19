@@ -400,19 +400,19 @@ export function AIProviderConfig({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
-    <div className="w-full space-y-2 rounded-lg bg-card p-2.5">
+    <div className="w-full space-y-3 rounded-lg bg-card p-4">
       <div>
-        <h2 className="text-sm font-semibold">
+        <h2 className="text-base font-semibold">
           {defaultPreset?.id ? "edit ai provider" : "ai provider"}
         </h2>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-1.5">
-        <div className="space-y-0.5">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="space-y-1">
           <Label htmlFor="name" className="flex items-center gap-2 text-xs">
             name
             {idError && (
-              <span className="text-[10px] text-destructive font-normal">
+              <span className="text-xs text-destructive font-normal">
                 {idError}
               </span>
             )}
@@ -424,7 +424,7 @@ export function AIProviderConfig({
             value={formData.id || undefined}
             onChange={(e) => handleIdChange(e.target.value)}
             className={cn(
-              "font-mono h-7 text-xs",
+              "font-mono h-8 text-sm",
               idError && "border-destructive focus-visible:ring-destructive",
             )}
             autoComplete="off"
@@ -444,13 +444,13 @@ export function AIProviderConfig({
           <Button
             type="button"
             variant={selectedProvider === "openai" ? "default" : "outline"}
-            className="flex h-7 items-center justify-center gap-1 text-[10px] px-2"
+            className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
             onClick={() => {
               setSelectedProvider("openai");
               setFormData({ ...formData, provider: "openai" });
             }}
           >
-            <Icons.openai className="h-3 w-3" />
+            <Icons.openai className="h-3.5 w-3.5" />
             <span>openai</span>
           </Button>
 
@@ -459,7 +459,7 @@ export function AIProviderConfig({
             variant={
               selectedProvider === "native-ollama" ? "default" : "outline"
             }
-            className="flex h-7 items-center justify-center gap-1 text-[10px] px-2"
+            className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
             onClick={() => {
               setSelectedProvider("native-ollama");
               setFormData({
@@ -469,14 +469,14 @@ export function AIProviderConfig({
               });
             }}
           >
-            <Icons.terminal className="h-3 w-3" />
+            <Icons.terminal className="h-3.5 w-3.5" />
             <span>ollama</span>
           </Button>
 
           <Button
             type="button"
             variant={selectedProvider === "custom" ? "default" : "outline"}
-            className="flex h-7 items-center justify-center gap-1 text-[10px] px-2"
+            className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
             onClick={() => {
               setSelectedProvider("custom");
               setFormData({
@@ -486,14 +486,14 @@ export function AIProviderConfig({
               });
             }}
           >
-            <Icons.settings className="h-3 w-3" />
+            <Icons.settings className="h-3.5 w-3.5" />
             <span>custom</span>
           </Button>
 
           <Button
             type="button"
             variant={selectedProvider === "openai-chatgpt" ? "default" : "outline"}
-            className="flex h-7 items-center justify-center gap-1 text-[10px] px-2"
+            className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
             onClick={() => {
               setSelectedProvider("openai-chatgpt");
               setFormData({
@@ -504,7 +504,7 @@ export function AIProviderConfig({
               });
             }}
           >
-            <Icons.openai className="h-3 w-3" />
+            <Icons.openai className="h-3.5 w-3.5" />
             <span>chatgpt</span>
           </Button>
 
@@ -513,7 +513,7 @@ export function AIProviderConfig({
               type="button"
               disabled={!settings?.user?.token}
               variant={selectedProvider === "pi" ? "default" : "outline"}
-              className="flex h-7 items-center justify-center gap-1 text-[10px] px-2"
+              className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
               onClick={() => {
                 setSelectedProvider("pi");
                 setFormData({
@@ -524,7 +524,7 @@ export function AIProviderConfig({
                 });
               }}
             >
-              <Icons.terminal className="h-3 w-3" />
+              <Icons.terminal className="h-3.5 w-3.5" />
               <span>pi</span>
             </Button>
           )}
@@ -532,7 +532,7 @@ export function AIProviderConfig({
 
         {selectedProvider === "openai" && (
           <div className="space-y-1">
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="apiKey" className="text-xs">api key</Label>
               <div className="relative">
                 <Input
@@ -543,7 +543,7 @@ export function AIProviderConfig({
                   onChange={(e) =>
                     setFormData({ ...formData, apiKey: e.target.value })
                   }
-                  className="pr-10 h-7 text-xs"
+                  className="pr-10 h-8 text-sm"
                 />
                 <Button
                   type="button"
@@ -560,7 +560,7 @@ export function AIProviderConfig({
                 </Button>
               </div>
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="model" className="text-xs">model</Label>
               <Select
                 value={formData.model}
@@ -568,7 +568,7 @@ export function AIProviderConfig({
                   setFormData({ ...formData, model: value })
                 }
               >
-                <SelectTrigger className="h-7 text-xs">
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue
                     placeholder={
                       isLoadingModels ? "loading models..." : "select model"
@@ -595,7 +595,7 @@ export function AIProviderConfig({
 
         {selectedProvider === "native-ollama" && (
           <div className="space-y-1">
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="baseUrl" className="text-xs">base url</Label>
               <Input
                 id="baseUrl"
@@ -605,10 +605,10 @@ export function AIProviderConfig({
                 onChange={(e) =>
                   setFormData({ ...formData, url: e.target.value })
                 }
-                className="h-7 text-xs"
+                className="h-8 text-sm"
               />
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="model" className="text-xs">model</Label>
               <div className="relative">
                 <Input
@@ -620,7 +620,7 @@ export function AIProviderConfig({
                   onChange={(e) =>
                     setFormData({ ...formData, model: e.target.value })
                   }
-                  className="h-7 text-xs"
+                  className="h-8 text-sm"
                 />
                 {openaiModels.length > 0 && (
                   <datalist id="ollama-models">
@@ -644,7 +644,7 @@ export function AIProviderConfig({
 
         {selectedProvider === "custom" && (
           <div className="space-y-1">
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="baseUrl" className="text-xs">base url</Label>
               <Input
                 id="baseUrl"
@@ -654,10 +654,10 @@ export function AIProviderConfig({
                 onChange={(e) =>
                   setFormData({ ...formData, url: e.target.value })
                 }
-                className="h-7 text-xs"
+                className="h-8 text-sm"
               />
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="apiKey" className="text-xs">api key</Label>
               <div className="relative">
                 <Input
@@ -668,7 +668,7 @@ export function AIProviderConfig({
                   onChange={(e) =>
                     setFormData({ ...formData, apiKey: e.target.value })
                   }
-                  className="pr-10 h-7 text-xs"
+                  className="pr-10 h-8 text-sm"
                 />
                 <Button
                   type="button"
@@ -678,14 +678,14 @@ export function AIProviderConfig({
                   onClick={() => setShowApiKey(!showApiKey)}
                 >
                   {showApiKey ? (
-                    <EyeOff className="h-3 w-3" />
+                    <EyeOff className="h-3.5 w-3.5" />
                   ) : (
-                    <Eye className="h-3 w-3" />
+                    <Eye className="h-3.5 w-3.5" />
                   )}
                 </Button>
               </div>
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="model" className="text-xs">model</Label>
               <div className="relative">
                 <Input
@@ -697,7 +697,7 @@ export function AIProviderConfig({
                   onChange={(e) =>
                     setFormData({ ...formData, model: e.target.value })
                   }
-                  className="h-7 text-xs"
+                  className="h-8 text-sm"
                 />
                 {openaiModels.length > 0 && (
                   <datalist id="custom-models">
@@ -713,11 +713,11 @@ export function AIProviderConfig({
 
         {selectedProvider === "openai-chatgpt" && (
           <div className="space-y-1">
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label className="text-xs">chatgpt account</Label>
               <ChatGptSignInButton />
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               <Label htmlFor="model" className="text-xs">model</Label>
               <Input
                 id="model"
@@ -728,7 +728,7 @@ export function AIProviderConfig({
                 onChange={(e) =>
                   setFormData({ ...formData, model: e.target.value })
                 }
-                className="h-7 text-xs"
+                className="h-8 text-sm"
               />
               {openaiModels.length > 0 && (
                 <datalist id="chatgpt-models">
@@ -742,7 +742,7 @@ export function AIProviderConfig({
         )}
 
         {selectedProvider === "pi" && (
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             <Label htmlFor="model" className="text-xs">model</Label>
             <Select
               value={formData.model}
@@ -750,7 +750,7 @@ export function AIProviderConfig({
                 setFormData({ ...formData, model: value });
               }}
             >
-              <SelectTrigger className="h-7 text-xs">
+              <SelectTrigger className="h-8 text-sm">
                 <SelectValue placeholder="select model" />
               </SelectTrigger>
               <SelectContent>
@@ -771,7 +771,7 @@ export function AIProviderConfig({
 
         <button
           type="button"
-          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
           <span>{showAdvanced ? "▾" : "▸"}</span>
@@ -780,8 +780,8 @@ export function AIProviderConfig({
 
         {showAdvanced && (
           <div className="space-y-1.5">
-            <div className="space-y-0.5">
-              <Label htmlFor="maxTokens" className="text-[10px]">max output tokens</Label>
+            <div className="space-y-1">
+              <Label htmlFor="maxTokens" className="text-xs">max output tokens</Label>
               <Input
                 id="maxTokens"
                 type="number"
@@ -795,8 +795,8 @@ export function AIProviderConfig({
                 className="h-6 text-[10px]"
               />
             </div>
-            <div className="space-y-0.5">
-              <Label htmlFor="prompt" className="text-[10px]">prompt</Label>
+            <div className="space-y-1">
+              <Label htmlFor="prompt" className="text-xs">prompt</Label>
               <Textarea
                 id="prompt"
                 value={formData.prompt || DEFAULT_PROMPT}
@@ -804,7 +804,7 @@ export function AIProviderConfig({
                   setFormData({ ...formData, prompt: e.target.value })
                 }
                 placeholder="enter your custom prompt here"
-                className="min-h-[40px] max-h-[60px] text-[10px] resize-none"
+                className="min-h-[60px] max-h-[100px] text-xs resize-none"
               />
             </div>
           </div>
@@ -1356,7 +1356,7 @@ export const AIPresetsSelector = ({
                                   setDialogOpen(true);
                                 }}
                               >
-                                <Copy className="h-3 w-3" />
+                                <Copy className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </div>
@@ -1431,7 +1431,7 @@ export const AIPresetsSelector = ({
                                 handleEditPreset(preset);
                               }}
                             >
-                              <Edit2 className="h-3 w-3" />
+                              <Edit2 className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -1442,7 +1442,7 @@ export const AIPresetsSelector = ({
                                 handleDuplicatePreset(preset);
                               }}
                             >
-                              <Copy className="h-3 w-3" />
+                              <Copy className="h-3.5 w-3.5" />
                             </Button>
                             {!preset.defaultPreset && (
                               <>
@@ -1455,7 +1455,7 @@ export const AIPresetsSelector = ({
                                     handleSetDefaultPreset(preset);
                                   }}
                                 >
-                                  <Star className="h-3 w-3" />
+                                  <Star className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -1466,7 +1466,7 @@ export const AIPresetsSelector = ({
                                     handleRemovePreset(preset);
                                   }}
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </>
                             )}
