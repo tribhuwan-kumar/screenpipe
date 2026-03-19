@@ -375,76 +375,71 @@ function SettingsPageContent() {
               sidebarCollapsed ? "w-14" : "w-56",
             )}
           >
-            <div className={cn("py-3 border-b flex items-center overflow-hidden", sidebarCollapsed ? "px-2 justify-center" : "px-4 justify-between gap-2")}>
-              {!sidebarCollapsed && <h1 className="text-lg font-bold text-foreground truncate min-w-0">screenpipe</h1>}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {!sidebarCollapsed && (() => {
-                  const monitors = recordingDevices.filter((d) => d.kind === "monitor");
-                  const inputs = recordingDevices.filter((d) => d.kind === "input");
-                  const outputs = recordingDevices.filter((d) => d.kind === "output");
-                  const screenOpacity = overlayData.screenActive ? 0.5 + Math.min(overlayData.captureFps / 2, 0.5) : 0.2;
-                  const audioOpacity = overlayData.audioActive ? 0.5 + Math.min(overlayData.speechRatio, 0.5) : 0.2;
-
-                  const groups: { key: string; icon: typeof Monitor; count: number; title: string; opacity: number }[] = [];
-                  if (monitors.length > 0) groups.push({ key: "monitor", icon: Monitor, count: monitors.length, title: monitors.map((d) => d.name).join(", "), opacity: screenOpacity });
-                  if (inputs.length > 0) groups.push({ key: "mic", icon: Mic, count: inputs.length, title: inputs.map((d) => d.name).join(", "), opacity: audioOpacity });
-                  if (outputs.length > 0) groups.push({ key: "output", icon: Volume2, count: outputs.length, title: outputs.map((d) => d.name).join(", "), opacity: audioOpacity });
-
-                  const avgOpacity = groups.length > 0 ? groups.reduce((s, g) => s + g.opacity, 0) / groups.length : 0.2;
-
-                  return (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center gap-1.5 cursor-default">
-                          {groups.map(({ key, icon: Icon, opacity }) => (
-                            <Icon
-                              key={key}
-                              className="h-3.5 w-3.5 text-foreground transition-opacity duration-500"
-                              style={{ opacity }}
-                            />
-                          ))}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="text-xs space-y-1">
-                        {groups.map(({ key, icon: Icon, count, title, opacity }) => (
-                          <div key={key} className="flex items-center gap-1.5">
-                            <Icon className="h-3 w-3" style={{ opacity }} />
-                            <span>{title}{count > 1 ? ` (${count})` : ""}</span>
-                          </div>
-                        ))}
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                })()}
-                <button
-                  onClick={toggleMeeting}
-                  disabled={meetingLoading}
-                  className="relative flex items-center justify-center h-5 w-5 text-muted-foreground hover:text-foreground transition-colors"
-                  title={manualMeeting ? "stop meeting" : "start meeting"}
-                >
-                  {manualMeeting && (
-                    <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                  )}
-                  <Phone className="h-3.5 w-3.5" />
-                </button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={toggleSidebar}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {sidebarCollapsed ? (
-                        <PanelLeftOpen className="h-4 w-4" />
-                      ) : (
-                        <PanelLeftClose className="h-4 w-4" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    {sidebarCollapsed ? "expand sidebar" : "collapse sidebar"} <kbd className="ml-1 px-1 py-0.5 bg-muted rounded text-[10px]">⌘B</kbd>
-                  </TooltipContent>
-                </Tooltip>
+            <div className={cn("border-b", sidebarCollapsed ? "px-2 py-3" : "px-4 py-3")}>
+              {/* Row 1: name + phone + collapse */}
+              <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "justify-between")}>
+                {!sidebarCollapsed && <h1 className="text-lg font-bold text-foreground">screenpipe</h1>}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={toggleMeeting}
+                    disabled={meetingLoading}
+                    className="relative flex items-center justify-center h-5 w-5 text-muted-foreground hover:text-foreground transition-colors"
+                    title={manualMeeting ? "stop meeting" : "start meeting"}
+                  >
+                    {manualMeeting && (
+                      <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    )}
+                    <Phone className="h-3.5 w-3.5" />
+                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={toggleSidebar}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {sidebarCollapsed ? (
+                          <PanelLeftOpen className="h-4 w-4" />
+                        ) : (
+                          <PanelLeftClose className="h-4 w-4" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      {sidebarCollapsed ? "expand sidebar" : "collapse sidebar"} <kbd className="ml-1 px-1 py-0.5 bg-muted rounded text-[10px]">⌘B</kbd>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
+              {/* Row 2: device icons */}
+              {!sidebarCollapsed && (() => {
+                const monitors = recordingDevices.filter((d) => d.kind === "monitor");
+                const inputs = recordingDevices.filter((d) => d.kind === "input");
+                const outputs = recordingDevices.filter((d) => d.kind === "output");
+                const screenOpacity = overlayData.screenActive ? 0.5 + Math.min(overlayData.captureFps / 2, 0.5) : 0.2;
+                const audioOpacity = overlayData.audioActive ? 0.5 + Math.min(overlayData.speechRatio, 0.5) : 0.2;
+
+                const groups: { key: string; icon: typeof Monitor; count: number; title: string; opacity: number }[] = [];
+                if (monitors.length > 0) groups.push({ key: "monitor", icon: Monitor, count: monitors.length, title: monitors.map((d) => d.name).join(", "), opacity: screenOpacity });
+                if (inputs.length > 0) groups.push({ key: "mic", icon: Mic, count: inputs.length, title: inputs.map((d) => d.name).join(", "), opacity: audioOpacity });
+                if (outputs.length > 0) groups.push({ key: "output", icon: Volume2, count: outputs.length, title: outputs.map((d) => d.name).join(", "), opacity: audioOpacity });
+
+                if (groups.length === 0) return null;
+                return (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    {groups.map(({ key, icon: Icon, count, title, opacity }) => (
+                      <span key={key} className="flex items-center gap-0.5" title={title}>
+                        <Icon
+                          className="h-3 w-3 text-foreground transition-opacity duration-500"
+                          style={{ opacity }}
+                        />
+                        {count > 1 && (
+                          <span className="text-[9px] text-foreground/50 font-medium leading-none">{count}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Navigation */}
