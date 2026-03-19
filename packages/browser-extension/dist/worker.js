@@ -88,22 +88,39 @@ async function evalInTab(tabId, code) {
   if (!tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:") || tab.url.includes("chromewebstore.google.com")) {
     throw new Error(`cannot execute scripts on ${tab.url}`);
   }
-  const needsReturn = !code.includes("return ") && !code.includes(`return
-`) && !code.trimStart().startsWith("{");
-  const wrappedCode = needsReturn ? `return (${code})` : code;
-  const [frame] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: "MAIN",
-    func: async (userCode) => {
-      const fn = new Function(userCode);
-      const result = fn();
-      return result instanceof Promise ? await result : result;
-    },
-    args: [wrappedCode]
-  });
-  if (frame?.result !== undefined)
-    return frame.result;
-  return null;
+  const expression = `(async () => { ${code} })()`;
+  try {
+    await new Promise((resolve, reject) => {
+      chrome.debugger.attach({ tabId }, "1.3", () => {
+        if (chrome.runtime.lastError?.message?.includes("already attached")) {
+          resolve();
+        } else if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  } catch (e) {
+    if (!e.message?.includes("already attached"))
+      throw e;
+  }
+  try {
+    const evalResult = await new Promise((resolve, reject) => {
+      chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture: true }, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result);
+        }
+      });
+    });
+    if (evalResult?.exceptionDetails) {
+      const desc = evalResult.exceptionDetails.exception?.description || evalResult.exceptionDetails.text || "evaluation error";
+      throw new Error(desc);
+    }
+    return evalResult?.result?.value ?? null;
+  } finally {}
 }
 function detectBrowser() {
   const ua = navigator.userAgent;

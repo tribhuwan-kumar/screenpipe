@@ -132,31 +132,58 @@ async function evalInTab(tabId: number, code: string): Promise<unknown> {
     throw new Error(`cannot execute scripts on ${tab.url}`);
   }
 
-  // executeScript in MAIN world = same context as the page's own JS.
-  // Same-origin fetch works, cookies are included, no CORS issues.
+  // Use chrome.debugger Runtime.evaluate — bypasses CSP restrictions,
+  // runs in page context with full cookie access, properly returns
+  // async results via awaitPromise.
   //
-  // Code is passed to `new Function(code)` which wraps it in a function body.
-  // - Use `return expr` to get a value back
-  // - Multi-line code with explicit returns works naturally
-  // - Bare expressions like `document.title` are auto-wrapped with `return`
-  const needsReturn =
-    !code.includes("return ") && !code.includes("return\n") && !code.trimStart().startsWith("{");
-  const wrappedCode = needsReturn ? `return (${code})` : code;
+  // Wrap code in an async IIFE so `await` and `return` both work.
+  const expression = `(async () => { ${code} })()`;
 
-  const [frame] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: "MAIN",
-    func: async (userCode: string) => {
-      const fn = new Function(userCode);
-      const result = fn();
-      // Await promises so async code works
-      return result instanceof Promise ? await result : result;
-    },
-    args: [wrappedCode],
-  });
+  // Attach debugger if not already attached
+  try {
+    await new Promise<void>((resolve, reject) => {
+      chrome.debugger.attach({ tabId }, "1.3", () => {
+        if (chrome.runtime.lastError?.message?.includes("already attached")) {
+          resolve(); // already attached, that's fine
+        } else if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  } catch (e: any) {
+    if (!e.message?.includes("already attached")) throw e;
+  }
 
-  if (frame?.result !== undefined) return frame.result;
-  return null;
+  try {
+    const evalResult = await new Promise<any>((resolve, reject) => {
+      chrome.debugger.sendCommand(
+        { tabId },
+        "Runtime.evaluate",
+        { expression, awaitPromise: true, returnByValue: true, userGesture: true },
+        (result: any) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(result);
+          }
+        }
+      );
+    });
+
+    if (evalResult?.exceptionDetails) {
+      const desc = evalResult.exceptionDetails.exception?.description
+        || evalResult.exceptionDetails.text
+        || "evaluation error";
+      throw new Error(desc);
+    }
+
+    return evalResult?.result?.value ?? null;
+  } finally {
+    // Don't detach — keep debugger attached for reuse.
+    // It auto-detaches on tab navigation anyway.
+  }
 }
 
 // ---------------------------------------------------------------------------
