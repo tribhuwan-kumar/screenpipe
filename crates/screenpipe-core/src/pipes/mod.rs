@@ -69,75 +69,28 @@ pub struct PipeConfig {
     )]
     pub preset: Vec<String>,
 
-    // -- Data permissions (all optional, backwards compatible) ---------------
-    /// Only data from these apps reaches the pipe (case-insensitive).
-    #[serde(default, alias = "allow-apps", skip_serializing_if = "Vec::is_empty")]
-    pub allow_apps: Vec<String>,
-    /// Data from these apps is always blocked (wins over allow_apps).
-    #[serde(default, alias = "deny-apps", skip_serializing_if = "Vec::is_empty")]
-    pub deny_apps: Vec<String>,
-    /// Only matching window titles pass (glob patterns, case-insensitive).
-    #[serde(
-        default,
-        alias = "allow-windows",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub allow_windows: Vec<String>,
-    /// Matching window titles are blocked (glob, wins over allow).
-    #[serde(default, alias = "deny-windows", skip_serializing_if = "Vec::is_empty")]
-    pub deny_windows: Vec<String>,
-    /// Allowed content types: "ocr", "audio", "input", "accessibility".
-    #[serde(
-        default,
-        alias = "allow-content-types",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub allow_content_types: Vec<String>,
-    /// Blocked content types (wins over allow).
-    #[serde(
-        default,
-        alias = "deny-content-types",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub deny_content_types: Vec<String>,
-    /// Daily time window, e.g. "09:00-17:00". Supports midnight wrap.
-    #[serde(default, alias = "time-range", skip_serializing_if = "Option::is_none")]
-    pub time_range: Option<String>,
-    /// Allowed days, e.g. "Mon,Tue,Wed,Thu,Fri".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub days: Option<String>,
-    /// Whether this pipe can use /raw_sql. Default: true (allow all by default).
-    #[serde(
-        default = "default_true",
-        alias = "allow-raw-sql",
-        skip_serializing_if = "is_true"
-    )]
-    pub allow_raw_sql: bool,
-    /// Whether this pipe can access /frames/* (screenshots). Default: true.
-    #[serde(
-        default = "default_true",
-        alias = "allow-frames",
-        skip_serializing_if = "is_true"
-    )]
-    pub allow_frames: bool,
-
     /// Connections this pipe uses (e.g. `["obsidian", "slack"]`).
     /// The AI can query `GET /connections/<id>` at runtime to get credentials.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connections: Vec<String>,
 
-    /// API endpoint permissions using `Api(METHOD /path)` patterns.
+    /// Unified permissions using typed rules: `Api()`, `App()`, `Window()`, `Content()`.
     ///
     /// Accepts either a preset string (`"reader"`) or a structured block:
     /// ```yaml
     /// permissions:
     ///   allow:
     ///     - Api(GET /search)
-    ///     - Api(POST /notify)
+    ///     - App(Slack, Chrome)
+    ///     - Content(ocr, audio)
     ///   deny:
     ///     - Api(* /meetings/stop)
+    ///     - App(1Password)
+    ///     - Window(*incognito*)
+    ///   time: "09:00-17:00"
+    ///   days: "Mon-Fri"
     /// ```
-    /// Evaluation: deny → allow → default allowlist. Omit for safe defaults.
+    /// Evaluation: deny → allow → default. Omit for no restrictions.
     #[serde(
         default,
         deserialize_with = "deserialize_permissions_field",
@@ -211,27 +164,39 @@ where
     deserializer.deserialize_any(PresetVisitor)
 }
 
-/// Pipe API permissions config — either a preset name or explicit allow/deny rules.
+/// Unified pipe permissions config — either a preset name or explicit rules.
 ///
 /// ```yaml
 /// permissions: reader                    # preset
 /// permissions:                           # explicit
 ///   allow:
 ///     - Api(GET /search)
+///     - App(Slack, Chrome)
+///     - Content(ocr, audio)
 ///   deny:
 ///     - Api(* /meetings/stop)
+///     - App(1Password)
+///     - Window(*incognito*)
+///   time: "09:00-17:00"
+///   days: "Mon-Fri"
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum PipePermissionsConfig {
-    /// Named preset: `"reader"`, `"writer"`, or `"admin"`.
+    /// Named preset: `"reader"`, `"writer"`, `"admin"`, or `"none"` (default).
     Preset(String),
-    /// Explicit allow/deny rules with `Api(METHOD /path)` patterns.
+    /// Explicit allow/deny rules with typed patterns.
     Rules {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         allow: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         deny: Vec<String>,
+        /// Daily time window, e.g. "09:00-17:00". Supports midnight wrap.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time: Option<String>,
+        /// Allowed days, e.g. "Mon,Tue,Wed,Thu,Fri" or "Mon-Fri".
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        days: Option<String>,
     },
 }
 
@@ -288,12 +253,18 @@ where
                 allow: Vec<String>,
                 #[serde(default)]
                 deny: Vec<String>,
+                #[serde(default)]
+                time: Option<String>,
+                #[serde(default)]
+                days: Option<String>,
             }
             let helper: RulesHelper =
                 de::Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
             Ok(PipePermissionsConfig::Rules {
                 allow: helper.allow,
                 deny: helper.deny,
+                time: helper.time,
+                days: helper.days,
             })
         }
     }
@@ -319,10 +290,6 @@ fn is_default_agent(s: &String) -> bool {
 fn is_default_model(s: &String) -> bool {
     s == "claude-haiku-4-5" || s == "claude-haiku-4-5@20251001"
 }
-fn is_true(b: &bool) -> bool {
-    *b
-}
-
 /// Simple FNV-1a 64-bit hash, sufficient for change detection.
 fn simple_hash(content: &str) -> String {
     let mut hash: u64 = 0xcbf29ce484222325;
@@ -3460,16 +3427,6 @@ mod tests {
             model: "claude-haiku-4-5".to_string(),
             provider: None,
             preset: vec!["default".to_string()],
-            allow_apps: vec![],
-            deny_apps: vec![],
-            allow_windows: vec![],
-            deny_windows: vec![],
-            allow_content_types: vec![],
-            deny_content_types: vec![],
-            time_range: None,
-            days: None,
-            allow_raw_sql: true,
-            allow_frames: true,
             permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
@@ -3560,16 +3517,6 @@ mod tests {
             model: "test-model".to_string(),
             provider: None,
             preset: vec![],
-            allow_apps: vec![],
-            deny_apps: vec![],
-            allow_windows: vec![],
-            deny_windows: vec![],
-            allow_content_types: vec![],
-            deny_content_types: vec![],
-            time_range: None,
-            days: None,
-            allow_raw_sql: true,
-            allow_frames: true,
             permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
@@ -3594,16 +3541,6 @@ mod tests {
             model: "test-model".to_string(),
             provider: None,
             preset: vec![],
-            allow_apps: vec![],
-            deny_apps: vec![],
-            allow_windows: vec![],
-            deny_windows: vec![],
-            allow_content_types: vec![],
-            deny_content_types: vec![],
-            time_range: None,
-            days: None,
-            allow_raw_sql: true,
-            allow_frames: true,
             permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
@@ -3626,16 +3563,6 @@ mod tests {
             model: "test-model".to_string(),
             provider: None,
             preset: vec![],
-            allow_apps: vec![],
-            deny_apps: vec![],
-            allow_windows: vec![],
-            deny_windows: vec![],
-            allow_content_types: vec![],
-            deny_content_types: vec![],
-            time_range: None,
-            days: None,
-            allow_raw_sql: true,
-            allow_frames: true,
             permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
@@ -3666,16 +3593,6 @@ mod tests {
             model: "test-model".to_string(),
             provider: None,
             preset: vec![],
-            allow_apps: vec![],
-            deny_apps: vec![],
-            allow_windows: vec![],
-            deny_windows: vec![],
-            allow_content_types: vec![],
-            deny_content_types: vec![],
-            time_range: None,
-            days: None,
-            allow_raw_sql: true,
-            allow_frames: true,
             permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
@@ -3745,16 +3662,6 @@ mod tests {
                 model: "test".to_string(),
                 provider: None,
                 preset: vec![],
-                allow_apps: vec![],
-                deny_apps: vec![],
-                allow_windows: vec![],
-                deny_windows: vec![],
-                allow_content_types: vec![],
-                deny_content_types: vec![],
-                time_range: None,
-                days: None,
-                allow_raw_sql: true,
-                allow_frames: true,
                 permissions: PipePermissionsConfig::default(),
                 config: HashMap::new(),
                 connections: vec![],

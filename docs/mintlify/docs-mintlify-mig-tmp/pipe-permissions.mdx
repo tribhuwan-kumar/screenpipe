@@ -152,40 +152,37 @@ permissions:
 
 this uses the reader defaults but also blocks screenshot access.
 
-## data access permissions
+## data access rules
 
-separate from endpoint permissions, you can also control **what data** a pipe sees:
+data filtering uses the same `allow`/`deny` lists with `App()`, `Window()`, and `Content()` rules:
 
 ```yaml
 ---
 schedule: every 1h
-allow_apps: [Slack, Chrome]
-deny_apps: [1Password, Signal]
-allow_windows: ["*meeting*"]
-deny_windows: ["*incognito*", "*bank*"]
-allow_content_types: [ocr, audio]
-deny_content_types: [input]
-time_range: "09:00-17:00"
-days: "Mon,Tue,Wed,Thu,Fri"
-allow_raw_sql: false
-allow_frames: true
+permissions:
+  allow:
+    - Api(GET /search)
+    - App(Slack, Chrome)
+    - Window(*meeting*)
+    - Content(ocr, audio)
+  deny:
+    - App(1Password, Signal)
+    - Window(*incognito*, *bank*)
+    - Content(input)
+  time: "09:00-17:00"
+  days: "Mon,Tue,Wed,Thu,Fri"
 ---
 ```
 
-| field | default | description |
-|-------|---------|-------------|
-| `allow_apps` | all | only data from these apps (case-insensitive substring match) |
-| `deny_apps` | none | block data from these apps (wins over allow) |
-| `allow_windows` | all | glob patterns for window titles |
-| `deny_windows` | none | block matching windows (wins over allow) |
-| `allow_content_types` | all | `ocr`, `audio`, `input`, `accessibility` |
-| `deny_content_types` | none | block these types (wins over allow) |
-| `time_range` | all day | `"09:00-17:00"` — supports midnight wrap (`"22:00-06:00"`) |
-| `days` | every day | `"Mon,Tue,Wed,Thu,Fri"` |
-| `allow_raw_sql` | true | whether `/raw_sql` endpoint is accessible |
-| `allow_frames` | true | whether `/frames/*` (screenshots) are accessible |
+| rule type | syntax | description |
+|-----------|--------|-------------|
+| `App(name)` | `App(Slack)` or `App(Slack, Chrome)` | filter by app name (case-insensitive substring match) |
+| `Window(glob)` | `Window(*meeting*)` | filter by window title (glob pattern) |
+| `Content(type)` | `Content(ocr, audio)` | filter content types: `ocr`, `audio`, `input`, `accessibility` |
+| `time` | `"09:00-17:00"` | daily time window — supports midnight wrap (`"22:00-06:00"`) |
+| `days` | `"Mon,Tue,Wed,Thu,Fri"` | allowed days of the week |
 
-data permissions filter the **results** returned by the API. endpoint permissions control **which endpoints** the pipe can call. they work independently.
+deny rules always win over allow rules. if no rules of a given type exist, everything is allowed.
 
 ## how it works
 
@@ -226,26 +223,29 @@ Summarize my meetings from the last hour...
 ```yaml
 ---
 schedule: daily
-permissions: reader
-allow_apps: [Chrome, Arc, Firefox]
-allow_content_types: [ocr]
+permissions:
+  allow:
+    - Api(GET /search)
+    - App(Chrome, Arc, Firefox)
+    - Content(ocr)
 ---
 
 Generate a daily browsing report...
 ```
 
-### work-hours-only pipe with full access
+### work-hours-only pipe
 
 ```yaml
 ---
 schedule: every 30m
-time_range: "09:00-17:00"
-days: "Mon,Tue,Wed,Thu,Fri"
+permissions:
+  time: "09:00-17:00"
+  days: "Mon,Tue,Wed,Thu,Fri"
 ---
 
 Track my work activity...
 ```
 
-no `permissions` block — full API access, but only runs during work hours and the data filters limit what it sees.
+full API access, but time and day restrictions limit when data is visible.
 
 need help? [ask in our discord](https://discord.gg/screenpipe)

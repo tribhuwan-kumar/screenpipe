@@ -389,20 +389,23 @@ permissions: reader
 
 ### custom rules
 
-use `Api(METHOD /path)` patterns for fine-grained control:
+use typed patterns for fine-grained control over endpoints and data:
 
 ```yaml
 ---
 schedule: every 1h
 permissions:
+  allow:
+    - App(Slack, Chrome)
+    - Content(ocr, audio)
   deny:
     - Api(* /meetings/stop)
-    - Api(* /meetings/start)
-    - Api(DELETE /meetings/*)
+    - App(1Password)
+    - Window(*incognito*)
 ---
 ```
 
-this pipe has full access **except** it can't start, stop, or delete meetings.
+rule types: `Api(METHOD /path)`, `App(name)`, `Window(glob)`, `Content(type)`. deny always wins.
 
 <Tip>if your pipe doesn't need to write data, add `permissions: reader` — it prevents accidental side effects like ending a meeting or deleting data.</Tip>
 

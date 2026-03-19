@@ -84,6 +84,13 @@ interface StorePipe {
 }
 
 interface PipePermissions {
+  /// Unified permissions preset or rule summary from pipe.md frontmatter.
+  preset?: string; // "reader", "writer", "admin", "none"
+  allow_rules?: string[]; // e.g. ["Api(GET /search)", "App(Slack)", "Content(ocr)"]
+  deny_rules?: string[]; // e.g. ["Api(* /meetings/stop)", "App(1Password)"]
+  time?: string;
+  days?: string;
+  // Legacy fields for backwards compat with older store entries
   allow_ocr?: boolean;
   allow_audio?: boolean;
   allow_input?: boolean;
