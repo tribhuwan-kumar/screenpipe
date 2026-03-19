@@ -374,6 +374,9 @@ export default function NotificationPanelPage() {
         >
           <span
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
               fontSize: "10px",
               fontWeight: 500,
               letterSpacing: "0.05em",
@@ -381,6 +384,8 @@ export default function NotificationPanelPage() {
               textTransform: "lowercase",
             }}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/32x32.png" alt="" width={14} height={14} style={{ borderRadius: "3px" }} />
             screenpipe
           </span>
           <button

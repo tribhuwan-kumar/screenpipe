@@ -232,7 +232,13 @@ struct NotificationContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            HStack {
+            HStack(spacing: 6) {
+                // App icon
+                if let appIcon = NSApp.applicationIconImage {
+                    Image(nsImage: appIcon)
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                }
                 Text("screenpipe")
                     .font(Brand.swiftUIMonoFont(size: 10, weight: .medium))
                     .foregroundColor(.primary.opacity(0.4))
