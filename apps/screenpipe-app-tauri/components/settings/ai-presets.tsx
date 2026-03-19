@@ -903,14 +903,36 @@ const AISection = ({
         }
 
         case "pi": {
-          const piModels: AIModel[] = [
+          // Fetch models from gateway so new models appear automatically
+          try {
+            const token = settings.user?.token || "";
+            const piResp = await fetch("https://api.screenpi.pe/v1/models", {
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+            if (piResp.ok) {
+              const piData = await piResp.json();
+              const piModels: AIModel[] = (piData.data || []).map((m: any) => ({
+                id: m.id,
+                name: m.name || m.id,
+                provider: "screenpipe",
+              }));
+              if (piModels.length > 0) {
+                setModels(piModels);
+                break;
+              }
+            }
+          } catch {
+            // fallback to hardcoded
+          }
+          setModels([
             { id: "claude-haiku-4-5", name: "Haiku 4.5 (fast)", provider: "screenpipe" },
             { id: "claude-sonnet-4-5", name: "Sonnet 4.5 (balanced)", provider: "screenpipe" },
             { id: "claude-opus-4-6", name: "Opus 4.6 (powerful, pro)", provider: "screenpipe" },
             { id: "gemini-3-flash", name: "Gemini 3 Flash (fast)", provider: "screenpipe" },
             { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro (balanced)", provider: "screenpipe" },
-          ];
-          setModels(piModels);
+            { id: "deepseek/deepseek-chat", name: "DeepSeek V3.2 (fast, cheap)", provider: "screenpipe" },
+            { id: "meta-llama/llama-4-scout", name: "Llama 4 Scout (free)", provider: "screenpipe" },
+          ]);
           break;
         }
 
