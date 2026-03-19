@@ -33,7 +33,7 @@ extern "C" fn native_notif_action_callback(json_ptr: *const std::os::raw::c_char
                 // Show the home window (needs main thread on macOS)
                 let app_for_show = app_clone.clone();
                 let _ = app_clone.run_on_main_thread(move || {
-                    if let Err(e) = ShowRewindWindow::Home { page: None }.show(&app_for_show) {
+                    if let Err(e) = (ShowRewindWindow::Home { page: None }).show(&app_for_show) {
                         error!("failed to show home window for manage: {}", e);
                     }
                 });
