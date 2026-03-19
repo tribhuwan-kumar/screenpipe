@@ -92,8 +92,22 @@ private enum Brand {
     }
 
     static func swiftUIMonoFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        // Try IBM Plex Mono, fall back to system monospaced
-        return Font.custom("IBM Plex Mono", size: size).weight(weight)
+        // Use exact PostScript names to avoid SwiftUI weight descriptor warnings.
+        // Font.custom + .weight() fails because IBM Plex Mono doesn't support
+        // dynamic weight via font descriptor — must use the specific face name.
+        let name: String
+        switch weight {
+        case .medium: name = "IBMPlexMono-Medium"
+        case .semibold, .bold: name = "IBMPlexMono-SemiBold"
+        case .light: name = "IBMPlexMono-Light"
+        default: name = "IBMPlexMono"
+        }
+        // fixedSize: true prevents SwiftUI from adjusting with Dynamic Type
+        if NSFont(name: name, size: size) != nil {
+            return Font.custom(name, fixedSize: size)
+        }
+        // Fallback to system monospaced
+        return Font.system(size: size, weight: weight, design: .monospaced)
     }
 
     static let animDuration: Double = 0.15
@@ -497,8 +511,10 @@ class NotificationPanelController: NSObject {
         let mouseLocation = NSEvent.mouseLocation
         for screen in NSScreen.screens {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
-                let x = screen.frame.origin.x + screen.frame.size.width - 320 - 16
-                let y = screen.frame.origin.y + screen.frame.size.height - 180 - 12
+                // Use visibleFrame to avoid overlapping the menu bar / notch area
+                let visible = screen.visibleFrame
+                let x = visible.origin.x + visible.size.width - 320 - 16
+                let y = visible.origin.y + visible.size.height - 180 - 8
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
             }

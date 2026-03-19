@@ -119,7 +119,7 @@ const NotificationHandler: React.FC = () => {
           const { emit } = await import("@tauri-apps/api/event");
           const { invoke } = await import("@tauri-apps/api/core");
           await emit("navigate", { url: "/home?section=notifications" });
-          try { await invoke("show_window", { window: "home" }); } catch {}
+          try { await invoke("show_window", { window: { Home: { page: null } } }); } catch {}
           return;
         }
 

@@ -540,7 +540,7 @@ export default function NotificationPanelPage() {
             onClick={async () => {
               await hide(false);
               await emit("navigate", { url: "/home?section=notifications" });
-              try { await invoke("show_window", { window: "home" }); } catch {}
+              try { await invoke("show_window", { window: { Home: { page: null } } }); } catch {}
             }}
             style={{
               fontSize: "9px",
