@@ -143,6 +143,7 @@ struct BrandButton: View {
         )
         .contentShape(Rectangle())
         .onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             withAnimation(.linear(duration: Brand.animDuration)) {
                 isHovered = hovering
             }
@@ -167,6 +168,7 @@ struct BrandTextButton: View {
         .buttonStyle(.plain)
         .contentShape(Rectangle())
         .onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             withAnimation(.linear(duration: Brand.animDuration)) {
                 isHovered = hovering
             }
@@ -200,6 +202,7 @@ struct NotificationContentView: View {
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
                 .onHover { h in
+                    if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
                     withAnimation(.linear(duration: Brand.animDuration)) { closeHovered = h }
                 }
             }
@@ -243,7 +246,11 @@ struct NotificationContentView: View {
             // Footer: manage + mute
             HStack(spacing: 6) {
                 BrandTextButton(label: "⚙ manage", fontSize: 9) {
-                    sendActionJson("{\"type\":\"manage\"}")
+                    onDismiss()
+                    // Small delay so the panel hides before the window appears
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        sendActionJson("{\"type\":\"manage\"}")
+                    }
                 }
 
                 if let pipeName = payload.pipe_name {
@@ -251,7 +258,10 @@ struct NotificationContentView: View {
                         .font(Brand.swiftUIMonoFont(size: 9))
                         .foregroundColor(.primary.opacity(0.15))
                     BrandTextButton(label: "mute \(pipeName)", fontSize: 9) {
-                        sendActionJson("{\"type\":\"mute\",\"pipe_name\":\"\(pipeName)\"}")
+                        onDismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            sendActionJson("{\"type\":\"mute\",\"pipe_name\":\"\(pipeName)\"}")
+                        }
                     }
                 }
 
@@ -277,14 +287,16 @@ struct NotificationContentView: View {
             }
             .frame(height: 2)
         }
-        // Brand: sharp corners, 1px border, no shadow, no radius
+        // Sharp corners, 1px border, subtle shadow for depth
         .background(
             VisualEffectView()
         )
         .overlay(
             Rectangle()
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
     }
 
     private func sendActionJson(_ json: String) {
@@ -486,7 +498,7 @@ class NotificationPanelController: NSObject {
         p.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .fullScreenAuxiliary]
         p.isOpaque = false
         p.backgroundColor = .clear
-        p.hasShadow = false  // Brand: no shadows
+        p.hasShadow = true
         p.hidesOnDeactivate = false
         p.isMovableByWindowBackground = false
         p.acceptsMouseMovedEvents = true
@@ -513,7 +525,7 @@ class NotificationPanelController: NSObject {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
                 // Use visibleFrame to avoid overlapping the menu bar / notch area
                 let visible = screen.visibleFrame
-                let x = visible.origin.x + visible.size.width - 320 - 16
+                let x = visible.origin.x + visible.size.width - 320 - 24
                 let y = visible.origin.y + visible.size.height - 180 - 8
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break

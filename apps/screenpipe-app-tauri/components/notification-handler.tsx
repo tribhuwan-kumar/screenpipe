@@ -118,8 +118,11 @@ const NotificationHandler: React.FC = () => {
         if (action.type === "manage") {
           const { emit } = await import("@tauri-apps/api/event");
           const { invoke } = await import("@tauri-apps/api/core");
-          await emit("navigate", { url: "/home?section=notifications" });
+          // Show window first, then navigate after a brief delay so the
+          // home window's listener is mounted and ready to receive the event
           try { await invoke("show_window", { window: { Home: { page: null } } }); } catch {}
+          await new Promise((r) => setTimeout(r, 300));
+          await emit("navigate", { url: "/home?section=notifications" });
           return;
         }
 
