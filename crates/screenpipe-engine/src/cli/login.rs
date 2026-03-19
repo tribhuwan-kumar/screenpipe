@@ -48,10 +48,7 @@ pub async fn handle_login_command() -> anyhow::Result<()> {
 
     // The redirect param is no longer used for localhost callback,
     // but we keep it so the website knows this is a CLI login flow
-    let login_url = format!(
-        "{}/login?code={}&redirect=cli",
-        base, code
-    );
+    let login_url = format!("{}/login?code={}&redirect=cli", base, code);
 
     println!();
     println!("  opening browser to log in...");

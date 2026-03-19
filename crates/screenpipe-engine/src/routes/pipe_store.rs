@@ -238,14 +238,18 @@ pub async fn pipe_store_install(
     };
 
     // Extract version from registry response
-    let version = detail.get("version")
+    let version = detail
+        .get("version")
         .or_else(|| detail.get("data").and_then(|d| d.get("version")))
         .and_then(|v| v.as_i64())
         .unwrap_or(1);
 
     // 2. Install locally with store tracking
     let mgr = pm.lock().await;
-    let name = match mgr.install_pipe_from_store(&source_md, &body.slug, version).await {
+    let name = match mgr
+        .install_pipe_from_store(&source_md, &body.slug, version)
+        .await
+    {
         Ok(name) => name,
         Err(e) => return Json(json!({ "error": format!("failed to install pipe: {}", e) })),
     };
@@ -272,24 +276,36 @@ pub async fn pipe_store_update(
     let detail = match client.get(&detail_url).send().await {
         Ok(resp) => match resp.json::<Value>().await {
             Ok(body) => body,
-            Err(e) => return Json(json!({ "error": format!("failed to parse registry response: {}", e) })),
+            Err(e) => {
+                return Json(
+                    json!({ "error": format!("failed to parse registry response: {}", e) }),
+                )
+            }
         },
         Err(e) => return Json(json!({ "error": format!("failed to reach registry: {}", e) })),
     };
 
-    let source_md = match detail.get("source_md").or_else(|| detail.get("data").and_then(|d| d.get("source_md"))).and_then(|v| v.as_str()) {
+    let source_md = match detail
+        .get("source_md")
+        .or_else(|| detail.get("data").and_then(|d| d.get("source_md")))
+        .and_then(|v| v.as_str())
+    {
         Some(md) => md.to_string(),
         None => return Json(json!({ "error": "pipe not found or missing source_md" })),
     };
 
-    let version = detail.get("version")
+    let version = detail
+        .get("version")
         .or_else(|| detail.get("data").and_then(|d| d.get("version")))
         .and_then(|v| v.as_i64())
         .unwrap_or(1);
 
     // 2. Update locally
     let mgr = pm.lock().await;
-    match mgr.update_pipe_from_store(&body.slug, &source_md, &body.slug, version).await {
+    match mgr
+        .update_pipe_from_store(&body.slug, &source_md, &body.slug, version)
+        .await
+    {
         Ok(()) => Json(json!({ "success": true, "slug": body.slug, "version": version })),
         Err(e) => Json(json!({ "error": format!("failed to update pipe: {}", e) })),
     }
@@ -299,9 +315,7 @@ pub async fn pipe_store_update(
 ///
 /// Check for available updates for all store-installed pipes.
 /// Returns a map of slug -> latest_version for pipes that have updates.
-pub async fn pipe_store_check_updates(
-    State(pm): State<SharedPipeManager>,
-) -> Json<Value> {
+pub async fn pipe_store_check_updates(State(pm): State<SharedPipeManager>) -> Json<Value> {
     let mgr = pm.lock().await;
     let pipes = mgr.list_pipes().await;
     drop(mgr);

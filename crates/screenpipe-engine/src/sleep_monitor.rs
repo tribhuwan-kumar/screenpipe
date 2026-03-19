@@ -246,18 +246,16 @@ pub fn start_sleep_monitor() {
     // Thread 2: Safety-net CGSession poller. The CFNotificationCenter above is
     // event-driven but notifications can be lost during sleep/wake transitions or
     // if the CFRunLoop thread stalls. This poll catches any missed unlock within 5s.
-    std::thread::spawn(|| {
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(5));
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(5));
 
-            let locked = check_screen_locked_cgsession();
-            let was_locked = SCREEN_IS_LOCKED.swap(locked, Ordering::SeqCst);
-            if locked != was_locked {
-                if locked {
-                    info!("Screen locked (CGSession safety-net poll)");
-                } else {
-                    info!("Screen unlocked (CGSession safety-net poll)");
-                }
+        let locked = check_screen_locked_cgsession();
+        let was_locked = SCREEN_IS_LOCKED.swap(locked, Ordering::SeqCst);
+        if locked != was_locked {
+            if locked {
+                info!("Screen locked (CGSession safety-net poll)");
+            } else {
+                info!("Screen unlocked (CGSession safety-net poll)");
             }
         }
     });

@@ -814,7 +814,12 @@ mod tests {
     #[test]
     fn test_thin_known_canvas_app_figma() {
         let snap = make_snap(vec![]);
-        assert!(a11y_content_is_thin(&snap, Some("My Design - Figma"), None, None));
+        assert!(a11y_content_is_thin(
+            &snap,
+            Some("My Design - Figma"),
+            None,
+            None
+        ));
     }
 
     #[test]
@@ -825,7 +830,12 @@ mod tests {
             AccessibilityTreeNode { role: "AXStaticText".into(), text: "This is a long article about dogs. Dogs are domesticated descendants of wolves. They were the first species to be domesticated over 14,000 years ago.".into(), depth: 1, bounds: None, ..Default::default() },
             AccessibilityTreeNode { role: "AXLink".into(), text: "Read more about canine history".into(), depth: 1, bounds: None, ..Default::default() },
         ]);
-        assert!(!a11y_content_is_thin(&snap, Some("Dog - Wikipedia"), None, None));
+        assert!(!a11y_content_is_thin(
+            &snap,
+            Some("Dog - Wikipedia"),
+            None,
+            None
+        ));
     }
 
     #[test]
@@ -939,7 +949,12 @@ mod tests {
             },
         ]);
         // >70% chrome text
-        assert!(a11y_content_is_thin(&snap, Some("Untitled document"), None, None));
+        assert!(a11y_content_is_thin(
+            &snap,
+            Some("Untitled document"),
+            None,
+            None
+        ));
     }
 
     #[test]

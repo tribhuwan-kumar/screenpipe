@@ -214,9 +214,7 @@ impl PipePermissionsConfig {
 }
 
 /// Deserialize `permissions` field: accepts a string preset or a structured block.
-fn deserialize_permissions_field<'de, D>(
-    deserializer: D,
-) -> Result<PipePermissionsConfig, D::Error>
+fn deserialize_permissions_field<'de, D>(deserializer: D) -> Result<PipePermissionsConfig, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -921,18 +919,16 @@ impl PipeManager {
                 .to_string_lossy()
                 .to_string();
             match std::fs::read_to_string(&pipe_md) {
-                Ok(content) => {
-                    match parse_frontmatter(&content) {
-                        Ok((mut config, body)) => {
-                            config.name = dir_name.clone();
-                            info!("loaded pipe: {}", dir_name);
-                            pipes.insert(dir_name, (config, body, content));
-                        }
-                        Err(e) => {
-                            warn!("pipe '{}': failed to parse pipe.md: {}", dir_name, e);
-                        }
+                Ok(content) => match parse_frontmatter(&content) {
+                    Ok((mut config, body)) => {
+                        config.name = dir_name.clone();
+                        info!("loaded pipe: {}", dir_name);
+                        pipes.insert(dir_name, (config, body, content));
                     }
-                }
+                    Err(e) => {
+                        warn!("pipe '{}': failed to parse pipe.md: {}", dir_name, e);
+                    }
+                },
                 Err(e) => warn!("pipe '{}': failed to read pipe.md: {}", dir_name, e),
             }
         }
@@ -1521,10 +1517,7 @@ impl PipeManager {
                                 "",
                                 None,
                                 Some("timeout"),
-                                Some(&format!(
-                                    "execution timed out after {}s",
-                                    pipe_timeout
-                                )),
+                                Some(&format!("execution timed out after {}s", pipe_timeout)),
                             )
                             .await;
                     }
@@ -1603,397 +1596,403 @@ impl PipeManager {
     }
 
     /// Inner implementation with retry depth tracking for preset fallback.
-    fn run_pipe_with_trigger_inner<'a>(&'a self, name: &'a str, trigger: &'a str, retry_depth: usize) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PipeRunLog>> + Send + 'a>> {
+    fn run_pipe_with_trigger_inner<'a>(
+        &'a self,
+        name: &'a str,
+        trigger: &'a str,
+        retry_depth: usize,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<PipeRunLog>> + Send + 'a>> {
         Box::pin(async move {
-        let (config, body, _raw) = {
-            let pipes = self.pipes.lock().await;
-            match pipes.get(name).cloned() {
-                Some(v) => v,
-                None => return Err(self.pipe_not_found_error(name)),
-            }
-        };
-
-        let executor = self
-            .executors
-            .get(&config.agent)
-            .ok_or_else(|| anyhow!("agent '{}' not available", config.agent))?
-            .clone();
-
-        // Check agent is available
-        if !executor.is_available() {
-            return Err(anyhow!(
-                "agent '{}' is not installed — run ensure_installed first",
-                config.agent
-            ));
-        }
-
-        // Mark as running
-        {
-            let mut running = self.running.lock().await;
-            if running.contains_key(name) {
-                return Err(anyhow!("pipe '{}' is already running", name));
-            }
-            // Placeholder handle; real PID comes via pid_tx channel
-            running.insert(name.to_string(), ExecutionHandle { pid: 0 });
-        }
-
-        let started_at = Utc::now();
-        let pipe_dir = self.pipes_dir.join(name);
-
-        // Resolve preset → model/provider overrides (with fallback support)
-        let (
-            run_model,
-            run_provider,
-            run_provider_url,
-            run_api_key,
-            preset_prompt,
-            active_preset_id,
-        ) = if !config.preset.is_empty() {
-            // Pick the best available preset using circuit breaker
-            let (preset_id, _idx) = self
-                .fallback_registry
-                .pick_preset(&config.preset)
-                .ok_or_else(|| anyhow!("pipe '{}': no presets configured", name))?;
-
-            match resolve_preset(&self.pipes_dir, preset_id) {
-                Some(resolved) => {
-                    info!(
-                        "pipe '{}': using preset '{}' → model={}, provider={:?}{}",
-                        name,
-                        preset_id,
-                        resolved.model,
-                        resolved.provider,
-                        if _idx > 0 {
-                            format!(" (fallback #{})", _idx)
-                        } else {
-                            String::new()
-                        }
-                    );
-                    (
-                        resolved.model,
-                        resolved.provider,
-                        resolved.url,
-                        resolved.api_key,
-                        resolved.prompt,
-                        Some(preset_id.to_string()),
-                    )
+            let (config, body, _raw) = {
+                let pipes = self.pipes.lock().await;
+                match pipes.get(name).cloned() {
+                    Some(v) => v,
+                    None => return Err(self.pipe_not_found_error(name)),
                 }
-                None => {
-                    return Err(anyhow!(
-                        "pipe '{}': preset '{}' not found in settings — \
+            };
+
+            let executor = self
+                .executors
+                .get(&config.agent)
+                .ok_or_else(|| anyhow!("agent '{}' not available", config.agent))?
+                .clone();
+
+            // Check agent is available
+            if !executor.is_available() {
+                return Err(anyhow!(
+                    "agent '{}' is not installed — run ensure_installed first",
+                    config.agent
+                ));
+            }
+
+            // Mark as running
+            {
+                let mut running = self.running.lock().await;
+                if running.contains_key(name) {
+                    return Err(anyhow!("pipe '{}' is already running", name));
+                }
+                // Placeholder handle; real PID comes via pid_tx channel
+                running.insert(name.to_string(), ExecutionHandle { pid: 0 });
+            }
+
+            let started_at = Utc::now();
+            let pipe_dir = self.pipes_dir.join(name);
+
+            // Resolve preset → model/provider overrides (with fallback support)
+            let (
+                run_model,
+                run_provider,
+                run_provider_url,
+                run_api_key,
+                preset_prompt,
+                active_preset_id,
+            ) = if !config.preset.is_empty() {
+                // Pick the best available preset using circuit breaker
+                let (preset_id, _idx) = self
+                    .fallback_registry
+                    .pick_preset(&config.preset)
+                    .ok_or_else(|| anyhow!("pipe '{}': no presets configured", name))?;
+
+                match resolve_preset(&self.pipes_dir, preset_id) {
+                    Some(resolved) => {
+                        info!(
+                            "pipe '{}': using preset '{}' → model={}, provider={:?}{}",
+                            name,
+                            preset_id,
+                            resolved.model,
+                            resolved.provider,
+                            if _idx > 0 {
+                                format!(" (fallback #{})", _idx)
+                            } else {
+                                String::new()
+                            }
+                        );
+                        (
+                            resolved.model,
+                            resolved.provider,
+                            resolved.url,
+                            resolved.api_key,
+                            resolved.prompt,
+                            Some(preset_id.to_string()),
+                        )
+                    }
+                    None => {
+                        return Err(anyhow!(
+                            "pipe '{}': preset '{}' not found in settings — \
                              create the preset in Settings → AI or remove the \
                              'preset: {}' line from the pipe config",
-                        name,
-                        preset_id,
-                        preset_id
-                    ));
+                            name,
+                            preset_id,
+                            preset_id
+                        ));
+                    }
                 }
-            }
-        } else {
-            (
-                config.model.clone(),
-                config.provider.clone(),
-                None,
-                None,
-                None,
-                None,
-            )
-        };
+            } else {
+                (
+                    config.model.clone(),
+                    config.provider.clone(),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            };
 
-        // Create DB execution row
-        let exec_id = if let Some(ref store) = self.store {
-            match store
-                .create_execution(name, trigger, &run_model, run_provider.as_deref())
-                .await
-            {
-                Ok(id) => {
-                    // Track execution ID for stop API
-                    let mut exec_ids = self.running_execution_ids.lock().await;
-                    exec_ids.insert(name.to_string(), id);
-                    Some(id)
-                }
-                Err(e) => {
-                    warn!("failed to create execution row: {}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        // Check if history/session continuation is enabled for this pipe
-        let history_enabled = config
-            .config
-            .get("history")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // Build prompt with context header
-        let prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
-
-        // Create a channel so the executor can report PID immediately
-        let (pid_tx, pid_rx) = tokio::sync::oneshot::channel::<u32>();
-
-        // Mark as running in DB
-        if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
-            let _ = store.set_execution_running(id, None).await;
-        }
-
-        // Spawn PID watcher: when PID arrives, update running map + DB
-        let running_ref = self.running.clone();
-        let store_for_pid = self.store.clone();
-        let name_for_pid = name.to_string();
-        let exec_id_for_pid = exec_id;
-        tokio::spawn(async move {
-            if let Ok(pid) = pid_rx.await {
-                // Update in-memory running map with real PID
+            // Create DB execution row
+            let exec_id = if let Some(ref store) = self.store {
+                match store
+                    .create_execution(name, trigger, &run_model, run_provider.as_deref())
+                    .await
                 {
-                    let mut r = running_ref.lock().await;
-                    if let Some(handle) = r.get_mut(&name_for_pid) {
-                        handle.pid = pid;
+                    Ok(id) => {
+                        // Track execution ID for stop API
+                        let mut exec_ids = self.running_execution_ids.lock().await;
+                        exec_ids.insert(name.to_string(), id);
+                        Some(id)
+                    }
+                    Err(e) => {
+                        warn!("failed to create execution row: {}", e);
+                        None
                     }
                 }
-                // Update DB row with PID
-                if let (Some(ref store), Some(id)) = (&store_for_pid, exec_id_for_pid) {
-                    let _ = store.set_execution_running(id, Some(pid)).await;
-                }
+            } else {
+                None
+            };
+
+            // Check if history/session continuation is enabled for this pipe
+            let history_enabled = config
+                .config
+                .get("history")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // Build prompt with context header
+            let prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
+
+            // Create a channel so the executor can report PID immediately
+            let (pid_tx, pid_rx) = tokio::sync::oneshot::channel::<u32>();
+
+            // Mark as running in DB
+            if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
+                let _ = store.set_execution_running(id, None).await;
             }
-        });
 
-        // Pre-configure pi with the pipe's provider so models.json has the
-        // right entry before the agent subprocess starts.
-        let mut pipe_token: Option<String> = None;
-        if config.agent == "pi" {
-            if let Err(e) = PiExecutor::ensure_pi_config(
-                None,
-                SCREENPIPE_API_URL,
-                run_provider.as_deref(),
-                Some(&run_model),
-                run_provider_url.as_deref(),
-            ) {
-                warn!("failed to pre-configure pi provider: {}", e);
-            }
-
-            pipe_token = setup_pipe_permissions(
-                &self.pipes_dir.join(name),
-                &config,
-                self.token_registry.as_ref(),
-            )
-            .await;
-        }
-
-        // Run with timeout + streaming
-        let pipe_timeout = config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
-        let timeout_duration = std::time::Duration::from_secs(pipe_timeout);
-
-        let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        let drain_pipe_name = name.to_string();
-        let drain_exec_id = exec_id.unwrap_or(0);
-        let drain_on_output = self.on_output_line.clone();
-        tokio::spawn(async move {
-            while let Some(line) = line_rx.recv().await {
-                if let Some(ref cb) = drain_on_output {
-                    cb(&drain_pipe_name, drain_exec_id, &line);
-                }
-            }
-            // Channel closed — pipe process exited. Emit a done sentinel.
-            if let Some(ref cb) = drain_on_output {
-                cb(&drain_pipe_name, drain_exec_id, r#"{"type":"pipe_done"}"#);
-            }
-        });
-
-        let run_result = tokio::time::timeout(
-            timeout_duration,
-            executor.run_streaming(
-                &prompt,
-                &run_model,
-                &pipe_dir,
-                run_provider.as_deref(),
-                run_provider_url.as_deref(),
-                run_api_key.as_deref(),
-                Some(pid_tx),
-                line_tx,
-                history_enabled,
-                None, // manual run — gateway-side caching still applies
-            ),
-        )
-        .await;
-
-        // Remove from running
-        let removed_handle = {
-            let mut running = self.running.lock().await;
-            running.remove(name)
-        };
-        {
-            let mut exec_ids = self.running_execution_ids.lock().await;
-            exec_ids.remove(name);
-        }
-
-        let finished_at = Utc::now();
-        let _duration_ms = (finished_at - started_at).num_milliseconds();
-
-        let log = match run_result {
-            Ok(Ok(output)) => {
-                // Normal completion
-                let filtered_stdout = filter_ndjson_stdout(&output.stdout);
-                let (error_type, error_message) = if !output.success {
-                    parse_error_type_from_output(&output.stderr, &filtered_stdout)
-                } else {
-                    (None, None)
-                };
-
-                let status = if output.success {
-                    "completed"
-                } else {
-                    "failed"
-                };
-                if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
-                    let _ = store
-                        .finish_execution(
-                            id,
-                            status,
-                            &truncate_string(&filtered_stdout, 50_000),
-                            &truncate_string(&output.stderr, 10_000),
-                            None,
-                            error_type.as_deref(),
-                            error_message.as_deref(),
-                        )
-                        .await;
-                }
-                if let Some(ref store) = self.store {
-                    let _ = store.upsert_scheduler_state(name, output.success).await;
-                }
-
-                // Update circuit breaker state
-                if let Some(ref pid) = active_preset_id {
-                    if output.success {
-                        self.fallback_registry.record_success(pid);
-                    } else if config.preset.len() > 1 {
-                        // Only record failure for fallback if multiple presets configured
-                        self.fallback_registry.record_failure_from_output(
-                            pid,
-                            &output.stderr,
-                            &filtered_stdout,
-                        );
-                    }
-                }
-
-                PipeRunLog {
-                    pipe_name: name.to_string(),
-                    started_at,
-                    finished_at,
-                    success: output.success,
-                    stdout: truncate_string(&filtered_stdout, 10_000),
-                    stderr: truncate_string(&output.stderr, 5_000),
-                }
-            }
-            Ok(Err(e)) => {
-                // Executor error (not timeout)
-                if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
-                    let _ = store
-                        .finish_execution(
-                            id,
-                            "failed",
-                            "",
-                            &e.to_string(),
-                            None,
-                            Some("crash"),
-                            Some(&e.to_string()),
-                        )
-                        .await;
-                }
-                if let Some(ref store) = self.store {
-                    let _ = store.upsert_scheduler_state(name, false).await;
-                }
-
-                PipeRunLog {
-                    pipe_name: name.to_string(),
-                    started_at,
-                    finished_at,
-                    success: false,
-                    stdout: String::new(),
-                    stderr: e.to_string(),
-                }
-            }
-            Err(_elapsed) => {
-                // Timeout — kill the process
-                warn!(
-                    "pipe '{}' timed out after {}s, killing process",
-                    name, pipe_timeout
-                );
-                if let Some(handle) = removed_handle {
-                    if handle.pid != 0 {
-                        if let Some(executor) = self.executors.get(&config.agent) {
-                            let _ = executor.kill(&handle);
+            // Spawn PID watcher: when PID arrives, update running map + DB
+            let running_ref = self.running.clone();
+            let store_for_pid = self.store.clone();
+            let name_for_pid = name.to_string();
+            let exec_id_for_pid = exec_id;
+            tokio::spawn(async move {
+                if let Ok(pid) = pid_rx.await {
+                    // Update in-memory running map with real PID
+                    {
+                        let mut r = running_ref.lock().await;
+                        if let Some(handle) = r.get_mut(&name_for_pid) {
+                            handle.pid = pid;
                         }
                     }
+                    // Update DB row with PID
+                    if let (Some(ref store), Some(id)) = (&store_for_pid, exec_id_for_pid) {
+                        let _ = store.set_execution_running(id, Some(pid)).await;
+                    }
+                }
+            });
+
+            // Pre-configure pi with the pipe's provider so models.json has the
+            // right entry before the agent subprocess starts.
+            let mut pipe_token: Option<String> = None;
+            if config.agent == "pi" {
+                if let Err(e) = PiExecutor::ensure_pi_config(
+                    None,
+                    SCREENPIPE_API_URL,
+                    run_provider.as_deref(),
+                    Some(&run_model),
+                    run_provider_url.as_deref(),
+                ) {
+                    warn!("failed to pre-configure pi provider: {}", e);
                 }
 
-                if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
-                    let _ = store
-                        .finish_execution(
-                            id,
-                            "timed_out",
-                            "",
-                            "",
-                            None,
-                            Some("timeout"),
-                            Some(&format!(
-                                "execution timed out after {}s",
-                                pipe_timeout
-                            )),
-                        )
-                        .await;
-                }
-                if let Some(ref store) = self.store {
-                    let _ = store.upsert_scheduler_state(name, false).await;
-                }
-
-                PipeRunLog {
-                    pipe_name: name.to_string(),
-                    started_at,
-                    finished_at,
-                    success: false,
-                    stdout: String::new(),
-                    stderr: format!("execution timed out after {}s", pipe_timeout),
-                }
+                pipe_token = setup_pipe_permissions(
+                    &self.pipes_dir.join(name),
+                    &config,
+                    self.token_registry.as_ref(),
+                )
+                .await;
             }
-        };
 
-        // Clean up pipe token from server registry
-        if let Some(ref token) = pipe_token {
-            cleanup_pipe_token(token, self.token_registry.as_ref());
-        }
+            // Run with timeout + streaming
+            let pipe_timeout = config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
+            let timeout_duration = std::time::Duration::from_secs(pipe_timeout);
 
-        // Immediate fallback retry: if the pipe failed with a retryable error
-        // and there are fallback presets available, retry now instead of waiting
-        // for the next scheduled run.
-        if !log.success && config.preset.len() > 1 && retry_depth < config.preset.len() - 1 {
-            // Check if the circuit breaker picked a different preset for retry
-            if let Some((next_preset_id, _)) = self.fallback_registry.pick_preset(&config.preset) {
-                let should_retry = match &active_preset_id {
-                    Some(current_id) => next_preset_id != current_id.as_str(),
-                    None => false,
-                };
-                if should_retry {
-                    info!(
+            let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let drain_pipe_name = name.to_string();
+            let drain_exec_id = exec_id.unwrap_or(0);
+            let drain_on_output = self.on_output_line.clone();
+            tokio::spawn(async move {
+                while let Some(line) = line_rx.recv().await {
+                    if let Some(ref cb) = drain_on_output {
+                        cb(&drain_pipe_name, drain_exec_id, &line);
+                    }
+                }
+                // Channel closed — pipe process exited. Emit a done sentinel.
+                if let Some(ref cb) = drain_on_output {
+                    cb(&drain_pipe_name, drain_exec_id, r#"{"type":"pipe_done"}"#);
+                }
+            });
+
+            let run_result = tokio::time::timeout(
+                timeout_duration,
+                executor.run_streaming(
+                    &prompt,
+                    &run_model,
+                    &pipe_dir,
+                    run_provider.as_deref(),
+                    run_provider_url.as_deref(),
+                    run_api_key.as_deref(),
+                    Some(pid_tx),
+                    line_tx,
+                    history_enabled,
+                    None, // manual run — gateway-side caching still applies
+                ),
+            )
+            .await;
+
+            // Remove from running
+            let removed_handle = {
+                let mut running = self.running.lock().await;
+                running.remove(name)
+            };
+            {
+                let mut exec_ids = self.running_execution_ids.lock().await;
+                exec_ids.remove(name);
+            }
+
+            let finished_at = Utc::now();
+            let _duration_ms = (finished_at - started_at).num_milliseconds();
+
+            let log = match run_result {
+                Ok(Ok(output)) => {
+                    // Normal completion
+                    let filtered_stdout = filter_ndjson_stdout(&output.stdout);
+                    let (error_type, error_message) = if !output.success {
+                        parse_error_type_from_output(&output.stderr, &filtered_stdout)
+                    } else {
+                        (None, None)
+                    };
+
+                    let status = if output.success {
+                        "completed"
+                    } else {
+                        "failed"
+                    };
+                    if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
+                        let _ = store
+                            .finish_execution(
+                                id,
+                                status,
+                                &truncate_string(&filtered_stdout, 50_000),
+                                &truncate_string(&output.stderr, 10_000),
+                                None,
+                                error_type.as_deref(),
+                                error_message.as_deref(),
+                            )
+                            .await;
+                    }
+                    if let Some(ref store) = self.store {
+                        let _ = store.upsert_scheduler_state(name, output.success).await;
+                    }
+
+                    // Update circuit breaker state
+                    if let Some(ref pid) = active_preset_id {
+                        if output.success {
+                            self.fallback_registry.record_success(pid);
+                        } else if config.preset.len() > 1 {
+                            // Only record failure for fallback if multiple presets configured
+                            self.fallback_registry.record_failure_from_output(
+                                pid,
+                                &output.stderr,
+                                &filtered_stdout,
+                            );
+                        }
+                    }
+
+                    PipeRunLog {
+                        pipe_name: name.to_string(),
+                        started_at,
+                        finished_at,
+                        success: output.success,
+                        stdout: truncate_string(&filtered_stdout, 10_000),
+                        stderr: truncate_string(&output.stderr, 5_000),
+                    }
+                }
+                Ok(Err(e)) => {
+                    // Executor error (not timeout)
+                    if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
+                        let _ = store
+                            .finish_execution(
+                                id,
+                                "failed",
+                                "",
+                                &e.to_string(),
+                                None,
+                                Some("crash"),
+                                Some(&e.to_string()),
+                            )
+                            .await;
+                    }
+                    if let Some(ref store) = self.store {
+                        let _ = store.upsert_scheduler_state(name, false).await;
+                    }
+
+                    PipeRunLog {
+                        pipe_name: name.to_string(),
+                        started_at,
+                        finished_at,
+                        success: false,
+                        stdout: String::new(),
+                        stderr: e.to_string(),
+                    }
+                }
+                Err(_elapsed) => {
+                    // Timeout — kill the process
+                    warn!(
+                        "pipe '{}' timed out after {}s, killing process",
+                        name, pipe_timeout
+                    );
+                    if let Some(handle) = removed_handle {
+                        if handle.pid != 0 {
+                            if let Some(executor) = self.executors.get(&config.agent) {
+                                let _ = executor.kill(&handle);
+                            }
+                        }
+                    }
+
+                    if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
+                        let _ = store
+                            .finish_execution(
+                                id,
+                                "timed_out",
+                                "",
+                                "",
+                                None,
+                                Some("timeout"),
+                                Some(&format!("execution timed out after {}s", pipe_timeout)),
+                            )
+                            .await;
+                    }
+                    if let Some(ref store) = self.store {
+                        let _ = store.upsert_scheduler_state(name, false).await;
+                    }
+
+                    PipeRunLog {
+                        pipe_name: name.to_string(),
+                        started_at,
+                        finished_at,
+                        success: false,
+                        stdout: String::new(),
+                        stderr: format!("execution timed out after {}s", pipe_timeout),
+                    }
+                }
+            };
+
+            // Clean up pipe token from server registry
+            if let Some(ref token) = pipe_token {
+                cleanup_pipe_token(token, self.token_registry.as_ref());
+            }
+
+            // Immediate fallback retry: if the pipe failed with a retryable error
+            // and there are fallback presets available, retry now instead of waiting
+            // for the next scheduled run.
+            if !log.success && config.preset.len() > 1 && retry_depth < config.preset.len() - 1 {
+                // Check if the circuit breaker picked a different preset for retry
+                if let Some((next_preset_id, _)) =
+                    self.fallback_registry.pick_preset(&config.preset)
+                {
+                    let should_retry = match &active_preset_id {
+                        Some(current_id) => next_preset_id != current_id.as_str(),
+                        None => false,
+                    };
+                    if should_retry {
+                        info!(
                         "pipe '{}': primary preset failed, immediately retrying with fallback '{}'",
                         name, next_preset_id
                     );
-                    // Save log of the failed attempt
-                    self.append_log(name, &log).await;
-                    let _ = self.write_log_to_disk(name, &log);
-                    // Retry with next preset
-                    return self.run_pipe_with_trigger_inner(name, trigger, retry_depth + 1).await;
+                        // Save log of the failed attempt
+                        self.append_log(name, &log).await;
+                        let _ = self.write_log_to_disk(name, &log);
+                        // Retry with next preset
+                        return self
+                            .run_pipe_with_trigger_inner(name, trigger, retry_depth + 1)
+                            .await;
+                    }
                 }
             }
-        }
 
-        // Save log (in-memory + disk)
-        self.append_log(name, &log).await;
-        let _ = self.write_log_to_disk(name, &log);
+            // Save log (in-memory + disk)
+            self.append_log(name, &log).await;
+            let _ = self.write_log_to_disk(name, &log);
 
-        Ok(log)
+            Ok(log)
         }) // end Box::pin(async move { ... })
     }
 
@@ -2128,7 +2127,9 @@ impl PipeManager {
 
         if source_path.exists() {
             // Canonicalize source for reliable same-path detection
-            let source_canonical = source_path.canonicalize().unwrap_or_else(|_| source_path.to_path_buf());
+            let source_canonical = source_path
+                .canonicalize()
+                .unwrap_or_else(|_| source_path.to_path_buf());
 
             // Local file or directory
             if source_path.is_file() && source_path.extension().is_some_and(|e| e == "md") {
@@ -2151,7 +2152,9 @@ impl PipeManager {
 
                 let dest_dir = self.pipes_dir.join(&name);
                 let dest_file = dest_dir.join("pipe.md");
-                let dest_canonical = dest_file.canonicalize().unwrap_or_else(|_| dest_file.clone());
+                let dest_canonical = dest_file
+                    .canonicalize()
+                    .unwrap_or_else(|_| dest_file.clone());
 
                 // Skip copy if source and destination are the same file — copying
                 // a file onto itself can truncate it to 0 bytes on some platforms.
@@ -2537,11 +2540,8 @@ impl PipeManager {
 
                     let pipe_dir = pipes_dir.join(name);
 
-                    let pipe_system_prompt = render_pipe_system_prompt(
-                        body,
-                        api_port,
-                        preset_prompt.as_deref(),
-                    );
+                    let pipe_system_prompt =
+                        render_pipe_system_prompt(body, api_port, preset_prompt.as_deref());
                     let prompt = render_prompt_with_port(
                         config,
                         body,
@@ -2750,10 +2750,7 @@ impl PipeManager {
                                 )
                             }
                             Err(_elapsed) => {
-                                warn!(
-                                    "pipe '{}' timed out after {}s",
-                                    pipe_name, pipe_timeout
-                                );
+                                warn!("pipe '{}' timed out after {}s", pipe_name, pipe_timeout);
                                 if let Some(handle) = removed_handle {
                                     if handle.pid != 0 {
                                         let _ = crate::agents::pi::kill_process_group(handle.pid);
@@ -3049,11 +3046,7 @@ pub fn serialize_pipe(config: &PipeConfig, body: &str) -> Result<String> {
 /// Contains the pipe body (instructions from pipe.md) and the preset system prompt.
 /// These are identical across runs and across turns within a run, making them
 /// ideal for Anthropic prompt caching (90% input cost reduction on cache hits).
-fn render_pipe_system_prompt(
-    body: &str,
-    api_port: u16,
-    system_prompt: Option<&str>,
-) -> String {
+fn render_pipe_system_prompt(body: &str, api_port: u16, system_prompt: Option<&str>) -> String {
     let os = std::env::consts::OS;
     let mut sys = String::new();
 

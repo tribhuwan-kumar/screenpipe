@@ -369,18 +369,22 @@ async fn handle_stream_frames_socket(
                                             // frames (the only channel consumer).
                                             let frames_to_send: Vec<_> = {
                                                 let mut sent = sent_ids_backfill.lock().await;
-                                                chunks.frames.into_iter().filter_map(|chunk| {
-                                                    if sent.contains(&chunk.frame_id) {
-                                                        return None;
-                                                    }
-                                                    sent.insert(chunk.frame_id);
-                                                    let frame = create_time_series_frame(chunk);
-                                                    if frame.frame_data.is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(frame)
-                                                    }
-                                                }).collect()
+                                                chunks
+                                                    .frames
+                                                    .into_iter()
+                                                    .filter_map(|chunk| {
+                                                        if sent.contains(&chunk.frame_id) {
+                                                            return None;
+                                                        }
+                                                        sent.insert(chunk.frame_id);
+                                                        let frame = create_time_series_frame(chunk);
+                                                        if frame.frame_data.is_empty() {
+                                                            None
+                                                        } else {
+                                                            Some(frame)
+                                                        }
+                                                    })
+                                                    .collect()
                                             }; // lock dropped
 
                                             for frame in frames_to_send {
@@ -650,16 +654,20 @@ async fn fetch_and_process_frames_with_tracking(
     // live-frame path which also needs this lock.
     let frames_to_send: Vec<_> = {
         let mut sent = sent_frame_ids.lock().await;
-        chunks.frames.into_iter().filter_map(|chunk| {
-            sent.insert(chunk.frame_id);
-            let ts = chunk.timestamp;
-            let frame = create_time_series_frame(chunk);
-            if frame.frame_data.is_empty() {
-                None
-            } else {
-                Some((ts, frame))
-            }
-        }).collect()
+        chunks
+            .frames
+            .into_iter()
+            .filter_map(|chunk| {
+                sent.insert(chunk.frame_id);
+                let ts = chunk.timestamp;
+                let frame = create_time_series_frame(chunk);
+                if frame.frame_data.is_empty() {
+                    None
+                } else {
+                    Some((ts, frame))
+                }
+            })
+            .collect()
     }; // lock dropped
 
     for (ts, frame) in frames_to_send {

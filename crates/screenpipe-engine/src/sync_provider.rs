@@ -572,7 +572,14 @@ impl ScreenpipeSyncProvider {
                     .or_else(|| frame_rec.and_then(|f| f.window_name.as_deref()));
 
                 self.db
-                    .sync_insert_ocr(frame_id, &ocr.text, ocr.focused, app_name, window_name, &ocr.sync_id)
+                    .sync_insert_ocr(
+                        frame_id,
+                        &ocr.text,
+                        ocr.focused,
+                        app_name,
+                        window_name,
+                        &ocr.sync_id,
+                    )
                     .await
                     .map_err(|e| SyncError::Database(format!("failed to insert OCR: {}", e)))?;
 
@@ -611,7 +618,9 @@ impl ScreenpipeSyncProvider {
                     trans.speaker_id,
                 )
                 .await
-                .map_err(|e| SyncError::Database(format!("failed to insert transcription: {}", e)))?;
+                .map_err(|e| {
+                    SyncError::Database(format!("failed to insert transcription: {}", e))
+                })?;
 
             imported_transcriptions += 1;
             tokio::task::yield_now().await;

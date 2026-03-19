@@ -33,23 +33,28 @@ impl PipeStore for SqlitePipeStore {
         model: &str,
         provider: Option<&str>,
     ) -> Result<i64> {
-        Ok(self.db.pipe_create_execution_queued(pipe_name, trigger_type, model, provider).await?)
+        Ok(self
+            .db
+            .pipe_create_execution_queued(pipe_name, trigger_type, model, provider)
+            .await?)
     }
 
     async fn set_execution_running(&self, id: i64, pid: Option<u32>) -> Result<()> {
         use screenpipe_db::write_queue::PipeBindValue;
         let now = Utc::now().to_rfc3339();
-        self.db.pipe_execute_write_queued(
-            id,
-            r#"UPDATE pipe_executions
+        self.db
+            .pipe_execute_write_queued(
+                id,
+                r#"UPDATE pipe_executions
                SET status = 'running', pid = COALESCE(?, pid), started_at = COALESCE(started_at, ?)
                WHERE id = ?"#,
-            vec![
-                PipeBindValue::OptInt(pid.map(|p| p as i64)),
-                PipeBindValue::Text(now),
-                PipeBindValue::Int(id),
-            ],
-        ).await?;
+                vec![
+                    PipeBindValue::OptInt(pid.map(|p| p as i64)),
+                    PipeBindValue::Text(now),
+                    PipeBindValue::Int(id),
+                ],
+            )
+            .await?;
         Ok(())
     }
 
@@ -65,9 +70,10 @@ impl PipeStore for SqlitePipeStore {
     ) -> Result<()> {
         use screenpipe_db::write_queue::PipeBindValue;
         let now = Utc::now().to_rfc3339();
-        self.db.pipe_execute_write_queued(
-            id,
-            r#"UPDATE pipe_executions
+        self.db
+            .pipe_execute_write_queued(
+                id,
+                r#"UPDATE pipe_executions
                SET status = ?,
                    finished_at = ?,
                    stdout = ?,
@@ -80,19 +86,20 @@ impl PipeStore for SqlitePipeStore {
                        AS INTEGER
                    )
                WHERE id = ?"#,
-            vec![
-                PipeBindValue::Text(status.to_string()),
-                PipeBindValue::Text(now.clone()),
-                PipeBindValue::Text(stdout.to_string()),
-                PipeBindValue::Text(stderr.to_string()),
-                PipeBindValue::OptInt32(exit_code),
-                PipeBindValue::OptText(error_type.map(|s| s.to_string())),
-                PipeBindValue::OptText(error_message.map(|s| s.to_string())),
-                PipeBindValue::Text(now.clone()),
-                PipeBindValue::Text(now),
-                PipeBindValue::Int(id),
-            ],
-        ).await?;
+                vec![
+                    PipeBindValue::Text(status.to_string()),
+                    PipeBindValue::Text(now.clone()),
+                    PipeBindValue::Text(stdout.to_string()),
+                    PipeBindValue::Text(stderr.to_string()),
+                    PipeBindValue::OptInt32(exit_code),
+                    PipeBindValue::OptText(error_type.map(|s| s.to_string())),
+                    PipeBindValue::OptText(error_message.map(|s| s.to_string())),
+                    PipeBindValue::Text(now.clone()),
+                    PipeBindValue::Text(now),
+                    PipeBindValue::Int(id),
+                ],
+            )
+            .await?;
         Ok(())
     }
 
@@ -117,16 +124,18 @@ impl PipeStore for SqlitePipeStore {
     async fn mark_orphaned_running(&self) -> Result<u32> {
         use screenpipe_db::write_queue::PipeBindValue;
         let now = Utc::now().to_rfc3339();
-        self.db.pipe_execute_write_queued(
-            0,
-            r#"UPDATE pipe_executions
+        self.db
+            .pipe_execute_write_queued(
+                0,
+                r#"UPDATE pipe_executions
                SET status = 'failed',
                    finished_at = ?,
                    error_type = 'interrupted',
                    error_message = 'interrupted by system restart'
                WHERE status IN ('running', 'queued')"#,
-            vec![PipeBindValue::Text(now)],
-        ).await?;
+                vec![PipeBindValue::Text(now)],
+            )
+            .await?;
         // We can't easily get rows_affected through the write queue, return 0
         Ok(0)
     }
@@ -181,7 +190,9 @@ impl PipeStore for SqlitePipeStore {
     }
 
     async fn cleanup_old_executions(&self, keep_per_pipe: i32) -> Result<u32> {
-        self.db.pipe_delete_old_executions_queued(keep_per_pipe).await?;
+        self.db
+            .pipe_delete_old_executions_queued(keep_per_pipe)
+            .await?;
         // Can't easily get rows_affected through write queue, return 0
         Ok(0)
     }

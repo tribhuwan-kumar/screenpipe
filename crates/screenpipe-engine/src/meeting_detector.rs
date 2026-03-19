@@ -67,9 +67,7 @@ pub enum CallSignal {
     /// Match a menu bar item by exact title (case-insensitive).
     /// Used for apps like Zoom that expose meeting controls only via
     /// AXMenuBarItem/AXMenuItem in the menu bar, not as AXButton in windows.
-    MenuBarItem {
-        title_contains: &'static str,
-    },
+    MenuBarItem { title_contains: &'static str },
     /// Match an AXMenuItem by its automation ID (AXIdentifier).
     /// Zoom exposes identifiers like "onMuteAudio:", "onMuteVideo:" on menu items.
     MenuItemId(&'static str),
@@ -496,8 +494,14 @@ impl MeetingUiScanner {
 
                     // Walk this window's AX tree looking for signals
                     walk_for_signals(
-                        window, &precomputed, 0, max_depth, &start, scan_timeout,
-                        &mut found, min_required,
+                        window,
+                        &precomputed,
+                        0,
+                        max_depth,
+                        &start,
+                        scan_timeout,
+                        &mut found,
+                        min_required,
                     );
 
                     if found.len() >= min_required {
@@ -655,7 +659,8 @@ fn walk_for_signals(
             desc_lower.as_deref(),
             ident_lower.as_deref(),
         ) {
-            let label = format_signal_match(&ps.signal, &role_str, title.as_deref(), desc.as_deref());
+            let label =
+                format_signal_match(&ps.signal, &role_str, title.as_deref(), desc.as_deref());
             if !found.contains(&label) {
                 found.push(label);
             }
@@ -686,7 +691,14 @@ fn walk_for_signals(
             }
             let child = &children[i];
             walk_for_signals(
-                child, signals, depth + 1, max_depth, start, timeout, found, min_required,
+                child,
+                signals,
+                depth + 1,
+                max_depth,
+                start,
+                timeout,
+                found,
+                min_required,
             );
         }
     }
@@ -736,7 +748,9 @@ fn check_signal_match(
     identifier: Option<&str>,
 ) -> bool {
     match signal {
-        CallSignal::AutomationId(id) => identifier.map_or(false, |ident| ident.eq_ignore_ascii_case(id)),
+        CallSignal::AutomationId(id) => {
+            identifier.map_or(false, |ident| ident.eq_ignore_ascii_case(id))
+        }
         CallSignal::AutomationIdContains(substr) => identifier.map_or(false, |ident| {
             ident.to_lowercase().contains(&substr.to_lowercase())
         }),
@@ -945,7 +959,11 @@ fn windows_enumerate_processes() -> Vec<WindowsProcessInfo> {
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
                 let name = String::from_utf16_lossy(
-                    &entry.szExeFile[..entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len())]
+                    &entry.szExeFile[..entry
+                        .szExeFile
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(entry.szExeFile.len())],
                 );
                 results.push(WindowsProcessInfo {
                     pid: entry.th32ProcessID,
@@ -976,11 +994,11 @@ fn windows_get_process_name(pid: i32) -> Option<String> {
 /// Enumerate visible window titles and their PIDs on Windows.
 #[cfg(target_os = "windows")]
 fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
+    use std::sync::Mutex;
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use std::sync::Mutex;
 
     let results: Arc<Mutex<Vec<(i32, String)>>> = Arc::new(Mutex::new(Vec::new()));
     let results_clone = results.clone();
@@ -1010,23 +1028,25 @@ fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
         );
     }
 
-    Arc::try_unwrap(results).unwrap_or_default().into_inner().unwrap_or_default()
+    Arc::try_unwrap(results)
+        .unwrap_or_default()
+        .into_inner()
+        .unwrap_or_default()
 }
 
 /// Enumerate visible windows belonging to a specific PID.
 #[cfg(target_os = "windows")]
 fn enumerate_windows_for_pid(target_pid: u32) -> Vec<windows::Win32::Foundation::HWND> {
+    use std::sync::Mutex;
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
     };
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use std::sync::Mutex;
 
     let param_data = (target_pid, Mutex::new(Vec::<HWND>::new()));
 
     unsafe extern "system" fn enum_for_pid(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let (target_pid, hwnds) =
-            &*(lparam.0 as *const (u32, Mutex<Vec<HWND>>));
+        let (target_pid, hwnds) = &*(lparam.0 as *const (u32, Mutex<Vec<HWND>>));
 
         if IsWindowVisible(hwnd).as_bool() {
             let mut win_pid: u32 = 0;
@@ -1068,7 +1088,7 @@ fn windows_scan_process_uia(
     };
     use windows::Win32::UI::Accessibility::{
         CUIAutomation, IUIAutomation, IUIAutomationCondition, TreeScope_Descendants,
-        UIA_NamePropertyId, UIA_AutomationIdPropertyId,
+        UIA_AutomationIdPropertyId, UIA_NamePropertyId,
     };
 
     unsafe {
@@ -1090,7 +1110,11 @@ fn windows_scan_process_uia(
                         conditions.push(cond);
                     }
                 }
-                CallSignal::NameContains(name) | CallSignal::RoleWithName { name_contains: name, .. } => {
+                CallSignal::NameContains(name)
+                | CallSignal::RoleWithName {
+                    name_contains: name,
+                    ..
+                } => {
                     // UIA PropertyCondition doesn't support substring match,
                     // so we search for exact name. For "leave"/"hang up" this works
                     // because the button name IS the keyword.
@@ -1129,9 +1153,7 @@ fn windows_scan_process_uia(
                     // Build OR condition from all individual conditions
                     let first: IUIAutomationCondition = conditions[0].clone().into();
                     let second: IUIAutomationCondition = conditions[1].clone().into();
-                    let mut combined = automation
-                        .CreateOrCondition(&first, &second)
-                        .ok();
+                    let mut combined = automation.CreateOrCondition(&first, &second).ok();
                     for cond in &conditions[2..] {
                         if let Some(ref prev) = combined {
                             let prev_cond: IUIAutomationCondition = prev.clone().into();
@@ -1154,18 +1176,26 @@ fn windows_scan_process_uia(
                             if let Ok(el) = results.GetElement(i) {
                                 let name = el.CurrentName().ok().map(|s| s.to_string());
                                 let auto_id = el.CurrentAutomationId().ok().map(|s| s.to_string());
-                                let role = el.CurrentLocalizedControlType()
-                                    .ok().map(|s| s.to_string()).unwrap_or_default();
+                                let role = el
+                                    .CurrentLocalizedControlType()
+                                    .ok()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_default();
 
                                 // Verify this element actually matches one of our signals
                                 for signal in signals {
                                     if check_signal_match(
-                                        signal, &role,
-                                        name.as_deref(), None,
+                                        signal,
+                                        &role,
+                                        name.as_deref(),
+                                        None,
                                         auto_id.as_deref(),
                                     ) {
                                         let label = format_signal_match(
-                                            signal, &role, name.as_deref(), None,
+                                            signal,
+                                            &role,
+                                            name.as_deref(),
+                                            None,
                                         );
                                         if !found.contains(&label) {
                                             found.push(label);
@@ -1175,12 +1205,17 @@ fn windows_scan_process_uia(
                                     // Also check with AX prefix for cross-platform compat
                                     let ax_role = format!("AX{}", role);
                                     if check_signal_match(
-                                        signal, &ax_role,
-                                        name.as_deref(), None,
+                                        signal,
+                                        &ax_role,
+                                        name.as_deref(),
+                                        None,
                                         auto_id.as_deref(),
                                     ) {
                                         let label = format_signal_match(
-                                            signal, &role, name.as_deref(), None,
+                                            signal,
+                                            &role,
+                                            name.as_deref(),
+                                            None,
                                         );
                                         if !found.contains(&label) {
                                             found.push(label);
@@ -1404,7 +1439,8 @@ pub fn advance_state(
             } else {
                 debug!(
                     "meeting v2: Ending (app={}, id={}, elapsed={:?})",
-                    app, meeting_id,
+                    app,
+                    meeting_id,
                     since.elapsed()
                 );
                 (
@@ -1531,10 +1567,7 @@ pub fn find_running_meeting_apps(
                 if !profile.app_identifiers.browser_url_patterns.is_empty()
                     && BROWSER_NAMES.iter().any(|b| name_lower.contains(b))
                 {
-                    if has_browser_meeting_url(
-                        pid,
-                        &profile.app_identifiers.browser_url_patterns,
-                    ) {
+                    if has_browser_meeting_url(pid, &profile.app_identifiers.browser_url_patterns) {
                         results.push(RunningMeetingApp {
                             pid,
                             app_name: name.clone(),
@@ -1610,14 +1643,12 @@ pub fn find_running_meeting_apps(
     profiles: &[MeetingDetectionProfile],
     currently_tracking: Option<&ActiveTracking>,
 ) -> Vec<RunningMeetingApp> {
-    use windows::Win32::System::Threading::{
-        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
+    use std::collections::{HashMap, HashSet};
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use std::collections::{HashMap, HashSet};
 
     let mut results = Vec::new();
     let mut seen_pids = HashSet::new();
@@ -1630,7 +1661,8 @@ pub fn find_running_meeting_apps(
         if process_map.iter().any(|p| p.pid == tracking.pid as u32) {
             results.push(RunningMeetingApp {
                 pid: tracking.pid,
-                app_name: process_map.iter()
+                app_name: process_map
+                    .iter()
                     .find(|p| p.pid == tracking.pid as u32)
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| format!("pid:{}", tracking.pid)),
@@ -1664,14 +1696,13 @@ pub fn find_running_meeting_apps(
                 // Also add child processes that render UI (Teams uses msedgewebview2.exe).
                 // Only include known UI-hosting children to avoid scanning 10-15+ GPU/utility
                 // worker processes that would each block for 2s+ on timeout.
-                const UI_CHILD_PROCESS_NAMES: &[&str] = &[
-                    "msedgewebview2.exe",
-                    "webview2.exe",
-                ];
+                const UI_CHILD_PROCESS_NAMES: &[&str] = &["msedgewebview2.exe", "webview2.exe"];
                 for child in process_map.iter() {
                     if child.parent_pid == proc.pid
                         && !seen_pids.contains(&(child.pid as i32))
-                        && UI_CHILD_PROCESS_NAMES.iter().any(|n| child.name.eq_ignore_ascii_case(n))
+                        && UI_CHILD_PROCESS_NAMES
+                            .iter()
+                            .any(|n| child.name.eq_ignore_ascii_case(n))
                     {
                         results.push(RunningMeetingApp {
                             pid: child.pid as i32,
@@ -1690,8 +1721,13 @@ pub fn find_running_meeting_apps(
     let window_titles = windows_enumerate_window_titles();
 
     let browser_process_names: &[&str] = &[
-        "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe",
-        "arc.exe", "opera.exe", "vivaldi.exe",
+        "chrome.exe",
+        "msedge.exe",
+        "firefox.exe",
+        "brave.exe",
+        "arc.exe",
+        "opera.exe",
+        "vivaldi.exe",
     ];
 
     for (idx, profile) in profiles.iter().enumerate() {
@@ -1705,20 +1741,24 @@ pub fn find_running_meeting_apps(
             }
 
             // Check if this is a browser process
-            let proc_name = process_map.iter()
+            let proc_name = process_map
+                .iter()
                 .find(|p| p.pid == *pid as u32)
                 .map(|p| p.name.to_lowercase());
-            let is_browser = proc_name.as_ref().map_or(false, |n| {
-                browser_process_names.iter().any(|b| n == *b)
-            });
+            let is_browser = proc_name
+                .as_ref()
+                .map_or(false, |n| browser_process_names.iter().any(|b| n == *b));
             if !is_browser {
                 continue;
             }
 
             let title_lower = title.to_lowercase();
-            if profile.app_identifiers.browser_url_patterns.iter().any(|p| {
-                title_lower.contains(&p.to_lowercase())
-            }) {
+            if profile
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
+                .any(|p| title_lower.contains(&p.to_lowercase()))
+            {
                 results.push(RunningMeetingApp {
                     pid: *pid,
                     app_name: proc_name.unwrap_or_default(),
@@ -1776,7 +1816,7 @@ async fn db_find_browser_meetings(
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT DISTINCT app_name, window_name FROM frames \
          WHERE timestamp > datetime('now', '-30 seconds') \
-         AND app_name IS NOT NULL AND window_name IS NOT NULL"
+         AND app_name IS NOT NULL AND window_name IS NOT NULL",
     )
     .fetch_all(&db.pool)
     .await?;
@@ -1788,7 +1828,10 @@ async fn db_find_browser_meetings(
             if profile.app_identifiers.browser_url_patterns.is_empty() {
                 continue;
             }
-            let matches = profile.app_identifiers.browser_url_patterns.iter()
+            let matches = profile
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
                 .any(|p| window_lower.contains(&p.to_lowercase()));
             if matches {
                 #[cfg(target_os = "macos")]
@@ -1808,7 +1851,10 @@ async fn db_find_browser_meetings(
                 #[cfg(not(target_os = "macos"))]
                 let pid = -1i32;
                 if pid > 0 {
-                    debug!("meeting v2: DB hint — {} window {:?} matches profile {}", app_name, window_name, idx);
+                    debug!(
+                        "meeting v2: DB hint — {} window {:?} matches profile {}",
+                        app_name, window_name, idx
+                    );
                     results.push(RunningMeetingApp {
                         pid,
                         app_name: app_name.clone(),
@@ -1925,7 +1971,10 @@ pub async fn run_meeting_detection_loop(
 
         // Merge DB browser hints (avoids missing meetings when AX doesn't expose URLs)
         for hint in db_browser_hints {
-            if !running_apps.iter().any(|a| a.profile_index == hint.profile_index) {
+            if !running_apps
+                .iter()
+                .any(|a| a.profile_index == hint.profile_index)
+            {
                 running_apps.push(hint);
             }
         }
@@ -1934,7 +1983,10 @@ pub async fn run_meeting_detection_loop(
             debug!(
                 "meeting v2: found {} running meeting app(s): {:?}",
                 running_apps.len(),
-                running_apps.iter().map(|a| format!("{}(pid={})", a.app_name, a.pid)).collect::<Vec<_>>()
+                running_apps
+                    .iter()
+                    .map(|a| format!("{}(pid={})", a.app_name, a.pid))
+                    .collect::<Vec<_>>()
             );
         }
 
@@ -1943,9 +1995,7 @@ pub async fn run_meeting_detection_loop(
             let (new_state, ended_id) = handle_no_apps_running(state);
             state = new_state;
             if let Some(meeting_id) = ended_id {
-                let now = Utc::now()
-                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                    .to_string();
+                let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                 if let Err(e) = db.end_meeting(meeting_id, &now).await {
                     error!("meeting v2: failed to end meeting {}: {}", meeting_id, e);
                 }
@@ -2009,7 +2059,7 @@ pub async fn run_meeting_detection_loop(
         idle_scan_count = 0; // reset idle counter when apps are present
         current_interval = match &state {
             MeetingState::Idle => IDLE_APPS_SCAN_INTERVAL, // apps open but no call
-            _ => base_interval, // Confirming/Active/Ending — scan fast
+            _ => base_interval,                            // Confirming/Active/Ending — scan fast
         };
 
         // 4. Handle actions
@@ -2027,19 +2077,13 @@ pub async fn run_meeting_detection_loop(
                                 recent.id
                             }
                             Err(e) => {
-                                warn!(
-                                    "meeting v2: failed to reopen meeting {}: {}",
-                                    recent.id, e
-                                );
+                                warn!("meeting v2: failed to reopen meeting {}: {}", recent.id, e);
                                 insert_new_meeting(&db, &app).await
                             }
                         },
                         Ok(None) => insert_new_meeting(&db, &app).await,
                         Err(e) => {
-                            warn!(
-                                "meeting v2: failed to find recent meeting: {}",
-                                e
-                            );
+                            warn!("meeting v2: failed to find recent meeting: {}", e);
                             insert_new_meeting(&db, &app).await
                         }
                     };
@@ -2066,18 +2110,13 @@ pub async fn run_meeting_detection_loop(
                 }
                 StateAction::EndMeeting { meeting_id } => {
                     if meeting_id >= 0 {
-                        let now = Utc::now()
-                            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                            .to_string();
+                        let now = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                         match db.end_meeting(meeting_id, &now).await {
                             Ok(()) => {
                                 info!("meeting v2: meeting ended (id={})", meeting_id);
                             }
                             Err(e) => {
-                                error!(
-                                    "meeting v2: failed to end meeting {}: {}",
-                                    meeting_id, e
-                                );
+                                error!("meeting v2: failed to end meeting {}: {}", meeting_id, e);
                             }
                         }
                     }
@@ -2249,9 +2288,7 @@ mod tests {
                 CallSignal::RoleWithName { name_contains, .. } => {
                     !name_contains.to_lowercase().contains("mute")
                 }
-                CallSignal::AutomationIdContains(s) => {
-                    !s.to_lowercase().contains("mute")
-                }
+                CallSignal::AutomationIdContains(s) => !s.to_lowercase().contains("mute"),
                 _ => true,
             });
             assert!(
@@ -2388,9 +2425,7 @@ mod tests {
             let mute_matches: Vec<_> = profile
                 .call_signals
                 .iter()
-                .filter(|s| {
-                    check_signal_match(s, "AXButton", Some("Mute"), None, None)
-                })
+                .filter(|s| check_signal_match(s, "AXButton", Some("Mute"), None, None))
                 .collect();
             // If mute is a signal, verify that other non-mute signals also exist
             // (so a lobby with only Mute won't trigger detection)
@@ -2505,10 +2540,7 @@ mod tests {
 
         assert!(matches!(
             new_state,
-            MeetingState::Active {
-                meeting_id: 42,
-                ..
-            }
+            MeetingState::Active { meeting_id: 42, .. }
         ));
         assert!(action.is_none());
     }
@@ -2526,10 +2558,7 @@ mod tests {
 
         assert!(matches!(
             new_state,
-            MeetingState::Ending {
-                meeting_id: 42,
-                ..
-            }
+            MeetingState::Ending { meeting_id: 42, .. }
         ));
         assert!(action.is_none());
     }
@@ -2575,10 +2604,7 @@ mod tests {
 
         assert!(matches!(
             new_state,
-            MeetingState::Active {
-                meeting_id: 42,
-                ..
-            }
+            MeetingState::Active { meeting_id: 42, .. }
         ));
         assert!(action.is_none());
     }
@@ -2615,10 +2641,7 @@ mod tests {
 
         assert!(matches!(
             new_state,
-            MeetingState::Ending {
-                meeting_id: 42,
-                ..
-            }
+            MeetingState::Ending { meeting_id: 42, .. }
         ));
         assert!(action.is_none());
     }
@@ -2897,7 +2920,10 @@ mod tests {
             .expect("Zoom profile not found");
 
         let has_menu_bar = zoom.call_signals.iter().any(|s| {
-            matches!(s, CallSignal::MenuBarItem { .. } | CallSignal::MenuItemId(_))
+            matches!(
+                s,
+                CallSignal::MenuBarItem { .. } | CallSignal::MenuItemId(_)
+            )
         });
         assert!(
             has_menu_bar,
@@ -2945,7 +2971,10 @@ mod live_tests {
         let apps = find_running_meeting_apps(&profiles, None);
         println!("Found {} running meeting app(s)", apps.len());
         for app in &apps {
-            println!("  {} (pid={}, profile={})", app.app_name, app.pid, app.profile_index);
+            println!(
+                "  {} (pid={}, profile={})",
+                app.app_name, app.pid, app.profile_index
+            );
         }
 
         if apps.is_empty() {
@@ -2956,7 +2985,10 @@ mod live_tests {
                 let running = workspace.running_apps();
                 for i in 0..running.len() {
                     let app = &running[i];
-                    let name = app.localized_name().map(|s| s.to_string()).unwrap_or_default();
+                    let name = app
+                        .localized_name()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
                     let name_lower = name.to_lowercase();
                     if BROWSER_NAMES.iter().any(|b| name_lower.contains(b)) {
                         println!("\nBROWSER: {} (pid={})", name, app.pid());
@@ -2968,15 +3000,24 @@ mod live_tests {
                                 for j in 0..children.len() {
                                     let child = &children[j];
                                     let _ = child.set_messaging_timeout_secs(0.5);
-                                    if let Some(title) = get_ax_string_attr(child, cidre::ax::attr::title()) {
-                                        let has_meet = title.to_lowercase().contains("google meet") || title.to_lowercase().contains("meet.google.com");
+                                    if let Some(title) =
+                                        get_ax_string_attr(child, cidre::ax::attr::title())
+                                    {
+                                        let has_meet = title.to_lowercase().contains("google meet")
+                                            || title.to_lowercase().contains("meet.google.com");
                                         if has_meet {
                                             println!("  *** MEET WINDOW [{}]: {:?}", j, title);
                                         } else {
-                                            println!("  window[{}]: {:?}", j, &title[..title.len().min(80)]);
+                                            println!(
+                                                "  window[{}]: {:?}",
+                                                j,
+                                                &title[..title.len().min(80)]
+                                            );
                                         }
                                     }
-                                    if let Some(doc) = get_ax_string_attr(child, cidre::ax::attr::document()) {
+                                    if let Some(doc) =
+                                        get_ax_string_attr(child, cidre::ax::attr::document())
+                                    {
                                         if doc.to_lowercase().contains("meet.google") {
                                             println!("  *** MEET DOC [{}]: {:?}", j, doc);
                                         }
@@ -2996,8 +3037,10 @@ mod live_tests {
             let scanner = MeetingUiScanner::new();
             for app in &apps {
                 let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
-                println!("  {} => in_call={}, signals={}, matched={:?}",
-                    app.app_name, result.is_in_call, result.signals_found, result.matched_signals);
+                println!(
+                    "  {} => in_call={}, signals={}, matched={:?}",
+                    app.app_name, result.is_in_call, result.signals_found, result.matched_signals
+                );
             }
         }
     }
@@ -3017,40 +3060,62 @@ mod live_tests2 {
             let running = workspace.running_apps();
             for i in 0..running.len() {
                 let app = &running[i];
-                let name = app.localized_name().map(|s| s.to_string()).unwrap_or_default();
-                if name != "Arc" { continue; }
-                
+                let name = app
+                    .localized_name()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                if name != "Arc" {
+                    continue;
+                }
+
                 println!("Arc pid={}", app.pid());
                 let ax_app = cidre::ax::UiElement::with_app_pid(app.pid());
                 let _ = ax_app.set_messaging_timeout_secs(2.0);
-                
+
                 let windows = ax_app.children().unwrap();
                 for j in 0..windows.len() {
                     let window = &windows[j];
                     let _ = window.set_messaging_timeout_secs(1.0);
-                    
-                    let title = get_ax_string_attr(window, cidre::ax::attr::title()).unwrap_or_default();
-                    let doc = get_ax_string_attr(window, cidre::ax::attr::document()).unwrap_or_default();
+
+                    let title =
+                        get_ax_string_attr(window, cidre::ax::attr::title()).unwrap_or_default();
+                    let doc =
+                        get_ax_string_attr(window, cidre::ax::attr::document()).unwrap_or_default();
                     println!("\nwindow[{}] title={:?} doc={:?}", j, title, doc);
-                    
+
                     // Check role
-                    let role = get_ax_string_attr(window, cidre::ax::attr::role()).unwrap_or_default();
+                    let role =
+                        get_ax_string_attr(window, cidre::ax::attr::role()).unwrap_or_default();
                     println!("  role={:?}", role);
-                    
+
                     // Walk 2 levels deep looking for URL or "Google Meet"
                     if let Ok(children) = window.children() {
                         println!("  children: {}", children.len());
                         for k in 0..children.len().min(20) {
                             let child = &children[k];
                             let _ = child.set_messaging_timeout_secs(0.3);
-                            let crole = get_ax_string_attr(child, cidre::ax::attr::role()).unwrap_or_default();
-                            let ctitle = get_ax_string_attr(child, cidre::ax::attr::title()).unwrap_or_default();
-                            let cdoc = get_ax_string_attr(child, cidre::ax::attr::document()).unwrap_or_default();
-                            let cval = get_ax_string_attr(child, cidre::ax::attr::value()).unwrap_or_default();
-                            
-                            if !ctitle.is_empty() || !cdoc.is_empty() || cval.contains("meet") || cval.contains("google") {
-                                println!("  child[{}] role={:?} title={:?} doc={:?} val={:?}", 
-                                    k, crole, &ctitle[..ctitle.len().min(60)], &cdoc[..cdoc.len().min(60)], &cval[..cval.len().min(80)]);
+                            let crole = get_ax_string_attr(child, cidre::ax::attr::role())
+                                .unwrap_or_default();
+                            let ctitle = get_ax_string_attr(child, cidre::ax::attr::title())
+                                .unwrap_or_default();
+                            let cdoc = get_ax_string_attr(child, cidre::ax::attr::document())
+                                .unwrap_or_default();
+                            let cval = get_ax_string_attr(child, cidre::ax::attr::value())
+                                .unwrap_or_default();
+
+                            if !ctitle.is_empty()
+                                || !cdoc.is_empty()
+                                || cval.contains("meet")
+                                || cval.contains("google")
+                            {
+                                println!(
+                                    "  child[{}] role={:?} title={:?} doc={:?} val={:?}",
+                                    k,
+                                    crole,
+                                    &ctitle[..ctitle.len().min(60)],
+                                    &cdoc[..cdoc.len().min(60)],
+                                    &cval[..cval.len().min(80)]
+                                );
                             }
                         }
                     }

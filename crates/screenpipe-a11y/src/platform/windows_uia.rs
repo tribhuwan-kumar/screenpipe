@@ -37,7 +37,7 @@ use windows::Win32::UI::Accessibility::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
-    MsgWaitForMultipleObjects, PeekMessageW, QS_ALLINPUT, TranslateMessage, MSG, PM_REMOVE,
+    MsgWaitForMultipleObjects, PeekMessageW, TranslateMessage, MSG, PM_REMOVE, QS_ALLINPUT,
 };
 
 /// Shared state for pending focus changes (set by COM handler, read by UIA thread)
@@ -702,14 +702,15 @@ pub fn run_uia_thread(
         // Block until a Windows message arrives or a computed timeout elapses.
         // This replaces the old 50ms sleep-poll: the thread stays asleep until
         // something actually needs to happen (COM event, debounce, or re-capture).
-        let wait_ms = compute_next_timeout(&pending_focus, debounce_dur, &last_capture_time, interval_dur, &config);
+        let wait_ms = compute_next_timeout(
+            &pending_focus,
+            debounce_dur,
+            &last_capture_time,
+            interval_dur,
+            &config,
+        );
         unsafe {
-            MsgWaitForMultipleObjects(
-                None,
-                false,
-                wait_ms as u32,
-                QS_ALLINPUT,
-            );
+            MsgWaitForMultipleObjects(None, false, wait_ms as u32, QS_ALLINPUT);
         }
     }
 

@@ -72,10 +72,9 @@ async fn list_connections(State(state): State<ConnectionsState>) -> Json<Value> 
     let mut data = serde_json::to_value(&list).unwrap_or(json!([]));
     if let Some(arr) = data.as_array_mut() {
         // Native calendar (macOS / Windows)
-        let cal_available =
-            tokio::task::spawn_blocking(is_native_calendar_available)
-                .await
-                .unwrap_or(false);
+        let cal_available = tokio::task::spawn_blocking(is_native_calendar_available)
+            .await
+            .unwrap_or(false);
         arr.push(json!({
             "id": "calendar",
             "name": "Calendar",
@@ -215,9 +214,7 @@ pub struct CalendarEventsQuery {
 }
 
 /// GET /connections/calendar/events — fetch native OS calendar events.
-async fn calendar_events(
-    Query(params): Query<CalendarEventsQuery>,
-) -> (StatusCode, Json<Value>) {
+async fn calendar_events(Query(params): Query<CalendarEventsQuery>) -> (StatusCode, Json<Value>) {
     let hours_back = params.hours_back.unwrap_or(1);
     let hours_ahead = params.hours_ahead.unwrap_or(8);
 
@@ -238,10 +235,9 @@ async fn calendar_events(
 
 /// GET /connections/calendar/status — check native calendar access.
 async fn calendar_status() -> Json<Value> {
-    let available =
-        tokio::task::spawn_blocking(is_native_calendar_available)
-            .await
-            .unwrap_or(false);
+    let available = tokio::task::spawn_blocking(is_native_calendar_available)
+        .await
+        .unwrap_or(false);
     Json(json!({ "available": available, "platform": std::env::consts::OS }))
 }
 
@@ -249,7 +245,9 @@ async fn calendar_status() -> Json<Value> {
 fn get_native_calendar_events(hours_back: i64, hours_ahead: i64) -> Result<Vec<Value>, String> {
     use screenpipe_connect::calendar::ScreenpipeCalendar;
     let cal = ScreenpipeCalendar::new();
-    let events = cal.get_events(hours_back, hours_ahead).map_err(|e| format!("{:?}", e))?;
+    let events = cal
+        .get_events(hours_back, hours_ahead)
+        .map_err(|e| format!("{:?}", e))?;
     Ok(events
         .into_iter()
         .map(|e| {

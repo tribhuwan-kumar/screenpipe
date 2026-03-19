@@ -664,7 +664,6 @@ impl SCServer {
             router
         };
 
-
         // Connections routes (pipe-facing integrations: Telegram, Slack, etc.)
         let cm: crate::connections_api::SharedConnectionManager = Arc::new(Mutex::new(
             screenpipe_connect::connections::ConnectionManager::new(self.screenpipe_dir.clone()),

@@ -3602,16 +3602,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "keyring"
-version = "3.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
-dependencies = [
- "log",
- "zeroize",
-]
-
-[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6588,7 +6578,6 @@ dependencies = [
  "specta",
  "tempfile",
  "toml 0.8.23",
- "tracing",
 ]
 
 [[package]]
@@ -6667,7 +6656,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "criterion",
- "dirs 5.0.1",
  "futures",
  "image",
  "libsqlite3-sys",
@@ -6817,7 +6805,6 @@ version = "0.3.202"
 dependencies = [
  "argon2",
  "chacha20poly1305",
- "keyring",
  "rand 0.8.5",
  "serde",
  "serde_json",

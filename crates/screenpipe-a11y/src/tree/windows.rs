@@ -423,7 +423,13 @@ fn extract_text_from_tree(
             if let Some(ref val) = node.value {
                 if !val.trim().is_empty() {
                     append_text(buffer, val);
-                    nodes.push(make_tree_node(node, ct, val.trim(), depth, norm_bounds.clone()));
+                    nodes.push(make_tree_node(
+                        node,
+                        ct,
+                        val.trim(),
+                        depth,
+                        norm_bounds.clone(),
+                    ));
                     // Don't recurse into text controls — their children are sub-elements of the same text
                     return;
                 }
@@ -446,7 +452,13 @@ fn extract_text_from_tree(
                     } else {
                         // Non-URL value — treat as text content
                         append_text(buffer, trimmed);
-                        nodes.push(make_tree_node(node, ct, trimmed, depth, norm_bounds.clone()));
+                        nodes.push(make_tree_node(
+                            node,
+                            ct,
+                            trimmed,
+                            depth,
+                            norm_bounds.clone(),
+                        ));
                     }
                 }
             }
@@ -456,7 +468,13 @@ fn extract_text_from_tree(
             if let Some(ref name) = node.name {
                 if !name.trim().is_empty() {
                     append_text(buffer, name);
-                    nodes.push(make_tree_node(node, ct, name.trim(), depth, norm_bounds.clone()));
+                    nodes.push(make_tree_node(
+                        node,
+                        ct,
+                        name.trim(),
+                        depth,
+                        norm_bounds.clone(),
+                    ));
                 }
             }
         }
@@ -469,7 +487,13 @@ fn extract_text_from_tree(
         if let Some(ref val) = node.value {
             if !val.trim().is_empty() {
                 append_text(buffer, val);
-                nodes.push(make_tree_node(node, ct, val.trim(), depth, norm_bounds.clone()));
+                nodes.push(make_tree_node(
+                    node,
+                    ct,
+                    val.trim(),
+                    depth,
+                    norm_bounds.clone(),
+                ));
             }
         } else if ct.eq_ignore_ascii_case("Custom") {
             // Custom elements in Electron apps often have names

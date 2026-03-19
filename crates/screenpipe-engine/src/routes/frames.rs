@@ -565,10 +565,22 @@ pub async fn get_frame_context(
                         let properties = {
                             let mut props = serde_json::Map::new();
                             for key in &[
-                                "automation_id", "class_name", "value", "help_text",
-                                "url", "placeholder", "role_description", "subrole",
-                                "is_enabled", "is_focused", "is_selected", "is_expanded",
-                                "is_password", "is_keyboard_focusable", "accelerator_key", "access_key",
+                                "automation_id",
+                                "class_name",
+                                "value",
+                                "help_text",
+                                "url",
+                                "placeholder",
+                                "role_description",
+                                "subrole",
+                                "is_enabled",
+                                "is_focused",
+                                "is_selected",
+                                "is_expanded",
+                                "is_password",
+                                "is_keyboard_focusable",
+                                "accelerator_key",
+                                "access_key",
                             ] {
                                 if let Some(v) = node_val.get(*key) {
                                     if !v.is_null() {
@@ -576,7 +588,11 @@ pub async fn get_frame_context(
                                     }
                                 }
                             }
-                            if props.is_empty() { None } else { Some(serde_json::Value::Object(props)) }
+                            if props.is_empty() {
+                                None
+                            } else {
+                                Some(serde_json::Value::Object(props))
+                            }
                         };
 
                         nodes.push(AccessibilityNode {

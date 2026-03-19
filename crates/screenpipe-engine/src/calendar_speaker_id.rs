@@ -1020,9 +1020,9 @@ mod tests {
             None,
         );
         let observations = vec![
-            speaker(1, "", true, 5),             // unnamed input → Rule 1 names as Alice
-            speaker(2, "Bob Jones", false, 10),  // already named
-            speaker(3, "", false, 5),            // unnamed output
+            speaker(1, "", true, 5),            // unnamed input → Rule 1 names as Alice
+            speaker(2, "Bob Jones", false, 10), // already named
+            speaker(3, "", false, 5),           // unnamed output
         ];
         let decisions = decide_speaker_names(&context, &observations);
 

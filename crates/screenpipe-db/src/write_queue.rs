@@ -728,13 +728,16 @@ async fn execute_single_write(
         } => {
             if let Some(ref text_json) = ocr_text_json {
                 if !text_json.is_empty() {
-                    crate::db::DatabaseManager::insert_ocr_elements(conn, *frame_id, text_json).await;
+                    crate::db::DatabaseManager::insert_ocr_elements(conn, *frame_id, text_json)
+                        .await;
                 }
             }
             if let Some(ref tree_json) = accessibility_tree_json {
                 if !tree_json.is_empty() {
-                    crate::db::DatabaseManager::insert_accessibility_elements(conn, *frame_id, tree_json)
-                        .await;
+                    crate::db::DatabaseManager::insert_accessibility_elements(
+                        conn, *frame_id, tree_json,
+                    )
+                    .await;
                 }
             }
             Ok(WriteResult::Unit)
@@ -787,11 +790,31 @@ async fn execute_single_write(
         }
 
         WriteOp::InsertUiEvent {
-            timestamp, session_id, relative_ms, event_type,
-            x, y, delta_x, delta_y, button, click_count, key_code, modifiers,
-            text_content, text_length, app_name, app_pid, window_title, browser_url,
-            element_role, element_name, element_value, element_description,
-            element_automation_id, element_bounds, frame_id,
+            timestamp,
+            session_id,
+            relative_ms,
+            event_type,
+            x,
+            y,
+            delta_x,
+            delta_y,
+            button,
+            click_count,
+            key_code,
+            modifiers,
+            text_content,
+            text_length,
+            app_name,
+            app_pid,
+            window_title,
+            browser_url,
+            element_role,
+            element_name,
+            element_value,
+            element_description,
+            element_automation_id,
+            element_bounds,
+            frame_id,
         } => {
             let result = sqlx::query(
                 "INSERT INTO ui_events (timestamp, session_id, relative_ms, event_type, x, y, delta_x, delta_y, button, click_count, key_code, modifiers, text_content, text_length, app_name, app_pid, window_title, browser_url, element_role, element_name, element_value, element_description, element_automation_id, element_bounds, frame_id) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
@@ -811,16 +834,26 @@ async fn execute_single_write(
         WriteOp::DeleteAudioChunksBatch { chunk_ids } => {
             for id in chunk_ids {
                 sqlx::query("DELETE FROM audio_transcriptions WHERE audio_chunk_id = ?1")
-                    .bind(id).execute(&mut **conn).await?;
+                    .bind(id)
+                    .execute(&mut **conn)
+                    .await?;
                 sqlx::query("DELETE FROM audio_chunks WHERE id = ?1")
-                    .bind(id).execute(&mut **conn).await?;
+                    .bind(id)
+                    .execute(&mut **conn)
+                    .await?;
             }
             Ok(WriteResult::Unit)
         }
 
         WriteOp::SyncInsertFrame {
-            sync_id, machine_id, timestamp, offset_index,
-            app_name, window_name, browser_url, device_name,
+            sync_id,
+            machine_id,
+            timestamp,
+            offset_index,
+            app_name,
+            window_name,
+            browser_url,
+            device_name,
         } => {
             // Create a virtual video_chunk for this synced frame
             let video_chunk_id: Option<i64> = sqlx::query_scalar(
@@ -863,7 +896,12 @@ async fn execute_single_write(
         }
 
         WriteOp::SyncInsertOcr {
-            frame_id, text, focused, app_name, window_name, sync_id,
+            frame_id,
+            text,
+            focused,
+            app_name,
+            window_name,
+            sync_id,
         } => {
             let now = Utc::now().to_rfc3339();
             sqlx::query(
@@ -883,8 +921,13 @@ async fn execute_single_write(
         }
 
         WriteOp::SyncInsertTranscription {
-            sync_id, machine_id, timestamp, transcription, device,
-            is_input_device, speaker_id,
+            sync_id,
+            machine_id,
+            timestamp,
+            transcription,
+            device,
+            is_input_device,
+            speaker_id,
         } => {
             let now = Utc::now().to_rfc3339();
             // Create audio chunk for synced transcription
@@ -917,8 +960,13 @@ async fn execute_single_write(
         }
 
         WriteOp::SyncInsertAccessibility {
-            sync_id, machine_id, timestamp, app_name, window_name,
-            browser_url, text_content,
+            sync_id,
+            machine_id,
+            timestamp,
+            app_name,
+            window_name,
+            browser_url,
+            text_content,
         } => {
             let now = Utc::now().to_rfc3339();
             let id = sqlx::query(
@@ -940,12 +988,33 @@ async fn execute_single_write(
         }
 
         WriteOp::SyncInsertUiEvent {
-            sync_id, machine_id, timestamp, event_type,
-            app_name, window_title, browser_url, text_content,
-            x, y, key_code, modifiers, element_role, element_name,
-            session_id, relative_ms, delta_x, delta_y, button, click_count,
-            text_length, app_pid, element_value, element_description,
-            element_automation_id, element_bounds, frame_id,
+            sync_id,
+            machine_id,
+            timestamp,
+            event_type,
+            app_name,
+            window_title,
+            browser_url,
+            text_content,
+            x,
+            y,
+            key_code,
+            modifiers,
+            element_role,
+            element_name,
+            session_id,
+            relative_ms,
+            delta_x,
+            delta_y,
+            button,
+            click_count,
+            text_length,
+            app_pid,
+            element_value,
+            element_description,
+            element_automation_id,
+            element_bounds,
+            frame_id,
         } => {
             let now = Utc::now().to_rfc3339();
             let id = sqlx::query(
@@ -1040,7 +1109,12 @@ async fn execute_single_write(
 
                 // Dual-write: insert OCR elements into unified elements table
                 if !window.text_json.is_empty() {
-                    crate::db::DatabaseManager::insert_ocr_elements(conn, frame_id, &window.text_json).await;
+                    crate::db::DatabaseManager::insert_ocr_elements(
+                        conn,
+                        frame_id,
+                        &window.text_json,
+                    )
+                    .await;
                 }
 
                 results.push((frame_id, idx));
@@ -1049,34 +1123,50 @@ async fn execute_single_write(
         }
 
         WriteOp::CompactSnapshots { chunk_id, batch } => {
-            if batch.is_empty() { return Ok(WriteResult::Unit); }
+            if batch.is_empty() {
+                return Ok(WriteResult::Unit);
+            }
             let placeholders: Vec<String> = batch.iter().map(|_| "?".to_string()).collect();
-            let case_clauses: Vec<String> = batch.iter()
-                .map(|(id, pos)| format!("WHEN {} THEN {}", id, pos)).collect();
+            let case_clauses: Vec<String> = batch
+                .iter()
+                .map(|(id, pos)| format!("WHEN {} THEN {}", id, pos))
+                .collect();
             let sql = format!(
                 "UPDATE frames SET video_chunk_id = ?1, offset_index = CASE id {} ELSE offset_index END, snapshot_path = NULL WHERE id IN ({}) AND snapshot_path IS NOT NULL",
                 case_clauses.join(" "), placeholders.join(",")
             );
             let mut query = sqlx::query(&sql).bind(chunk_id);
-            for (id, _) in batch { query = query.bind(id); }
+            for (id, _) in batch {
+                query = query.bind(id);
+            }
             query.execute(&mut **conn).await?;
             Ok(WriteResult::Unit)
         }
 
         WriteOp::ClearSnapshotPaths { frame_ids } => {
-            if frame_ids.is_empty() { return Ok(WriteResult::Unit); }
+            if frame_ids.is_empty() {
+                return Ok(WriteResult::Unit);
+            }
             let placeholders: Vec<&str> = frame_ids.iter().map(|_| "?").collect();
             let sql = format!(
                 "UPDATE frames SET snapshot_path = NULL WHERE id IN ({})",
                 placeholders.join(",")
             );
             let mut query = sqlx::query(&sql);
-            for id in frame_ids { query = query.bind(id); }
+            for id in frame_ids {
+                query = query.bind(id);
+            }
             query.execute(&mut **conn).await?;
             Ok(WriteResult::Unit)
         }
 
-        WriteOp::PipeCreateExecution { pipe_name, trigger_type, model, provider, started_at } => {
+        WriteOp::PipeCreateExecution {
+            pipe_name,
+            trigger_type,
+            model,
+            provider,
+            started_at,
+        } => {
             let row = sqlx::query_scalar::<_, i64>(
                 r#"INSERT INTO pipe_executions (pipe_name, status, trigger_type, model, provider, started_at)
                    VALUES (?, 'queued', ?, ?, ?, ?)
@@ -1096,12 +1186,24 @@ async fn execute_single_write(
             let mut query = sqlx::query(&sql);
             for bind in binds {
                 match bind {
-                    PipeBindValue::Text(v) => { query = query.bind(v); }
-                    PipeBindValue::OptText(v) => { query = query.bind(v); }
-                    PipeBindValue::Int(v) => { query = query.bind(v); }
-                    PipeBindValue::OptInt(v) => { query = query.bind(v); }
-                    PipeBindValue::Int32(v) => { query = query.bind(v); }
-                    PipeBindValue::OptInt32(v) => { query = query.bind(v); }
+                    PipeBindValue::Text(v) => {
+                        query = query.bind(v);
+                    }
+                    PipeBindValue::OptText(v) => {
+                        query = query.bind(v);
+                    }
+                    PipeBindValue::Int(v) => {
+                        query = query.bind(v);
+                    }
+                    PipeBindValue::OptInt(v) => {
+                        query = query.bind(v);
+                    }
+                    PipeBindValue::Int32(v) => {
+                        query = query.bind(v);
+                    }
+                    PipeBindValue::OptInt32(v) => {
+                        query = query.bind(v);
+                    }
                 }
             }
             query.execute(&mut **conn).await?;

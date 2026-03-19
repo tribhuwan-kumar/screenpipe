@@ -20,6 +20,8 @@ use super::windows_uia::{self, ClickElementRequest};
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, VK_CAPITAL, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU,
     VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
@@ -28,15 +30,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowTextW,
     GetWindowThreadProcessId, PostThreadMessageW, SetTimer, SetWindowsHookExW, TranslateMessage,
     UnhookWindowsHookEx, EVENT_SYSTEM_FOREGROUND, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG,
-    MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WM_TIMER, WM_XBUTTONDOWN,
+    MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT,
+    WM_RBUTTONDOWN, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_XBUTTONDOWN,
 };
-use windows::Win32::UI::Accessibility::{
-    SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
-};
-use windows::Win32::System::Threading::GetCurrentThreadId;
 
 /// Permission status for UI capture
 #[derive(Debug, Clone)]
@@ -1308,7 +1305,9 @@ fn run_app_observer(
 }
 
 /// Cached PID→process name mapping with TTL to avoid CreateToolhelp32Snapshot on every lookup.
-static PROCESS_NAME_CACHE: std::sync::OnceLock<Mutex<std::collections::HashMap<u32, (String, Instant)>>> = std::sync::OnceLock::new();
+static PROCESS_NAME_CACHE: std::sync::OnceLock<
+    Mutex<std::collections::HashMap<u32, (String, Instant)>>,
+> = std::sync::OnceLock::new();
 
 fn process_name_cache() -> &'static Mutex<std::collections::HashMap<u32, (String, Instant)>> {
     PROCESS_NAME_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))

@@ -46,7 +46,6 @@ pub struct AccessibilityTreeNode {
     pub bounds: Option<NodeBounds>,
 
     // --- Automation properties (all Optional, filled per-platform) ---
-
     /// Stable unique identifier for targeting elements.
     /// Windows: UIA AutomationId. macOS: AXIdentifier. Linux: AT-SPI object path.
     #[serde(skip_serializing_if = "Option::is_none")]

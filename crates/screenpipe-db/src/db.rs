@@ -523,16 +523,20 @@ impl DatabaseManager {
         device_name: &str,
     ) -> Result<i64, sqlx::Error> {
         use crate::write_queue::{WriteOp, WriteResult};
-        match self.write_queue.submit(WriteOp::SyncInsertFrame {
-            sync_id: sync_id.to_string(),
-            machine_id: machine_id.to_string(),
-            timestamp: timestamp.to_string(),
-            offset_index,
-            app_name: app_name.map(|s| s.to_string()),
-            window_name: window_name.map(|s| s.to_string()),
-            browser_url: browser_url.map(|s| s.to_string()),
-            device_name: device_name.to_string(),
-        }).await? {
+        match self
+            .write_queue
+            .submit(WriteOp::SyncInsertFrame {
+                sync_id: sync_id.to_string(),
+                machine_id: machine_id.to_string(),
+                timestamp: timestamp.to_string(),
+                offset_index,
+                app_name: app_name.map(|s| s.to_string()),
+                window_name: window_name.map(|s| s.to_string()),
+                browser_url: browser_url.map(|s| s.to_string()),
+                device_name: device_name.to_string(),
+            })
+            .await?
+        {
             WriteResult::Id(id) => Ok(id),
             _ => Ok(0),
         }
@@ -549,14 +553,16 @@ impl DatabaseManager {
         sync_id: &str,
     ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
-        self.write_queue.submit(WriteOp::SyncInsertOcr {
-            frame_id,
-            text: text.to_string(),
-            focused,
-            app_name: app_name.to_string(),
-            window_name: window_name.map(|s| s.to_string()),
-            sync_id: sync_id.to_string(),
-        }).await?;
+        self.write_queue
+            .submit(WriteOp::SyncInsertOcr {
+                frame_id,
+                text: text.to_string(),
+                focused,
+                app_name: app_name.to_string(),
+                window_name: window_name.map(|s| s.to_string()),
+                sync_id: sync_id.to_string(),
+            })
+            .await?;
         Ok(())
     }
 
@@ -572,15 +578,19 @@ impl DatabaseManager {
         speaker_id: Option<i64>,
     ) -> Result<i64, sqlx::Error> {
         use crate::write_queue::{WriteOp, WriteResult};
-        match self.write_queue.submit(WriteOp::SyncInsertTranscription {
-            sync_id: sync_id.to_string(),
-            machine_id: machine_id.to_string(),
-            timestamp: timestamp.to_string(),
-            transcription: transcription.to_string(),
-            device: device.to_string(),
-            is_input_device,
-            speaker_id,
-        }).await? {
+        match self
+            .write_queue
+            .submit(WriteOp::SyncInsertTranscription {
+                sync_id: sync_id.to_string(),
+                machine_id: machine_id.to_string(),
+                timestamp: timestamp.to_string(),
+                transcription: transcription.to_string(),
+                device: device.to_string(),
+                is_input_device,
+                speaker_id,
+            })
+            .await?
+        {
             WriteResult::Id(id) => Ok(id),
             _ => Ok(0),
         }
@@ -598,15 +608,17 @@ impl DatabaseManager {
         text_content: &str,
     ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
-        self.write_queue.submit(WriteOp::SyncInsertAccessibility {
-            sync_id: sync_id.to_string(),
-            machine_id: machine_id.to_string(),
-            timestamp: timestamp.to_string(),
-            app_name: app_name.to_string(),
-            window_name: window_name.to_string(),
-            browser_url: browser_url.map(|s| s.to_string()),
-            text_content: text_content.to_string(),
-        }).await?;
+        self.write_queue
+            .submit(WriteOp::SyncInsertAccessibility {
+                sync_id: sync_id.to_string(),
+                machine_id: machine_id.to_string(),
+                timestamp: timestamp.to_string(),
+                app_name: app_name.to_string(),
+                window_name: window_name.to_string(),
+                browser_url: browser_url.map(|s| s.to_string()),
+                text_content: text_content.to_string(),
+            })
+            .await?;
         Ok(())
     }
 
@@ -643,49 +655,62 @@ impl DatabaseManager {
         frame_id: Option<i64>,
     ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
-        self.write_queue.submit(WriteOp::SyncInsertUiEvent {
-            sync_id: sync_id.to_string(),
-            machine_id: machine_id.to_string(),
-            timestamp: timestamp.to_string(),
-            event_type: event_type.to_string(),
-            app_name: app_name.map(|s| s.to_string()),
-            window_title: window_title.map(|s| s.to_string()),
-            browser_url: browser_url.map(|s| s.to_string()),
-            text_content: text_content.map(|s| s.to_string()),
-            x,
-            y,
-            key_code,
-            modifiers,
-            element_role: element_role.map(|s| s.to_string()),
-            element_name: element_name.map(|s| s.to_string()),
-            session_id: session_id.map(|s| s.to_string()),
-            relative_ms,
-            delta_x,
-            delta_y,
-            button,
-            click_count,
-            text_length,
-            app_pid,
-            element_value: element_value.map(|s| s.to_string()),
-            element_description: element_description.map(|s| s.to_string()),
-            element_automation_id: element_automation_id.map(|s| s.to_string()),
-            element_bounds: element_bounds.map(|s| s.to_string()),
-            frame_id,
-        }).await?;
+        self.write_queue
+            .submit(WriteOp::SyncInsertUiEvent {
+                sync_id: sync_id.to_string(),
+                machine_id: machine_id.to_string(),
+                timestamp: timestamp.to_string(),
+                event_type: event_type.to_string(),
+                app_name: app_name.map(|s| s.to_string()),
+                window_title: window_title.map(|s| s.to_string()),
+                browser_url: browser_url.map(|s| s.to_string()),
+                text_content: text_content.map(|s| s.to_string()),
+                x,
+                y,
+                key_code,
+                modifiers,
+                element_role: element_role.map(|s| s.to_string()),
+                element_name: element_name.map(|s| s.to_string()),
+                session_id: session_id.map(|s| s.to_string()),
+                relative_ms,
+                delta_x,
+                delta_y,
+                button,
+                click_count,
+                text_length,
+                app_pid,
+                element_value: element_value.map(|s| s.to_string()),
+                element_description: element_description.map(|s| s.to_string()),
+                element_automation_id: element_automation_id.map(|s| s.to_string()),
+                element_bounds: element_bounds.map(|s| s.to_string()),
+                frame_id,
+            })
+            .await?;
         Ok(())
     }
 
     /// Compact snapshots via the write coalescing queue.
-    pub async fn compact_snapshots_queued(&self, chunk_id: i64, batch: Vec<(i64, u32)>) -> Result<(), sqlx::Error> {
+    pub async fn compact_snapshots_queued(
+        &self,
+        chunk_id: i64,
+        batch: Vec<(i64, u32)>,
+    ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
-        self.write_queue.submit(WriteOp::CompactSnapshots { chunk_id, batch }).await?;
+        self.write_queue
+            .submit(WriteOp::CompactSnapshots { chunk_id, batch })
+            .await?;
         Ok(())
     }
 
     /// Clear snapshot_path for frames with missing JPEG files, via write queue.
-    pub async fn clear_snapshot_paths_queued(&self, frame_ids: Vec<i64>) -> Result<(), sqlx::Error> {
+    pub async fn clear_snapshot_paths_queued(
+        &self,
+        frame_ids: Vec<i64>,
+    ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
-        self.write_queue.submit(WriteOp::ClearSnapshotPaths { frame_ids }).await?;
+        self.write_queue
+            .submit(WriteOp::ClearSnapshotPaths { frame_ids })
+            .await?;
         Ok(())
     }
 
@@ -732,7 +757,10 @@ impl DatabaseManager {
     }
 
     /// Delete old pipe executions via the write queue.
-    pub async fn pipe_delete_old_executions_queued(&self, keep_per_pipe: i32) -> Result<(), sqlx::Error> {
+    pub async fn pipe_delete_old_executions_queued(
+        &self,
+        keep_per_pipe: i32,
+    ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
         self.write_queue
             .submit(WriteOp::PipeDeleteOldExecutions { keep_per_pipe })
@@ -741,9 +769,14 @@ impl DatabaseManager {
     }
 
     /// Delete audio chunks in batch via the write coalescing queue.
-    pub async fn delete_audio_chunks_batch_queued(&self, chunk_ids: Vec<i64>) -> Result<(), sqlx::Error> {
+    pub async fn delete_audio_chunks_batch_queued(
+        &self,
+        chunk_ids: Vec<i64>,
+    ) -> Result<(), sqlx::Error> {
         use crate::write_queue::WriteOp;
-        self.write_queue.submit(WriteOp::DeleteAudioChunksBatch { chunk_ids }).await?;
+        self.write_queue
+            .submit(WriteOp::DeleteAudioChunksBatch { chunk_ids })
+            .await?;
         Ok(())
     }
 
@@ -1868,23 +1901,65 @@ impl DatabaseManager {
             // Serialize automation properties as JSON (only non-None fields)
             let properties = {
                 let mut props = serde_json::Map::new();
-                if let Some(ref v) = node.automation_id { props.insert("automation_id".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.class_name { props.insert("class_name".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.value { props.insert("value".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.help_text { props.insert("help_text".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.url { props.insert("url".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.placeholder { props.insert("placeholder".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.role_description { props.insert("role_description".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.subrole { props.insert("subrole".into(), serde_json::Value::String(v.clone())); }
-                if let Some(v) = node.is_enabled { props.insert("is_enabled".into(), serde_json::Value::Bool(v)); }
-                if let Some(v) = node.is_focused { props.insert("is_focused".into(), serde_json::Value::Bool(v)); }
-                if let Some(v) = node.is_selected { props.insert("is_selected".into(), serde_json::Value::Bool(v)); }
-                if let Some(v) = node.is_expanded { props.insert("is_expanded".into(), serde_json::Value::Bool(v)); }
-                if let Some(v) = node.is_password { props.insert("is_password".into(), serde_json::Value::Bool(v)); }
-                if let Some(v) = node.is_keyboard_focusable { props.insert("is_keyboard_focusable".into(), serde_json::Value::Bool(v)); }
-                if let Some(ref v) = node.accelerator_key { props.insert("accelerator_key".into(), serde_json::Value::String(v.clone())); }
-                if let Some(ref v) = node.access_key { props.insert("access_key".into(), serde_json::Value::String(v.clone())); }
-                if props.is_empty() { None } else { Some(serde_json::Value::Object(props).to_string()) }
+                if let Some(ref v) = node.automation_id {
+                    props.insert("automation_id".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(ref v) = node.class_name {
+                    props.insert("class_name".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(ref v) = node.value {
+                    props.insert("value".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(ref v) = node.help_text {
+                    props.insert("help_text".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(ref v) = node.url {
+                    props.insert("url".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(ref v) = node.placeholder {
+                    props.insert("placeholder".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(ref v) = node.role_description {
+                    props.insert(
+                        "role_description".into(),
+                        serde_json::Value::String(v.clone()),
+                    );
+                }
+                if let Some(ref v) = node.subrole {
+                    props.insert("subrole".into(), serde_json::Value::String(v.clone()));
+                }
+                if let Some(v) = node.is_enabled {
+                    props.insert("is_enabled".into(), serde_json::Value::Bool(v));
+                }
+                if let Some(v) = node.is_focused {
+                    props.insert("is_focused".into(), serde_json::Value::Bool(v));
+                }
+                if let Some(v) = node.is_selected {
+                    props.insert("is_selected".into(), serde_json::Value::Bool(v));
+                }
+                if let Some(v) = node.is_expanded {
+                    props.insert("is_expanded".into(), serde_json::Value::Bool(v));
+                }
+                if let Some(v) = node.is_password {
+                    props.insert("is_password".into(), serde_json::Value::Bool(v));
+                }
+                if let Some(v) = node.is_keyboard_focusable {
+                    props.insert("is_keyboard_focusable".into(), serde_json::Value::Bool(v));
+                }
+                if let Some(ref v) = node.accelerator_key {
+                    props.insert(
+                        "accelerator_key".into(),
+                        serde_json::Value::String(v.clone()),
+                    );
+                }
+                if let Some(ref v) = node.access_key {
+                    props.insert("access_key".into(), serde_json::Value::String(v.clone()));
+                }
+                if props.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(props).to_string())
+                }
             };
 
             let result = sqlx::query_scalar::<_, i64>(
@@ -2010,8 +2085,12 @@ impl DatabaseManager {
         // Submit element inserts as a separate write op so they don't hold
         // the write lock during the frame transaction. Elements are supplementary
         // data — the frame is usable for search immediately after the first commit.
-        let has_elements = ocr_json_for_elements.as_ref().is_some_and(|j| !j.is_empty())
-            || a11y_json_for_elements.as_ref().is_some_and(|j| !j.is_empty());
+        let has_elements = ocr_json_for_elements
+            .as_ref()
+            .is_some_and(|j| !j.is_empty())
+            || a11y_json_for_elements
+                .as_ref()
+                .is_some_and(|j| !j.is_empty());
         if has_elements {
             // Fire-and-forget: spawn so we don't block the capture loop waiting
             // for element insertion. Errors are logged inside insert_*_elements.
@@ -4301,12 +4380,10 @@ impl DatabaseManager {
                 .execute(&mut **tx.conn())
                 .await?;
                 // Clear ref on the new anchor (it now owns the elements)
-                sqlx::query(
-                    "UPDATE frames SET elements_ref_frame_id = NULL WHERE id = ?1",
-                )
-                .bind(new_id)
-                .execute(&mut **tx.conn())
-                .await?;
+                sqlx::query("UPDATE frames SET elements_ref_frame_id = NULL WHERE id = ?1")
+                    .bind(new_id)
+                    .execute(&mut **tx.conn())
+                    .await?;
             }
         }
 
@@ -5793,32 +5870,36 @@ LIMIT ? OFFSET ?
     pub async fn insert_ui_event(&self, event: &InsertUiEvent) -> Result<i64, sqlx::Error> {
         use crate::write_queue::{WriteOp, WriteResult};
         let text_length = event.text_content.as_ref().map(|s| s.len() as i32);
-        let result = self.write_queue.submit(WriteOp::InsertUiEvent {
-            timestamp: event.timestamp.to_string(),
-            session_id: event.session_id.clone(),
-            relative_ms: event.relative_ms,
-            event_type: event.event_type.to_string(),
-            x: event.x, y: event.y,
-            delta_x: event.delta_x.map(|v| v as i32),
-            delta_y: event.delta_y.map(|v| v as i32),
-            button: event.button.map(|v| v as i32),
-            click_count: event.click_count.map(|v| v as i32),
-            key_code: event.key_code.map(|v| v as i32),
-            modifiers: event.modifiers.map(|v| v as i32),
-            text_content: event.text_content.clone(),
-            text_length,
-            app_name: event.app_name.clone(),
-            app_pid: event.app_pid,
-            window_title: event.window_title.clone(),
-            browser_url: event.browser_url.clone(),
-            element_role: event.element_role.clone(),
-            element_name: event.element_name.clone(),
-            element_value: event.element_value.clone(),
-            element_description: event.element_description.clone(),
-            element_automation_id: event.element_automation_id.clone(),
-            element_bounds: event.element_bounds.clone(),
-            frame_id: event.frame_id,
-        }).await?;
+        let result = self
+            .write_queue
+            .submit(WriteOp::InsertUiEvent {
+                timestamp: event.timestamp.to_string(),
+                session_id: event.session_id.clone(),
+                relative_ms: event.relative_ms,
+                event_type: event.event_type.to_string(),
+                x: event.x,
+                y: event.y,
+                delta_x: event.delta_x.map(|v| v as i32),
+                delta_y: event.delta_y.map(|v| v as i32),
+                button: event.button.map(|v| v as i32),
+                click_count: event.click_count.map(|v| v as i32),
+                key_code: event.key_code.map(|v| v as i32),
+                modifiers: event.modifiers.map(|v| v as i32),
+                text_content: event.text_content.clone(),
+                text_length,
+                app_name: event.app_name.clone(),
+                app_pid: event.app_pid,
+                window_title: event.window_title.clone(),
+                browser_url: event.browser_url.clone(),
+                element_role: event.element_role.clone(),
+                element_name: event.element_name.clone(),
+                element_value: event.element_value.clone(),
+                element_description: event.element_description.clone(),
+                element_automation_id: event.element_automation_id.clone(),
+                element_bounds: event.element_bounds.clone(),
+                frame_id: event.frame_id,
+            })
+            .await?;
         match result {
             WriteResult::Id(id) => Ok(id),
             _ => unreachable!(),
@@ -5826,8 +5907,13 @@ LIMIT ? OFFSET ?
     }
 
     /// Insert multiple UI events via the write coalescing queue.
-    pub async fn insert_ui_events_batch(&self, events: &[InsertUiEvent]) -> Result<usize, sqlx::Error> {
-        if events.is_empty() { return Ok(0); }
+    pub async fn insert_ui_events_batch(
+        &self,
+        events: &[InsertUiEvent],
+    ) -> Result<usize, sqlx::Error> {
+        if events.is_empty() {
+            return Ok(0);
+        }
         let mut count = 0;
         for event in events {
             self.insert_ui_event(event).await?;
@@ -6019,11 +6105,9 @@ LIMIT ? OFFSET ?
     }
 
     pub async fn has_active_meeting(&self) -> Result<bool, SqlxError> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM meetings WHERE meeting_end IS NULL",
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM meetings WHERE meeting_end IS NULL")
+            .fetch_one(&self.pool)
+            .await?;
         Ok(row.0 > 0)
     }
 

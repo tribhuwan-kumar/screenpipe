@@ -27,8 +27,8 @@ use screenpipe_engine::{
         Cli, CliAudioTranscriptionEngine, Command,
     },
     hot_frame_cache::HotFrameCache,
-    start_meeting_watcher, start_power_manager, start_sleep_monitor,
-    start_speaker_identification, start_ui_recording,
+    start_meeting_watcher, start_power_manager, start_sleep_monitor, start_speaker_identification,
+    start_ui_recording,
     vision_manager::{start_monitor_watcher, stop_monitor_watcher, VisionManager},
     watch_pid, ResourceMonitor, SCServer,
 };

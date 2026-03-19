@@ -948,10 +948,7 @@ impl AudioManager {
 /// Seed the embedding manager with named speakers from the DB.
 /// This allows returning voices to be recognized immediately instead of
 /// starting anonymous for the first 30+ seconds.
-async fn seed_speakers_from_db(
-    db: &Arc<DatabaseManager>,
-    seg_mgr: &Arc<SegmentationManager>,
-) {
+async fn seed_speakers_from_db(db: &Arc<DatabaseManager>, seg_mgr: &Arc<SegmentationManager>) {
     match db.get_named_speakers_with_centroids().await {
         Ok(speakers) if !speakers.is_empty() => {
             for (_db_id, name, centroid) in &speakers {
@@ -992,8 +989,7 @@ async fn run_meeting_speaker_constraint_loop(
 
     let mut meeting_sub =
         screenpipe_events::subscribe_to_event::<MeetingEventData>("meeting_started");
-    let mut ended_sub =
-        screenpipe_events::subscribe_to_event::<MeetingEventData>("meeting_ended");
+    let mut ended_sub = screenpipe_events::subscribe_to_event::<MeetingEventData>("meeting_ended");
 
     info!("calendar-assisted speaker diarization: listening for meeting events");
 

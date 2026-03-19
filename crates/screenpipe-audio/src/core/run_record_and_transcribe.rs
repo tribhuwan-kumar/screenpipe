@@ -14,11 +14,7 @@ use anyhow::{anyhow, Result};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
-use crate::{
-    core::update_device_capture_time,
-    metrics::AudioPipelineMetrics,
-    AudioInput,
-};
+use crate::{core::update_device_capture_time, metrics::AudioPipelineMetrics, AudioInput};
 
 use super::AudioStream;
 
@@ -65,7 +61,15 @@ pub async fn run_record_and_transcribe(
         && !audio_stream.is_disconnected.load(Ordering::Relaxed)
     {
         while collected_audio.len() < max_samples && is_running.load(Ordering::Relaxed) {
-            match recv_audio_chunk(&mut receiver, &audio_stream, &device_name, &metrics, &stream_start).await? {
+            match recv_audio_chunk(
+                &mut receiver,
+                &audio_stream,
+                &device_name,
+                &metrics,
+                &stream_start,
+            )
+            .await?
+            {
                 Some(chunk) => collected_audio.extend(chunk),
                 None => continue,
             }
@@ -140,7 +144,9 @@ async fn recv_audio_chunk(
         Err(_timeout) => {
             // During startup grace period, tolerate timeouts while the OS
             // stream initializes (ScreenCaptureKit may take a moment).
-            if stream_start.elapsed().as_secs() < STREAM_STARTUP_GRACE_SECS + AUDIO_RECEIVE_TIMEOUT_SECS {
+            if stream_start.elapsed().as_secs()
+                < STREAM_STARTUP_GRACE_SECS + AUDIO_RECEIVE_TIMEOUT_SECS
+            {
                 debug!(
                     "no audio from {} for {}s during startup grace, continuing",
                     device_name, AUDIO_RECEIVE_TIMEOUT_SECS
