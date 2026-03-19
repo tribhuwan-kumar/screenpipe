@@ -130,6 +130,13 @@ export interface AIModel {
   id: string;
   name: string;
   provider: string;
+  description?: string;
+  tags?: string[];
+  free?: boolean;
+  context_window?: number;
+  best_for?: string[];
+  speed?: string;
+  intelligence?: string;
 }
 
 export const AIProviderCard = ({
@@ -915,6 +922,13 @@ const AISection = ({
                 id: m.id,
                 name: m.name || m.id,
                 provider: "screenpipe",
+                description: m.description,
+                tags: m.tags,
+                free: m.free,
+                context_window: m.context_window,
+                best_for: m.best_for,
+                speed: m.speed,
+                intelligence: m.intelligence,
               }));
               if (piModels.length > 0) {
                 setModels(piModels);
@@ -1239,49 +1253,81 @@ const AISection = ({
                   <CommandEmpty>
                     Press enter to use &quot;{settingsPreset?.model}&quot;
                   </CommandEmpty>
-                  <CommandGroup heading="Available Models">
-                    {isLoadingModels ? (
+                  {isLoadingModels ? (
+                    <CommandGroup>
                       <CommandItem value="loading" disabled>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Loading models...
                       </CommandItem>
-                    ) : (
-                      models?.map((model) => (
-                        <CommandItem
-                          key={model.id}
-                          value={model.id}
-                          onSelect={async () => {
-                            if (model.id === "claude-opus-4-6" && !settings.user?.cloud_subscribed) {
-                              if (!settings.user?.token) {
-                                await commands.openLoginWindow();
-                              } else {
-                                try {
-                                  const res = await fetch("https://screenpi.pe/api/cloud-sync/checkout", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${settings.user.token}` },
-                                    body: JSON.stringify({ tier: "pro", billingPeriod: "monthly", userId: settings.user.id, email: settings.user.email }),
-                                  });
-                                  const data = await res.json();
-                                  if (data.url) await openUrl(data.url);
-                                } catch (e) {
-                                  console.error("checkout failed:", e);
+                    </CommandGroup>
+                  ) : (
+                    <>
+                      {models?.some((m) => m.free) && (
+                        <CommandGroup heading="Free">
+                          {models.filter((m) => m.free).map((model) => (
+                            <CommandItem
+                              key={model.id}
+                              value={model.id}
+                              onSelect={() => updateSettingsPreset({ model: model.id })}
+                            >
+                              <div className="flex flex-col gap-0.5 w-full">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium">{model.name}</span>
+                                  <Badge variant="outline" className="ml-2 text-[10px] bg-green-500/10 text-green-600 border-green-500/30">free</Badge>
+                                </div>
+                                {model.description && (
+                                  <span className="text-xs text-muted-foreground">{model.description}{model.context_window ? ` · ${Math.round(model.context_window / 1000)}K ctx` : ""}</span>
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                      <CommandGroup heading={models?.some((m) => m.free) ? "Included with Screenpipe" : "Available Models"}>
+                        {models?.filter((m) => !m.free).map((model) => (
+                          <CommandItem
+                            key={model.id}
+                            value={model.id}
+                            onSelect={async () => {
+                              if (model.id === "claude-opus-4-6" && !settings.user?.cloud_subscribed) {
+                                if (!settings.user?.token) {
+                                  await commands.openLoginWindow();
+                                } else {
+                                  try {
+                                    const res = await fetch("https://screenpi.pe/api/cloud-sync/checkout", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${settings.user.token}` },
+                                      body: JSON.stringify({ tier: "pro", billingPeriod: "monthly", userId: settings.user.id, email: settings.user.email }),
+                                    });
+                                    const data = await res.json();
+                                    if (data.url) await openUrl(data.url);
+                                  } catch (e) {
+                                    console.error("checkout failed:", e);
+                                  }
                                 }
+                                return;
                               }
-                              return;
-                            }
-                            updateSettingsPreset({ model: model.id });
-                          }}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span>{model.name}</span>
-                            <Badge variant="outline" className="ml-2">
-                              {model.provider}
-                            </Badge>
-                          </div>
-                        </CommandItem>
-                      ))
-                    )}
-                  </CommandGroup>
+                              updateSettingsPreset({ model: model.id });
+                            }}
+                          >
+                            <div className="flex flex-col gap-0.5 w-full">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">{model.name}</span>
+                                <div className="flex items-center gap-1 ml-2">
+                                  {model.intelligence === "highest" && <Badge variant="outline" className="text-[10px]">smartest</Badge>}
+                                  {model.speed === "fast" && model.intelligence !== "highest" && <Badge variant="outline" className="text-[10px]">fast</Badge>}
+                                  {model.tags?.includes("reasoning") && model.intelligence !== "highest" && <Badge variant="outline" className="text-[10px]">reasoning</Badge>}
+                                </div>
+                              </div>
+                              {model.description && (
+                                <span className="text-xs text-muted-foreground">{model.description}{model.context_window ? ` · ${Math.round(model.context_window / 1000)}K ctx` : ""}</span>
+                              )}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </>
+                  )}
                 </CommandList>
               </Command>
             </PopoverContent>
