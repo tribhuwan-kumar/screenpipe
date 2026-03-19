@@ -28,6 +28,7 @@ import {
   Link,
   Upload,
   ArrowUpCircle,
+  MessageSquare,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -57,6 +58,8 @@ import { AIPresetsSelector } from "@/components/rewind/ai-presets-selector";
 import { useTeam } from "@/lib/hooks/use-team";
 import { useToast } from "@/components/ui/use-toast";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { pipeExecutionToConversation } from "@/lib/pipe-ndjson-to-chat";
+import { saveConversationFile } from "@/lib/chat-storage";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { PublishDialog } from "@/components/pipe-store";
 import posthog from "posthog-js";
@@ -237,6 +240,12 @@ function parsePipeError(stderr: string): {
           used: parsed.used_today,
           limit: parsed.limit_today,
           resets_at: parsed.resets_at,
+        };
+      }
+      if (parsed.error === "daily_cost_limit_exceeded") {
+        return {
+          type: "daily_limit",
+          message: `daily ai usage limit reached — try a lighter model or wait until tomorrow`,
         };
       }
       if (parsed.error === "rate limit exceeded") {
@@ -1761,6 +1770,29 @@ export function PipesSection() {
                                 <span className="text-muted-foreground">
                                   {exec.trigger_type}
                                 </span>
+                                {exec.stdout && (
+                                  <button
+                                    className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+                                    title="view in chat"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      const conv = pipeExecutionToConversation(
+                                        exec.pipe_name,
+                                        exec.id,
+                                        exec.stdout,
+                                        exec.started_at,
+                                      );
+                                      await saveConversationFile(conv);
+                                      await emit("chat-load-conversation", { conversationId: conv.id });
+                                      // Navigate to home/chat section
+                                      const url = new URL(window.location.href);
+                                      url.searchParams.set("section", "home");
+                                      window.location.href = url.toString();
+                                    }}
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                               {exec.error_message && (
                                 <p className="text-xs text-muted-foreground">
