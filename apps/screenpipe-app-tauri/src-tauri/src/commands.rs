@@ -1088,7 +1088,14 @@ pub async fn show_notification_panel(
         info!("notification-panel window exists, repositioning and showing");
         let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
         let _ = app_handle.emit_to(label, "notification-panel-update", &payload);
-        let _ = window.show();
+
+        // On macOS, skip window.show() — it calls makeKeyAndOrderFront which
+        // steals focus from the user's current app. Use orderFront: on the
+        // NSPanel instead which respects NSNonactivatingPanelMask.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = window.show();
+        }
 
         #[cfg(target_os = "macos")]
         {
@@ -1150,7 +1157,8 @@ pub async fn show_notification_panel(
         if let Ok(_panel) = window.to_panel() {
             info!("Successfully converted notification-panel to panel");
 
-            let _ = window.show();
+            // Don't use window.show() — it calls makeKeyAndOrderFront which
+            // steals focus. orderFront: in the main thread block handles visibility.
 
             let window_clone = window.clone();
             let _ = app_handle.run_on_main_thread(move || {
