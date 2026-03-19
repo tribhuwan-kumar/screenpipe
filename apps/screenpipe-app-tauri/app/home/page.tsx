@@ -118,7 +118,6 @@ function SettingsPageContent() {
   useEffect(() => {
     const stored = localStorage.getItem("sidebar-collapsed");
     if (stored === "true") setSidebarCollapsed(true);
-    else if (window.innerWidth < 640) setSidebarCollapsed(true);
   }, []);
 
   const toggleSidebar = useCallback(() => {
@@ -391,17 +390,31 @@ function SettingsPageContent() {
                   if (inputs.length > 0) groups.push({ key: "mic", icon: Mic, count: inputs.length, title: inputs.map((d) => d.name).join(", "), opacity: audioOpacity });
                   if (outputs.length > 0) groups.push({ key: "output", icon: Volume2, count: outputs.length, title: outputs.map((d) => d.name).join(", "), opacity: audioOpacity });
 
-                  return groups.map(({ key, icon: Icon, count, title, opacity }) => (
-                    <span key={key} className="flex items-center gap-0.5" title={title}>
-                      <Icon
-                        className="h-3.5 w-3.5 text-foreground transition-opacity duration-500"
-                        style={{ opacity }}
-                      />
-                      {count > 1 && (
-                        <span className="text-[9px] text-foreground/50 font-medium leading-none">{count}</span>
-                      )}
-                    </span>
-                  ));
+                  const avgOpacity = groups.length > 0 ? groups.reduce((s, g) => s + g.opacity, 0) / groups.length : 0.2;
+
+                  return (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center gap-1.5 cursor-default">
+                          {groups.map(({ key, icon: Icon, opacity }) => (
+                            <Icon
+                              key={key}
+                              className="h-3.5 w-3.5 text-foreground transition-opacity duration-500"
+                              style={{ opacity }}
+                            />
+                          ))}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs space-y-1">
+                        {groups.map(({ key, icon: Icon, count, title, opacity }) => (
+                          <div key={key} className="flex items-center gap-1.5">
+                            <Icon className="h-3 w-3" style={{ opacity }} />
+                            <span>{title}{count > 1 ? ` (${count})` : ""}</span>
+                          </div>
+                        ))}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
                 })()}
                 <button
                   onClick={toggleMeeting}
