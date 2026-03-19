@@ -128,7 +128,7 @@ const MODEL_WEIGHTS: Record<string, number> = {
   'deepseek-reasoner': 1,
   'llama-4-maverick': 1,
   'llama-4-scout': 1,
-  'qwen3': 1,
+  'qwen3-coder': 1,
   'mistral-medium': 2,
 };
 

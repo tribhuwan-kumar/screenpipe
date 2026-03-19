@@ -33,7 +33,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'deepseek-reasoner': { input: 0.28, output: 0.42 },
   'llama-4-maverick': { input: 0.20, output: 0.60 },
   'llama-4-scout': { input: 0.11, output: 0.34 },
-  'qwen3-235b': { input: 0.60, output: 1.20 },
+  'qwen3-coder': { input: 0.22, output: 1.00 },
   'mistral-medium-3': { input: 0.40, output: 2.00 },
   // Google Gemini
   'gemini-2.5-flash': { input: 0.15, output: 0.60 },

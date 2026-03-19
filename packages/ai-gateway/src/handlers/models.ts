@@ -28,9 +28,10 @@ export async function handleModelListing(env: Env, tier: UserTier = 'subscribed'
     const openRouterModels = env.OPENROUTER_API_KEY ? [
       { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3.2', provider: 'openrouter' },
       { id: 'deepseek/deepseek-reasoner', name: 'DeepSeek R1', provider: 'openrouter' },
+      { id: 'qwen/qwen3-coder', name: 'Qwen3 Coder 480B', provider: 'openrouter' },
+      { id: 'qwen/qwen3-coder:free', name: 'Qwen3 Coder 480B (free)', provider: 'openrouter' },
       { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', provider: 'openrouter' },
       { id: 'meta-llama/llama-4-scout', name: 'Llama 4 Scout', provider: 'openrouter' },
-      { id: 'qwen/qwen3-235b', name: 'Qwen 3 235B', provider: 'openrouter' },
       { id: 'mistralai/mistral-medium-3', name: 'Mistral Medium 3', provider: 'openrouter' },
     ] : [];
 

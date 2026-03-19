@@ -8,7 +8,7 @@ import { Env } from '../types';
 
 // Models routed through OpenRouter (provider/model format or known open-source models)
 const OPENROUTER_PREFIXES = ['deepseek/', 'meta-llama/', 'qwen/', 'mistralai/'];
-const OPENROUTER_MODELS = ['deepseek-chat', 'deepseek-reasoner', 'llama-4', 'qwen3', 'mistral-medium'];
+const OPENROUTER_MODELS = ['deepseek-chat', 'deepseek-reasoner', 'llama-4', 'qwen3', 'mistral-medium', ':free'];
 
 function isOpenRouterModel(model: string): boolean {
 	const lower = model.toLowerCase();
