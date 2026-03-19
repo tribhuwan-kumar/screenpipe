@@ -714,28 +714,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-stream"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
-dependencies = [
- "async-stream-impl",
- "futures-core",
- "pin-project-lite",
-]
-
-[[package]]
-name = "async-stream-impl"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9338,11 +9316,10 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.203"
+version = "2.2.204"
 dependencies = [
  "anyhow",
  "arboard",
- "async-stream",
  "axum 0.6.20",
  "base64 0.22.1",
  "block",
@@ -9501,7 +9478,6 @@ dependencies = [
  "serde_json",
  "specta",
  "toml 0.8.2",
- "tracing",
 ]
 
 [[package]]
@@ -9579,7 +9555,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "criterion",
- "dirs 5.0.1",
  "futures",
  "image 0.25.9",
  "libsqlite3-sys",

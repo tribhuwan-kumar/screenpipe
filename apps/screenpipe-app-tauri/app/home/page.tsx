@@ -320,19 +320,19 @@ function SettingsPageContent() {
 
   // Settings modal sidebar items
   const settingsModalSections: { id: SettingsModalSection; label: string; icon: React.ReactNode; group?: string }[] = [
-    { id: "general", label: "General", icon: <SettingsIcon className="h-4 w-4" />, group: "app" },
-    { id: "notifications", label: "Notifications", icon: <Bell className="h-4 w-4" />, group: "app" },
     { id: "display", label: "Display", icon: <Layout className="h-4 w-4" />, group: "app" },
-    { id: "recording", label: "Recording", icon: <Video className="h-4 w-4" />, group: "app" },
+    { id: "general", label: "General", icon: <SettingsIcon className="h-4 w-4" />, group: "app" },
     { id: "ai", label: "AI models", icon: <Brain className="h-4 w-4" />, group: "app" },
+    { id: "recording", label: "Recording", icon: <Video className="h-4 w-4" />, group: "app" },
     { id: "shortcuts", label: "Shortcuts", icon: <Keyboard className="h-4 w-4" />, group: "app" },
+    { id: "notifications", label: "Notifications", icon: <Bell className="h-4 w-4" />, group: "app" },
     { id: "privacy", label: "Privacy", icon: <Shield className="h-4 w-4" />, group: "data" },
     { id: "storage", label: "Storage", icon: <HardDrive className="h-4 w-4" />, group: "data" },
-    { id: "connections", label: "Connections", icon: <Plug className="h-4 w-4" />, group: "data" },
     { id: "meetings", label: "Meetings", icon: <Phone className="h-4 w-4" />, group: "data" },
     { id: "memories", label: "Memories", icon: <Sparkles className="h-4 w-4" />, group: "data" },
-    ...(!isEnterprise ? [{ id: "account" as SettingsModalSection, label: "Account", icon: <User className="h-4 w-4" />, group: "account" }] : []),
+    { id: "connections", label: "Connections", icon: <Plug className="h-4 w-4" />, group: "data" },
     { id: "team", label: "Team", icon: <Users className="h-4 w-4" />, group: "account" },
+    ...(!isEnterprise ? [{ id: "account" as SettingsModalSection, label: "Account", icon: <User className="h-4 w-4" />, group: "account" }] : []),
     ...(!isEnterprise ? [{ id: "referral" as SettingsModalSection, label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" }] : []),
   ];
 
