@@ -605,12 +605,19 @@ class NotificationPanelController: NSObject {
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             // Stop if a newer notification replaced this one
-            guard self.epoch == currentEpoch else { return }
+            guard self.epoch == currentEpoch else {
+                self.timer?.invalidate()
+                self.timer = nil
+                return
+            }
             if self.isHovered { return }
             let elapsed = self.elapsedBeforePause + Date().timeIntervalSince(self.resumedAt) * 1000
             let remaining = max(0, 1.0 - elapsed / self.autoDismissMs)
-            self.progress = remaining
-            self.updateContent()
+            // Only re-render when progress changes visibly (>0.5% delta)
+            if abs(self.progress - remaining) > 0.005 || remaining <= 0 {
+                self.progress = remaining
+                self.updateContent()
+            }
             if remaining <= 0 {
                 self.hide()
                 self.sendAction("{\"type\":\"auto_dismiss\"}")
@@ -626,10 +633,6 @@ class NotificationPanelController: NSObject {
 }
 
 // MARK: - C FFI
-
-private func makeCString(_ str: String) -> UnsafeMutablePointer<CChar> {
-    return strdup(str)!
-}
 
 @_cdecl("notif_free_string")
 public func notifFreeString(_ ptr: UnsafeMutablePointer<CChar>?) {
