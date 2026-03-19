@@ -426,7 +426,37 @@ export default function NotificationPanelPage() {
               color: "rgba(0, 0, 0, 0.5)",
             }}
           >
-            <ReactMarkdown>{payload.body}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                a: ({ href, children }) => (
+                  <a
+                    href={href}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      if (!href) return;
+                      try {
+                        // file paths: expand ~ and open natively
+                        let url = href;
+                        if (url.startsWith("~/")) {
+                          const home = await import("@tauri-apps/api/path").then(m => m.homeDir());
+                          url = "file://" + home + url.slice(2);
+                        } else if (url.startsWith("/") && !url.startsWith("//")) {
+                          url = "file://" + url;
+                        }
+                        const { open } = await import("@tauri-apps/plugin-shell");
+                        await open(url);
+                      } catch {
+                        // fallback: try window.open
+                        window.open(href, "_blank");
+                      }
+                    }}
+                    style={{ color: "rgba(0, 0, 0, 0.7)", textDecoration: "underline", cursor: "pointer" }}
+                  >
+                    {children}
+                  </a>
+                ),
+              }}
+            >{payload.body}</ReactMarkdown>
           </div>
         </div>
 
