@@ -126,6 +126,25 @@ pub struct PipeConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connections: Vec<String>,
 
+    /// API endpoint permissions using `Api(METHOD /path)` patterns.
+    ///
+    /// Accepts either a preset string (`"reader"`) or a structured block:
+    /// ```yaml
+    /// permissions:
+    ///   allow:
+    ///     - Api(GET /search)
+    ///     - Api(POST /notify)
+    ///   deny:
+    ///     - Api(* /meetings/stop)
+    /// ```
+    /// Evaluation: deny → allow → default allowlist. Omit for safe defaults.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_permissions_field",
+        skip_serializing_if = "PipePermissionsConfig::is_default"
+    )]
+    pub permissions: PipePermissionsConfig,
+
     /// Execution timeout in seconds. Default: 300 (5 minutes).
     /// Set higher for long-running pipes (e.g. coding agents): `timeout: 2400`
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -190,6 +209,96 @@ where
     }
 
     deserializer.deserialize_any(PresetVisitor)
+}
+
+/// Pipe API permissions config — either a preset name or explicit allow/deny rules.
+///
+/// ```yaml
+/// permissions: reader                    # preset
+/// permissions:                           # explicit
+///   allow:
+///     - Api(GET /search)
+///   deny:
+///     - Api(* /meetings/stop)
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum PipePermissionsConfig {
+    /// Named preset: `"reader"`, `"writer"`, or `"admin"`.
+    Preset(String),
+    /// Explicit allow/deny rules with `Api(METHOD /path)` patterns.
+    Rules {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allow: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        deny: Vec<String>,
+    },
+}
+
+impl Default for PipePermissionsConfig {
+    fn default() -> Self {
+        // No permissions block = safe defaults (reader preset)
+        PipePermissionsConfig::Preset("reader".to_string())
+    }
+}
+
+impl PipePermissionsConfig {
+    pub fn is_default(&self) -> bool {
+        matches!(self, PipePermissionsConfig::Preset(s) if s == "reader")
+    }
+}
+
+/// Deserialize `permissions` field: accepts a string preset or a structured block.
+fn deserialize_permissions_field<'de, D>(
+    deserializer: D,
+) -> Result<PipePermissionsConfig, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct PermissionsVisitor;
+
+    impl<'de> de::Visitor<'de> for PermissionsVisitor {
+        type Value = PipePermissionsConfig;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a string preset (\"reader\") or a map with allow/deny lists")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<PipePermissionsConfig, E> {
+            Ok(PipePermissionsConfig::Preset(v.to_string()))
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<PipePermissionsConfig, E> {
+            Ok(PipePermissionsConfig::default())
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<PipePermissionsConfig, E> {
+            Ok(PipePermissionsConfig::default())
+        }
+
+        fn visit_map<A: de::MapAccess<'de>>(
+            self,
+            map: A,
+        ) -> Result<PipePermissionsConfig, A::Error> {
+            #[derive(Deserialize)]
+            struct RulesHelper {
+                #[serde(default)]
+                allow: Vec<String>,
+                #[serde(default)]
+                deny: Vec<String>,
+            }
+            let helper: RulesHelper =
+                de::Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(PipePermissionsConfig::Rules {
+                allow: helper.allow,
+                deny: helper.deny,
+            })
+        }
+    }
+
+    deserializer.deserialize_any(PermissionsVisitor)
 }
 
 fn default_schedule() -> String {
@@ -3036,6 +3145,8 @@ Timezone: {timezone} (UTC{tz_offset})
         prompt.push_str(ctx);
     }
 
+    prompt.push_str("\nExecute your instructions now. Do not read files or skills first — call the API directly.");
+
     prompt
 }
 
@@ -3359,6 +3470,7 @@ mod tests {
             days: None,
             allow_raw_sql: true,
             allow_frames: true,
+            permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
@@ -3458,6 +3570,7 @@ mod tests {
             days: None,
             allow_raw_sql: true,
             allow_frames: true,
+            permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
@@ -3491,6 +3604,7 @@ mod tests {
             days: None,
             allow_raw_sql: true,
             allow_frames: true,
+            permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
@@ -3522,6 +3636,7 @@ mod tests {
             days: None,
             allow_raw_sql: true,
             allow_frames: true,
+            permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
@@ -3561,6 +3676,7 @@ mod tests {
             days: None,
             allow_raw_sql: true,
             allow_frames: true,
+            permissions: PipePermissionsConfig::default(),
             config: HashMap::new(),
             connections: vec![],
             timeout: None,
@@ -3639,6 +3755,7 @@ mod tests {
                 days: None,
                 allow_raw_sql: true,
                 allow_frames: true,
+                permissions: PipePermissionsConfig::default(),
                 config: HashMap::new(),
                 connections: vec![],
                 timeout: None,
