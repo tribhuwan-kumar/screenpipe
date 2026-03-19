@@ -1370,6 +1370,36 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// Get named speakers with non-null centroids for seeding the embedding manager.
+    /// Returns (speaker_id, name, centroid as Vec<f32>).
+    pub async fn get_named_speakers_with_centroids(
+        &self,
+    ) -> Result<Vec<(i64, String, Vec<f32>)>, SqlxError> {
+        let rows: Vec<(i64, String, Vec<u8>)> = sqlx::query_as(
+            "SELECT id, name, centroid FROM speakers \
+             WHERE name IS NOT NULL AND name != '' \
+             AND centroid IS NOT NULL \
+             AND (hallucination IS NULL OR hallucination = 0)",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, name, blob)| {
+                if blob.len() == 512 * 4 {
+                    let floats: Vec<f32> = blob
+                        .chunks_exact(4)
+                        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                        .collect();
+                    Some((id, name, floats))
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+
     /// Get speakers active during a time range, grouped by device type.
     /// Returns speaker_id, current name, device type, and transcription count.
     /// Excludes hallucination speakers.

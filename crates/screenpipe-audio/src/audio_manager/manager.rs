@@ -48,11 +48,26 @@ use crate::{
     AudioInput, TranscriptionResult,
 };
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum AudioManagerStatus {
     Running,
     Paused,
     Stopped,
+}
+
+/// Meeting event data for calendar-assisted speaker diarization.
+/// Mirrors the MeetingEvent struct from screenpipe-events for deserialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MeetingEventData {
+    app: String,
+    timestamp: DateTime<Utc>,
+    #[serde(default)]
+    calendar_title: Option<String>,
+    #[serde(default)]
+    calendar_attendees: Option<Vec<String>>,
 }
 
 type RecordingHandlesMap = DashMap<AudioDevice, Arc<Mutex<JoinHandle<Result<()>>>>>;
@@ -210,6 +225,18 @@ impl AudioManager {
         }
 
         start_device_monitor(self_arc.clone(), self.device_manager.clone()).await?;
+
+        // Seed known speakers from DB on startup
+        seed_speakers_from_db(&self.db, &self.segmentation_manager).await;
+
+        // Subscribe to meeting events for calendar-assisted speaker diarization
+        {
+            let seg_mgr = self.segmentation_manager.clone();
+            let db = self.db.clone();
+            tokio::spawn(async move {
+                run_meeting_speaker_constraint_loop(seg_mgr, db).await;
+            });
+        }
 
         info!("audio manager started");
 
@@ -915,6 +942,87 @@ impl AudioManager {
         debug!("cleaned up stale device {} for restart", device_name);
 
         Ok(())
+    }
+}
+
+/// Seed the embedding manager with named speakers from the DB.
+/// This allows returning voices to be recognized immediately instead of
+/// starting anonymous for the first 30+ seconds.
+async fn seed_speakers_from_db(
+    db: &Arc<DatabaseManager>,
+    seg_mgr: &Arc<SegmentationManager>,
+) {
+    match db.get_named_speakers_with_centroids().await {
+        Ok(speakers) if !speakers.is_empty() => {
+            for (_db_id, name, centroid) in &speakers {
+                let emb = ndarray::Array1::from_vec(centroid.clone());
+                seg_mgr.seed_speaker(emb);
+                debug!("seeded known speaker '{}' into embedding manager", name);
+            }
+            info!(
+                "seeded {} known speakers from DB into embedding manager",
+                speakers.len()
+            );
+        }
+        Ok(_) => {
+            debug!("no named speakers with centroids found in DB to seed");
+        }
+        Err(e) => {
+            warn!("failed to query named speakers for seeding: {}", e);
+        }
+    }
+}
+
+/// Background task that subscribes to meeting_started / meeting_ended events
+/// and adjusts speaker clustering constraints accordingly.
+///
+/// On meeting_started with N attendees:
+///   1. Clear existing speaker clusters (prevent cross-meeting contamination)
+///   2. Re-seed known speakers from DB
+///   3. Set max_speakers to N+1 (extra slot for AirPods loopback)
+///
+/// On meeting_ended:
+///   1. Reset max_speakers to unlimited
+///   2. Re-seed known speakers for non-meeting recognition
+async fn run_meeting_speaker_constraint_loop(
+    seg_mgr: Arc<SegmentationManager>,
+    db: Arc<DatabaseManager>,
+) {
+    use futures::StreamExt;
+
+    let mut meeting_sub =
+        screenpipe_events::subscribe_to_event::<MeetingEventData>("meeting_started");
+    let mut ended_sub =
+        screenpipe_events::subscribe_to_event::<MeetingEventData>("meeting_ended");
+
+    info!("calendar-assisted speaker diarization: listening for meeting events");
+
+    loop {
+        tokio::select! {
+            Some(event) = meeting_sub.next() => {
+                if let Some(attendees) = &event.data.calendar_attendees {
+                    if attendees.len() >= 2 {
+                        let max = attendees.len() + 1; // +1 for AirPods loopback
+                        info!(
+                            "meeting started with {} attendees, constraining to {} speakers",
+                            attendees.len(),
+                            max
+                        );
+                        // Phase 3: Clear + re-seed + constrain
+                        seg_mgr.clear_speakers();
+                        seed_speakers_from_db(&db, &seg_mgr).await;
+                        seg_mgr.set_max_speakers(max);
+                    }
+                }
+                // No calendar attendees → no constraint, current behavior preserved
+            }
+            Some(_event) = ended_sub.next() => {
+                info!("meeting ended, resetting speaker constraints");
+                seg_mgr.reset_max_speakers();
+                // Re-seed for non-meeting recognition
+                seed_speakers_from_db(&db, &seg_mgr).await;
+            }
+        }
     }
 }
 

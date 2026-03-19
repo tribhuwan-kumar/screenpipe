@@ -30,7 +30,7 @@
 use chrono::{DateTime, Utc};
 use screenpipe_db::ActiveSpeaker;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -144,6 +144,73 @@ pub fn decide_speaker_names(
                 name: other_name,
                 reason: "sole unnamed output speaker in 1:1 meeting".into(),
             });
+        }
+    }
+
+    // Rule 4: Process-of-elimination — if N-1 of N attendees are already identified
+    // among the observed speakers, name the remaining unnamed speaker as the remaining attendee.
+    // This works for any meeting size (2+).
+    {
+        // Collect all named speakers from observations (already named + just decided)
+        let newly_named_ids: HashSet<i64> = decisions.names.iter().map(|d| d.speaker_id).collect();
+        let newly_named_map: HashMap<i64, &str> = decisions
+            .names
+            .iter()
+            .map(|d| (d.speaker_id, d.name.as_str()))
+            .collect();
+
+        // Build set of all speaker names (existing + newly decided)
+        let mut identified_names: Vec<String> = Vec::new();
+        let mut unnamed_candidates: Vec<&ActiveSpeaker> = Vec::new();
+
+        for obs in observations {
+            if loopback_ids.contains(&obs.speaker_id) {
+                continue;
+            }
+            if obs.transcription_count < MIN_TRANSCRIPTION_COUNT {
+                continue;
+            }
+
+            if let Some(name) = newly_named_map.get(&obs.speaker_id) {
+                if !name.is_empty() {
+                    identified_names.push(name.to_string());
+                    continue;
+                }
+            }
+            if !is_unnamed(&obs.speaker_name) {
+                identified_names.push(obs.speaker_name.clone());
+                continue;
+            }
+            // Skip if already decided by rules above
+            if newly_named_ids.contains(&obs.speaker_id) {
+                continue;
+            }
+            unnamed_candidates.push(obs);
+        }
+
+        // Deduplicate unnamed candidates by speaker_id
+        let mut seen_ids = HashSet::new();
+        unnamed_candidates.retain(|c| seen_ids.insert(c.speaker_id));
+
+        if unnamed_candidates.len() == 1 {
+            // Find which attendees are NOT yet matched
+            let mut unmatched_attendees: Vec<&String> = context.attendees.iter().collect();
+            for name in &identified_names {
+                if let Some(pos) = unmatched_attendees
+                    .iter()
+                    .position(|att| names_match(name, att))
+                {
+                    unmatched_attendees.remove(pos);
+                }
+            }
+
+            if unmatched_attendees.len() == 1 {
+                decisions.names.push(NamingDecision {
+                    speaker_id: unnamed_candidates[0].speaker_id,
+                    name: unmatched_attendees[0].clone(),
+                    reason: "process-of-elimination: only remaining unmatched attendee".into(),
+                });
+            }
         }
     }
 
@@ -868,5 +935,105 @@ mod tests {
 
         let output_d = decisions.names.iter().find(|d| d.speaker_id == 2).unwrap();
         assert_eq!(output_d.name, "Bob Jones");
+    }
+
+    // ── Rule 4: Process-of-elimination tests ──────────────────────────
+
+    #[test]
+    fn test_rule4_elimination_three_attendees() {
+        // 3 attendees, 2 already named (via rules 1+2 won't fire for 3-person,
+        // but speakers can be pre-named in DB)
+        let context = ctx(
+            &["Alice Smith", "Bob Jones", "Charlie Brown"],
+            Some("Alice Smith"),
+            Some("Team Meeting"),
+        );
+        let observations = vec![
+            speaker(1, "Alice Smith", true, 10), // already named
+            speaker(2, "Bob Jones", false, 10),  // already named
+            speaker(3, "", false, 5),            // unnamed output
+        ];
+        let decisions = decide_speaker_names(&context, &observations);
+
+        // Rule 4 should name speaker 3 as Charlie Brown
+        let charlie = decisions.names.iter().find(|d| d.speaker_id == 3);
+        assert!(charlie.is_some(), "expected Rule 4 to name speaker 3");
+        assert_eq!(charlie.unwrap().name, "Charlie Brown");
+        assert!(charlie.unwrap().reason.contains("elimination"));
+    }
+
+    #[test]
+    fn test_rule4_does_not_trigger_with_multiple_unnamed() {
+        // 3 attendees but 2 unnamed — can't determine which is which
+        let context = ctx(
+            &["Alice Smith", "Bob Jones", "Charlie Brown"],
+            Some("Alice Smith"),
+            Some("Team Meeting"),
+        );
+        let observations = vec![
+            speaker(1, "Alice Smith", true, 10),
+            speaker(2, "", false, 5), // unnamed
+            speaker(3, "", false, 5), // unnamed
+        ];
+        let decisions = decide_speaker_names(&context, &observations);
+
+        // Rule 4 should NOT fire (2 unnamed, 2 unmatched attendees)
+        let elimination_decisions: Vec<_> = decisions
+            .names
+            .iter()
+            .filter(|d| d.reason.contains("elimination"))
+            .collect();
+        assert!(elimination_decisions.is_empty());
+    }
+
+    #[test]
+    fn test_rule4_insufficient_transcriptions_no_trigger() {
+        let context = ctx(
+            &["Alice Smith", "Bob Jones", "Charlie Brown"],
+            Some("Alice Smith"),
+            None,
+        );
+        let observations = vec![
+            speaker(1, "Alice Smith", true, 10),
+            speaker(2, "Bob Jones", false, 10),
+            speaker(3, "", false, 2), // only 2 transcriptions — below threshold
+        ];
+        let decisions = decide_speaker_names(&context, &observations);
+
+        let elimination_decisions: Vec<_> = decisions
+            .names
+            .iter()
+            .filter(|d| d.reason.contains("elimination"))
+            .collect();
+        assert!(elimination_decisions.is_empty());
+    }
+
+    #[test]
+    fn test_rule4_works_with_rule1_output() {
+        // In a 1:1, rules 1+2 already name both speakers.
+        // Rule 4 shouldn't double-name. But in a 3-person meeting
+        // where rule 1 names the input speaker, rule 4 can name
+        // the remaining output speaker.
+        let context = ctx(
+            &["Alice Smith", "Bob Jones", "Charlie Brown"],
+            Some("Alice Smith"),
+            None,
+        );
+        let observations = vec![
+            speaker(1, "", true, 5),             // unnamed input → Rule 1 names as Alice
+            speaker(2, "Bob Jones", false, 10),  // already named
+            speaker(3, "", false, 5),            // unnamed output
+        ];
+        let decisions = decide_speaker_names(&context, &observations);
+
+        // Rule 1 should name speaker 1 as Alice
+        let alice = decisions.names.iter().find(|d| d.speaker_id == 1);
+        assert!(alice.is_some());
+        assert_eq!(alice.unwrap().name, "Alice Smith");
+
+        // Rule 4 should name speaker 3 as Charlie Brown
+        let charlie = decisions.names.iter().find(|d| d.speaker_id == 3);
+        assert!(charlie.is_some(), "expected Rule 4 to name speaker 3");
+        assert_eq!(charlie.unwrap().name, "Charlie Brown");
     }
 }
