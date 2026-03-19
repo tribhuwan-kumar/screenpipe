@@ -740,36 +740,30 @@ async fn setup_pipe_permissions(
 
     let mut perms = permissions::PipePermissions::from_config(config);
 
-    if perms.has_any_restrictions() {
-        // Generate a unique pipe token for server-side enforcement
-        use rand::Rng;
-        let suffix: u64 = rand::thread_rng().gen();
-        let t = format!("sp_pipe_{:016x}", suffix);
-        perms.pipe_token = Some(t.clone());
+    // All pipes get a token — endpoint enforcement is always active.
+    use rand::Rng;
+    let suffix: u64 = rand::thread_rng().gen();
+    let t = format!("sp_pipe_{:016x}", suffix);
+    perms.pipe_token = Some(t.clone());
 
-        // Register with server middleware — must complete before Pi starts
-        // to avoid race where Pi's first API call arrives before token is registered
-        if let Some(registry) = token_registry {
-            registry.register_token(t.clone(), perms.clone()).await;
-        }
-
-        // Write permissions JSON for the extension to read
-        let perms_path = pipe_dir.join(".screenpipe-permissions.json");
-        match serde_json::to_string(&perms) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&perms_path, &json) {
-                    warn!("failed to write permissions file: {}", e);
-                }
-            }
-            Err(e) => warn!("failed to serialize permissions: {}", e),
-        }
-
-        Some(t)
-    } else {
-        // Clean up any stale permissions file
-        let _ = std::fs::remove_file(pipe_dir.join(".screenpipe-permissions.json"));
-        None
+    // Register with server middleware — must complete before Pi starts
+    // to avoid race where Pi's first API call arrives before token is registered
+    if let Some(registry) = token_registry {
+        registry.register_token(t.clone(), perms.clone()).await;
     }
+
+    // Write permissions JSON for the extension to read
+    let perms_path = pipe_dir.join(".screenpipe-permissions.json");
+    match serde_json::to_string(&perms) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&perms_path, &json) {
+                warn!("failed to write permissions file: {}", e);
+            }
+        }
+        Err(e) => warn!("failed to serialize permissions: {}", e),
+    }
+
+    Some(t)
 }
 
 /// Remove a pipe token from the server registry.
@@ -3145,7 +3139,7 @@ Timezone: {timezone} (UTC{tz_offset})
         prompt.push_str(ctx);
     }
 
-    prompt.push_str("\nExecute your instructions now. Do not read files or skills first — call the API directly.");
+    prompt.push_str("\nExecute the pipe now.");
 
     prompt
 }
