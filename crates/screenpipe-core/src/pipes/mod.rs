@@ -2988,7 +2988,7 @@ fn render_pipe_system_prompt(
     }
 
     sys.push_str(&format!(
-        "OS: {os}\nOutput directory: ./output/\nScreenpipe API: http://localhost:{api_port}\n\n"
+        "OS: {os}\nOutput directory: ./output/\nScreenpipe API: http://localhost:{api_port}\nPrefer bun/TypeScript for scripts. Python may not be installed.\nSend notifications via POST http://localhost:11435/notify with {{\"title\": \"...\", \"body\": \"...\"}}\n\n"
     ));
     sys.push_str(body);
     sys
