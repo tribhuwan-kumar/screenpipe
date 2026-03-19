@@ -19,62 +19,28 @@ pub const SCREENPIPE_API_URL: &str = "https://api.screenpi.pe/v1";
 /// Returns the screenpipe cloud models array as a serde_json::Value.
 /// Shared between server-side pipe executor and desktop Pi chat so the
 /// model list stays in sync.
+/// Full model catalog matching the Cloudflare Worker gateway.
+/// Must stay in sync with packages/ai-gateway/src/handlers/models.ts.
 pub fn screenpipe_cloud_models() -> serde_json::Value {
     json!([
-        {
-            "id": "claude-opus-4-6",
-            "name": "Claude Opus 4.6",
-            "reasoning": true,
-            "input": ["text", "image"],
-            "cost": {"input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75},
-            "contextWindow": 200000,
-            "maxTokens": 32000
-        },
-        {
-            "id": "claude-sonnet-4-5",
-            "name": "Claude Sonnet 4.5",
-            "reasoning": true,
-            "input": ["text", "image"],
-            "cost": {"input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75},
-            "contextWindow": 200000,
-            "maxTokens": 64000
-        },
-        {
-            "id": "claude-opus-4-5@20251101",
-            "name": "Claude Opus 4.5",
-            "reasoning": true,
-            "input": ["text", "image"],
-            "cost": {"input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75},
-            "contextWindow": 200000,
-            "maxTokens": 32000
-        },
-        {
-            "id": "claude-haiku-4-5",
-            "name": "Claude Haiku 4.5",
-            "reasoning": true,
-            "input": ["text", "image"],
-            "cost": {"input": 0.8, "output": 4, "cacheRead": 0.08, "cacheWrite": 1},
-            "contextWindow": 200000,
-            "maxTokens": 64000
-        },
-        {
-            "id": "gemini-3-flash",
-            "name": "Gemini 3 Flash",
-            "reasoning": false,
-            "input": ["text", "image"],
-            "cost": {"input": 0.10, "output": 0.40, "cacheRead": 0, "cacheWrite": 0},
-            "contextWindow": 1000000,
-            "maxTokens": 65536
-        },
-        {
-            "id": "gemini-3.1-pro",
-            "name": "Gemini 3.1 Pro",
-            "reasoning": true,
-            "input": ["text", "image"],
-            "cost": {"input": 1.25, "output": 10.00, "cacheRead": 0, "cacheWrite": 0},
-            "contextWindow": 1000000,
-            "maxTokens": 65536
-        }
+        // ── Free models ──
+        {"id": "qwen/qwen3-coder:free", "name": "Qwen3 Coder 480B", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 262000, "maxTokens": 32000},
+        {"id": "stepfun/step-3.5-flash:free", "name": "Step 3.5 Flash", "reasoning": false, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 256000, "maxTokens": 32000},
+        {"id": "gemini-3-flash", "name": "Gemini 3 Flash", "reasoning": false, "input": ["text", "image"], "cost": {"input": 0.10, "output": 0.40, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 1000000, "maxTokens": 65536},
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "reasoning": false, "input": ["text", "image"], "cost": {"input": 0.075, "output": 0.30, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 1000000, "maxTokens": 65536},
+        // ── Anthropic ──
+        {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "reasoning": true, "input": ["text", "image"], "cost": {"input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75}, "contextWindow": 200000, "maxTokens": 32000},
+        {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "reasoning": true, "input": ["text", "image"], "cost": {"input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75}, "contextWindow": 200000, "maxTokens": 64000},
+        {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "reasoning": true, "input": ["text", "image"], "cost": {"input": 0.8, "output": 4, "cacheRead": 0.08, "cacheWrite": 1}, "contextWindow": 200000, "maxTokens": 64000},
+        // ── OpenRouter ──
+        {"id": "qwen/qwen3.5-flash-02-23", "name": "Qwen3.5 Flash", "reasoning": false, "input": ["text"], "cost": {"input": 0.065, "output": 0.26, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 1000000, "maxTokens": 32000},
+        {"id": "deepseek/deepseek-chat", "name": "DeepSeek V3.2", "reasoning": true, "input": ["text"], "cost": {"input": 0.26, "output": 0.38, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 32000},
+        {"id": "deepseek/deepseek-v3.2-speciale", "name": "DeepSeek V3.2 Speciale", "reasoning": true, "input": ["text"], "cost": {"input": 2.19, "output": 8.76, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 32000},
+        {"id": "qwen/qwen3.5-397b-a17b", "name": "Qwen3.5 397B", "reasoning": true, "input": ["text", "image"], "cost": {"input": 1.50, "output": 3.00, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 131000, "maxTokens": 32000},
+        {"id": "meta-llama/llama-4-scout", "name": "Llama 4 Scout", "reasoning": false, "input": ["text"], "cost": {"input": 0.11, "output": 0.34, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 512000, "maxTokens": 32000},
+        {"id": "meta-llama/llama-4-maverick", "name": "Llama 4 Maverick", "reasoning": true, "input": ["text"], "cost": {"input": 0.50, "output": 0.77, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 256000, "maxTokens": 32000},
+        // ── Google ──
+        {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "reasoning": true, "input": ["text", "image"], "cost": {"input": 1.25, "output": 10.00, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 1000000, "maxTokens": 65536},
     ])
 }
 

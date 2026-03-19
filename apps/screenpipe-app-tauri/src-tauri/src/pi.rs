@@ -890,30 +890,21 @@ fn kill_orphan_pi_processes(managed_alive: bool) {
 /// Keep this short — the process is ready as soon as it starts the readline loop.
 const PI_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// Resolve a model name against the screenpipe cloud models list.
-/// Handles mismatches like "claude-haiku-4-5@20251001" when the list only has
-/// "claude-haiku-4-5" (or vice versa) by stripping date suffixes and finding
-/// the closest match by shared prefix.
+/// Resolve a model name for the screenpipe provider.
+///
+/// The gateway (api.screenpi.pe) is the source of truth for model validation
+/// and supports many more models than the local hardcoded list (OpenRouter,
+/// Gemini, Anthropic, etc.). We only do lightweight normalization here
+/// (strip date suffixes) and pass through to the gateway which will reject
+/// unknown models with a proper error.
 fn resolve_screenpipe_model(requested: &str, provider: &str) -> String {
-    // Only resolve for screenpipe provider — other providers use their own model names
+    // Only touch screenpipe provider — other providers use their own model names
     if provider != "screenpipe" {
         return requested.to_string();
     }
 
-    let models = screenpipe_cloud_models();
-    let model_ids: Vec<&str> = models
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|m| m["id"].as_str()).collect())
-        .unwrap_or_default();
-
-    // Exact match — no resolution needed
-    if model_ids.contains(&requested) {
-        return requested.to_string();
-    }
-
-    // Strip date suffix (@20251001 or -20251001) and try again
+    // Strip date suffix (@20251001 or -20251001) for cleaner model IDs
     let base = requested.split('@').next().unwrap_or(requested);
-    // Also strip trailing -YYYYMMDD pattern
     let base = if base.len() > 9 && base.as_bytes()[base.len() - 9] == b'-' {
         let suffix = &base[base.len() - 8..];
         if suffix.chars().all(|c| c.is_ascii_digit()) {
@@ -925,33 +916,14 @@ fn resolve_screenpipe_model(requested: &str, provider: &str) -> String {
         base
     };
 
-    // Find the best match: exact base match first, then longest shared prefix
-    if let Some(exact) = model_ids.iter().find(|id| {
-        let id_base = id.split('@').next().unwrap_or(id);
-        id_base == base
-    }) {
+    if base != requested {
         info!(
             "resolved model '{}' -> '{}' (stripped date suffix)",
-            requested, exact
+            requested, base
         );
-        return exact.to_string();
     }
 
-    // Fallback: find model whose id starts with the same base
-    if let Some(prefix_match) = model_ids.iter().find(|id| id.starts_with(base)) {
-        info!(
-            "resolved model '{}' -> '{}' (prefix match)",
-            requested, prefix_match
-        );
-        return prefix_match.to_string();
-    }
-
-    // No match found — return as-is and let Pi report the error
-    warn!(
-        "could not resolve model '{}' against available models: {:?}",
-        requested, model_ids
-    );
-    requested.to_string()
+    base.to_string()
 }
 
 /// Maximum number of concurrent Pi sessions before evicting old ones.
