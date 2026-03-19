@@ -46,8 +46,10 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'gemini-1.5-pro': { input: 1.25, output: 5.00 },
 };
 
-// Default cost per request when we can't determine tokens (streaming)
-const DEFAULT_STREAMING_COST_USD = 0.002;
+// Estimated average tokens per request when streaming can't determine actual usage.
+// Conservative estimate: ~2000 input tokens, ~500 output tokens (typical pipe/chat call).
+const DEFAULT_INPUT_TOKENS = 2000;
+const DEFAULT_OUTPUT_TOKENS = 500;
 
 /**
  * Fuzzy-match a model string to a pricing entry.
@@ -69,13 +71,20 @@ function findPricing(model: string): ModelPricing | null {
 
 /**
  * Calculate estimated cost for a request given model and token counts.
+ * When tokens are unknown (streaming without usage tracking), estimates based
+ * on average request size and the model's actual pricing — NOT a flat fallback.
  */
 export function getModelCost(model: string, inputTokens: number | null, outputTokens: number | null): number {
   const pricing = findPricing(model);
-  if (!pricing) return DEFAULT_STREAMING_COST_USD;
-  if (inputTokens === null && outputTokens === null) return DEFAULT_STREAMING_COST_USD;
-  const inCost = ((inputTokens ?? 0) / 1_000_000) * pricing.input;
-  const outCost = ((outputTokens ?? 0) / 1_000_000) * pricing.output;
+  if (!pricing) {
+    // Unknown model — use a conservative estimate
+    return 0.01;
+  }
+  // When tokens are unknown, estimate from model pricing × average request size
+  const inTokens = inputTokens ?? (outputTokens === null ? DEFAULT_INPUT_TOKENS : 0);
+  const outTokens = outputTokens ?? (inputTokens === null ? DEFAULT_OUTPUT_TOKENS : 0);
+  const inCost = (inTokens / 1_000_000) * pricing.input;
+  const outCost = (outTokens / 1_000_000) * pricing.output;
   return inCost + outCost;
 }
 
