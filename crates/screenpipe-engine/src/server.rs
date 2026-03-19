@@ -158,6 +158,8 @@ pub struct AppState {
     pub vault: screenpipe_vault::VaultManager,
     /// Active manually-started meeting id (set via POST /meetings/start, cleared via POST /meetings/stop)
     pub manual_meeting: Arc<tokio::sync::RwLock<Option<i64>>>,
+    /// Browser extension bridge — relays JS eval requests to the connected extension
+    pub browser_bridge: Arc<crate::routes::browser::BrowserBridge>,
 }
 
 pub struct SCServer {
@@ -445,6 +447,7 @@ impl SCServer {
                 .manual_meeting
                 .clone()
                 .unwrap_or_else(|| Arc::new(tokio::sync::RwLock::new(None))),
+            browser_bridge: crate::routes::browser::BrowserBridge::new(),
         });
 
         let cors = CorsLayer::new()
@@ -707,6 +710,19 @@ impl SCServer {
             .route("/ws/events", get(ws_events_handler))
             .route("/ws/health", get(ws_health_handler))
             .route("/ws/metrics", get(ws_metrics_handler))
+            // Browser extension bridge
+            .route("/browser/ws", get({
+                let bridge = app_state.browser_bridge.clone();
+                move |ws| crate::routes::browser::browser_ws_handler(ws, axum::extract::State(bridge))
+            }))
+            .route("/browser/eval", axum::routing::post({
+                let bridge = app_state.browser_bridge.clone();
+                move |body| crate::routes::browser::browser_eval_handler(axum::extract::State(bridge), body)
+            }))
+            .route("/browser/status", get({
+                let bridge = app_state.browser_bridge.clone();
+                move || crate::routes::browser::browser_status_handler(axum::extract::State(bridge))
+            }))
             .route(
                 "/frames/export",
                 get(handle_video_export_ws).post(handle_video_export_post),

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Screenpipe Browser Bridge",
+  "description": "Connects your browser to Screenpipe for AI-powered web automation and data sync.",
+  "version": "0.1.0",
+  "background": {
+    "service_worker": "worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@screenpipe/browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/worker.ts --outdir dist --target browser --format esm",
+    "dev": "bun build src/worker.ts --outdir dist --target browser --format esm --watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287"
+  }
+}
