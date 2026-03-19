@@ -944,8 +944,8 @@ pub async fn show_shortcut_reminder(
                     // Don't hide when app deactivates (default is YES for NSPanel)
                     panel.set_hides_on_deactivate(false);
 
-                    // Exclude from screen capture (NSWindowSharingNone = 0)
-                    let _: () = unsafe { msg_send![&*panel, setSharingType: 0_u64] };
+                    // Visible in screen capture (NSWindowSharingReadOnly = 1)
+                    let _: () = unsafe { msg_send![&*panel, setSharingType: 1_u64] };
 
                     // Accept mouse events without requiring click-to-activate
                     let _: () = unsafe { msg_send![&*panel, setAcceptsMouseMovedEvents: true] };
@@ -1171,8 +1171,8 @@ pub async fn show_notification_panel(
                     panel.set_style_mask(128);
                     panel.set_hides_on_deactivate(false);
 
-                    // Exclude from screen capture (NSWindowSharingNone = 0)
-                    let _: () = unsafe { msg_send![&*panel, setSharingType: 0_u64] };
+                    // Visible in screen capture (NSWindowSharingReadOnly = 1)
+                    let _: () = unsafe { msg_send![&*panel, setSharingType: 1_u64] };
 
                     // Accept mouse events without requiring click-to-activate.
                     // NSNonactivatingPanelMask prevents the panel from becoming key,
