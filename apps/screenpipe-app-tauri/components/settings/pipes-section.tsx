@@ -1783,8 +1783,11 @@ export function PipesSection() {
                                         exec.started_at,
                                       );
                                       await saveConversationFile(conv);
-                                      await emit("chat-load-conversation", { conversationId: conv.id });
-                                      // Navigate to home/chat section
+                                      // Store pending conversation ID so StandaloneChat
+                                      // picks it up on mount (emit alone is lost during
+                                      // page navigation because the listener isn't mounted yet)
+                                      localStorage.setItem("pending-chat-conversation", conv.id);
+                                      // Navigate to home/chat section via query param
                                       const url = new URL(window.location.href);
                                       url.searchParams.set("section", "home");
                                       window.location.href = url.toString();

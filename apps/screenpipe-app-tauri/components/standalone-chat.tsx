@@ -1257,6 +1257,23 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Pick up pending conversation from pipe execution history (set via localStorage
+  // because the emit event is lost during page navigation/remount)
+  useEffect(() => {
+    const pendingId = localStorage.getItem("pending-chat-conversation");
+    if (pendingId) {
+      localStorage.removeItem("pending-chat-conversation");
+      (async () => {
+        const { loadConversationFile } = await import("@/lib/chat-storage");
+        const conv = await loadConversationFile(pendingId);
+        if (conv) {
+          loadConversation(conv);
+        }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const appMentionSuggestions = React.useMemo(
     () => buildAppMentionSuggestions(appItems, APP_SUGGESTION_LIMIT),
     [appItems]
