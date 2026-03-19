@@ -118,6 +118,7 @@ function SettingsPageContent() {
   useEffect(() => {
     const stored = localStorage.getItem("sidebar-collapsed");
     if (stored === "true") setSidebarCollapsed(true);
+    else if (window.innerWidth < 640) setSidebarCollapsed(true);
   }, []);
 
   const toggleSidebar = useCallback(() => {
