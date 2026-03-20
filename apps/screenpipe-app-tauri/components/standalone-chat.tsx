@@ -89,11 +89,11 @@ function buildDailyLimitMessage(errorStr: string): string {
     const isRateLimit = errorStr.includes("rate limit") || errorStr.includes("Rate limit");
 
     if (isRateLimit) {
-      return "This model is temporarily overloaded. Try switching to another free model like Gemini 3 Flash or Qwen3 Coder.";
+      return "This model is temporarily rate-limited. Try again in a few seconds, or switch to a different model.";
     }
 
     if (isCostLimit) {
-      return "You've reached your daily usage limit for paid models. Switch to a free model (Qwen3 Coder, Step 3.5 Flash, or Gemini Flash) for unlimited usage.";
+      return "Daily usage limit reached for this model. Try a lighter model or wait until tomorrow.";
     }
 
     const tierMatch = errorStr.match(/"tier":\s*"([^"]+)"/);
