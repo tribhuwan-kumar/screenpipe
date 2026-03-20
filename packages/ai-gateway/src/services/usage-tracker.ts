@@ -112,6 +112,10 @@ async function getCreditBalance(env: Env, userId: string): Promise<number> {
 
 // Per-model query weights — expensive models cost more daily queries
 const MODEL_WEIGHTS: Record<string, number> = {
+  // Vertex MaaS — free for users (GCP credits), weight=0 so they don't eat daily quota
+  'glm-4.7': 0,
+  'glm-5': 0,
+  'kimi-k2.5': 0,
   'claude-opus': 15,
   'claude-sonnet': 3,
   'claude-haiku': 1,
@@ -156,6 +160,9 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
     allowedModels: [
       'claude-haiku-4-5',
       'gemini-3-flash',
+      'glm-4.7',
+      'glm-5',
+      'kimi-k2.5',
       'deepseek/deepseek-chat',
       'qwen/qwen3.5-flash',
       'meta-llama/llama-4-scout',
@@ -170,6 +177,9 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'gemini-3-flash',
       'gemini-3-pro',
       'gemini-3.1-pro',
+      'glm-4.7',
+      'glm-5',
+      'kimi-k2.5',
       'deepseek/deepseek-chat',
       'deepseek/deepseek-v3.2-speciale',
       'qwen/qwen3.5-flash',

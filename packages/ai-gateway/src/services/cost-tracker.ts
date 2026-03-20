@@ -11,6 +11,10 @@ interface ModelPricing {
 }
 
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  // Vertex AI MaaS — free for users (GCP credits absorb the cost)
+  'glm-4.7': { input: 0, output: 0 },
+  'glm-5': { input: 0, output: 0 },
+  'kimi-k2.5': { input: 0, output: 0 },
   // Anthropic Claude
   'claude-haiku-4-5': { input: 0.80, output: 4.00 },
   'claude-sonnet-4-5': { input: 3.00, output: 15.00 },
@@ -129,6 +133,7 @@ export function inferProvider(model: string): string {
   if (lower.includes('claude')) return 'anthropic';
   if (lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) return 'openai';
   if (lower.includes('gemini')) return 'google';
+  if (lower.includes('glm-') || lower.includes('kimi-k')) return 'vertex-maas';
   if (lower.includes('deepseek') || lower.includes('llama') || lower.includes('qwen') || lower.includes('mistral') || lower.includes('step-3.5') || lower.includes('stepfun')) return 'openrouter';
   return 'unknown';
 }

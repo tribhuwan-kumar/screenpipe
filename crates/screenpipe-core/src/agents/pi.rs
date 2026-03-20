@@ -23,7 +23,11 @@ pub const SCREENPIPE_API_URL: &str = "https://api.screenpi.pe/v1";
 /// Must stay in sync with packages/ai-gateway/src/handlers/models.ts.
 pub fn screenpipe_cloud_models() -> serde_json::Value {
     json!([
-        // ── Free models ──
+        // ── Free models (Vertex AI MaaS — GCP credits, free for users) ──
+        {"id": "glm-4.7", "name": "GLM-4.7", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 200000, "maxTokens": 32000},
+        {"id": "glm-5", "name": "GLM-5", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 32000},
+        {"id": "kimi-k2.5", "name": "Kimi K2.5", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 32000},
+        // ── Free models (OpenRouter / Gemini) ──
         {"id": "qwen/qwen3-coder:free", "name": "Qwen3 Coder 480B", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 262000, "maxTokens": 32000},
         {"id": "stepfun/step-3.5-flash:free", "name": "Step 3.5 Flash", "reasoning": false, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 256000, "maxTokens": 32000},
         {"id": "gemini-3-flash", "name": "Gemini 3 Flash", "reasoning": false, "input": ["text", "image"], "cost": {"input": 0.10, "output": 0.40, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 1000000, "maxTokens": 65536},

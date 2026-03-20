@@ -3,6 +3,7 @@ import { AnthropicProvider } from './anthropic';
 import { VertexAIProvider } from './vertex';
 import { GeminiProvider } from './gemini';
 import { OpenRouterProvider } from './openrouter';
+import { VertexMaasProvider, isVertexMaasModel } from './vertex-maas';
 import { AIProvider } from './base';
 import { Env } from '../types';
 
@@ -18,9 +19,6 @@ function isOpenRouterModel(model: string): boolean {
 
 export function createProvider(model: string, env: Env): AIProvider {
 	if (model.toLowerCase().includes('claude')) {
-		// Use direct Anthropic API for Claude models
-		// This gives us: dynamic model availability (Opus 4.6 etc.), simpler auth,
-		// no model ID mapping, and no silent fallback to wrong models
 		if (!env.ANTHROPIC_API_KEY) {
 			throw new Error('Anthropic API key not configured');
 		}
@@ -31,6 +29,13 @@ export function createProvider(model: string, env: Env): AIProvider {
 			throw new Error('Gemini API key not configured');
 		}
 		return new GeminiProvider(env.GEMINI_API_KEY);
+	}
+	// Vertex AI MaaS — GLM-4.7, GLM-5, Kimi K2.5 (burns GCP credits, free for users)
+	if (isVertexMaasModel(model)) {
+		if (!env.VERTEX_SERVICE_ACCOUNT_JSON || !env.VERTEX_PROJECT_ID) {
+			throw new Error('Vertex AI credentials not configured');
+		}
+		return new VertexMaasProvider(env.VERTEX_SERVICE_ACCOUNT_JSON, env.VERTEX_PROJECT_ID);
 	}
 	if (isOpenRouterModel(model)) {
 		if (!env.OPENROUTER_API_KEY) {

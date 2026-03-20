@@ -27,7 +27,46 @@ interface ModelEntry {
 
 /** Curated model catalog — single source of truth */
 const CURATED_MODELS: ModelEntry[] = [
-  // ── Free models ──
+  // ── Free models (Vertex AI MaaS — burns GCP credits, free for users) ──
+  {
+    id: 'glm-4.7',
+    object: 'model',
+    owned_by: 'vertex-maas',
+    name: 'GLM-4.7',
+    description: 'best open-source coding model, strong reasoning',
+    tags: ['free', 'coding', 'reasoning'],
+    free: true,
+    context_window: 200000,
+    best_for: ['coding', 'reasoning', 'tool use'],
+    speed: 'fast',
+    intelligence: 'highest',
+  },
+  {
+    id: 'glm-5',
+    object: 'model',
+    owned_by: 'vertex-maas',
+    name: 'GLM-5',
+    description: 'top open-source reasoning, 745B params',
+    tags: ['free', 'reasoning'],
+    free: true,
+    context_window: 128000,
+    best_for: ['complex reasoning', 'analysis'],
+    speed: 'medium',
+    intelligence: 'highest',
+  },
+  {
+    id: 'kimi-k2.5',
+    object: 'model',
+    owned_by: 'vertex-maas',
+    name: 'Kimi K2.5',
+    description: 'strong all-rounder with deep thinking',
+    tags: ['free', 'reasoning'],
+    free: true,
+    context_window: 128000,
+    best_for: ['reasoning', 'general'],
+    speed: 'medium',
+    intelligence: 'high',
+  },
   {
     id: 'gemini-3-flash',
     object: 'model',

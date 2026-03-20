@@ -139,6 +139,14 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
         // Note: Zoom on macOS does NOT expose AXWindow — only AXMenuBar.
         // Meeting controls are available as AXMenuBarItem ("Meeting" menu)
         // and AXMenuItem items with identifiers like "onMuteAudio:".
+        //
+        // NOTE: min_signals_required=2 because individual signals can appear
+        // when Zoom is open but idle (e.g. "Meeting" menu bar item may exist
+        // without an active call). Requiring 2 signals reduces false positives.
+        // NOTE: "end" alone removed as signal — too broad, matches "Send",
+        // "Append", "Calendar End", etc. Use "end meeting" instead.
+        // NOTE: onMuteAudio:/onMuteVideo: removed — mute controls can appear
+        // in Zoom menus even when idle, violating leave/hangup-only philosophy.
         MeetingDetectionProfile {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &["zoom.us", "zoom"],
@@ -156,8 +164,6 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                 CallSignal::MenuBarItem {
                     title_contains: "Meeting",
                 },
-                CallSignal::MenuItemId("onMuteAudio:"),
-                CallSignal::MenuItemId("onMuteVideo:"),
                 // Windows: Zoom meeting window has title "Zoom Meeting" but
                 // exposes NO named buttons — all toolbar controls are unnamed.
                 // The window title is the definitive signal.
@@ -181,12 +187,8 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                     role: "AXButton",
                     name_contains: "end meeting",
                 },
-                CallSignal::RoleWithName {
-                    role: "AXButton",
-                    name_contains: "end",
-                },
             ],
-            min_signals_required: 1,
+            min_signals_required: 2,
         },
         // Google Meet (browser)
         // NOTE: "google meet" removed from url_patterns — it's too broad and matches
@@ -3157,6 +3159,115 @@ mod tests {
         assert!(
             has_page_title_pattern,
             "Zoom browser_url_patterns must include 'zoom meeting' for page title matching"
+        );
+    }
+
+    // ── Zoom false positive prevention tests ────────────────────────
+
+    #[test]
+    fn test_zoom_requires_two_signals() {
+        // Zoom must require at least 2 signals to avoid false positives
+        // when Zoom is open but idle (e.g. "Meeting" menu bar item exists
+        // without an active call).
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.macos_app_names.contains(&"zoom.us"))
+            .expect("Zoom profile not found");
+
+        assert!(
+            zoom.min_signals_required >= 2,
+            "Zoom must require >= 2 signals (got {}). A single signal like \
+             'Meeting' menu bar item can appear when Zoom is idle.",
+            zoom.min_signals_required
+        );
+    }
+
+    #[test]
+    fn test_zoom_no_mute_menu_item_signals() {
+        // onMuteAudio:/onMuteVideo: are mute controls that can appear in Zoom
+        // menus even when idle. Per signal philosophy, only leave/hangup signals
+        // should be used.
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.macos_app_names.contains(&"zoom.us"))
+            .expect("Zoom profile not found");
+
+        let has_mute_menu = zoom.call_signals.iter().any(|s| {
+            matches!(s, CallSignal::MenuItemId(id) if id.contains("Mute"))
+        });
+        assert!(
+            !has_mute_menu,
+            "Zoom profile must NOT have onMuteAudio:/onMuteVideo: signals — \
+             mute controls can appear when Zoom is idle"
+        );
+    }
+
+    #[test]
+    fn test_zoom_no_bare_end_button_signal() {
+        // "end" alone is too broad — matches "Send", "Append", "Calendar End".
+        // Use "end meeting" instead.
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.macos_app_names.contains(&"zoom.us"))
+            .expect("Zoom profile not found");
+
+        let has_bare_end = zoom.call_signals.iter().any(|s| {
+            matches!(s, CallSignal::RoleWithName { name_contains, .. } if *name_contains == "end")
+        });
+        assert!(
+            !has_bare_end,
+            "Zoom profile must NOT have bare 'end' signal — too broad. Use 'end meeting' instead."
+        );
+    }
+
+    #[test]
+    fn test_zoom_idle_single_signal_no_detection() {
+        // Simulate Zoom idle: only "Meeting" menu bar item found (1 signal).
+        // With min_signals_required=2, this should NOT trigger detection.
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.macos_app_names.contains(&"zoom.us"))
+            .expect("Zoom profile not found");
+
+        let state = MeetingState::Idle;
+        // Only 1 signal found — below the threshold of 2
+        let results = vec![ScanResult {
+            app_name: "zoom.us".to_string(),
+            is_in_call: false, // 1 signal < min_signals_required(2) = not in call
+            signals_found: 1,
+            matched_signals: vec!["menu_bar_item=Meeting".to_string()],
+        }];
+        let (new_state, _) = advance_state(state, &results);
+        assert!(
+            matches!(new_state, MeetingState::Idle),
+            "Zoom with only 1 signal should stay Idle, got {:?}",
+            new_state
+        );
+    }
+
+    #[test]
+    fn test_zoom_active_call_two_signals_detected() {
+        // Simulate Zoom in active call: "Meeting" menu bar + "end meeting" button.
+        // With min_signals_required=2, this SHOULD trigger detection.
+        let state = MeetingState::Idle;
+        let results = vec![ScanResult {
+            app_name: "zoom.us".to_string(),
+            is_in_call: true, // 2 signals >= min_signals_required(2) = in call
+            signals_found: 2,
+            matched_signals: vec![
+                "menu_bar_item=Meeting".to_string(),
+                "role=AXButton name=End Meeting".to_string(),
+            ],
+        }];
+        let (new_state, _) = advance_state(state, &results);
+        assert!(
+            matches!(new_state, MeetingState::Confirming { .. }),
+            "Zoom with 2 signals should transition to Confirming, got {:?}",
+            new_state
         );
     }
 

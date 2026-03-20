@@ -1168,7 +1168,7 @@ enableAccessibility: boolean }) &
  * that the Rust struct doesn't know about. Without this, `save()` would
  * serialize only known fields and silently wipe frontend-only data.
  */
-({ [key in string]: null | boolean | number | string | JsonValue[] | { [key in string]: JsonValue } }) & { aiPresets: AIPreset[]; isLoading: boolean; devMode: boolean; ocrEngine: string; dataDir: string; embeddedLLM: EmbeddedLLM; autoStartEnabled: boolean; platform: string; disabledShortcuts: string[]; user: User; showScreenpipeShortcut: string; startRecordingShortcut: string; stopRecordingShortcut: string; startAudioShortcut: string; stopAudioShortcut: string; showChatShortcut: string; searchShortcut: string; lockVaultShortcut?: string; realtimeAudioTranscriptionEngine: string; 
+({ [key in string]: null | boolean | number | string | JsonValue[] | { [key in string]: JsonValue } }) & { aiPresets: AIPreset[]; isLoading: boolean; devMode: boolean; ocrEngine: string; dataDir: string; embeddedLLM: EmbeddedLLM; autoStartEnabled: boolean; platform: string; disabledShortcuts: string[]; user: User; showScreenpipeShortcut: string; startRecordingShortcut: string; stopRecordingShortcut: string; startAudioShortcut: string; stopAudioShortcut: string; showChatShortcut: string; searchShortcut: string; lockVaultShortcut?: string; 
 /**
  * When true, screen capture continues but OCR text extraction is skipped.
  * Reduces CPU usage significantly while still recording video.
