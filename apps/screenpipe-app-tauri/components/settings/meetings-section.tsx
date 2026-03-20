@@ -394,7 +394,7 @@ export function MeetingsSection() {
         : new Date().toISOString();
 
       const res = await fetch(
-        `http://localhost:3030/search?content_type=ocr&app_name=${encodeURIComponent(appName)}&start_time=${startTime}&end_time=${endTime}&limit=50`
+        `http://localhost:3030/search?content_type=accessibility&app_name=${encodeURIComponent(appName)}&start_time=${startTime}&end_time=${endTime}&limit=50`
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
