@@ -35,7 +35,6 @@ use crate::{
     metrics::AudioPipelineMetrics,
     segmentation::segmentation_manager::SegmentationManager,
     transcription::{
-        deepgram::streaming::stream_transcription_deepgram,
         engine::TranscriptionEngine,
         handle_new_transcript,
         stt::{process_audio_input, SAMPLE_RATE},
@@ -366,54 +365,22 @@ impl AudioManager {
         let recording_sender = self.recording_sender.clone();
         let is_running = self.device_manager.is_running_mut(device).unwrap();
         let languages = options.languages.clone();
-        let deepgram_api_key = options.deepgram_api_key.clone();
-        let realtime_enabled = options.enable_realtime;
         let device_clone = device.clone();
         let metrics = self.metrics.clone();
 
         let recording_handle = tokio::spawn(async move {
-            let record_and_transcribe_handle = tokio::spawn(record_and_transcribe(
+            let record_result = tokio::spawn(record_and_transcribe(
                 stream.clone(),
                 audio_chunk_duration,
                 recording_sender.clone(),
                 is_running.clone(),
                 metrics,
-            ));
-
-            let realtime_handle = if realtime_enabled {
-                Some(tokio::spawn(stream_transcription_deepgram(
-                    stream,
-                    languages,
-                    is_running,
-                    deepgram_api_key,
-                )))
-            } else {
-                None
-            };
-
-            let (record_result, realtime_result) = if let Some(handle) = realtime_handle {
-                join!(record_and_transcribe_handle, handle)
-            } else {
-                (record_and_transcribe_handle.await, Ok(Ok(())))
-            };
+            )).await;
 
             // Check for JoinError (task panic/cancel)
-            if record_result.is_err() || realtime_result.is_err() {
-                let mut e = anyhow!("record_device failed");
-
-                if record_result.is_err() {
-                    let record_error = record_result.err().unwrap();
-                    error!("Record and transcribe error: {}", record_error);
-                    e = e.context(record_error)
-                }
-
-                if realtime_result.is_err() {
-                    let realtime_error = realtime_result.err().unwrap();
-                    error!("Realtime recording error: {}", realtime_error);
-                    e = e.context(realtime_error);
-                }
-
-                return Err(e);
+            if let Err(ref e) = record_result {
+                error!("Record and transcribe error: {}", e);
+                return Err(anyhow!("record_device failed: {}", e));
             }
 
             // Check for inner Result errors (record_and_transcribe returned Err)
@@ -423,13 +390,6 @@ impl AudioManager {
                     device_clone, e
                 );
                 return Err(anyhow!("record_device {} failed: {}", device_clone, e));
-            }
-            if let Ok(Err(ref e)) = realtime_result {
-                warn!(
-                    "realtime recording for device {} exited with error: {}",
-                    device_clone, e
-                );
-                return Err(anyhow!("realtime {} failed: {}", device_clone, e));
             }
 
             warn!(

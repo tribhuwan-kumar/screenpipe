@@ -44,14 +44,12 @@ pub struct AudioManagerOptions {
     /// Configuration for OpenAI Compatible transcription engine
     pub openai_compatible_config: Option<OpenAICompatibleConfig>,
     pub enable_diarization: bool,
-    pub enable_realtime: bool,
     pub audio_chunk_duration: Duration,
     pub health_check_grace_period: u64,
     pub enabled_devices: HashSet<String>,
     pub use_all_devices: bool,
     pub db_path: Option<String>,
     pub deepgram_url: Option<String>,
-    pub deepgram_websocket_url: Option<String>,
     pub output_path: Option<PathBuf>,
     /// Enable PII removal from audio transcriptions
     pub use_pii_removal: bool,
@@ -76,7 +74,6 @@ pub struct AudioManagerOptions {
 impl Default for AudioManagerOptions {
     fn default() -> Self {
         let deepgram_api_key = env::var("DEEPGRAM_API_KEY").ok();
-        let deepgram_websocket_url = env::var("DEEPGRAM_WEBSOCKET_URL").ok();
         let deepgram_url = env::var("DEEPGRAM_API_URL").ok();
         let enabled_devices = HashSet::new();
         Self {
@@ -87,14 +84,12 @@ impl Default for AudioManagerOptions {
             deepgram_api_key,
             openai_compatible_config: None,
             enable_diarization: true,
-            enable_realtime: false,
             audio_chunk_duration: Duration::from_secs(30),
             health_check_grace_period: 15,
             enabled_devices,
             use_all_devices: false,
             db_path: None,
             deepgram_url,
-            deepgram_websocket_url,
             use_pii_removal: false,
             filter_music: false,
             use_system_default_audio: true,
@@ -149,11 +144,6 @@ impl AudioManagerBuilder {
         self
     }
 
-    pub fn realtime(mut self, enable_realtime: bool) -> Self {
-        self.options.enable_realtime = enable_realtime;
-        self
-    }
-
     pub fn audio_chunk_duration(mut self, audio_chunk_duration: Duration) -> Self {
         self.options.audio_chunk_duration = audio_chunk_duration;
         self
@@ -176,11 +166,6 @@ impl AudioManagerBuilder {
 
     pub fn deepgram_url(mut self, deepgram_url: Option<String>) -> Self {
         self.options.deepgram_url = deepgram_url;
-        self
-    }
-
-    pub fn deepgram_websocket_url(mut self, deepgram_websocket_url: Option<String>) -> Self {
-        self.options.deepgram_websocket_url = deepgram_websocket_url;
         self
     }
 
@@ -261,14 +246,6 @@ impl AudioManagerBuilder {
 
         if self.options.output_path.is_none() {
             return Err(anyhow::anyhow!("Output path is required for audio manager"));
-        }
-
-        if self.options.enable_realtime
-            && (self.options.deepgram_api_key.is_none() && CUSTOM_DEEPGRAM_API_TOKEN.is_empty())
-        {
-            return Err(anyhow::anyhow!(
-                "Deepgram API key is required for realtime transcription"
-            ));
         }
 
         Ok(())

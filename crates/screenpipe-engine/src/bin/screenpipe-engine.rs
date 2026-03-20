@@ -443,10 +443,6 @@ async fn main() -> anyhow::Result<()> {
 
     let mut audio_devices = Vec::new();
 
-    // Realtime streaming is disabled — batch mode with VAD filtering is
-    // more cost-effective and avoids double-billing on cloud engines.
-    let enable_realtime_audio = false;
-
     if !config.disable_audio {
         if config.audio_devices.is_empty() {
             // Use default devices
@@ -557,7 +553,7 @@ async fn main() -> anyhow::Result<()> {
             PathBuf::from(output_path_clone.clone().to_string()),
             audio_devices,
         )
-        .realtime(enable_realtime_audio);
+        ;
 
     if let Some(ref detector) = meeting_detector {
         audio_manager_builder = audio_manager_builder.meeting_detector(detector.clone());

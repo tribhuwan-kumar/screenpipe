@@ -8,7 +8,6 @@ pub mod engine;
 pub mod pulse;
 mod run_record_and_transcribe;
 pub mod stream;
-use crate::transcription::deepgram::streaming::stream_transcription_deepgram;
 use crate::AudioInput;
 use anyhow::Result;
 use dashmap::DashMap;
@@ -95,30 +94,3 @@ pub async fn record_and_transcribe(
     Ok(())
 }
 
-pub async fn start_realtime_recording(
-    audio_stream: Arc<AudioStream>,
-    languages: Vec<Language>,
-    is_running: Arc<AtomicBool>,
-    deepgram_api_key: Option<String>,
-) -> Result<()> {
-    while is_running.load(Ordering::Relaxed) {
-        match stream_transcription_deepgram(
-            audio_stream.clone(),
-            languages.clone(),
-            is_running.clone(),
-            deepgram_api_key.clone(),
-        )
-        .await
-        {
-            Ok(_) => break, // Normal shutdown
-            Err(e) => {
-                if is_normal_shutdown(&is_running) {
-                    break;
-                }
-                error!("realtime_stt error, restarting: {}", e);
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        }
-    }
-    Ok(())
-}
