@@ -51,8 +51,10 @@ impl OutputRecoveryBackoff {
         Self {
             attempts: 0,
             is_permanent: false,
-            // Set to epoch-ish so the first check always fires
-            last_attempt: Instant::now() - Duration::from_secs(3600),
+            // Set to epoch-ish so the first check always fires.
+            // Use checked_sub to avoid panic on Windows when uptime < 3600s
+            // (Instant - Duration panics if result would be before boot time).
+            last_attempt: Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or(Instant::now()),
         }
     }
 

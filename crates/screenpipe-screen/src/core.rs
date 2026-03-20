@@ -103,7 +103,8 @@ where
     D: Deserializer<'de>,
 {
     let millis: u128 = Deserialize::deserialize(deserializer)?;
-    Ok(Instant::now() - Duration::from_millis(millis as u64))
+    let dur = Duration::from_millis(millis as u64);
+    Ok(Instant::now().checked_sub(dur).unwrap_or(Instant::now()))
 }
 
 pub struct CaptureResult {
