@@ -198,8 +198,17 @@ export function CalendarCard() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={authorizeCalendar}
-                  disabled={isAuthorizing || authDenied}
+                  onClick={authDenied ? async () => {
+                    // Open System Settings to Calendar privacy pane
+                    try {
+                      const { open } = await import("@tauri-apps/plugin-shell");
+                      await open("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars");
+                    } catch {
+                      // Fallback: try the authorize flow anyway
+                      authorizeCalendar();
+                    }
+                  } : authorizeCalendar}
+                  disabled={isAuthorizing}
                   className="text-xs"
                 >
                   {isAuthorizing ? (
@@ -209,17 +218,17 @@ export function CalendarCard() {
                   ) : (
                     <Calendar className="h-3 w-3 mr-1.5" />
                   )}
-                  {authDenied ? "Access denied" : "Connect Calendar"}
+                  {authDenied ? "Open Calendar Settings" : "Connect Calendar"}
                 </Button>
 
                 {authDenied && (
                   <p className="text-xs text-muted-foreground">
-                    Open{" "}
+                    Enable screenpipe in{" "}
                     <span className="font-medium">
                       System Settings &rarr; Privacy &amp; Security &rarr;
                       Calendars
-                    </span>{" "}
-                    and enable screenpipe, then restart the app.
+                    </span>
+                    , then restart the app.
                   </p>
                 )}
               </div>
