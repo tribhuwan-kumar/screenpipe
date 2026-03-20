@@ -443,10 +443,9 @@ async fn main() -> anyhow::Result<()> {
 
     let mut audio_devices = Vec::new();
 
-    // Auto-detect realtime audio: enable for cloud engines (Deepgram)
-    use screenpipe_audio::core::engine::AudioTranscriptionEngine;
-    let enable_realtime_audio =
-        config.audio_transcription_engine == AudioTranscriptionEngine::Deepgram;
+    // Realtime streaming is disabled — batch mode with VAD filtering is
+    // more cost-effective and avoids double-billing on cloud engines.
+    let enable_realtime_audio = false;
 
     if !config.disable_audio {
         if config.audio_devices.is_empty() {
