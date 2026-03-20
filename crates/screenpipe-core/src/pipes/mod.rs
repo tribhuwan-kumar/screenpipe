@@ -770,6 +770,12 @@ pub struct PipeManager {
     running_execution_ids: Arc<Mutex<HashMap<String, i64>>>,
     /// Shutdown signal for the scheduler.
     shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
+    /// JoinHandle for the scheduler task — allows abort + join on shutdown.
+    scheduler_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Generation counter — incremented on every start_scheduler, checked
+    /// in the scheduler loop. If the loop's generation doesn't match, it
+    /// exits immediately. Defense-in-depth against orphaned scheduler tasks.
+    scheduler_generation: Arc<std::sync::atomic::AtomicU64>,
     /// Optional callback fired after each scheduled pipe run.
     on_run_complete: Option<OnPipeRunComplete>,
     /// Optional callback fired for each stdout line from a running pipe.
@@ -808,6 +814,8 @@ impl PipeManager {
             running: Arc::new(Mutex::new(HashMap::new())),
             running_execution_ids: Arc::new(Mutex::new(HashMap::new())),
             shutdown_tx: None,
+            scheduler_handle: None,
+            scheduler_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             on_run_complete: None,
             on_output_line: None,
             store,
@@ -2383,8 +2391,18 @@ impl PipeManager {
     /// Start the background scheduler.  Spawns a tokio task that checks
     /// pipe schedules and runs them when due.
     pub async fn start_scheduler(&mut self) -> Result<()> {
+        // SAFETY: Stop any existing scheduler before starting a new one.
+        // This prevents scheduler duplication on server restarts.
+        self.stop_scheduler().await;
+
         let (tx, mut rx) = tokio::sync::watch::channel(false);
         self.shutdown_tx = Some(tx);
+
+        // Increment generation — the scheduler loop checks this on every tick.
+        // If a stale task somehow survives stop_scheduler(), the generation
+        // mismatch will cause it to exit on its next iteration.
+        let generation = self.scheduler_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let generation_ref = self.scheduler_generation.clone();
 
         let pipes = self.pipes.clone();
         let logs = self.logs.clone();
@@ -2399,8 +2417,8 @@ impl PipeManager {
         let token_registry = self.token_registry.clone();
         let extra_context = self.extra_context.clone();
 
-        tokio::spawn(async move {
-            info!("pipe scheduler started");
+        let handle = tokio::spawn(async move {
+            info!("pipe scheduler started (generation {})", generation);
             let mut last_run: HashMap<String, DateTime<Utc>> = HashMap::new();
             let mut last_cleanup = Instant::now();
 
@@ -2422,7 +2440,18 @@ impl PipeManager {
             loop {
                 // Check for shutdown
                 if *rx.borrow() {
-                    info!("pipe scheduler shutting down");
+                    info!("pipe scheduler shutting down (generation {})", generation);
+                    break;
+                }
+
+                // Defense-in-depth: if our generation is stale, another scheduler
+                // has been started and we should exit immediately.
+                let current_gen = generation_ref.load(std::sync::atomic::Ordering::SeqCst);
+                if current_gen != generation {
+                    warn!(
+                        "pipe scheduler generation mismatch ({} != {}), exiting stale scheduler",
+                        generation, current_gen
+                    );
                     break;
                 }
 
@@ -2867,15 +2896,37 @@ impl PipeManager {
                     }
                 }
             }
+            info!("pipe scheduler exited (generation {})", generation);
         });
 
+        self.scheduler_handle = Some(handle);
         Ok(())
     }
 
-    /// Stop the scheduler.
-    pub fn stop_scheduler(&self) {
-        if let Some(tx) = &self.shutdown_tx {
+    /// Stop the scheduler. Signals shutdown, aborts the task, and waits for it
+    /// to exit. Safe to call multiple times. Safe to call if no scheduler is running.
+    pub async fn stop_scheduler(&mut self) {
+        // Increment generation to invalidate any running scheduler
+        self.scheduler_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        // Signal via watch channel
+        if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(true);
+        }
+
+        // Abort and wait for the task
+        if let Some(handle) = self.scheduler_handle.take() {
+            handle.abort();
+            // Wait with timeout — the task should exit quickly after abort
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                handle,
+            ).await {
+                Ok(Ok(())) => info!("pipe scheduler stopped cleanly"),
+                Ok(Err(e)) if e.is_cancelled() => info!("pipe scheduler aborted"),
+                Ok(Err(e)) => warn!("pipe scheduler task panicked: {}", e),
+                Err(_) => warn!("pipe scheduler did not stop within 5s"),
+            }
         }
     }
 
@@ -3319,12 +3370,132 @@ pub fn delete_pi_sessions(pipe_dir: &Path) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+/// On drop, abort the scheduler task and invalidate its generation so it
+/// cannot spawn new work. This is the safety net — even if stop_scheduler()
+/// was never called (e.g. the PipeManager is dropped during a panic),
+/// the scheduler task will be aborted.
+impl Drop for PipeManager {
+    fn drop(&mut self) {
+        // Invalidate generation so any surviving task exits on next tick
+        self.scheduler_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        // Signal shutdown via watch channel
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(true);
+        }
+
+        // Abort the task (non-blocking — Drop can't be async)
+        if let Some(handle) = self.scheduler_handle.take() {
+            handle.abort();
+        }
+    }
+}
+
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- scheduler lifecycle tests ------------------------------------------
+
+    /// Helper: create a minimal PipeManager for testing (no executors, no store).
+    fn test_pipe_manager() -> PipeManager {
+        let dir = std::env::temp_dir().join(format!("screenpipe-test-pipes-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        PipeManager::new(dir, HashMap::new(), None, 0)
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_starts_and_stops() {
+        let mut pm = test_pipe_manager();
+        assert!(pm.scheduler_handle.is_none());
+        assert_eq!(pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        pm.start_scheduler().await.unwrap();
+        assert!(pm.scheduler_handle.is_some());
+        // Generation: stop_scheduler increments (0→1), start_scheduler increments (1→2)
+        assert!(pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+
+        pm.stop_scheduler().await;
+        assert!(pm.scheduler_handle.is_none());
+        assert!(pm.shutdown_tx.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_start_scheduler_twice_stops_first() {
+        let mut pm = test_pipe_manager();
+
+        pm.start_scheduler().await.unwrap();
+        let gen1 = pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(gen1 >= 1);
+
+        // Starting again should stop the old one and increment generation further
+        pm.start_scheduler().await.unwrap();
+        let gen2 = pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(gen2 > gen1, "generation should increase: {} > {}", gen2, gen1);
+        assert!(pm.scheduler_handle.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_stop_scheduler_idempotent() {
+        let mut pm = test_pipe_manager();
+
+        // Stop without starting — should not panic
+        pm.stop_scheduler().await;
+        pm.stop_scheduler().await;
+
+        // Start then stop twice — should not panic
+        pm.start_scheduler().await.unwrap();
+        pm.stop_scheduler().await;
+        pm.stop_scheduler().await;
+    }
+
+    #[tokio::test]
+    async fn test_generation_counter_prevents_stale_scheduler() {
+        let mut pm = test_pipe_manager();
+        let gen_ref = pm.scheduler_generation.clone();
+
+        pm.start_scheduler().await.unwrap();
+        let gen_after_start = gen_ref.load(std::sync::atomic::Ordering::SeqCst);
+
+        // Simulate stale scheduler: increment generation externally
+        gen_ref.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        // Give the scheduler a tick to notice the stale generation
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // The scheduler should have exited — the handle should complete
+        if let Some(handle) = pm.scheduler_handle.take() {
+            match tokio::time::timeout(std::time::Duration::from_secs(35), handle).await {
+                Ok(Ok(())) => {} // task exited cleanly
+                Ok(Err(e)) => panic!("scheduler panicked: {}", e),
+                Err(_) => panic!("stale scheduler did not exit within 35s"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_drop_aborts_scheduler() {
+        let gen_ref;
+        let gen_before_drop;
+        {
+            let mut pm = test_pipe_manager();
+            gen_ref = pm.scheduler_generation.clone();
+            pm.start_scheduler().await.unwrap();
+            gen_before_drop = gen_ref.load(std::sync::atomic::Ordering::SeqCst);
+            // pm drops here — Drop should abort the scheduler and increment generation
+        }
+        // After drop, generation should have been incremented beyond what start set it to
+        let gen_after_drop = gen_ref.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            gen_after_drop > gen_before_drop,
+            "drop should increment generation: {} > {}",
+            gen_after_drop, gen_before_drop
+        );
+    }
 
     // -- parse_error_type ---------------------------------------------------
 
