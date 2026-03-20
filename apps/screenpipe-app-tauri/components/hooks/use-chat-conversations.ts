@@ -294,16 +294,11 @@ export function useChatConversations(opts: UseChatConversationsOpts) {
   };
 
   // ---- startNewConversation ----
+  // Always kills and restarts Pi to guarantee a clean session.
+  // piNewSession() has a race condition: if a prompt is sent before it
+  // completes, the old context leaks through. Kill+restart is safe.
   const startNewConversation = async () => {
-    // If Pi is running and idle (not busy), just reset the session
-    if (piInfo?.running && !isLoading && !isStreaming) {
-      try {
-        await commands.piNewSession(PI_CHAT_SESSION);
-      } catch (e) {
-        console.warn("[Pi] Failed to reset session:", e);
-      }
-    }
-    // Clear frontend state (Pi kill+restart is handled by the caller when busy)
+    // Clear frontend state first
     piStreamingTextRef.current = "";
     piMessageIdRef.current = null;
     piContentBlocksRef.current = [];
@@ -315,6 +310,13 @@ export function useChatConversations(opts: UseChatConversationsOpts) {
     if (inputRef.current) inputRef.current.style.height = "auto";
     setShowHistory(false);
     setPastedImages([]);
+
+    // Kill Pi and restart fresh — the only reliable way to clear context
+    if (piInfo?.running) {
+      try {
+        await commands.piStop(PI_CHAT_SESSION);
+      } catch {}
+    }
     piSessionSyncedRef.current = true;
   };
 
