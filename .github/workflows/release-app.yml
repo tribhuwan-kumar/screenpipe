@@ -122,24 +122,24 @@ jobs:
             echo "windows_runner=windows-2022" >> $GITHUB_OUTPUT
             echo "⚠️ Forcing GitHub-hosted runners (manual override)"
           else
-            # macOS aarch64: MacBook (macos-26) or GH-hosted fallback
+            # macOS aarch64: MacBook only (Apple Intelligence requires local Xcode 26 SDK)
             MACBOOK=$(check_runner "macos-26")
 
             if [ "$MACBOOK" = "available" ]; then
               echo "macos_arm_runner=macos-26" >> $GITHUB_OUTPUT
               echo "✅ MacBook (macos-26) is available"
             elif [ "$MACBOOK" = "busy" ]; then
-              RESULT=$(wait_for_runner "macos-26" 180)
+              RESULT=$(wait_for_runner "macos-26" 300)
               if [ "$RESULT" = "available" ]; then
                 echo "macos_arm_runner=macos-26" >> $GITHUB_OUTPUT
                 echo "✅ MacBook (macos-26) became available"
               else
-                echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
-                echo "⚠️ MacBook timed out — using GH-hosted (NO Apple Intelligence)"
+                echo "macos_arm_runner=macos-26" >> $GITHUB_OUTPUT
+                echo "⚠️ MacBook still busy after 5 min — queuing anyway (will wait for runner)"
               fi
             else
-              echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
-              echo "⚠️ MacBook offline — using GH-hosted (NO Apple Intelligence)"
+              echo "macos_arm_runner=macos-26" >> $GITHUB_OUTPUT
+              echo "⚠️ MacBook offline — job will wait until it comes online"
             fi
 
             # Always use GH-hosted Windows — self-hosted is unreliable for builds
