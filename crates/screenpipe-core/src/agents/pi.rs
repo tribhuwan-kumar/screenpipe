@@ -190,6 +190,18 @@ impl PiExecutor {
 
     /// Install the context-pruning extension that truncates large tool results
     /// to prevent unbounded context growth in --continue sessions.
+    /// Install orphan guard extension — kills bun if the parent (screenpipe) dies.
+    /// Always installed for every pipe and chat session.
+    pub fn ensure_orphan_guard_extension(project_dir: &Path) -> Result<()> {
+        let ext_dir = project_dir.join(".pi").join("extensions");
+        std::fs::create_dir_all(&ext_dir)?;
+        let ext_content = include_str!("../../assets/extensions/orphan-guard.ts");
+        let ext_path = ext_dir.join("orphan-guard.ts");
+        std::fs::write(&ext_path, ext_content)?;
+        debug!("orphan-guard extension installed at {:?}", ext_path);
+        Ok(())
+    }
+
     pub fn ensure_context_pruning_extension(project_dir: &Path) -> Result<()> {
         let ext_dir = project_dir.join(".pi").join("extensions");
         std::fs::create_dir_all(&ext_dir)?;
@@ -751,6 +763,7 @@ impl AgentExecutor for PiExecutor {
 
         Self::ensure_web_search_extension(working_dir, Some(&resolved_provider))?;
         Self::ensure_context_pruning_extension(working_dir)?;
+        Self::ensure_orphan_guard_extension(working_dir)?;
 
         let pi_path = find_pi_executable().ok_or_else(|| {
             anyhow!(
@@ -840,6 +853,7 @@ impl AgentExecutor for PiExecutor {
         Self::ensure_screenpipe_skill_auto(working_dir)?;
         Self::ensure_web_search_extension(working_dir, Some(&resolved_provider))?;
         Self::ensure_context_pruning_extension(working_dir)?;
+        Self::ensure_orphan_guard_extension(working_dir)?;
 
         let pi_path = find_pi_executable().ok_or_else(|| {
             anyhow!(

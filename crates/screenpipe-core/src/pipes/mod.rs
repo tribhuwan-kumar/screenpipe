@@ -699,6 +699,9 @@ async fn setup_pipe_permissions(
     if let Err(e) = PiExecutor::ensure_context_pruning_extension(pipe_dir) {
         warn!("failed to install context-pruning extension: {}", e);
     }
+    if let Err(e) = PiExecutor::ensure_orphan_guard_extension(pipe_dir) {
+        warn!("failed to install orphan-guard extension: {}", e);
+    }
     if let Err(e) = PiExecutor::ensure_screenpipe_skill_filtered(pipe_dir, config) {
         warn!("failed to install filtered skills: {}", e);
     }
