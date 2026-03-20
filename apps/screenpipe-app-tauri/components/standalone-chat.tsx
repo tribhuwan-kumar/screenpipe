@@ -2010,6 +2010,13 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           }
         } else if (data.type === "response" && data.success === false) {
           const errorStr = data.error || "Unknown error";
+          // Suppress Pi agent first-call bug (pi-mono#2461) — the warmup
+          // prompt absorbs this crash, but the error event still fires.
+          // Pi auto-retries and the next call works.
+          if (errorStr.includes("startsWith") || errorStr.includes("text.startsWith")) {
+            console.warn("[Pi] suppressing known first-call bug:", errorStr);
+            return;
+          }
           if (piMessageIdRef.current) {
             const msgId = piMessageIdRef.current;
 
