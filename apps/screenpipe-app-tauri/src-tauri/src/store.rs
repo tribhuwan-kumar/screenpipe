@@ -158,8 +158,6 @@ pub struct SettingsStore {
     pub search_shortcut: String,
     #[serde(rename = "lockVaultShortcut", default)]
     pub lock_vault_shortcut: String,
-    #[serde(rename = "realtimeAudioTranscriptionEngine")]
-    pub realtime_audio_transcription_engine: String,
     /// When true, screen capture continues but OCR text extraction is skipped.
     /// Reduces CPU usage significantly while still recording video.
     #[serde(rename = "disableOcr", default)]
@@ -480,7 +478,6 @@ impl Default for SettingsStore {
             lock_vault_shortcut: "Ctrl+Shift+L".to_string(),
             #[cfg(not(target_os = "windows"))]
             lock_vault_shortcut: "Super+Shift+L".to_string(),
-            realtime_audio_transcription_engine: "deepgram".to_string(),
             disable_ocr: false,
             show_shortcut_overlay: true,
             device_id: uuid::Uuid::new_v4().to_string(),

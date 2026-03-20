@@ -280,7 +280,6 @@ let DEFAULT_SETTINGS: Settings = {
 			showChatShortcut: "Control+Super+L",
 			searchShortcut: "Control+Super+K",
 			lockVaultShortcut: "Super+Shift+L",
-			realtimeAudioTranscriptionEngine: "whisper-large-v3-turbo",
 			disableVision: false,
 			disableOcr: false,
 			useAllMonitors: true,

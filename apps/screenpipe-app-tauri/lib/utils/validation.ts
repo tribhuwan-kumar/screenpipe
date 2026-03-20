@@ -63,7 +63,6 @@ export const settingsStoreSchema = z.object({
   
   // Audio Settings
   audioTranscriptionEngine: z.string().min(1, "Audio transcription engine is required"),
-  realtimeAudioTranscriptionEngine: z.string(),
   audioDevices: z.array(z.string()),
   disableAudio: z.boolean(),
   languages: z.array(z.string()),
