@@ -54,7 +54,6 @@ import { useQueryState } from "nuqs";
 import { listen } from "@tauri-apps/api/event";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { useTeam } from "@/lib/hooks/use-team";
-import { useIsEnterpriseBuild } from "@/lib/hooks/use-is-enterprise-build";
 import { useEnterprisePolicy } from "@/lib/hooks/use-enterprise-policy";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { commands } from "@/lib/utils/tauri";
@@ -111,7 +110,6 @@ function SettingsPageContent() {
 
   const { settings } = useSettings();
   const teamState = useTeam();
-  const isEnterprise = useIsEnterpriseBuild();
   const { isSectionHidden } = useEnterprisePolicy();
 
   // Sidebar collapse state (persisted in localStorage)
@@ -334,8 +332,8 @@ function SettingsPageContent() {
     { id: "memories", label: "Memories", icon: <Sparkles className="h-4 w-4" />, group: "data" },
     { id: "connections", label: "Connections", icon: <Plug className="h-4 w-4" />, group: "data" },
     { id: "team", label: "Team", icon: <Users className="h-4 w-4" />, group: "account" },
-    ...(!isEnterprise ? [{ id: "account" as SettingsModalSection, label: "Account", icon: <User className="h-4 w-4" />, group: "account" }] : []),
-    ...(!isEnterprise ? [{ id: "referral" as SettingsModalSection, label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" }] : []),
+    { id: "account", label: "Account", icon: <User className="h-4 w-4" />, group: "account" },
+    { id: "referral", label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" },
   ].filter((s) => !isSectionHidden(s.id));
 
   const appGroup = settingsModalSections.filter(s => s.group === "app");
@@ -493,7 +491,7 @@ function SettingsPageContent() {
               <div className="flex-1" />
 
               {/* Team promo card — hidden when user already has a team, sidebar collapsed, or enterprise */}
-              {!teamState.team && !sidebarCollapsed && !isEnterprise && (
+              {!teamState.team && !sidebarCollapsed && !isSectionHidden("team") && (
                 <div className="mx-1 mb-3 p-3 border border-border bg-card">
                   <h3 className="text-sm font-medium text-foreground">
                     Add your team to screenpipe
@@ -512,8 +510,8 @@ function SettingsPageContent() {
 
               {/* Bottom items */}
               <div className="space-y-0.5 border-t border-border pt-2">
-                {/* Team link — hide invite promo in enterprise */}
-                {(!isEnterprise || teamState.team) && (() => {
+                {/* Team link — hide invite promo in enterprise (unless team exists) */}
+                {(!isSectionHidden("team") || teamState.team) && (() => {
                   const teamLabel = teamState.team
                     ? `Your team (${teamState.members.length})`
                     : "Invite your team";
@@ -541,7 +539,7 @@ function SettingsPageContent() {
                 })()}
 
                 {/* Get free month — hidden in enterprise */}
-                {!isEnterprise && (() => {
+                {!isSectionHidden("referral") && (() => {
                   const btn = (
                     <button
                       onClick={() => openModal("referral")}
