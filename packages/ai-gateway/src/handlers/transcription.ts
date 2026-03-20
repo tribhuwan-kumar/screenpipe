@@ -32,31 +32,64 @@ async function handleDeepgramTranscription(request: Request, env: Env): Promise<
     const audioBuffer = await request.arrayBuffer();
     const languages = request.headers.get('detect_language')?.split(',') || [];
     const sampleRate = request.headers.get('sample_rate') || '16000';
-
-    // Forward the original Content-Type (e.g. audio/mpeg for MP3, audio/wav for WAV)
     const incomingContentType = request.headers.get('Content-Type') || 'audio/wav';
 
-    const deepgramResponse = await fetch(
+    const url =
       'https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&sample_rate=' +
-        sampleRate +
-        (languages.length > 0 ? '&' + languages.map((lang) => `detect_language=${lang}`).join('&') : ''),
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
-          'Content-Type': incomingContentType,
-        },
-        body: audioBuffer,
-      }
-    );
+      sampleRate +
+      (languages.length > 0 ? '&' + languages.map((lang) => `detect_language=${lang}`).join('&') : '');
 
-    if (!deepgramResponse.ok) {
-      const errorData = await deepgramResponse.json();
-      throw new Error(`Deepgram API error: ${JSON.stringify(errorData)}`);
+    const headers = {
+      Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+      'Content-Type': incomingContentType,
+    };
+
+    // Retry transient failures (502/503/520/522/524) once after 500ms
+    const MAX_ATTEMPTS = 2;
+    let lastError: string = '';
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const deepgramResponse = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: audioBuffer,
+          signal: AbortSignal.timeout(30_000), // 30s timeout
+        });
+
+        if (deepgramResponse.ok) {
+          const data: string | object = await deepgramResponse.json();
+          return createSuccessResponse(data);
+        }
+
+        // Read error body as text (not json — Cloudflare 520 returns plain text)
+        const errorBody = await deepgramResponse.text();
+        lastError = `Deepgram API error (HTTP ${deepgramResponse.status} ${deepgramResponse.statusText}): ${errorBody}`;
+
+        const status = deepgramResponse.status;
+        const isRetryable = status === 502 || status === 503 || status === 520 || status === 522 || status === 524 || status === 429;
+
+        if (isRetryable && attempt < MAX_ATTEMPTS) {
+          console.warn(`Deepgram transient error (${status}), retrying in 500ms (attempt ${attempt}/${MAX_ATTEMPTS})`);
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+
+        throw new Error(lastError);
+      } catch (error: any) {
+        if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+          lastError = 'Deepgram request timed out after 30s';
+          if (attempt < MAX_ATTEMPTS) {
+            console.warn(`Deepgram timeout, retrying (attempt ${attempt}/${MAX_ATTEMPTS})`);
+            await new Promise((r) => setTimeout(r, 500));
+            continue;
+          }
+        }
+        throw error;
+      }
     }
 
-    const data: string | object = await deepgramResponse.json();
-    return createSuccessResponse(data);
+    throw new Error(lastError || 'Deepgram transcription failed after retries');
   } catch (error: any) {
     console.error('Error in Deepgram request:', error);
     return createErrorResponse(500, error.message);
