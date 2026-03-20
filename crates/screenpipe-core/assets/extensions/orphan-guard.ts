@@ -14,14 +14,21 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 export default function (pi: ExtensionAPI) {
   const parentPid = process.ppid;
 
-  // Method 1: stdin close detection
-  // When parent dies, stdin pipe breaks → 'end' event fires
-  process.stdin.on("end", () => {
-    process.exit(0);
-  });
-  process.stdin.on("close", () => {
-    process.exit(0);
-  });
+  // Method 1: stdin close detection — ONLY in RPC mode.
+  // In one-shot mode (-p), stdin closes immediately after prompt delivery
+  // which would kill the process before the LLM can respond.
+  // RPC mode keeps stdin open for the session lifetime.
+  const isRpcMode = process.argv.includes("--mode") &&
+    process.argv[process.argv.indexOf("--mode") + 1] === "rpc";
+
+  if (isRpcMode) {
+    process.stdin.on("end", () => {
+      process.exit(0);
+    });
+    process.stdin.on("close", () => {
+      process.exit(0);
+    });
+  }
 
   // Method 2: poll parent PID every 2 seconds
   // If ppid changes (parent died, we got reparented to init/launchd), exit
