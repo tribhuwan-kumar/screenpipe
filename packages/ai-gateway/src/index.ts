@@ -216,7 +216,43 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		}
 
 		if (path === '/v1/listen' && request.method === 'POST') {
-			return await handleFileTranscription(request, env);
+			// Per-user daily cost cap for transcription
+			const dailyCost = await getDailyUserCost(env, authResult.deviceId);
+			const maxCost = getMaxDailyCostPerUser(env);
+			if (dailyCost >= maxCost) {
+				return addCorsHeaders(createErrorResponse(429, JSON.stringify({
+					error: 'daily_cost_limit_exceeded',
+					message: `You've reached your daily transcription limit ($${maxCost}/day). Audio will be transcribed locally until tomorrow.`,
+					daily_cost: dailyCost,
+					limit: maxCost,
+				})));
+			}
+
+			// Estimate cost from audio size: ~30s chunks at $0.26/hr = $0.0022/chunk
+			// More precise: estimate duration from Content-Length (MP3 at 64kbps = 8KB/s)
+			const contentLength = parseInt(request.headers.get('content-length') || '0');
+			const estimatedSeconds = contentLength > 0 ? contentLength / 8000 : 30;
+			const estimatedCost = (estimatedSeconds / 3600) * 0.26;
+
+			const response = await handleFileTranscription(request, env);
+
+			// Log cost after successful transcription
+			if (response.ok) {
+				ctx.waitUntil(logCost(env, {
+					device_id: authResult.deviceId,
+					user_id: authResult.userId,
+					tier: authResult.tier,
+					provider: 'deepgram',
+					model: 'nova-3',
+					input_tokens: Math.round(estimatedSeconds),
+					output_tokens: null,
+					estimated_cost_usd: estimatedCost,
+					endpoint: '/v1/listen',
+					stream: false,
+				}));
+			}
+
+			return response;
 		}
 
 		if (path === '/v1/models' && request.method === 'GET') {
