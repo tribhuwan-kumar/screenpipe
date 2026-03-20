@@ -31,17 +31,27 @@ impl Integration for Linear {
     }
 
     async fn test(&self, client: &reqwest::Client, creds: &Map<String, Value>) -> Result<String> {
-        let api_key = require_str(creds, "api_key")?;
-        let resp: Value = client
+        let api_key = require_str(creds, "api_key")?.trim();
+        let resp = client
             .post("https://api.linear.app/graphql")
-            .bearer_auth(api_key)
+            .header("Authorization", api_key)
             .json(&json!({"query": "{ viewer { id name email } }"}))
             .send()
-            .await?
-            .error_for_status()?
-            .json()
             .await?;
-        let name = resp["data"]["viewer"]["name"].as_str().unwrap_or("unknown");
+        let status = resp.status();
+        let body: Value = resp.json().await?;
+        if !status.is_success() {
+            let msg = body["error"]
+                .as_str()
+                .or_else(|| body["errors"][0]["message"].as_str())
+                .unwrap_or("unknown error");
+            anyhow::bail!("Linear API error ({}): {}", status, msg);
+        }
+        if let Some(errors) = body.get("errors") {
+            let msg = errors[0]["message"].as_str().unwrap_or("GraphQL error");
+            anyhow::bail!("Linear GraphQL error: {}", msg);
+        }
+        let name = body["data"]["viewer"]["name"].as_str().unwrap_or("unknown");
         Ok(format!("connected as {}", name))
     }
 }

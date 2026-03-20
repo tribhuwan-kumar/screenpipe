@@ -1008,9 +1008,10 @@ function ApiIntegrationPanel({ integration, onRefresh }: {
       ))}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button onClick={handleTest} disabled={status === "testing" || status === "saving"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
+        <Button onClick={handleTest} disabled={status === "testing" || status === "saving"} variant={status === "error" ? "outline" : "default"} size="sm" className="gap-1.5 h-7 text-xs normal-case font-sans tracking-normal">
           {status === "testing" ? (<><Loader2 className="h-3 w-3 animate-spin" />testing...</>)
            : status === "saving" ? (<><Loader2 className="h-3 w-3 animate-spin" />saving...</>)
+           : status === "error" ? (<>retry</>)
            : (<><Check className="h-3 w-3" />test &amp; save</>)}
         </Button>
         {integration.connected && (
