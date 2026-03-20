@@ -99,6 +99,7 @@ mod dock_menu;
 mod health;
 mod log_files;
 mod native_notification;
+mod native_shortcut_reminder;
 mod safe_icon;
 mod shortcuts;
 mod vault;
