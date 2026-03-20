@@ -543,8 +543,8 @@ class NotificationPanelController: NSObject {
         p.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.floatingWindow)) + 1)
         p.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .fullScreenAuxiliary]
         p.isOpaque = false
-        p.backgroundColor = .clear
-        p.hasShadow = true
+        p.backgroundColor = NSColor.clear
+        p.hasShadow = false
         p.hidesOnDeactivate = false
         p.isMovableByWindowBackground = false
         p.acceptsMouseMovedEvents = true
