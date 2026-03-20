@@ -1828,7 +1828,6 @@ export const AIPresets = () => {
                   ) : (
                     <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                   )}
-                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span className="font-mono bg-muted px-1.5 py-0.5 rounded truncate max-w-[180px]" title={preset.model || 'Not set'}>
