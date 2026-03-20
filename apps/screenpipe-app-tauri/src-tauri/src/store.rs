@@ -555,6 +555,32 @@ impl SettingsStore {
                     }
                 }
             }
+
+            // One-time migration: move default Haiku users to Qwen3.5 Flash.
+            // Only migrates presets on the "pi" (screenpipe cloud) provider that
+            // still have the old factory default model. Users who explicitly chose
+            // Haiku or any other model are unaffected.
+            if !obj.contains_key("haikuToQwenFlashMigrated") {
+                if let Some(presets) = obj.get_mut("aiPresets") {
+                    if let Some(arr) = presets.as_array_mut() {
+                        for preset in arr.iter_mut() {
+                            let is_pi = preset.get("provider").and_then(|p| p.as_str()) == Some("pi");
+                            let is_haiku = preset.get("model").and_then(|m| m.as_str()) == Some("claude-haiku-4-5");
+                            if is_pi && is_haiku {
+                                tracing::info!("migrating default Haiku preset to Qwen3.5 Flash");
+                                preset.as_object_mut().unwrap().insert(
+                                    "model".to_string(),
+                                    Value::String("qwen/qwen3.5-flash-02-23".to_string()),
+                                );
+                            }
+                        }
+                    }
+                }
+                obj.insert(
+                    "haikuToQwenFlashMigrated".to_string(),
+                    Value::Bool(true),
+                );
+            }
         }
         val
     }
