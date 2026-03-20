@@ -24,6 +24,8 @@ import {
   RefreshCw,
   Settings2,
   Trash2,
+  Copy,
+  Star,
   XIcon,
   CheckCircle2,
   AlertCircle,
