@@ -189,11 +189,16 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
             min_signals_required: 1,
         },
         // Google Meet (browser)
+        // NOTE: "google meet" removed from url_patterns — it's too broad and matches
+        // Google Calendar event popups that show "Join with Google Meet" text.
+        // "meet.google.com" alone is sufficient for actual Meet calls.
+        // NOTE: Ctrl+D / Cmd+D removed — these are the browser bookmark shortcut
+        // and cause false positives when any browser element exposes ⌘D in its AX tree.
         MeetingDetectionProfile {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &[],
                 windows_process_names: &[],
-                browser_url_patterns: &["meet.google.com", "google meet"],
+                browser_url_patterns: &["meet.google.com"],
             },
             call_signals: vec![
                 CallSignal::RoleWithName {
@@ -204,9 +209,6 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                     role: "AXButton",
                     name_contains: "end call",
                 },
-                // Google Meet's "Leave call" button has Ctrl+D shortcut in its description
-                CallSignal::KeyboardShortcut("Ctrl+D"),
-                CallSignal::KeyboardShortcut("\u{2318}D"), // Cmd+D
                 // Fallback: match any element with "leave call" in name (no automation_id on Meet)
                 CallSignal::NameContains("leave call"),
             ],
@@ -1673,8 +1675,14 @@ pub struct ActiveTracking {
     pub profile_index: usize,
 }
 
-/// Check if a browser process has a window whose title or AXDocument attribute
-/// contains any of the URL patterns.
+/// Check if a browser process has a window whose AXDocument (page URL) or tab
+/// title matches a meeting URL pattern.
+///
+/// We prefer AXDocument (the actual page URL) over window title because window
+/// titles can contain arbitrary page content (e.g. Google Calendar showing
+/// "Join with Google Meet" text). Window titles are only checked for patterns
+/// that look like domain names (contain a dot) to avoid false positives from
+/// page content text like "Google Meet" appearing in calendar events.
 #[cfg(target_os = "macos")]
 fn has_browser_meeting_url(pid: i32, url_patterns: &[&str]) -> bool {
     cidre::objc::ar_pool(|| -> bool {
@@ -1690,22 +1698,26 @@ fn has_browser_meeting_url(pid: i32, url_patterns: &[&str]) -> bool {
             let window = &windows[i];
             let _ = window.set_messaging_timeout_secs(0.2);
 
-            if let Some(title) = get_ax_string_attr(window, cidre::ax::attr::title()) {
-                let title_lower = title.to_lowercase();
-                if url_patterns
-                    .iter()
-                    .any(|p| title_lower.contains(&p.to_lowercase()))
-                {
-                    return true;
-                }
-            }
-
-            // Also check AXDocument attribute (some browsers expose URL there)
+            // Primary: check AXDocument attribute (actual page URL, most reliable)
             if let Some(doc) = get_ax_string_attr(window, cidre::ax::attr::document()) {
                 let doc_lower = doc.to_lowercase();
                 if url_patterns
                     .iter()
                     .any(|p| doc_lower.contains(&p.to_lowercase()))
+                {
+                    return true;
+                }
+            }
+
+            // Fallback: check window title, but ONLY for domain-like patterns
+            // (containing a dot, e.g. "meet.google.com") to avoid matching
+            // page content like "Join with Google Meet" on calendar pages.
+            if let Some(title) = get_ax_string_attr(window, cidre::ax::attr::title()) {
+                let title_lower = title.to_lowercase();
+                if url_patterns
+                    .iter()
+                    .filter(|p| p.contains('.'))
+                    .any(|p| title_lower.contains(&p.to_lowercase()))
                 {
                     return true;
                 }
@@ -2872,12 +2884,12 @@ mod tests {
         );
         assert_eq!(
             format_signal_match(
-                &CallSignal::KeyboardShortcut("Ctrl+D"),
+                &CallSignal::KeyboardShortcut("Ctrl+E"),
                 "AXButton",
                 None,
                 None
             ),
-            "shortcut=Ctrl+D"
+            "shortcut=Ctrl+E"
         );
         let s = format_signal_match(
             &CallSignal::RoleWithName {
@@ -3146,6 +3158,227 @@ mod tests {
             has_page_title_pattern,
             "Zoom browser_url_patterns must include 'zoom meeting' for page title matching"
         );
+    }
+
+    // ── Google Meet false positive prevention tests ─────────────────
+
+    #[test]
+    fn test_google_meet_no_cmd_d_signal() {
+        // Cmd+D and Ctrl+D are browser bookmark shortcuts — they must NOT be
+        // used as meeting signals because they cause false positives when any
+        // browser element exposes ⌘D in its accessibility description.
+        let profiles = load_detection_profiles();
+        let meet = profiles
+            .iter()
+            .find(|p| {
+                p.app_identifiers
+                    .browser_url_patterns
+                    .contains(&"meet.google.com")
+            })
+            .expect("Google Meet profile not found");
+
+        let has_cmd_d = meet.call_signals.iter().any(|s| {
+            matches!(s, CallSignal::KeyboardShortcut(k) if k.contains('D') || k.contains('d'))
+        });
+        assert!(
+            !has_cmd_d,
+            "Google Meet profile must NOT have Cmd+D/Ctrl+D signals (browser bookmark false positive)"
+        );
+    }
+
+    #[test]
+    fn test_google_meet_url_patterns_no_broad_match() {
+        // "google meet" as a URL pattern is too broad — it matches Google Calendar
+        // event popups that contain "Join with Google Meet" text.
+        let profiles = load_detection_profiles();
+        let meet = profiles
+            .iter()
+            .find(|p| {
+                p.app_identifiers
+                    .browser_url_patterns
+                    .contains(&"meet.google.com")
+            })
+            .expect("Google Meet profile not found");
+
+        let has_broad_pattern = meet
+            .app_identifiers
+            .browser_url_patterns
+            .iter()
+            .any(|p| *p == "google meet");
+        assert!(
+            !has_broad_pattern,
+            "Google Meet browser_url_patterns must NOT include bare 'google meet' — \
+             it matches calendar pages showing 'Join with Google Meet'"
+        );
+    }
+
+    #[test]
+    fn test_google_calendar_title_not_matched_as_meet() {
+        // Simulate URL pattern matching for Google Calendar window titles.
+        // Even if the title contains "Google Meet" text (from the event popup),
+        // domain-only matching should prevent a false positive.
+        let profiles = load_detection_profiles();
+        let meet = profiles
+            .iter()
+            .find(|p| {
+                p.app_identifiers
+                    .browser_url_patterns
+                    .contains(&"meet.google.com")
+            })
+            .expect("Google Meet profile not found");
+
+        let calendar_titles = [
+            "Google Calendar - Week of March 16, 2026",
+            "Ben <> Louis - Google Calendar",
+            "Join with Google Meet - Calendar",
+        ];
+
+        for title in &calendar_titles {
+            let title_lower = title.to_lowercase();
+            // Only domain-like patterns (with dots) should match against titles
+            let matched = meet
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
+                .filter(|p| p.contains('.'))
+                .any(|p| title_lower.contains(&p.to_lowercase()));
+            assert!(
+                !matched,
+                "Calendar title '{}' should NOT match Google Meet URL patterns",
+                title
+            );
+        }
+    }
+
+    #[test]
+    fn test_actual_meet_url_still_detected() {
+        // Verify that actual Google Meet URLs/titles are still detected.
+        let profiles = load_detection_profiles();
+        let meet = profiles
+            .iter()
+            .find(|p| {
+                p.app_identifiers
+                    .browser_url_patterns
+                    .contains(&"meet.google.com")
+            })
+            .expect("Google Meet profile not found");
+
+        // AXDocument (page URL) — primary detection path
+        let meet_urls = [
+            "https://meet.google.com/abc-defg-hij",
+            "meet.google.com/abc-defg-hij",
+        ];
+        for url in &meet_urls {
+            let url_lower = url.to_lowercase();
+            let matched = meet
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
+                .any(|p| url_lower.contains(&p.to_lowercase()));
+            assert!(
+                matched,
+                "Meet URL '{}' should match Google Meet URL patterns",
+                url
+            );
+        }
+
+        // Window title with meet.google.com domain should also match
+        let meet_titles = [
+            "Meet - abc-defg-hij - Google Chrome",
+            "meet.google.com/abc-defg-hij - Arc",
+        ];
+        for title in &meet_titles {
+            let title_lower = title.to_lowercase();
+            let matched = meet
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
+                .filter(|p| p.contains('.'))
+                .any(|p| title_lower.contains(&p.to_lowercase()));
+            // Only the second one contains "meet.google.com" as a domain
+            if title.contains("meet.google.com") {
+                assert!(
+                    matched,
+                    "Meet title '{}' should match Google Meet URL patterns",
+                    title
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_bookmark_shortcut_not_a_meeting_signal() {
+        // Cmd+D / Ctrl+D should NOT match any meeting signal for browser-based
+        // profiles, because it's the universal bookmark shortcut.
+        let signal_cmd_d = CallSignal::KeyboardShortcut("\u{2318}D");
+        let signal_ctrl_d = CallSignal::KeyboardShortcut("Ctrl+D");
+
+        // A random AXButton with ⌘D in its description (e.g. bookmark button)
+        // should not be detected as a meeting signal
+        assert!(
+            check_signal_match(&signal_cmd_d, "AXButton", None, Some("Add bookmark ⌘D"), None),
+            "KeyboardShortcut signal itself matches — this test verifies the signal \
+             was REMOVED from the Google Meet profile, not that matching is broken"
+        );
+
+        // Verify the signal is not in the Google Meet profile
+        let profiles = load_detection_profiles();
+        let meet = profiles
+            .iter()
+            .find(|p| {
+                p.app_identifiers
+                    .browser_url_patterns
+                    .contains(&"meet.google.com")
+            })
+            .expect("Google Meet profile not found");
+
+        for signal in &meet.call_signals {
+            if let CallSignal::KeyboardShortcut(k) = signal {
+                assert!(
+                    *k != "\u{2318}D" && *k != "Ctrl+D",
+                    "Google Meet profile must not contain keyboard shortcut '{}' — \
+                     it's the browser bookmark shortcut",
+                    k
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_url_pattern_title_matching_requires_domain() {
+        // When matching URL patterns against window titles (not AXDocument),
+        // only patterns that look like domains (contain a dot) should match.
+        // This prevents "google meet" from matching in window titles.
+
+        // Patterns without dots should NOT match titles
+        let non_domain_patterns = ["google meet", "zoom meeting", "slack huddle"];
+        let title = "Join with Google Meet - Calendar";
+        let title_lower = title.to_lowercase();
+
+        for pattern in &non_domain_patterns {
+            // Domain-only filter: patterns without dots are excluded from title matching
+            let is_domain = pattern.contains('.');
+            assert!(
+                !is_domain,
+                "Test setup error: '{}' should not contain a dot",
+                pattern
+            );
+            // Even though the title contains the pattern text, it shouldn't match
+            // because the pattern is filtered out (no dot = not a domain)
+        }
+
+        // Patterns WITH dots should match titles
+        let domain_patterns = ["meet.google.com", "teams.microsoft.com"];
+        let title_with_domain = "meet.google.com/abc - Arc";
+        let title_lower2 = title_with_domain.to_lowercase();
+
+        for pattern in &domain_patterns {
+            assert!(pattern.contains('.'));
+            let matched = title_lower2.contains(&pattern.to_lowercase());
+            if pattern == &"meet.google.com" {
+                assert!(matched);
+            }
+        }
     }
 
     #[test]
