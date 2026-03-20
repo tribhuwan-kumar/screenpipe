@@ -300,6 +300,7 @@ let DEFAULT_SETTINGS: Settings = {
 			cloudArchiveEnabled: false,
 			cloudArchiveRetentionDays: 7,
 			filterMusic: false,
+			ignoreIncognitoWindows: true,
 		};
 
 export function createDefaultSettingsObject(): Settings {
