@@ -252,62 +252,145 @@ export function MeetingsSection() {
     });
   };
 
-  const [suggesting, setSuggesting] = useState(false);
+  const [suggestingAttendees, setSuggestingAttendees] = useState(false);
+  const [suggestingNotes, setSuggestingNotes] = useState(false);
 
-  const suggestFromScreenpipe = async (meeting: MeetingRecord) => {
-    setSuggesting(true);
+  const NOTE_APPS = ["zed", "obsidian", "notepad", "notes", "notion", "typora", "logseq", "bear", "ulysses", "ia writer", "sublime", "vim", "neovim", "emacs", "code"];
+
+  const suggestAttendees = async (meeting: MeetingRecord) => {
+    setSuggestingAttendees(true);
     try {
       const startTime = new Date(meeting.meeting_start).toISOString();
       const endTime = meeting.meeting_end
         ? new Date(meeting.meeting_end).toISOString()
         : new Date().toISOString();
 
-      // Fetch audio transcriptions during meeting window for speakers + notes
-      const audioRes = await fetch(
-        `http://localhost:3030/search?content_type=audio&start_time=${startTime}&end_time=${endTime}&limit=100`
-      );
-      if (!audioRes.ok) throw new Error(`HTTP ${audioRes.status}`);
-      const audioData = await audioRes.json();
+      const attendees = new Set<string>();
 
-      const speakers = new Set<string>();
-      const transcriptLines: string[] = [];
-
-      for (const item of audioData.data || []) {
-        if (item.type === "Audio" && item.content) {
-          const speaker = item.content.speaker_name;
-          if (speaker && speaker !== "unknown" && !speaker.startsWith("speaker_")) {
-            speakers.add(speaker);
-          }
-          const text = item.content.transcription?.trim();
-          if (text) {
-            const prefix = speaker && speaker !== "unknown" ? `${speaker}: ` : "";
-            transcriptLines.push(`${prefix}${text}`);
+      // Source 1: calendar events overlapping this meeting
+      try {
+        const hoursBack = Math.ceil((Date.now() - new Date(meeting.meeting_start).getTime()) / 3600000) + 1;
+        const calRes = await fetch(
+          `http://localhost:3030/connections/calendar/events?hours_back=${hoursBack}&hours_ahead=0`
+        );
+        if (calRes.ok) {
+          const calData = await calRes.json();
+          const meetingStart = new Date(meeting.meeting_start).getTime();
+          const meetingEnd = meeting.meeting_end ? new Date(meeting.meeting_end).getTime() : Date.now();
+          for (const ev of calData.data || []) {
+            const evStart = new Date(ev.start || ev.startDate).getTime();
+            const evEnd = new Date(ev.end || ev.endDate).getTime();
+            // Check overlap
+            if (evStart < meetingEnd && evEnd > meetingStart) {
+              for (const a of ev.attendees || []) {
+                const name = typeof a === "string" ? a : a.name || a.email;
+                if (name) attendees.add(name);
+              }
+            }
           }
         }
+      } catch {}
+
+      // Source 2: audio speakers during meeting
+      try {
+        const audioRes = await fetch(
+          `http://localhost:3030/search?content_type=audio&start_time=${startTime}&end_time=${endTime}&limit=100`
+        );
+        if (audioRes.ok) {
+          const audioData = await audioRes.json();
+          for (const item of audioData.data || []) {
+            if (item.type === "Audio" && item.content) {
+              const speaker = item.content.speaker_name;
+              if (speaker && speaker !== "unknown" && !speaker.startsWith("speaker_")) {
+                attendees.add(speaker);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      if (attendees.size === 0) {
+        toast({ title: "no attendees found", description: "no calendar events or named speakers during this meeting" });
+      } else {
+        setEditState((s) => ({
+          ...s,
+          attendees: Array.from(attendees).join(", "),
+        }));
+        toast({ title: `${attendees.size} attendee(s) found` });
+      }
+    } catch (err) {
+      toast({ title: "failed to suggest attendees", description: String(err), variant: "destructive" });
+    } finally {
+      setSuggestingAttendees(false);
+    }
+  };
+
+  const suggestNotes = async (meeting: MeetingRecord) => {
+    setSuggestingNotes(true);
+    try {
+      const startTime = new Date(meeting.meeting_start).toISOString();
+      const endTime = meeting.meeting_end
+        ? new Date(meeting.meeting_end).toISOString()
+        : new Date().toISOString();
+
+      const noteChunks: { app: string; text: string }[] = [];
+
+      // Search vision data from note-taking apps during the meeting
+      for (const app of NOTE_APPS) {
+        try {
+          const res = await fetch(
+            `http://localhost:3030/search?content_type=vision&app_name=${encodeURIComponent(app)}&start_time=${startTime}&end_time=${endTime}&limit=20`
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+          for (const item of data.data || []) {
+            if (item.type === "OCR" && item.content) {
+              const text = item.content.text?.trim();
+              if (text && text.length > 20) {
+                noteChunks.push({ app: item.content.app_name || app, text });
+              }
+            }
+          }
+        } catch {}
       }
 
-      // Build suggestions
-      const suggestedAttendees = Array.from(speakers).join(", ");
-      const suggestedNote = transcriptLines.slice(0, 50).join("\n");
+      if (noteChunks.length === 0) {
+        toast({ title: "no notes found", description: "no note-taking app activity detected during this meeting" });
+      } else {
+        // Deduplicate by taking unique text (OCR can repeat)
+        const seen = new Set<string>();
+        const unique: typeof noteChunks = [];
+        for (const chunk of noteChunks) {
+          const key = chunk.text.slice(0, 100);
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(chunk);
+          }
+        }
 
-      setEditState((s) => ({
-        ...s,
-        attendees: s.attendees || suggestedAttendees,
-        note: s.note || suggestedNote,
-      }));
+        // Group by app
+        const byApp = new Map<string, string[]>();
+        for (const chunk of unique) {
+          const existing = byApp.get(chunk.app) || [];
+          existing.push(chunk.text);
+          byApp.set(chunk.app, existing);
+        }
 
-      toast({
-        title: "suggestions loaded",
-        description: `${speakers.size} speaker(s), ${transcriptLines.length} transcript line(s)`,
-      });
+        const parts: string[] = [];
+        for (const [app, texts] of byApp) {
+          parts.push(`[${app}]\n${texts.join("\n\n")}`);
+        }
+
+        setEditState((s) => ({
+          ...s,
+          note: parts.join("\n\n---\n\n"),
+        }));
+        toast({ title: `notes from ${byApp.size} app(s)`, description: `${unique.length} snippet(s)` });
+      }
     } catch (err) {
-      toast({
-        title: "failed to load suggestions",
-        description: String(err),
-        variant: "destructive",
-      });
+      toast({ title: "failed to suggest notes", description: String(err), variant: "destructive" });
     } finally {
-      setSuggesting(false);
+      setSuggestingNotes(false);
     }
   };
 
@@ -526,38 +609,56 @@ export function MeetingsSection() {
                         className="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         placeholder="title"
                       />
-                      <input
-                        type="text"
-                        value={editState.attendees}
-                        onChange={(e) =>
-                          setEditState((s) => ({ ...s, attendees: e.target.value }))
-                        }
-                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                        placeholder="attendees (comma separated)"
-                      />
-                      <textarea
-                        value={editState.note}
-                        onChange={(e) =>
-                          setEditState((s) => ({ ...s, note: e.target.value }))
-                        }
-                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[2rem]"
-                        placeholder="paste note here..."
-                        rows={2}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 text-xs w-fit"
-                        onClick={() => suggestFromScreenpipe(meeting)}
-                        disabled={suggesting}
-                      >
-                        {suggesting ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-3 w-3" />
-                        )}
-                        {suggesting ? "loading..." : "suggest from recordings"}
-                      </Button>
+                      <div className="flex gap-1.5 items-center">
+                        <input
+                          type="text"
+                          value={editState.attendees}
+                          onChange={(e) =>
+                            setEditState((s) => ({ ...s, attendees: e.target.value }))
+                          }
+                          className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="attendees (comma separated)"
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() => suggestAttendees(meeting)}
+                          disabled={suggestingAttendees}
+                          title="suggest from calendar & speakers"
+                        >
+                          {suggestingAttendees ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex gap-1.5 items-start">
+                        <textarea
+                          value={editState.note}
+                          onChange={(e) =>
+                            setEditState((s) => ({ ...s, note: e.target.value }))
+                          }
+                          className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[2rem]"
+                          placeholder="paste note here..."
+                          rows={2}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 shrink-0 mt-0.5"
+                          onClick={() => suggestNotes(meeting)}
+                          disabled={suggestingNotes}
+                          title="suggest from note apps (zed, obsidian, etc.)"
+                        >
+                          {suggestingNotes ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
                       <div className="flex gap-2 flex-wrap">
                         <label className="text-xs text-muted-foreground">
                           start
