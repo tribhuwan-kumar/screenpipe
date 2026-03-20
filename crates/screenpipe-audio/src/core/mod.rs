@@ -12,12 +12,11 @@ use crate::AudioInput;
 use anyhow::Result;
 use dashmap::DashMap;
 use lazy_static::lazy_static;
-use screenpipe_core::Language;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use stream::AudioStream;
-use tracing::{debug, error};
+use tracing::debug;
 
 lazy_static! {
     // Global fallback timestamp for backward compatibility

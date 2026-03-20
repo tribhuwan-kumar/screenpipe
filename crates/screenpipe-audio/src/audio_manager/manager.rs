@@ -14,7 +14,6 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    join,
     sync::{Mutex, RwLock},
     task::JoinHandle,
 };
@@ -364,7 +363,6 @@ impl AudioManager {
         let audio_chunk_duration = options.audio_chunk_duration;
         let recording_sender = self.recording_sender.clone();
         let is_running = self.device_manager.is_running_mut(device).unwrap();
-        let languages = options.languages.clone();
         let device_clone = device.clone();
         let metrics = self.metrics.clone();
 
