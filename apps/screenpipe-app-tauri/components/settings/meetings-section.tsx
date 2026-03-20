@@ -267,7 +267,7 @@ export function MeetingsSection() {
   const [notesModalLoading, setNotesModalLoading] = useState(false);
   const [notesApps, setNotesApps] = useState<{ name: string; minutes: number }[]>([]);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
-  const [appSnippets, setAppSnippets] = useState<{ text: string; timestamp: string }[]>([]);
+  const [appSnippets, setAppSnippets] = useState<{ text: string; timestamp: string; windowName: string }[]>([]);
   const [loadingSnippets, setLoadingSnippets] = useState(false);
   const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(new Set());
   const [notesModalMeeting, setNotesModalMeeting] = useState<MeetingRecord | null>(null);
@@ -400,15 +400,36 @@ export function MeetingsSection() {
       const data = await res.json();
 
       const seen = new Set<string>();
-      const snippets: { text: string; timestamp: string }[] = [];
+      const snippets: { text: string; timestamp: string; windowName: string }[] = [];
       for (const item of data.data || []) {
-        const text = item.content?.text?.trim();
-        if (text && text.length > 20) {
-          const key = text.slice(0, 80);
-          if (!seen.has(key)) {
-            seen.add(key);
-            snippets.push({ text, timestamp: item.content.timestamp || "" });
-          }
+        const raw = item.content?.text?.trim();
+        const windowName = item.content?.window_name || "";
+        if (!raw || raw.length < 20) continue;
+
+        // clean: split into lines, filter noise
+        const lines = raw
+          .replace(/([a-z])([A-Z])/g, "$1\n$2") // camelCase breaks
+          .split(/[\n\r]+/)
+          .map((l: string) => l.trim())
+          .filter((l: string) => {
+            if (l.length < 3) return false;
+            // skip UI noise: single icons, classNames, short fragments
+            if (/^[•\-\*\|=\s]+$/.test(l)) return false;
+            if (/^(className|icon|group|id|label|data)\s*[:=]/i.test(l)) return false;
+            return true;
+          });
+
+        const cleaned = lines.join("\n");
+        if (cleaned.length < 20) continue;
+
+        const key = cleaned.slice(0, 120);
+        if (!seen.has(key)) {
+          seen.add(key);
+          snippets.push({
+            text: cleaned,
+            timestamp: item.content.timestamp || "",
+            windowName,
+          });
         }
       }
       setAppSnippets(snippets);
@@ -936,17 +957,29 @@ export function MeetingsSection() {
                           {appSnippets.map((snippet, idx) => (
                             <label
                               key={idx}
-                              className="flex gap-2 items-start cursor-pointer hover:bg-muted/30 rounded p-1.5 -mx-1.5"
+                              className="flex gap-2 items-start cursor-pointer hover:bg-muted/40 rounded-md p-2 -mx-1 border border-transparent hover:border-border transition-colors"
                             >
                               <input
                                 type="checkbox"
                                 checked={selectedSnippets.has(idx)}
                                 onChange={() => toggleSnippet(idx)}
-                                className="mt-0.5 shrink-0"
+                                className="mt-1 shrink-0"
                               />
-                              <span className="text-xs text-foreground/80 line-clamp-3 whitespace-pre-wrap">
-                                {snippet.text}
-                              </span>
+                              <div className="min-w-0 flex-1">
+                                {snippet.windowName && (
+                                  <div className="text-[10px] text-muted-foreground/60 font-mono mb-0.5 truncate">
+                                    {snippet.windowName}
+                                  </div>
+                                )}
+                                <div className="text-xs text-foreground/80 whitespace-pre-wrap line-clamp-4 leading-relaxed">
+                                  {snippet.text}
+                                </div>
+                                {snippet.timestamp && (
+                                  <div className="text-[10px] text-muted-foreground/40 mt-1">
+                                    {new Date(snippet.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                                  </div>
+                                )}
+                              </div>
                             </label>
                           ))}
                           {selectedSnippets.size > 0 && (
