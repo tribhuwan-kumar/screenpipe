@@ -6183,6 +6183,7 @@ LIMIT ? OFFSET ?
         meeting_end: Option<&str>,
         title: Option<&str>,
         attendees: Option<&str>,
+        note: Option<&str>,
         meeting_app: Option<&str>,
     ) -> Result<(), SqlxError> {
         let mut sets: Vec<&str> = Vec::new();
@@ -6197,6 +6198,9 @@ LIMIT ? OFFSET ?
         }
         if attendees.is_some() {
             sets.push("attendees = ?");
+        }
+        if note.is_some() {
+            sets.push("note = ?");
         }
         if meeting_app.is_some() {
             sets.push("meeting_app = ?");
@@ -6227,6 +6231,9 @@ LIMIT ? OFFSET ?
             query = query.bind(v);
         }
         if let Some(v) = attendees {
+            query = query.bind(v);
+        }
+        if let Some(v) = note {
             query = query.bind(v);
         }
         if let Some(v) = meeting_app {

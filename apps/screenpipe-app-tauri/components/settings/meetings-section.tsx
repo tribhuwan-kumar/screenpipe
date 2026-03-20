@@ -25,6 +25,7 @@ interface MeetingRecord {
   meeting_app: string;
   title: string | null;
   attendees: string | null;
+  note: string | null;
   detection_source: string;
   created_at: string;
 }
@@ -33,6 +34,8 @@ interface EditState {
   title: string;
   meeting_start: string;
   meeting_end: string;
+  attendees: string;
+  note: string;
 }
 
 function formatDuration(start: string, end: string | null): string {
@@ -150,6 +153,8 @@ export function MeetingsSection() {
     title: "",
     meeting_start: "",
     meeting_end: "",
+    attendees: "",
+    note: "",
   });
   const [savingId, setSavingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -241,6 +246,8 @@ export function MeetingsSection() {
       meeting_end: meeting.meeting_end
         ? toDatetimeLocal(meeting.meeting_end)
         : "",
+      attendees: meeting.attendees ?? "",
+      note: meeting.note ?? "",
     });
   };
 
@@ -254,6 +261,8 @@ export function MeetingsSection() {
       const body: Record<string, string> = {
         title: editState.title,
         meeting_start: new Date(editState.meeting_start).toISOString(),
+        attendees: editState.attendees,
+        note: editState.note,
       };
       if (editState.meeting_end) {
         body.meeting_end = new Date(editState.meeting_end).toISOString();
@@ -457,6 +466,24 @@ export function MeetingsSection() {
                         className="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         placeholder="title"
                       />
+                      <input
+                        type="text"
+                        value={editState.attendees}
+                        onChange={(e) =>
+                          setEditState((s) => ({ ...s, attendees: e.target.value }))
+                        }
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="attendees (comma separated)"
+                      />
+                      <textarea
+                        value={editState.note}
+                        onChange={(e) =>
+                          setEditState((s) => ({ ...s, note: e.target.value }))
+                        }
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[2rem]"
+                        placeholder="paste note here..."
+                        rows={2}
+                      />
                       <div className="flex gap-2 flex-wrap">
                         <label className="text-xs text-muted-foreground">
                           start
@@ -525,6 +552,16 @@ export function MeetingsSection() {
                           )
                         </span>
                       </div>
+                      {meeting.attendees && (
+                        <div className="text-xs text-muted-foreground/80 mt-0.5">
+                          attendees: {meeting.attendees}
+                        </div>
+                      )}
+                      {meeting.note && (
+                        <div className="text-xs text-muted-foreground/80 mt-0.5 whitespace-pre-wrap line-clamp-2">
+                          {meeting.note}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>

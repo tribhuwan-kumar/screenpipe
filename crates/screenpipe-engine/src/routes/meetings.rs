@@ -23,6 +23,7 @@ pub struct UpdateMeetingRequest {
     pub meeting_end: Option<String>,
     pub title: Option<String>,
     pub attendees: Option<String>,
+    pub note: Option<String>,
     pub meeting_app: Option<String>,
 }
 
@@ -125,6 +126,7 @@ pub(crate) async fn update_meeting_handler(
             body.meeting_end.as_deref(),
             body.title.as_deref(),
             body.attendees.as_deref(),
+            body.note.as_deref(),
             body.meeting_app.as_deref(),
         )
         .await

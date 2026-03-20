@@ -181,6 +181,7 @@ pub struct MeetingRecord {
     pub meeting_app: String,
     pub title: Option<String>,
     pub attendees: Option<String>,
+    pub note: Option<String>,
     pub detection_source: String,
     pub created_at: String,
 }
