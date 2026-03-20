@@ -748,6 +748,11 @@ jobs:
             echo "AppImage repacked successfully"
           ' _ {} \;
 
+      - name: Install AzureSignTool (Windows)
+        if: matrix.os_type == 'windows'
+        shell: powershell
+        run: dotnet tool install --global AzureSignTool
+
       - name: Build (Windows)
         if: matrix.os_type == 'windows'
         working-directory: apps/screenpipe-app-tauri
@@ -757,6 +762,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
+          # Azure Key Vault code signing
+          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+          AZURE_KEY_VAULT_CERTIFICATE: ${{ secrets.AZURE_KEY_VAULT_CERTIFICATE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           # Optimize for build speed on Windows
           CARGO_PROFILE_RELEASE_LTO: thin
           CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
