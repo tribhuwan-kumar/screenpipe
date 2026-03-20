@@ -958,19 +958,19 @@ async fn build_activity_context(apps: &[AppActivity], windows: &[WindowActivity]
 // System prompt — returns both suggestions and tags in one AI call (zero extra cost)
 const AI_SYSTEM_PROMPT: &str = r#"Analyze this screenpipe user's activity (records screen/audio 24/7). Return a JSON object with "suggestions" and "tags".
 
-Format: {"suggestions":["suggestion1","suggestion2","suggestion3","suggestion4"],"tags":["tag1","tag2","tag3"]}
+Format: {"suggestions":["suggestion one here","suggestion two here","suggestion three here","suggestion four here"],"tags":["tag-one","tag-two","tag-three"]}
 
-SUGGESTIONS — 4 natural sentences the user can click to ask about their activity:
-- all lowercase plain english, NO hyphens, NO question marks
-- 5-10 words, start with: summarize, show, list, compare, find, what, how much
-- ONLY reference apps, people, and topics that appear in the activity data below. NEVER mention apps or services the user hasn't actually used.
-- be specific to what the user actually did, not generic
+SUGGESTIONS — 4 natural English sentences with spaces between words:
+- MUST use normal spaces between words, like "summarize my coding session in vscode"
+- NEVER use hyphens between words. WRONG: "summarize-coding-activity". RIGHT: "summarize coding activity"
+- all lowercase, no question marks, 5-12 words
+- start with: summarize, show, list, compare, find, what, how much
+- ONLY reference apps and topics from the activity data below. Never mention apps the user hasn't used.
 
-TAGS — 3-8 short hyphenated labels for search/filtering:
-- lowercase with hyphens, no spaces: "coding", "rust", "debugging-auth", "meeting-with-sarah"
-- include: activity type, specific apps, topics, people, projects
+TAGS — 3-8 short hyphenated labels (tags ARE hyphenated, suggestions are NOT):
+- "coding", "rust", "debugging-auth", "meeting-with-sarah"
 
-Output ONLY the JSON on a SINGLE LINE. Do NOT invent or assume any app usage not present in the data.
+Output ONLY the JSON on a SINGLE LINE.
 "#;
 
 /// Result from a single AI call that returns both suggestions and tags.
@@ -1044,8 +1044,16 @@ fn parse_ai_response(content: &str) -> Option<AiResult> {
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|v| {
-                            v.as_str().map(|s| Suggestion {
-                                text: s.to_string(),
+                            v.as_str().map(|s| {
+                                // Fix AI returning hyphenated suggestions like
+                                // "summarize-coding-activity" instead of normal sentences.
+                                // If most words are hyphen-joined (no spaces), replace hyphens with spaces.
+                                let text = if !s.contains(' ') && s.contains('-') {
+                                    s.replace('-', " ")
+                                } else {
+                                    s.to_string()
+                                };
+                                Suggestion { text }
                             })
                         })
                         .take(4)
