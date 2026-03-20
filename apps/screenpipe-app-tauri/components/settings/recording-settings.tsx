@@ -1589,7 +1589,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                   <Slider
                     value={[settings.batchMaxDurationSecs ?? 0]}
                     onValueChange={([value]) =>
-                      handleSettingsChange({ batchMaxDurationSecs: value ?? 0 }, true)
+                      handleSettingsChange({ batchMaxDurationSecs: value ?? 0 } as any, true)
                     }
                     min={0}
                     max={1800}
