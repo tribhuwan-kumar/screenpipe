@@ -162,7 +162,7 @@ struct ScreenMatrixView: View {
 // MARK: - Main shortcut reminder view
 // Concept #4: Audio-reactive pill that expands on hover
 
-private let kCollapsedW: CGFloat = 44
+private let kCollapsedW: CGFloat = 62
 private let kCollapsedH: CGFloat = 22
 private let kExpandedW: CGFloat = 200
 private let kExpandedH: CGFloat = 26
@@ -195,7 +195,7 @@ struct ShortcutReminderView: View {
         }
     }
 
-    // MARK: - Collapsed pill (live audio viz)
+    // MARK: - Collapsed pill (live audio + screen viz)
     private var collapsedView: some View {
         HStack(spacing: 3) {
             // App icon tiny
@@ -206,7 +206,22 @@ struct ShortcutReminderView: View {
             }
             // Mini audio bars
             AudioEqualizerView(active: metrics.audioActive, speechRatio: metrics.speechRatio)
-                .frame(width: 20, height: 12)
+                .frame(width: 18, height: 12)
+            // Mini screen capture viz
+            ScreenMatrixView(active: metrics.screenActive, captureFps: metrics.captureFps)
+                .frame(width: 18, height: 12)
+                .clipShape(RoundedRectangle(cornerRadius: 1))
+            // Meeting indicator
+            ZStack {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 6))
+                    .foregroundColor(metrics.meetingActive ? .white : .white.opacity(0.2))
+                if metrics.meetingActive {
+                    Circle().fill(.white)
+                        .frame(width: 4, height: 4)
+                        .offset(x: 5, y: -5)
+                }
+            }
         }
         .padding(.horizontal, 5)
         .frame(height: kCollapsedH)
@@ -218,15 +233,15 @@ struct ShortcutReminderView: View {
     private var expandedView: some View {
         HStack(spacing: 0) {
             // Shortcut buttons
-            ShortcutCellButton(icon: "rectangle", label: overlayShortcut, colW: nil) {
+            ShortcutCellButton(icon: "rectangle", label: overlayShortcut, colW: nil, edge: .leading) {
                 onAction("open_timeline")
             }
             Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
-            ShortcutCellButton(icon: "bubble.left", label: chatShortcut, colW: nil) {
+            ShortcutCellButton(icon: "bubble.left", label: chatShortcut, colW: nil, edge: nil) {
                 onAction("open_chat")
             }
             Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
-            ShortcutCellButton(icon: "magnifyingglass", label: searchShortcut, colW: nil) {
+            ShortcutCellButton(icon: "magnifyingglass", label: searchShortcut, colW: nil, edge: nil) {
                 onAction("open_search")
             }
 
@@ -245,16 +260,17 @@ struct ShortcutReminderView: View {
             Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
 
             // Meeting + close
-            HoverIconButton(icon: "phone.fill", isActive: metrics.meetingActive) {
+            HoverIconButton(icon: "phone.fill", isActive: metrics.meetingActive, edge: nil) {
                 onAction("toggle_meeting")
             }
-            HoverIconButton(icon: "xmark", isActive: false) {
+            HoverIconButton(icon: "xmark", isActive: false, edge: .trailing) {
                 onAction("close")
             }
         }
         .frame(height: kExpandedH)
         .background(Capsule().fill(Color.black.opacity(0.8)))
         .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
+        .clipShape(Capsule()) // clip hover highlights to capsule shape
     }
 }
 
@@ -265,6 +281,7 @@ struct ShortcutCellButton: View {
     let icon: String
     let label: String
     let colW: CGFloat?
+    let edge: HorizontalEdge?  // .leading = left cap, .trailing = right cap, nil = middle
     let action: () -> Void
     @State private var hovered = false
 
@@ -281,9 +298,8 @@ struct ShortcutCellButton: View {
                     .fixedSize()
             }
             .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .frame(width: colW)
-            .background(hovered ? Color.white.opacity(0.1) : Color.clear)
+            .frame(width: colW).frame(maxHeight: .infinity)
+            .background(hovered ? Color.white.opacity(0.12) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -295,17 +311,25 @@ struct ShortcutCellButton: View {
 struct HoverIconButton: View {
     let icon: String
     let isActive: Bool
+    let edge: HorizontalEdge?
     let action: () -> Void
     @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 5, weight: icon == "xmark" ? .medium : .regular))
-                .foregroundColor(isActive ? .white : (hovered ? .white : .white.opacity(0.4)))
-                .frame(width: 10, height: 10)
-                .background(hovered ? Color.white.opacity(0.1) : Color.clear)
-                .contentShape(Rectangle())
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: icon)
+                    .font(.system(size: 5, weight: icon == "xmark" ? .medium : .regular))
+                    .foregroundColor(isActive ? .white : (hovered ? .white : .white.opacity(0.4)))
+                if isActive {
+                    Circle().fill(.white)
+                        .frame(width: 3, height: 3)
+                        .offset(x: 1, y: -1)
+                }
+            }
+            .frame(width: 16).frame(maxHeight: .infinity)
+            .background(hovered ? Color.white.opacity(0.12) : Color.clear)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { h in hovered = h }
@@ -329,6 +353,7 @@ class ShortcutReminderController: NSObject {
     @Published var isExpanded = false
     private var wsTask: URLSessionWebSocketTask?
     private var wsRetryTimer: Timer?
+    private var meetingPollTimer: Timer?
     private var prevFramesCaptured: Int?
     private var prevOcrCompleted: Int?
 
@@ -345,12 +370,15 @@ class ShortcutReminderController: NSObject {
             panel?.orderFrontRegardless()
             AnimationTick.shared.start()
             connectWebSocket()
+            startMeetingPoll()
         }
     }
 
     func hide() {
         AnimationTick.shared.stop()
         disconnectWebSocket()
+        meetingPollTimer?.invalidate()
+        meetingPollTimer = nil
         DispatchQueue.main.async { [self] in
             panel?.orderOut(nil)
         }
@@ -423,26 +451,29 @@ class ShortcutReminderController: NSObject {
         }
     }
 
-    func updateMetrics(json: String) {
-        // Keep the FFI method for Rust-pushed metrics if needed
-        guard let data = json.data(using: .utf8),
-              let m = try? JSONDecoder().decode(MetricsJSON.self, from: data) else { return }
-        DispatchQueue.main.async { [self] in
-            self.metrics.audioActive = (m.audio_level_rms ?? 0) > 0.001
-            self.metrics.speechRatio = min(1, (m.audio_level_rms ?? 0) * 15)
-            self.metrics.screenActive = (m.frames_captured_delta ?? 0) > 0
-            self.metrics.captureFps = Double(m.frames_captured_delta ?? 0) / 0.5
-            self.metrics.meetingActive = m.meeting_active ?? false
-            self.updateContent()
+    // MARK: - Meeting status polling
+
+    private func startMeetingPoll() {
+        checkMeetingStatus()
+        meetingPollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            self?.checkMeetingStatus()
         }
+        RunLoop.main.add(meetingPollTimer!, forMode: .common)
     }
 
-    func updateShortcuts(json: String?) {
-        guard let json = json else { return }
-        DispatchQueue.main.async { [self] in
-            parseShortcuts(json)
-            updateContent()
-        }
+    private func checkMeetingStatus() {
+        guard let url = URL(string: "http://localhost:3030/meetings/status") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self, let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            let active = json["active"] as? Bool ?? false
+            DispatchQueue.main.async {
+                if self.metrics.meetingActive != active {
+                    self.metrics.meetingActive = active
+                    self.updateContent()
+                }
+            }
+        }.resume()
     }
 
     private func parseShortcuts(_ json: String) {
@@ -565,14 +596,6 @@ private class ReminderTrackingView: NSView {
     }
 }
 
-// MARK: - JSON decode helper
-
-private struct MetricsJSON: Codable {
-    var audio_level_rms: Double?
-    var frames_captured_delta: Int?
-    var meeting_active: Bool?
-}
-
 // MARK: - C FFI
 
 @_cdecl("shortcut_show")
@@ -589,26 +612,6 @@ public func shortcutShow(_ jsonPtr: UnsafePointer<CChar>?) -> Int32 {
 public func shortcutHide() -> Int32 {
     if #available(macOS 13.0, *) {
         ShortcutReminderController.shared.hide()
-        return 0
-    }
-    return -2
-}
-
-@_cdecl("shortcut_update_metrics")
-public func shortcutUpdateMetrics(_ jsonPtr: UnsafePointer<CChar>) -> Int32 {
-    let json = String(cString: jsonPtr)
-    if #available(macOS 13.0, *) {
-        ShortcutReminderController.shared.updateMetrics(json: json)
-        return 0
-    }
-    return -2
-}
-
-@_cdecl("shortcut_update_shortcuts")
-public func shortcutUpdateShortcuts(_ jsonPtr: UnsafePointer<CChar>) -> Int32 {
-    let json = String(cString: jsonPtr)
-    if #available(macOS 13.0, *) {
-        ShortcutReminderController.shared.updateShortcuts(json: json)
         return 0
     }
     return -2

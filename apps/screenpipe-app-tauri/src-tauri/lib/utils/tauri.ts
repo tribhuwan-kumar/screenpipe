@@ -192,6 +192,14 @@ async getAudioDevices() : Promise<Result<AudioDeviceInfo[], string>> {
 async isEnterpriseBuildCmd() : Promise<boolean> {
     return await TAURI_INVOKE("is_enterprise_build_cmd");
 },
+/**
+ * Read the enterprise license key from `enterprise.json` next to the executable.
+ * Admins push this file via Intune/MDM to a protected directory (e.g. Program Files)
+ * that employees cannot modify. Returns None if the file doesn't exist or is invalid.
+ */
+async getEnterpriseLicenseKey() : Promise<string | null> {
+    return await TAURI_INVOKE("get_enterprise_license_key");
+},
 async getDiskUsage(forceRefresh: boolean | null, dataDir: string | null) : Promise<Result<JsonValue, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_disk_usage", { forceRefresh, dataDir }) };

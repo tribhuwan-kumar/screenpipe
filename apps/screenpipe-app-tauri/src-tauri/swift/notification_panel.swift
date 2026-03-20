@@ -535,8 +535,11 @@ class NotificationPanelController: NSObject {
     }
 
     private func createPanel() {
+        // Panel is 360x220 to give room for the shadow (20px radius).
+        // The SwiftUI content is padded inward so the visible notification
+        // is still 320x180 with shadow extending into the padding area.
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 180),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -557,7 +560,7 @@ class NotificationPanelController: NSObject {
         p.sharingType = .readOnly
 
         // Use a custom tracking view as the content view
-        let tracking = HoverTrackingView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        let tracking = HoverTrackingView(frame: NSRect(x: 0, y: 0, width: 360, height: 220))
         tracking.controller = self
         tracking.autoresizingMask = [.width, .height]
         p.contentView = tracking
@@ -573,12 +576,15 @@ class NotificationPanelController: NSObject {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
                 let frame = screen.frame
                 let visible = screen.visibleFrame
-                let margin: CGFloat = 20
-                // Use screen.frame for X (right edge) — visibleFrame may be
-                // inset by the Dock and cause wrong positioning
-                let x = frame.origin.x + frame.size.width - 320 - margin
-                // Use visibleFrame for Y (top edge) — avoids menu bar / notch
-                let y = visible.origin.y + visible.size.height - 180 - margin
+                let margin: CGFloat = 16
+                let shadowPad: CGFloat = 20 // padding inside panel for shadow
+                // Content (320x180) is centered in panel (360x220) with 20px padding.
+                // Right edge of content = panel.x + shadowPad + 320
+                // We want that right edge to be `margin` from screen right edge:
+                //   panel.x + shadowPad + 320 = screen.right - margin
+                //   panel.x = screen.right - margin - shadowPad - 320
+                let x = frame.origin.x + frame.size.width - margin - shadowPad - 320
+                let y = visible.origin.y + visible.size.height - margin - shadowPad - 180
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
             }
@@ -590,7 +596,7 @@ class NotificationPanelController: NSObject {
         let prog = self.progress
         let hovered = self.isHovered
 
-        let view = NotificationContentView(
+        let innerView = NotificationContentView(
             payload: payload,
             progress: prog,
             isHovered: hovered,
@@ -606,6 +612,10 @@ class NotificationPanelController: NSObject {
                 }
             }
         )
+        // Wrap in padding so shadow has room to render within the oversized panel
+        let view = innerView
+            .frame(width: 320, height: 180)
+            .padding(20)
 
         let contentView = panel.contentView!
         if let hosting = hostingView {

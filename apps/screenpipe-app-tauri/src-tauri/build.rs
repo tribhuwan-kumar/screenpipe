@@ -440,8 +440,6 @@ typedef void (*action_callback_t)(const char*);
 void shortcut_set_action_callback(action_callback_t cb) { (void)cb; }
 int shortcut_show(const char* json) { (void)json; return -2; }
 int shortcut_hide(void) { return -2; }
-int shortcut_update_metrics(const char* json) { (void)json; return -2; }
-int shortcut_update_shortcuts(const char* json) { (void)json; return -2; }
 int shortcut_is_available(void) { return 0; }
 "#,
     )
