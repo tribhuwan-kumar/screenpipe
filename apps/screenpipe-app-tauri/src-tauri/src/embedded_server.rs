@@ -123,7 +123,6 @@ pub async fn start_embedded_server(
     if config.audio_transcription_engine == AudioTranscriptionEngine::Deepgram {
         if let Some(ref user_id) = config.user_id {
             std::env::set_var("DEEPGRAM_API_URL", "https://api.screenpi.pe/v1/listen");
-            std::env::set_var("DEEPGRAM_WEBSOCKET_URL", "wss://api.screenpi.pe");
             std::env::set_var("CUSTOM_DEEPGRAM_API_TOKEN", user_id);
             info!("Using screenpipe cloud for audio transcription");
         }

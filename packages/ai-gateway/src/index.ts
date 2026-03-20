@@ -6,7 +6,7 @@ import { RateLimiter, checkRateLimit } from './utils/rate-limiter';
 import { trackUsage, getUsageStatus, isModelAllowed, getTierConfig } from './services/usage-tracker';
 import { handleChatCompletions } from './handlers/chat';
 import { handleModelListing } from './handlers/models';
-import { handleFileTranscription, handleWebSocketUpgrade } from './handlers/transcription';
+import { handleFileTranscription } from './handlers/transcription';
 import { handleVoiceTranscription, handleVoiceQuery, handleTextToSpeech, handleVoiceChat } from './handlers/voice';
 import { handleVertexProxy, handleVertexModels } from './handlers/vertex-proxy';
 import { handleWebSearch } from './handlers/web-search';
@@ -34,13 +34,6 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 		}
 
 		console.log('path', path);
-
-		// Handle WebSocket upgrade for real-time transcription (no auth required)
-		const upgradeHeader = request.headers.get('upgrade')?.toLowerCase();
-		if (path === '/v1/listen' && upgradeHeader === 'websocket') {
-			console.log('websocket request to /v1/listen detected, bypassing auth');
-			return await handleWebSocketUpgrade(request, env);
-		}
 
 		// Authenticate and get tier info for all other endpoints
 		const authResult = await validateAuth(request, env);
