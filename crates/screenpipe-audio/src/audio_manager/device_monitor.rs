@@ -30,6 +30,64 @@ fn is_legacy_display_output(device_name: &str) -> bool {
 
 use super::{AudioManager, AudioManagerStatus};
 
+/// Exponential backoff for output device recovery.
+///
+/// Transient errors (e.g., ScreenCaptureKit not yet initialized) use a short
+/// ceiling (8s) so recovery is fast when the system is just slow to start.
+///
+/// Permanent errors (e.g., no display device exists) use a long ceiling (120s)
+/// to avoid spamming logs when recovery is impossible until hardware changes.
+struct OutputRecoveryBackoff {
+    attempts: u32,
+    is_permanent: bool,
+    last_attempt: Instant,
+}
+
+impl OutputRecoveryBackoff {
+    const TRANSIENT_MAX_SECS: u64 = 8;
+    const PERMANENT_MAX_SECS: u64 = 120;
+
+    fn new() -> Self {
+        Self {
+            attempts: 0,
+            is_permanent: false,
+            // Set to epoch-ish so the first check always fires
+            last_attempt: Instant::now() - Duration::from_secs(3600),
+        }
+    }
+
+    fn record_failure(&mut self, permanent: bool) {
+        self.attempts += 1;
+        self.is_permanent = permanent;
+    }
+
+    fn reset(&mut self) {
+        self.attempts = 0;
+        self.is_permanent = false;
+    }
+
+    fn next_delay_secs(&self) -> u64 {
+        if self.attempts == 0 {
+            return 0;
+        }
+        let cap = if self.is_permanent {
+            Self::PERMANENT_MAX_SECS
+        } else {
+            Self::TRANSIENT_MAX_SECS
+        };
+        // 2^min(attempts, 10) capped at the ceiling
+        let exp = 2u64.saturating_pow(self.attempts.min(10));
+        exp.min(cap)
+    }
+}
+
+/// Returns true if the error from `default_output_device()` indicates a
+/// permanent condition that won't resolve without hardware changes.
+fn is_permanent_output_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    msg.contains("no display audio device found")
+}
+
 lazy_static::lazy_static! {
   pub static ref DEVICE_MONITOR: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
 }
@@ -106,7 +164,7 @@ pub async fn start_device_monitor(
         // Track devices that repeatedly fail to start so we don't spam errors
         // every 2 seconds. After a failure, back off for increasing durations.
         let mut failed_devices: HashMap<String, (u32, Instant)> = HashMap::new();
-        let mut no_output_retry_count: u32 = 0;
+        let mut output_recovery_backoff = OutputRecoveryBackoff::new();
         let mut no_input_retry_count: u32 = 0;
 
         // Central handler restart cooldown: max 3 restarts in a 5-minute window
@@ -483,8 +541,6 @@ pub async fn start_device_monitor(
                     // Ensure an output device is actually running.
                     // Handles the case where ScreenCaptureKit wasn't ready at startup
                     // or output device was lost during a device change.
-                    // CRITICAL: No backoff here — missing output audio is unacceptable
-                    // during calls. We retry every 2s (each loop iteration).
                     {
                         let current_enabled = audio_manager.enabled_devices().await;
                         let has_output = current_enabled.iter().any(|name| {
@@ -494,41 +550,58 @@ pub async fn start_device_monitor(
                         });
 
                         if !has_output {
-                            no_output_retry_count += 1;
-                            match default_output_device().await {
-                                Ok(default_output) => {
-                                    let device_name = default_output.to_string();
-                                    // No backoff — always retry immediately when zero output devices
-                                    warn!(
-                                        "[DEVICE_RECOVERY] no output device running (attempt {}), starting default: {}",
-                                        no_output_retry_count, device_name
-                                    );
-                                    match audio_manager.start_device(&default_output).await {
-                                        Ok(()) => {
-                                            failed_devices.remove(&device_name);
-                                            default_tracker.last_output = Some(device_name.clone());
-                                            no_output_retry_count = 0;
-                                            info!(
-                                                "[DEVICE_RECOVERY] output device restored, device={}", device_name
-                                            );
+                            // Apply backoff: skip this cycle if we haven't waited long enough.
+                            // Transient errors (SCK not ready) use short backoff (2-8s).
+                            // Permanent errors (no display) use longer backoff (up to 120s).
+                            let backoff_secs = output_recovery_backoff.next_delay_secs();
+                            let elapsed = output_recovery_backoff.last_attempt.elapsed();
+                            if elapsed < Duration::from_secs(backoff_secs) {
+                                // Still within backoff window — skip this cycle
+                            } else {
+                                output_recovery_backoff.last_attempt = Instant::now();
+                                match default_output_device().await {
+                                    Ok(default_output) => {
+                                        let device_name = default_output.to_string();
+                                        info!(
+                                            "[DEVICE_RECOVERY] no output device running (attempt {}), starting default: {}",
+                                            output_recovery_backoff.attempts, device_name
+                                        );
+                                        match audio_manager.start_device(&default_output).await {
+                                            Ok(()) => {
+                                                failed_devices.remove(&device_name);
+                                                default_tracker.last_output = Some(device_name.clone());
+                                                output_recovery_backoff.reset();
+                                                info!(
+                                                    "[DEVICE_RECOVERY] output device restored, device={}", device_name
+                                                );
+                                            }
+                                            Err(e) => {
+                                                output_recovery_backoff.record_failure(false);
+                                                warn!(
+                                                    "[DEVICE_RECOVERY] failed to start output device {} (attempt {}, next retry in {}s): {}",
+                                                    device_name, output_recovery_backoff.attempts,
+                                                    output_recovery_backoff.next_delay_secs(), e
+                                                );
+                                            }
                                         }
-                                        Err(e) => {
+                                    }
+                                    Err(e) => {
+                                        let is_permanent = is_permanent_output_error(&e);
+                                        output_recovery_backoff.record_failure(is_permanent);
+                                        if output_recovery_backoff.attempts <= 3 || output_recovery_backoff.attempts % 30 == 0 {
+                                            // Log first 3 attempts, then every 30th to avoid spam
                                             warn!(
-                                                "[DEVICE_RECOVERY] failed to start output device {} (attempt {}): {}",
-                                                device_name, no_output_retry_count, e
+                                                "[DEVICE_RECOVERY] no output device available (attempt {}, {}, next retry in {}s): {}",
+                                                output_recovery_backoff.attempts,
+                                                if is_permanent { "permanent" } else { "transient" },
+                                                output_recovery_backoff.next_delay_secs(), e
                                             );
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    warn!(
-                                        "[DEVICE_RECOVERY] no output device running and default_output_device() failed (attempt {}): {}",
-                                        no_output_retry_count, e
-                                    );
-                                }
                             }
                         } else {
-                            no_output_retry_count = 0;
+                            output_recovery_backoff.reset();
                         }
                     }
                 }
@@ -731,6 +804,96 @@ mod tests {
         cd.record_restart();
         cd.record_restart(); // exhausted
         assert!(cd.record_restart()); // still exhausted
+    }
+
+    // --- OutputRecoveryBackoff tests ---
+
+    #[test]
+    fn test_backoff_initial_state() {
+        let b = OutputRecoveryBackoff::new();
+        assert_eq!(b.attempts, 0);
+        assert!(!b.is_permanent);
+        assert_eq!(b.next_delay_secs(), 0); // no delay on first try
+    }
+
+    #[test]
+    fn test_backoff_transient_capped_at_8s() {
+        let mut b = OutputRecoveryBackoff::new();
+        // Simulate transient failures
+        b.record_failure(false); // attempt 1 → 2^1 = 2s
+        assert_eq!(b.next_delay_secs(), 2);
+        b.record_failure(false); // attempt 2 → 2^2 = 4s
+        assert_eq!(b.next_delay_secs(), 4);
+        b.record_failure(false); // attempt 3 → 2^3 = 8s (cap)
+        assert_eq!(b.next_delay_secs(), 8);
+        b.record_failure(false); // attempt 4 → still 8s (capped)
+        assert_eq!(b.next_delay_secs(), 8);
+    }
+
+    #[test]
+    fn test_backoff_permanent_capped_at_120s() {
+        let mut b = OutputRecoveryBackoff::new();
+        b.record_failure(true); // 2s
+        assert_eq!(b.next_delay_secs(), 2);
+        b.record_failure(true); // 4s
+        assert_eq!(b.next_delay_secs(), 4);
+        b.record_failure(true); // 8s
+        assert_eq!(b.next_delay_secs(), 8);
+        b.record_failure(true); // 16s
+        assert_eq!(b.next_delay_secs(), 16);
+        b.record_failure(true); // 32s
+        assert_eq!(b.next_delay_secs(), 32);
+        b.record_failure(true); // 64s
+        assert_eq!(b.next_delay_secs(), 64);
+        b.record_failure(true); // 120s (capped, not 128)
+        assert_eq!(b.next_delay_secs(), 120);
+        b.record_failure(true); // still 120s
+        assert_eq!(b.next_delay_secs(), 120);
+    }
+
+    #[test]
+    fn test_backoff_reset_clears_state() {
+        let mut b = OutputRecoveryBackoff::new();
+        b.record_failure(true);
+        b.record_failure(true);
+        b.record_failure(true);
+        assert_eq!(b.attempts, 3);
+        assert!(b.is_permanent);
+
+        b.reset();
+        assert_eq!(b.attempts, 0);
+        assert!(!b.is_permanent);
+        assert_eq!(b.next_delay_secs(), 0);
+    }
+
+    #[test]
+    fn test_backoff_transient_then_permanent_escalates() {
+        let mut b = OutputRecoveryBackoff::new();
+        b.record_failure(false); // transient
+        b.record_failure(false); // transient, 4s
+        assert_eq!(b.next_delay_secs(), 4); // capped at transient max
+
+        b.record_failure(true); // now permanent — cap goes to 120s
+        assert_eq!(b.next_delay_secs(), 8); // 2^3 = 8, under 120 cap
+        b.record_failure(true);
+        assert_eq!(b.next_delay_secs(), 16);
+    }
+
+    #[test]
+    fn test_is_permanent_output_error() {
+        let permanent = anyhow::anyhow!(
+            "ScreenCaptureKit available but no display audio device found — \
+             output audio capture requires a display device"
+        );
+        assert!(is_permanent_output_error(&permanent));
+
+        let transient = anyhow::anyhow!(
+            "ScreenCaptureKit unavailable for output audio capture: timeout"
+        );
+        assert!(!is_permanent_output_error(&transient));
+
+        let other = anyhow::anyhow!("some random error");
+        assert!(!is_permanent_output_error(&other));
     }
 
     #[test]
