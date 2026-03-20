@@ -394,7 +394,7 @@ export function MeetingsSection() {
         : new Date().toISOString();
 
       const res = await fetch(
-        `http://localhost:3030/search?content_type=vision&app_name=${encodeURIComponent(appName)}&start_time=${startTime}&end_time=${endTime}&limit=50`
+        `http://localhost:3030/search?content_type=ocr&app_name=${encodeURIComponent(appName)}&start_time=${startTime}&end_time=${endTime}&limit=50`
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -402,14 +402,12 @@ export function MeetingsSection() {
       const seen = new Set<string>();
       const snippets: { text: string; timestamp: string }[] = [];
       for (const item of data.data || []) {
-        if (item.type === "OCR" && item.content) {
-          const text = item.content.text?.trim();
-          if (text && text.length > 20) {
-            const key = text.slice(0, 80);
-            if (!seen.has(key)) {
-              seen.add(key);
-              snippets.push({ text, timestamp: item.content.timestamp || "" });
-            }
+        const text = item.content?.text?.trim();
+        if (text && text.length > 20) {
+          const key = text.slice(0, 80);
+          if (!seen.has(key)) {
+            seen.add(key);
+            snippets.push({ text, timestamp: item.content.timestamp || "" });
           }
         }
       }
