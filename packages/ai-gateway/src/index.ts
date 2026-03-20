@@ -94,17 +94,14 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
 			// Per-user daily cost cap — skip for zero-cost models (they're free to us)
 			if (!isZeroCostModel(body.model)) {
-				const modelWeight = getModelWeight(body.model);
-				if (modelWeight >= 3) {
-					const dailyCost = await getDailyUserCost(env, authResult.deviceId);
-					const maxCost = getMaxDailyCostPerUser(env);
-					if (dailyCost >= maxCost) {
-						return addCorsHeaders(createErrorResponse(429, JSON.stringify({
-							error: 'daily_cost_limit_exceeded',
-							message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
-							free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
-						})));
-					}
+				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
+				const maxCost = getMaxDailyCostPerUser(env);
+				if (dailyCost >= maxCost) {
+					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
+						error: 'daily_cost_limit_exceeded',
+						message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
+					})));
 				}
 			}
 
@@ -291,9 +288,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				// If body parse fails, let the proxy handle the error downstream
 			}
 
-			// Per-user daily cost cap for expensive models
-			const msgModelWeight = getModelWeight(parsedModel);
-			if (msgModelWeight >= 3) {
+			// Per-user daily cost cap — all paid models
+			if (!isZeroCostModel(parsedModel)) {
 				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
 				const maxCost = getMaxDailyCostPerUser(env);
 				if (dailyCost >= maxCost) {
@@ -390,9 +386,8 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				// body parse failure — proceed with defaults
 			}
 
-			// Per-user daily cost cap for expensive models
-			const ocModelWeight = getModelWeight(ocModel);
-			if (ocModelWeight >= 3) {
+			// Per-user daily cost cap — all paid models
+			if (!isZeroCostModel(ocModel)) {
 				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
 				const maxCost = getMaxDailyCostPerUser(env);
 				if (dailyCost >= maxCost) {
