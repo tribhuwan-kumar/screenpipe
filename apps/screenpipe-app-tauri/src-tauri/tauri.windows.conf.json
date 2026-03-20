@@ -2,7 +2,7 @@
     "bundle": {
         "publisher": "Mediar, Inc.",
         "windows": {
-            "signCommand": "AzureSignTool sign -kvu %AZURE_KEY_VAULT_URI% -kvc %AZURE_KEY_VAULT_CERTIFICATE% -kvt %AZURE_TENANT_ID% -kvi %AZURE_CLIENT_ID% -kvs %AZURE_CLIENT_SECRET% -tr http://timestamp.digicert.com -td sha256 %1",
+            "signCommand": "powershell -ExecutionPolicy Bypass -File sign-azure.ps1 %1",
             "nsis": {
                 "headerImage": "assets/nsis-header.bmp",
                 "sidebarImage": "assets/nsis-sidebar.bmp",
