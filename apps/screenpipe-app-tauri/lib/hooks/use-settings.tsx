@@ -13,6 +13,7 @@ export type AIProviderType =
 	| "openai"
 	| "openai-chatgpt"
 	| "anthropic"
+	| "claude-code"
 	| "custom"
 	| "embedded"
 	| "pi";
@@ -61,6 +62,9 @@ export type AIPreset = {
 	  }
 	| {
 			provider: "openai-chatgpt";
+	  }
+	| {
+			provider: "claude-code";
 	  }
 );
 

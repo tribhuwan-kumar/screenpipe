@@ -122,6 +122,52 @@ export const DEFAULT_PROMPT = `Rules:
 - Always answer my question/intent, do not make up things
 `;
 
+function ClaudeCodeSignInButton() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    commands.claudeOauthStatus().then((res) => {
+      if (res.status === "ok") setLoggedIn(res.data.logged_in);
+    });
+  }, []);
+
+  return (
+    <Button
+      type="button"
+      variant={loggedIn ? "outline" : "default"}
+      disabled={loading}
+      className="h-7 text-xs w-full"
+      onClick={async () => {
+        if (loggedIn) {
+          setLoading(true);
+          await commands.claudeOauthLogout();
+          setLoggedIn(false);
+          setLoading(false);
+        } else {
+          setLoading(true);
+          try {
+            const res = await commands.claudeOauthLogin();
+            if (res.status === "ok" && res.data) setLoggedIn(true);
+          } catch (e) {
+            console.error("claude oauth failed:", e);
+          }
+          setLoading(false);
+        }
+      }}
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      ) : loggedIn ? (
+        <Check className="h-3 w-3 mr-1 text-green-500" />
+      ) : (
+        <LogIn className="h-3 w-3 mr-1" />
+      )}
+      {loggedIn ? "signed in — sign out" : "sign in with claude"}
+    </Button>
+  );
+}
+
 function ChatGptSignInButton() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -438,8 +484,8 @@ export function AIProviderConfig({
         </div>
 
         <div className={cn(
-          "grid gap-1",
-          piAvailable ? "grid-cols-5" : "grid-cols-4"
+          "grid gap-2",
+          piAvailable ? "grid-cols-3" : "grid-cols-5"
         )}>
           <Button
             type="button"
@@ -506,6 +552,27 @@ export function AIProviderConfig({
           >
             <Icons.openai className="h-3.5 w-3.5" />
             <span>chatgpt</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant={selectedProvider === "claude-code" || selectedProvider === "anthropic" ? "default" : "outline"}
+            className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
+            onClick={() => {
+              if (selectedProvider !== "claude-code" && selectedProvider !== "anthropic") {
+                setSelectedProvider("claude-code");
+                setFormData({
+                  ...formData,
+                  provider: "claude-code",
+                  url: "",
+                  model: "claude-sonnet-4-5-20250514",
+                });
+              }
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/images/claude-ai.svg" alt="Claude.ai" className="h-3.5 w-3.5 rounded-sm" />
+            <span>claude.ai</span>
           </Button>
 
           {piAvailable && (
@@ -741,6 +808,89 @@ export function AIProviderConfig({
           </div>
         )}
 
+        {(selectedProvider === "claude-code" || selectedProvider === "anthropic") && (
+          <div className="space-y-1">
+            <Label className="text-xs">how do you want to log in?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProvider("claude-code");
+                  setFormData({ ...formData, provider: "claude-code", url: "", model: "claude-sonnet-4-5-20250514" });
+                }}
+                className={`flex flex-col items-start gap-0.5 rounded-md border-2 p-2 text-left text-xs transition-colors hover:bg-accent ${
+                  selectedProvider === "claude-code" ? "border-primary bg-accent" : "border-border"
+                }`}
+              >
+                <span className="font-medium">Claude.ai Subscription</span>
+                <span className="text-[10px] text-muted-foreground">Claude Pro, Team, or Enterprise</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProvider("anthropic");
+                  setFormData({ ...formData, provider: "anthropic", url: "https://api.anthropic.com", model: "claude-sonnet-4-5-20250514" });
+                }}
+                className={`flex flex-col items-start gap-0.5 rounded-md border-2 p-2 text-left text-xs transition-colors hover:bg-accent ${
+                  selectedProvider === "anthropic" ? "border-primary bg-accent" : "border-border"
+                }`}
+              >
+                <span className="font-medium">Anthropic Console</span>
+                <span className="text-[10px] text-muted-foreground">Pay via API usage</span>
+              </button>
+            </div>
+
+            {selectedProvider === "claude-code" && (
+              <div className="space-y-1 pt-1">
+                <Label className="text-xs">claude account</Label>
+                <ClaudeCodeSignInButton />
+              </div>
+            )}
+
+            {selectedProvider === "anthropic" && (
+              <div className="space-y-1 pt-1">
+                <Label htmlFor="anthropicApiKey" className="text-xs">api key</Label>
+                <div className="relative">
+                  <Input
+                    id="anthropicApiKey"
+                    type={showApiKey ? "text" : "password"}
+                    placeholder="sk-ant-..."
+                    value={formData.apiKey || ""}
+                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                    className="pr-10 h-8 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-2 py-1 hover:bg-transparent"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                  >
+                    {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label htmlFor="model" className="text-xs">model</Label>
+              <Select
+                value={formData.model}
+                onValueChange={(value) => setFormData({ ...formData, model: value })}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="claude-opus-4-6-20250828">claude opus 4.6</SelectItem>
+                  <SelectItem value="claude-sonnet-4-5-20250514">claude sonnet 4.5</SelectItem>
+                  <SelectItem value="claude-haiku-4-5-20251001">claude haiku 4.5</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         {selectedProvider === "pi" && (
           <div className="space-y-1">
             <Label htmlFor="model" className="text-xs">model</Label>
@@ -874,10 +1024,11 @@ export const AIPresetDialog = ({
       prompt: providerData.prompt,
     };
 
-    // Only add apiKey if provider is openai or custom
+    // Add apiKey for providers that require it
     if (
       providerData.provider === "openai" ||
-      providerData.provider === "custom"
+      providerData.provider === "custom" ||
+      providerData.provider === "anthropic"
     ) {
       (newPreset as any).apiKey = providerData.apiKey;
     }

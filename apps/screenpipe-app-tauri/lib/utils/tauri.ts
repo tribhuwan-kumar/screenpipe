@@ -760,6 +760,41 @@ async chatgptOauthModels() : Promise<Result<string[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async claudeOauthLogin() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("claude_oauth_login") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async claudeOauthStatus() : Promise<Result<ClaudeOAuthStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("claude_oauth_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Return the current valid access token (auto-refreshing if needed).
+ */
+async claudeOauthGetToken() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("claude_oauth_get_token") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async claudeOauthLogout() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("claude_oauth_logout") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Get current pipe suggestions settings.
  */
@@ -922,7 +957,7 @@ async getHardwareCapability() : Promise<HardwareCapability> {
 /** user-defined types **/
 
 export type AIPreset = { id: string; prompt: string; provider: AIProviderType; url?: string; model?: string; defaultPreset: boolean; apiKey: string | null; maxContextChars: number; maxTokens?: number }
-export type AIProviderType = "openai" | "openai-chatgpt" | "native-ollama" | "custom" | "screenpipe-cloud" | "pi" | "anthropic"
+export type AIProviderType = "openai" | "openai-chatgpt" | "native-ollama" | "custom" | "screenpipe-cloud" | "pi" | "anthropic" | "claude-code"
 export type AudioDeviceInfo = { name: string; isDefault: boolean }
 export type BrowserLogEntry = { level: string; message: string }
 export type CachedSuggestions = { suggestions: Suggestion[]; generatedAt: string; mode: string; aiGenerated: boolean; tags: string[] }
@@ -950,6 +985,7 @@ endDisplay: string; attendees: string[]; location: string | null; calendarName: 
 source?: string }
 export type CalendarStatus = { available: boolean; authorized: boolean; authorizationStatus: string; calendarCount: number }
 export type ChatGptOAuthStatus = { logged_in: boolean }
+export type ClaudeOAuthStatus = { logged_in: boolean }
 export type Credits = { amount: number }
 export type EmbeddedLLM = { enabled: boolean; model: string; port: number }
 export type HardwareCapability = { hasGpu: boolean; cpuCores: bigint; totalMemoryGb: number; isWeakForLargeModel: boolean; recommendedEngine: string; reason: string }
