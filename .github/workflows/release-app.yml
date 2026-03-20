@@ -122,10 +122,7 @@ jobs:
             echo "windows_runner=windows-2022" >> $GITHUB_OUTPUT
             echo "⚠️ Forcing GitHub-hosted runners (manual override)"
           else
-            # macOS aarch64 fallback chain (needs Xcode 26 for Apple Intelligence):
-            # 1. MacBook (macos-26) — wait up to 3 min
-            # 2. Mac Mini (macos-test) — wait up to 2 min
-            # 3. GH-hosted (macos-latest) — no Apple Intelligence but always available
+            # macOS aarch64: MacBook (macos-26) or GH-hosted fallback
             MACBOOK=$(check_runner "macos-26")
 
             if [ "$MACBOOK" = "available" ]; then
@@ -137,44 +134,12 @@ jobs:
                 echo "macos_arm_runner=macos-26" >> $GITHUB_OUTPUT
                 echo "✅ MacBook (macos-26) became available"
               else
-                echo "⚠️ MacBook timed out after 3 min, trying Mac Mini..."
-                MACMINI=$(check_runner "macos-test")
-                if [ "$MACMINI" = "available" ]; then
-                  echo "macos_arm_runner=macos-test" >> $GITHUB_OUTPUT
-                  echo "✅ Mac Mini (macos-test) is available"
-                elif [ "$MACMINI" = "busy" ]; then
-                  RESULT2=$(wait_for_runner "macos-test" 120)
-                  if [ "$RESULT2" = "available" ]; then
-                    echo "macos_arm_runner=macos-test" >> $GITHUB_OUTPUT
-                    echo "✅ Mac Mini (macos-test) became available"
-                  else
-                    echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
-                    echo "⚠️ All self-hosted timed out — using GH-hosted (NO Apple Intelligence)"
-                  fi
-                else
-                  echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
-                  echo "⚠️ Mac Mini offline — using GH-hosted (NO Apple Intelligence)"
-                fi
+                echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
+                echo "⚠️ MacBook timed out — using GH-hosted (NO Apple Intelligence)"
               fi
             else
-              # MacBook offline, try Mac Mini directly
-              MACMINI=$(check_runner "macos-test")
-              if [ "$MACMINI" = "available" ]; then
-                echo "macos_arm_runner=macos-test" >> $GITHUB_OUTPUT
-                echo "✅ Mac Mini (macos-test) is available"
-              elif [ "$MACMINI" = "busy" ]; then
-                RESULT2=$(wait_for_runner "macos-test" 120)
-                if [ "$RESULT2" = "available" ]; then
-                  echo "macos_arm_runner=macos-test" >> $GITHUB_OUTPUT
-                  echo "✅ Mac Mini (macos-test) became available"
-                else
-                  echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
-                  echo "⚠️ Mac Mini timed out — using GH-hosted (NO Apple Intelligence)"
-                fi
-              else
-                echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
-                echo "⚠️ All self-hosted offline — using GH-hosted (NO Apple Intelligence)"
-              fi
+              echo "macos_arm_runner=macos-latest" >> $GITHUB_OUTPUT
+              echo "⚠️ MacBook offline — using GH-hosted (NO Apple Intelligence)"
             fi
 
             # Always use GH-hosted Windows — self-hosted is unreliable for builds
@@ -242,7 +207,7 @@ jobs:
             tauri-args: "--target x86_64-unknown-linux-gnu --features official-build"
             os_type: "linux"
 
-    runs-on: ${{ matrix.platform == 'macos-26' && fromJSON('["self-hosted", "macos-26"]') || matrix.platform == 'macos-test' && fromJSON('["self-hosted", "macos-test"]') || matrix.platform == 'windows-desktop-test' && fromJSON('["self-hosted", "windows-desktop-test"]') || matrix.platform }}
+    runs-on: ${{ matrix.platform == 'macos-26' && fromJSON('["self-hosted", "macos-26"]') || matrix.platform == 'windows-desktop-test' && fromJSON('["self-hosted", "windows-desktop-test"]') || matrix.platform }}
     timeout-minutes: 120
     steps:
       - name: Detect Xcode version and set Apple Intelligence feature
