@@ -10,6 +10,8 @@ pub mod frame_comparison;
 #[cfg(target_os = "windows")]
 pub mod microsoft;
 pub mod monitor;
+#[cfg(target_os = "windows")]
+pub mod wgc_capture;
 pub use monitor::MonitorListError;
 pub mod metrics;
 pub mod ocr_cache;
