@@ -98,7 +98,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
 						message: `You've reached your daily AI usage limit. Try a free model or wait until tomorrow.`,
-						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
+						free_models: ['gemini-3-flash'],
 					})));
 				}
 			}
@@ -332,7 +332,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
 						message: `You've reached your daily AI usage limit. Try a free model or wait until tomorrow.`,
-						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
+						free_models: ['gemini-3-flash'],
 					})));
 				}
 			}
@@ -432,7 +432,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
 						message: `You've reached your daily AI usage limit. Try a free model or wait until tomorrow.`,
-						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
+						free_models: ['gemini-3-flash'],
 					})));
 				}
 			}

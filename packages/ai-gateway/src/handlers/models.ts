@@ -29,32 +29,6 @@ interface ModelEntry {
 const CURATED_MODELS: ModelEntry[] = [
   // ── Free models ──
   {
-    id: 'qwen/qwen3-coder:free',
-    object: 'model',
-    owned_by: 'openrouter',
-    name: 'Qwen3 Coder 480B',
-    description: 'best free coding model',
-    tags: ['free', 'coding'],
-    free: true,
-    context_window: 262000,
-    best_for: ['pipes', 'coding'],
-    speed: 'fast',
-    intelligence: 'high',
-  },
-  {
-    id: 'stepfun/step-3.5-flash:free',
-    object: 'model',
-    owned_by: 'openrouter',
-    name: 'Step 3.5 Flash',
-    description: 'fast free general purpose',
-    tags: ['free', 'general'],
-    free: true,
-    context_window: 256000,
-    best_for: ['general', 'pipes'],
-    speed: 'fast',
-    intelligence: 'standard',
-  },
-  {
     id: 'gemini-3-flash',
     object: 'model',
     owned_by: 'google',
@@ -66,19 +40,6 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['general', 'search'],
     speed: 'fast',
     intelligence: 'high',
-  },
-  {
-    id: 'gemini-2.5-flash',
-    object: 'model',
-    owned_by: 'google',
-    name: 'Gemini 2.5 Flash',
-    description: 'lightweight and fast',
-    tags: ['free', 'general'],
-    free: true,
-    context_window: 1000000,
-    best_for: ['general'],
-    speed: 'fast',
-    intelligence: 'standard',
   },
   // ── Included with screenpipe ──
   {

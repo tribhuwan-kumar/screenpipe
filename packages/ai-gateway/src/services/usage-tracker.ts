@@ -156,12 +156,9 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
     allowedModels: [
       'claude-haiku-4-5',
       'gemini-3-flash',
-      'gemini-2.5-flash',
       'deepseek/deepseek-chat',
       'qwen/qwen3.5-flash',
       'meta-llama/llama-4-scout',
-      'qwen/qwen3-coder:free',
-      'stepfun/step-3.5-flash:free',
     ],
   },
   logged_in: {
@@ -171,7 +168,6 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'claude-haiku-4-5',
       'claude-sonnet-4-5',
       'gemini-3-flash',
-      'gemini-2.5-flash',
       'gemini-3-pro',
       'gemini-3.1-pro',
       'deepseek/deepseek-chat',
@@ -180,8 +176,6 @@ const DEFAULT_TIER_CONFIG: Record<UserTier, TierLimits> = {
       'qwen/qwen3.5-397b',
       'meta-llama/llama-4-scout',
       'meta-llama/llama-4-maverick',
-      'qwen/qwen3-coder:free',
-      'stepfun/step-3.5-flash:free',
     ],
   },
   subscribed: {
