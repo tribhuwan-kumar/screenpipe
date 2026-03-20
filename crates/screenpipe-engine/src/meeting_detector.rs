@@ -75,6 +75,11 @@ pub enum CallSignal {
     /// the text, regardless of control type. Use as a last-resort fallback
     /// when apps expose meeting controls with non-standard roles.
     NameContains(&'static str),
+    /// Match a top-level window by its title (case-insensitive substring).
+    /// Checked against the root window element, NOT descendants.
+    /// Useful for apps like Zoom on Windows that don't expose named buttons
+    /// but DO have a distinctive window title during meetings.
+    WindowTitle { title_contains: &'static str },
 }
 
 /// Per-app detection configuration.
@@ -141,7 +146,19 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                 },
                 CallSignal::MenuItemId("onMuteAudio:"),
                 CallSignal::MenuItemId("onMuteVideo:"),
-                // Windows / generic fallbacks (Zoom on Windows may expose buttons)
+                // Windows: Zoom meeting window has title "Zoom Meeting" but
+                // exposes NO named buttons — all toolbar controls are unnamed.
+                // The window title is the definitive signal.
+                CallSignal::WindowTitle {
+                    title_contains: "Zoom Meeting",
+                },
+                // Windows: the main "Zoom Workplace" window shows "Return to meeting"
+                // button and user status "In a Zoom Meeting" during active calls.
+                CallSignal::NameContains("Return to meeting"),
+                CallSignal::NameContains("In a Zoom Meeting"),
+                // Windows: "Zoom Video Container" pane exists only inside meeting window.
+                CallSignal::NameContains("Zoom Video Container"),
+                // Generic fallbacks for other Windows Zoom versions
                 CallSignal::AutomationIdContains("leave"),
                 CallSignal::KeyboardShortcut("Alt+Q"),
                 CallSignal::RoleWithName {
@@ -724,6 +741,7 @@ impl PrecomputedSignal {
                     CallSignal::MenuBarItem { title_contains } => title_contains.to_lowercase(),
                     CallSignal::MenuItemId(id) => id.to_string(),
                     CallSignal::NameContains(name) => name.to_lowercase(),
+                    CallSignal::WindowTitle { title_contains } => title_contains.to_lowercase(),
                 };
                 PrecomputedSignal {
                     signal: s.clone(),
@@ -793,6 +811,12 @@ fn check_signal_match(
             let in_desc = desc.map_or(false, |d| d.to_lowercase().contains(&needle_lower));
             in_title || in_desc
         }
+        CallSignal::WindowTitle { title_contains } => {
+            // WindowTitle is checked separately against the root window element,
+            // not during descendant walking. But handle it here for completeness.
+            let needle = title_contains.to_lowercase();
+            title.map_or(false, |t| t.to_lowercase().contains(&needle))
+        }
     }
 }
 
@@ -843,6 +867,11 @@ fn check_signal_match_precomputed(
             let in_desc = desc_lower.map_or(false, |d| d.contains(&ps.lower[..]));
             in_title || in_desc
         }
+        CallSignal::WindowTitle { .. } => {
+            // Checked separately against root window element, not during tree walk.
+            // But support it here for completeness (matches on title).
+            title_lower.map_or(false, |t| t.contains(&ps.lower[..]))
+        }
     }
 }
 
@@ -869,6 +898,10 @@ fn format_signal_match(
         CallSignal::NameContains(name) => {
             let label = title.or(desc).unwrap_or("?");
             format!("name_contains={} ({})", name, label)
+        }
+        CallSignal::WindowTitle { title_contains } => {
+            let label = title.unwrap_or("?");
+            format!("window_title={} ({})", title_contains, label)
         }
     }
 }
@@ -1126,7 +1159,8 @@ fn windows_scan_process_uia(
                     }
                 }
                 // KeyboardShortcut, AutomationIdContains, MenuBarItem, MenuItemId
-                // can't be expressed as simple PropertyConditions — handled by tree walk below
+                // can't be expressed as simple PropertyConditions — handled by tree walk below.
+                // WindowTitle is handled by Strategy 0 (root element check).
                 _ => {}
             }
         }
@@ -1144,6 +1178,36 @@ fn windows_scan_process_uia(
                 Ok(el) => el,
                 Err(_) => continue,
             };
+
+            // Strategy 0: Check root window element name against WindowTitle signals.
+            // Zoom on Windows has a window titled "Zoom Meeting" but exposes NO
+            // named descendant buttons — so we must check the window itself.
+            if let Ok(window_name) = element.CurrentName() {
+                let window_name_str = window_name.to_string();
+                for signal in signals {
+                    if let CallSignal::WindowTitle { title_contains } = signal {
+                        if window_name_str
+                            .to_lowercase()
+                            .contains(&title_contains.to_lowercase())
+                        {
+                            let label = format!(
+                                "window_title={} ({})",
+                                title_contains, window_name_str
+                            );
+                            if !found.contains(&label) {
+                                info!(
+                                    "meeting scanner: matched window title '{}' on '{}'",
+                                    title_contains, window_name_str
+                                );
+                                found.push(label);
+                            }
+                        }
+                    }
+                }
+                if found.len() >= min_required {
+                    break;
+                }
+            }
 
             // Strategy 1: Use FindAll with OR'd conditions (pierces WebView2)
             if !conditions.is_empty() {
@@ -2951,6 +3015,176 @@ mod tests {
             None,
             None
         ));
+    }
+
+    // ── WindowTitle signal tests ──────────────────────────────────────
+
+    #[test]
+    fn test_window_title_match() {
+        let signal = CallSignal::WindowTitle {
+            title_contains: "Zoom Meeting",
+        };
+        // Exact match on title
+        assert!(check_signal_match(
+            &signal,
+            "window",
+            Some("Zoom Meeting"),
+            None,
+            None
+        ));
+        // Case-insensitive
+        assert!(check_signal_match(
+            &signal,
+            "window",
+            Some("zoom meeting"),
+            None,
+            None
+        ));
+        // Substring match (window title may have extra text)
+        assert!(check_signal_match(
+            &signal,
+            "window",
+            Some("Zoom Meeting - My Room"),
+            None,
+            None
+        ));
+        // No match — different window
+        assert!(!check_signal_match(
+            &signal,
+            "window",
+            Some("Zoom Workplace"),
+            None,
+            None
+        ));
+        // No title
+        assert!(!check_signal_match(&signal, "window", None, None, None));
+    }
+
+    #[test]
+    fn test_zoom_profile_has_window_title_signal() {
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .expect("Zoom profile not found");
+
+        let has_window_title = zoom.call_signals.iter().any(|s| {
+            matches!(s, CallSignal::WindowTitle { title_contains } if title_contains.contains("Zoom Meeting"))
+        });
+        assert!(
+            has_window_title,
+            "Zoom profile must have WindowTitle signal for Windows detection"
+        );
+    }
+
+    #[test]
+    fn test_zoom_windows_name_contains_signals() {
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .expect("Zoom profile not found");
+
+        // Verify the NameContains signals for Zoom on Windows exist
+        let signal_names: Vec<String> = zoom
+            .call_signals
+            .iter()
+            .filter_map(|s| match s {
+                CallSignal::NameContains(name) => Some(name.to_string()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            signal_names.iter().any(|n| n.contains("Zoom Video Container")),
+            "Missing 'Zoom Video Container' signal, found: {:?}",
+            signal_names
+        );
+    }
+
+    #[test]
+    fn test_window_title_format_signal_match() {
+        let signal = CallSignal::WindowTitle {
+            title_contains: "Zoom Meeting",
+        };
+        let label = format_signal_match(&signal, "window", Some("Zoom Meeting"), None);
+        assert_eq!(label, "window_title=Zoom Meeting (Zoom Meeting)");
+    }
+}
+
+#[cfg(test)]
+#[cfg(target_os = "windows")]
+mod windows_live_tests {
+    use super::*;
+
+    /// Run with: cargo test -p screenpipe-engine --no-default-features --lib -- windows_live_tests::test_live_zoom_detection --nocapture --ignored
+    #[test]
+    #[ignore]
+    fn test_live_zoom_detection() {
+        let profiles = load_detection_profiles();
+        println!("\n=== Loaded {} profiles ===", profiles.len());
+
+        // Step 1: find running meeting apps (includes Zoom)
+        println!("\n=== Step 1: find_running_meeting_apps ===");
+        let apps = find_running_meeting_apps(&profiles, None);
+        println!("Found {} running meeting app(s)", apps.len());
+        for app in &apps {
+            println!(
+                "  {} (pid={}, profile={})",
+                app.app_name, app.pid, app.profile_index
+            );
+        }
+
+        // Step 2: scan each found app for call controls
+        if !apps.is_empty() {
+            println!("\n=== Step 2: scanning for call controls ===");
+            let scanner = MeetingUiScanner::new();
+            for app in &apps {
+                let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
+                println!(
+                    "  {} (pid={}) => in_call={}, signals={}, matched={:?}",
+                    app.app_name, app.pid, result.is_in_call, result.signals_found, result.matched_signals
+                );
+            }
+        } else {
+            println!("\nNo meeting apps found. Make sure Zoom is running.");
+        }
+
+        // Step 3: check specifically for Zoom processes
+        println!("\n=== Step 3: checking all zoom.exe processes ===");
+        let all_procs = windows_enumerate_processes();
+        let zoom_procs: Vec<_> = all_procs
+            .iter()
+            .filter(|p| p.name.to_lowercase() == "zoom.exe")
+            .collect();
+        println!("Found {} zoom.exe process(es)", zoom_procs.len());
+
+        let zoom_profile = profiles
+            .iter()
+            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .expect("Zoom profile must exist");
+
+        let scanner = MeetingUiScanner::new();
+        let mut any_in_call = false;
+        for proc in &zoom_procs {
+            println!("\n  Scanning zoom.exe pid={}", proc.pid);
+            let result = scanner.scan_process(proc.pid as i32, zoom_profile);
+            println!(
+                "    in_call={}, signals={}, matched={:?}",
+                result.is_in_call, result.signals_found, result.matched_signals
+            );
+            if result.is_in_call {
+                any_in_call = true;
+            }
+        }
+
+        // If Zoom is running with a meeting, this should detect it
+        if !zoom_procs.is_empty() {
+            println!(
+                "\n=== RESULT: Zoom meeting detected = {} ===",
+                any_in_call
+            );
+        }
     }
 }
 
