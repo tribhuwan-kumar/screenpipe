@@ -91,16 +91,13 @@ export class OpenRouterProvider implements AIProvider {
 			async start(controller) {
 				try {
 					for await (const chunk of stream) {
-						const content = chunk.choices[0]?.delta?.content;
-						if (content) {
-							controller.enqueue(
-								new TextEncoder().encode(
-									`data: ${JSON.stringify({
-										choices: [{ delta: { content } }],
-									})}\n\n`
-								)
-							);
-						}
+						// Pass through the full OpenAI-compatible chunk (Pi agent needs
+						// role, index, model, etc. — not just delta.content)
+						controller.enqueue(
+							new TextEncoder().encode(
+								`data: ${JSON.stringify(chunk)}\n\n`
+							)
+						);
 					}
 					controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
 					controller.close();
