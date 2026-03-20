@@ -19,11 +19,11 @@ import { AIProvider } from './base';
 import { Message, RequestBody, ResponseFormat } from '../types';
 import { VertexAIProvider } from './vertex';
 
-// Vertex MaaS model IDs — {publisher}/{model-id} format required by the endpoint
+// Vertex MaaS model IDs — model names without publisher prefix, all on global endpoint
 const VERTEX_MAAS_MODELS: Record<string, { vertexId: string; region: string }> = {
-	'glm-4.7': { vertexId: 'zai-org/glm-4.7-maas', region: 'us-central1' },
-	'glm-5': { vertexId: 'zai-org/glm-5-maas', region: 'us-central1' },
-	'kimi-k2.5': { vertexId: 'moonshot-ai/kimi-k2-thinking-maas', region: 'us-central1' },
+	'glm-4.7': { vertexId: 'glm-4.7-maas', region: 'global' },
+	'glm-5': { vertexId: 'glm-5-maas', region: 'global' },
+	'kimi-k2.5': { vertexId: 'kimi-k2-thinking-maas', region: 'global' },
 };
 
 export function isVertexMaasModel(model: string): boolean {
@@ -53,7 +53,10 @@ export class VertexMaasProvider implements AIProvider {
 	}
 
 	private getEndpointUrl(region: string): string {
-		return `https://${region}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${region}/endpoints/openapi/chat/completions`;
+		// Global endpoint uses different hostname (no region prefix)
+		const hostname =
+			region === 'global' ? 'aiplatform.googleapis.com' : `${region}-aiplatform.googleapis.com`;
+		return `https://${hostname}/v1/projects/${this.projectId}/locations/${region}/endpoints/openapi/chat/completions`;
 	}
 
 	async createCompletion(body: RequestBody): Promise<Response> {
