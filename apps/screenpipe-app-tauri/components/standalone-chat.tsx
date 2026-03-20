@@ -931,6 +931,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const piLastCrashRef = useRef(0);
   const piThinkingStartRef = useRef<number | null>(null);
   const piSessionSyncedRef = useRef(false);
+  const piRunningConfigRef = useRef<{ provider: string; model: string; token: string | null } | null>(null);
 
   // Active pipe execution (when watching a running pipe)
   const [activePipeExecution, setActivePipeExecution] = useState<{
