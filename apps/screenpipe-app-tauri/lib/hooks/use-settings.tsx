@@ -207,7 +207,7 @@ const DEFAULT_PI_PRESET: AIPreset = {
 	id: "pi-agent",
 	provider: "pi",
 	url: "",
-	model: "claude-haiku-4-5",
+	model: "qwen/qwen3.5-flash-02-23",
 	maxContextChars: 1000000,
 	defaultPreset: true,
 	prompt: "",
@@ -280,7 +280,7 @@ let DEFAULT_SETTINGS: Settings = {
 			showChatShortcut: "Control+Super+L",
 			searchShortcut: "Control+Super+K",
 			lockVaultShortcut: "Super+Shift+L",
-			realtimeAudioTranscriptionEngine: "deepgram",
+			realtimeAudioTranscriptionEngine: "whisper-large-v3-turbo",
 			disableVision: false,
 			disableOcr: false,
 			useAllMonitors: true,
@@ -454,16 +454,15 @@ function createSettingsStore() {
 			// platform() unavailable (SSR/tests) — keep existing value
 		}
 
-		// Migration: Default Pro subscribers to cloud transcription (one-time only)
-		if (settings.user?.cloud_subscribed && !(settings as any)._proCloudMigrationDone) {
-			// Switch audio transcription to cloud if still on local default
-			if (
-				settings.audioTranscriptionEngine === "whisper-large-v3-turbo" ||
-				settings.audioTranscriptionEngine === "whisper-large-v3-turbo-quantized"
-			) {
-				settings.audioTranscriptionEngine = "screenpipe-cloud";
-				needsUpdate = true;
-			}
+		// Migration: Move users OFF screenpipe-cloud to local transcription (cost reduction)
+		// Previously Pro subscribers were auto-migrated to cloud; now local is preferred.
+		if (settings.audioTranscriptionEngine === "screenpipe-cloud" || settings.audioTranscriptionEngine === "deepgram") {
+			const p = platform();
+			settings.audioTranscriptionEngine = p === "windows" ? "qwen3-asr" : "whisper-large-v3-turbo";
+			needsUpdate = true;
+		}
+		// Mark pro migration as done so the old migration doesn't re-trigger
+		if (!(settings as any)._proCloudMigrationDone) {
 			(settings as any)._proCloudMigrationDone = true;
 			needsUpdate = true;
 		}
@@ -475,12 +474,8 @@ function createSettingsStore() {
 				const hw = await tauriCommands.getHardwareCapability();
 				if (hw.isWeakForLargeModel) {
 					const currentEngine = settings.audioTranscriptionEngine;
-					if (settings.user?.cloud_subscribed) {
-						// Pro subscribers: prefer cloud on weak hardware
-						settings.audioTranscriptionEngine = "screenpipe-cloud";
-						needsUpdate = true;
-					} else if (currentEngine.includes("large")) {
-						// Non-pro on weak hardware with a large model: downgrade
+					if (currentEngine.includes("large")) {
+						// Weak hardware with a large model: downgrade to recommended
 						settings.audioTranscriptionEngine = hw.recommendedEngine;
 						needsUpdate = true;
 					}
@@ -657,22 +652,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 	// When user becomes a Pro subscriber, default to cloud transcription (one-time)
 	useEffect(() => {
-		if (!settings.user?.cloud_subscribed || !isSettingsLoaded) return;
+		if (!isSettingsLoaded) return;
 		if ((settings as any)._proCloudMigrationDone) return;
 
-		// Switch audio transcription to cloud if still on local default
-		if (
-			settings.audioTranscriptionEngine === "whisper-large-v3-turbo" ||
-			settings.audioTranscriptionEngine === "whisper-large-v3-turbo-quantized"
-		) {
-			settingsStore.set({
-				audioTranscriptionEngine: "screenpipe-cloud",
-				_proCloudMigrationDone: true,
-			} as any);
-		} else {
-			// Mark as done even if we didn't change anything
-			settingsStore.set({ _proCloudMigrationDone: true } as any);
-		}
+		// Mark migration as done — we no longer force cloud transcription for Pro users.
+		// Local engines (whisper/qwen3) are now the default for all users.
+		settingsStore.set({ _proCloudMigrationDone: true } as any);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [settings.user?.cloud_subscribed, isSettingsLoaded]);
 
