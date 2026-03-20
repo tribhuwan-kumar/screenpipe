@@ -160,12 +160,13 @@ struct ScreenMatrixView: View {
 }
 
 // MARK: - Main shortcut reminder view
-// Uses a 5-column grid (1fr 1px 1fr 1px 1fr) matching the webview CSS grid
+// Concept #4: Audio-reactive pill that expands on hover
 
-private let kPanelW: CGFloat = 95
-private let kRow1H: CGFloat = 13
-private let kRow2H: CGFloat = 12
-private let kDivW: CGFloat = 1.0
+private let kCollapsedW: CGFloat = 44
+private let kCollapsedH: CGFloat = 22
+private let kExpandedW: CGFloat = 200
+private let kExpandedH: CGFloat = 26
+private let kAnimDur: Double = 0.2
 
 @available(macOS 13.0, *)
 struct ShortcutReminderView: View {
@@ -174,59 +175,86 @@ struct ShortcutReminderView: View {
     let searchShortcut: String
     let metrics: OverlayMetrics
     let onAction: (String) -> Void
-
-    private var colW: CGFloat { (kPanelW - 2 * kDivW) / 3 }
+    @Binding var isExpanded: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Row 1: Shortcuts
-            HStack(spacing: 0) {
-                shortcutCell(icon: "rectangle", label: overlayShortcut, action: "open_timeline")
-                Rectangle().fill(.white.opacity(0.2)).frame(width: kDivW)
-                shortcutCell(icon: "bubble.left", label: chatShortcut, action: "open_chat")
-                Rectangle().fill(.white.opacity(0.2)).frame(width: kDivW)
-                shortcutCell(icon: "magnifyingglass", label: searchShortcut, action: "open_search")
+        ZStack {
+            if isExpanded {
+                // Expanded: full shortcut bar
+                expandedView
+                    .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .trailing)))
+            } else {
+                // Collapsed: tiny audio-reactive pill
+                collapsedView
+                    .transition(.opacity.combined(with: .scale(scale: 1.2, anchor: .trailing)))
             }
-            .frame(height: kRow1H)
-
-            // Row 2: Status + controls — same column widths
-            HStack(spacing: 0) {
-                AudioEqualizerView(active: metrics.audioActive, speechRatio: metrics.speechRatio)
-                    .frame(width: colW, height: kRow2H)
-                    .padding(.horizontal, 2)
-                    .frame(width: colW)
-
-                Rectangle().fill(.white.opacity(0.1)).frame(width: kDivW, height: kRow2H)
-
-                ScreenMatrixView(active: metrics.screenActive, captureFps: metrics.captureFps)
-                    .frame(width: colW, height: kRow2H)
-                    .padding(.horizontal, 2)
-                    .frame(width: colW)
-
-                Rectangle().fill(.white.opacity(0.1)).frame(width: kDivW, height: kRow2H)
-
-                HStack(spacing: 1) {
-                    HoverIconButton(icon: "phone.fill", isActive: metrics.meetingActive) {
-                        onAction("toggle_meeting")
-                    }
-                    HoverIconButton(icon: "xmark", isActive: false) {
-                        onAction("close")
-                    }
-                    .buttonStyle(.plain)
-                }
-                .frame(width: colW, height: kRow2H)
-            }
-            .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.1)).frame(height: 0.5) }
         }
-        .frame(width: kPanelW, height: kRow1H + kRow2H)
-        .background(Color.black.opacity(0.75))
-        .overlay(Rectangle().stroke(.white.opacity(0.2), lineWidth: 1))
+        .animation(.easeInOut(duration: kAnimDur), value: isExpanded)
+        .onHover { hovering in
+            isExpanded = hovering
+        }
     }
 
-    private func shortcutCell(icon: String, label: String, action: String) -> some View {
-        ShortcutCellButton(icon: icon, label: label, colW: colW) {
-            onAction(action)
+    // MARK: - Collapsed pill (live audio viz)
+    private var collapsedView: some View {
+        HStack(spacing: 3) {
+            // App icon tiny
+            if let appIcon = NSApp.applicationIconImage {
+                Image(nsImage: appIcon)
+                    .resizable()
+                    .frame(width: 12, height: 12)
+            }
+            // Mini audio bars
+            AudioEqualizerView(active: metrics.audioActive, speechRatio: metrics.speechRatio)
+                .frame(width: 20, height: 12)
         }
+        .padding(.horizontal, 5)
+        .frame(height: kCollapsedH)
+        .background(Capsule().fill(Color.black.opacity(0.75)))
+        .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
+    }
+
+    // MARK: - Expanded bar
+    private var expandedView: some View {
+        HStack(spacing: 0) {
+            // Shortcut buttons
+            ShortcutCellButton(icon: "rectangle", label: overlayShortcut, colW: nil) {
+                onAction("open_timeline")
+            }
+            Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
+            ShortcutCellButton(icon: "bubble.left", label: chatShortcut, colW: nil) {
+                onAction("open_chat")
+            }
+            Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
+            ShortcutCellButton(icon: "magnifyingglass", label: searchShortcut, colW: nil) {
+                onAction("open_search")
+            }
+
+            Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
+
+            // Audio viz
+            AudioEqualizerView(active: metrics.audioActive, speechRatio: metrics.speechRatio)
+                .frame(width: 24, height: 12)
+                .padding(.horizontal, 3)
+
+            // Screen viz
+            ScreenMatrixView(active: metrics.screenActive, captureFps: metrics.captureFps)
+                .frame(width: 24, height: 12)
+                .padding(.trailing, 2)
+
+            Rectangle().fill(.white.opacity(0.15)).frame(width: 0.5)
+
+            // Meeting + close
+            HoverIconButton(icon: "phone.fill", isActive: metrics.meetingActive) {
+                onAction("toggle_meeting")
+            }
+            HoverIconButton(icon: "xmark", isActive: false) {
+                onAction("close")
+            }
+        }
+        .frame(height: kExpandedH)
+        .background(Capsule().fill(Color.black.opacity(0.8)))
+        .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
     }
 }
 
@@ -236,23 +264,25 @@ struct ShortcutReminderView: View {
 struct ShortcutCellButton: View {
     let icon: String
     let label: String
-    let colW: CGFloat
+    let colW: CGFloat?
     let action: () -> Void
     @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 0.5) {
+            HStack(spacing: 1) {
                 Image(systemName: icon)
                     .font(.system(size: 5))
                     .foregroundColor(.white.opacity(0.5))
                 Text(label)
-                    .font(Brand.swiftUIMonoFont(size: 6.5, weight: .medium))
+                    .font(Brand.swiftUIMonoFont(size: 7, weight: .medium))
                     .foregroundColor(.white.opacity(0.8))
                     .lineLimit(1)
                     .fixedSize()
             }
-            .frame(width: colW, height: kRow1H)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .frame(width: colW)
             .background(hovered ? Color.white.opacity(0.1) : Color.clear)
             .contentShape(Rectangle())
         }
@@ -296,6 +326,7 @@ class ShortcutReminderController: NSObject {
     private var chatShortcut = "⌘⌃L"
     private var searchShortcut = "⌘⌃K"
     private var metrics = OverlayMetrics()
+    @Published var isExpanded = false
     private var wsTask: URLSessionWebSocketTask?
     private var wsRetryTimer: Timer?
     private var prevFramesCaptured: Int?
@@ -424,8 +455,10 @@ class ShortcutReminderController: NSObject {
     }
 
     private func createPanel() {
+        // Start with expanded size — the content will be smaller but the panel
+        // needs room so the hover area catches mouse events during animation
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Int(kPanelW), height: Int(kRow1H + kRow2H)),
+            contentRect: NSRect(x: 0, y: 0, width: Int(kExpandedW), height: Int(kExpandedH)),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -442,7 +475,7 @@ class ShortcutReminderController: NSObject {
         p.isReleasedWhenClosed = false
         p.sharingType = .readOnly
 
-        let tracking = ReminderTrackingView(frame: NSRect(x: 0, y: 0, width: Int(kPanelW), height: Int(kRow1H + kRow2H)))
+        let tracking = ReminderTrackingView(frame: NSRect(x: 0, y: 0, width: Int(kExpandedW), height: Int(kExpandedH)))
         tracking.autoresizingMask = [.width, .height]
         p.contentView = tracking
         self.trackingView = tracking
@@ -456,8 +489,8 @@ class ShortcutReminderController: NSObject {
         for screen in NSScreen.screens {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
                 let visible = screen.visibleFrame
-                let x = screen.frame.origin.x + (screen.frame.size.width - kPanelW) / 2
-                let y = visible.origin.y + visible.size.height - (kRow1H + kRow2H) - 4
+                let x = screen.frame.origin.x + (screen.frame.size.width - kExpandedW) / 2
+                let y = visible.origin.y + visible.size.height - kExpandedH - 4
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
             }
@@ -466,6 +499,7 @@ class ShortcutReminderController: NSObject {
 
     private func updateContent() {
         guard let panel = panel else { return }
+        let controller = self
         let view = ShortcutReminderView(
             overlayShortcut: overlayShortcut,
             chatShortcut: chatShortcut,
@@ -473,7 +507,11 @@ class ShortcutReminderController: NSObject {
             metrics: metrics,
             onAction: { [weak self] action in
                 self?.sendAction(action)
-            }
+            },
+            isExpanded: Binding(
+                get: { controller.isExpanded },
+                set: { controller.isExpanded = $0 }
+            )
         )
         let contentView = panel.contentView!
         if let hosting = hostingView {
