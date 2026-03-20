@@ -9,6 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Trash2,
   Pencil,
   Check,
@@ -17,6 +23,8 @@ import {
   GitMerge,
   ArrowUpDown,
   Sparkles,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 interface MeetingRecord {
@@ -253,9 +261,16 @@ export function MeetingsSection() {
   };
 
   const [suggestingAttendees, setSuggestingAttendees] = useState(false);
-  const [suggestingNotes, setSuggestingNotes] = useState(false);
 
-  const NOTE_APPS = ["zed", "obsidian", "notepad", "notes", "notion", "typora", "logseq", "bear", "ulysses", "ia writer", "sublime", "vim", "neovim", "emacs", "code"];
+  // Notes modal state
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [notesModalLoading, setNotesModalLoading] = useState(false);
+  const [notesApps, setNotesApps] = useState<{ name: string; minutes: number }[]>([]);
+  const [expandedApp, setExpandedApp] = useState<string | null>(null);
+  const [appSnippets, setAppSnippets] = useState<{ text: string; timestamp: string }[]>([]);
+  const [loadingSnippets, setLoadingSnippets] = useState(false);
+  const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(new Set());
+  const [notesModalMeeting, setNotesModalMeeting] = useState<MeetingRecord | null>(null);
 
   const suggestAttendees = async (meeting: MeetingRecord) => {
     setSuggestingAttendees(true);
@@ -270,21 +285,20 @@ export function MeetingsSection() {
       // Source 1: calendar events overlapping this meeting
       try {
         const hoursBack = Math.ceil((Date.now() - new Date(meeting.meeting_start).getTime()) / 3600000) + 1;
+        const hoursAhead = Math.max(1, Math.ceil((new Date(meeting.meeting_end || Date.now()).getTime() - Date.now()) / 3600000) + 1);
         const calRes = await fetch(
-          `http://localhost:3030/connections/calendar/events?hours_back=${hoursBack}&hours_ahead=0`
+          `http://localhost:3030/connections/calendar/events?hours_back=${hoursBack}&hours_ahead=${hoursAhead}`
         );
         if (calRes.ok) {
           const calData = await calRes.json();
           const meetingStart = new Date(meeting.meeting_start).getTime();
           const meetingEnd = meeting.meeting_end ? new Date(meeting.meeting_end).getTime() : Date.now();
           for (const ev of calData.data || []) {
-            const evStart = new Date(ev.start || ev.startDate).getTime();
-            const evEnd = new Date(ev.end || ev.endDate).getTime();
-            // Check overlap
+            const evStart = new Date(ev.start).getTime();
+            const evEnd = new Date(ev.end).getTime();
             if (evStart < meetingEnd && evEnd > meetingStart) {
               for (const a of ev.attendees || []) {
-                const name = typeof a === "string" ? a : a.name || a.email;
-                if (name) attendees.add(name);
+                if (typeof a === "string" && a) attendees.add(a);
               }
             }
           }
@@ -325,73 +339,112 @@ export function MeetingsSection() {
     }
   };
 
-  const suggestNotes = async (meeting: MeetingRecord) => {
-    setSuggestingNotes(true);
+  const openNotesModal = async (meeting: MeetingRecord) => {
+    setNotesModalMeeting(meeting);
+    setNotesModalOpen(true);
+    setNotesModalLoading(true);
+    setExpandedApp(null);
+    setAppSnippets([]);
+    setSelectedSnippets(new Set());
+
     try {
       const startTime = new Date(meeting.meeting_start).toISOString();
       const endTime = meeting.meeting_end
         ? new Date(meeting.meeting_end).toISOString()
         : new Date().toISOString();
 
-      const noteChunks: { app: string; text: string }[] = [];
+      const res = await fetch(
+        `http://localhost:3030/activity-summary?start_time=${startTime}&end_time=${endTime}`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
 
-      // Search vision data from note-taking apps during the meeting
-      for (const app of NOTE_APPS) {
-        try {
-          const res = await fetch(
-            `http://localhost:3030/search?content_type=vision&app_name=${encodeURIComponent(app)}&start_time=${startTime}&end_time=${endTime}&limit=20`
-          );
-          if (!res.ok) continue;
-          const data = await res.json();
-          for (const item of data.data || []) {
-            if (item.type === "OCR" && item.content) {
-              const text = item.content.text?.trim();
-              if (text && text.length > 20) {
-                noteChunks.push({ app: item.content.app_name || app, text });
-              }
+      // Filter out the meeting app itself and screenpipe
+      const meetingAppLower = meeting.meeting_app.toLowerCase();
+      const apps = (data.apps || [])
+        .filter((a: { name: string; minutes: number }) => {
+          const n = a.name.toLowerCase();
+          return !n.includes("screenpipe") && !n.includes(meetingAppLower) && a.minutes > 0;
+        })
+        .sort((a: { minutes: number }, b: { minutes: number }) => b.minutes - a.minutes);
+
+      setNotesApps(apps);
+    } catch (err) {
+      toast({ title: "failed to load apps", description: String(err), variant: "destructive" });
+    } finally {
+      setNotesModalLoading(false);
+    }
+  };
+
+  const loadAppSnippets = async (appName: string) => {
+    if (expandedApp === appName) {
+      setExpandedApp(null);
+      return;
+    }
+    setExpandedApp(appName);
+    setLoadingSnippets(true);
+    setSelectedSnippets(new Set());
+    setAppSnippets([]);
+
+    try {
+      const meeting = notesModalMeeting!;
+      const startTime = new Date(meeting.meeting_start).toISOString();
+      const endTime = meeting.meeting_end
+        ? new Date(meeting.meeting_end).toISOString()
+        : new Date().toISOString();
+
+      const res = await fetch(
+        `http://localhost:3030/search?content_type=vision&app_name=${encodeURIComponent(appName)}&start_time=${startTime}&end_time=${endTime}&limit=50`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      const seen = new Set<string>();
+      const snippets: { text: string; timestamp: string }[] = [];
+      for (const item of data.data || []) {
+        if (item.type === "OCR" && item.content) {
+          const text = item.content.text?.trim();
+          if (text && text.length > 20) {
+            const key = text.slice(0, 80);
+            if (!seen.has(key)) {
+              seen.add(key);
+              snippets.push({ text, timestamp: item.content.timestamp || "" });
             }
           }
-        } catch {}
+        }
       }
-
-      if (noteChunks.length === 0) {
-        toast({ title: "no notes found", description: "no note-taking app activity detected during this meeting" });
-      } else {
-        // Deduplicate by taking unique text (OCR can repeat)
-        const seen = new Set<string>();
-        const unique: typeof noteChunks = [];
-        for (const chunk of noteChunks) {
-          const key = chunk.text.slice(0, 100);
-          if (!seen.has(key)) {
-            seen.add(key);
-            unique.push(chunk);
-          }
-        }
-
-        // Group by app
-        const byApp = new Map<string, string[]>();
-        for (const chunk of unique) {
-          const existing = byApp.get(chunk.app) || [];
-          existing.push(chunk.text);
-          byApp.set(chunk.app, existing);
-        }
-
-        const parts: string[] = [];
-        for (const [app, texts] of byApp) {
-          parts.push(`[${app}]\n${texts.join("\n\n")}`);
-        }
-
-        setEditState((s) => ({
-          ...s,
-          note: parts.join("\n\n---\n\n"),
-        }));
-        toast({ title: `notes from ${byApp.size} app(s)`, description: `${unique.length} snippet(s)` });
-      }
+      setAppSnippets(snippets);
     } catch (err) {
-      toast({ title: "failed to suggest notes", description: String(err), variant: "destructive" });
+      toast({ title: "failed to load snippets", description: String(err), variant: "destructive" });
     } finally {
-      setSuggestingNotes(false);
+      setLoadingSnippets(false);
     }
+  };
+
+  const toggleSnippet = (idx: number) => {
+    setSelectedSnippets((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const addSelectedToNotes = () => {
+    const texts = Array.from(selectedSnippets)
+      .sort()
+      .map((i) => appSnippets[i].text);
+    if (texts.length === 0) return;
+
+    const appLabel = expandedApp || "";
+    const block = `[${appLabel}]\n${texts.join("\n\n")}`;
+
+    setEditState((s) => ({
+      ...s,
+      note: s.note ? `${s.note}\n\n---\n\n${block}` : block,
+    }));
+    toast({ title: `${texts.length} snippet(s) added` });
+    setNotesModalOpen(false);
   };
 
   const cancelEdit = () => {
@@ -648,15 +701,10 @@ export function MeetingsSection() {
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 shrink-0 mt-0.5"
-                          onClick={() => suggestNotes(meeting)}
-                          disabled={suggestingNotes}
-                          title="suggest from note apps (zed, obsidian, etc.)"
+                          onClick={() => openNotesModal(meeting)}
+                          title="suggest from apps used during meeting"
                         >
-                          {suggestingNotes ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Sparkles className="h-3.5 w-3.5" />
-                          )}
+                          <Sparkles className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                       <div className="flex gap-2 flex-wrap">
@@ -838,6 +886,90 @@ export function MeetingsSection() {
           </div>
         </div>
       )}
+
+      {/* Notes suggestion modal */}
+      <Dialog open={notesModalOpen} onOpenChange={setNotesModalOpen}>
+        <DialogContent className="max-w-lg max-h-[70vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-sm">
+              apps used during meeting
+            </DialogTitle>
+          </DialogHeader>
+
+          {notesModalLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : notesApps.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">
+              no apps found during this meeting
+            </p>
+          ) : (
+            <div className="flex-1 overflow-y-auto space-y-1">
+              {notesApps.map((app) => (
+                <div key={app.name} className="border rounded-md">
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                    onClick={() => loadAppSnippets(app.name)}
+                  >
+                    {expandedApp === app.name ? (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span className="font-medium truncate">{app.name}</span>
+                    <span className="text-xs text-muted-foreground ml-auto shrink-0">
+                      {app.minutes}m
+                    </span>
+                  </button>
+
+                  {expandedApp === app.name && (
+                    <div className="border-t px-3 py-2 space-y-1.5">
+                      {loadingSnippets ? (
+                        <div className="flex items-center justify-center py-3">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : appSnippets.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2">
+                          no text captured from this app
+                        </p>
+                      ) : (
+                        <>
+                          {appSnippets.map((snippet, idx) => (
+                            <label
+                              key={idx}
+                              className="flex gap-2 items-start cursor-pointer hover:bg-muted/30 rounded p-1.5 -mx-1.5"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSnippets.has(idx)}
+                                onChange={() => toggleSnippet(idx)}
+                                className="mt-0.5 shrink-0"
+                              />
+                              <span className="text-xs text-foreground/80 line-clamp-3 whitespace-pre-wrap">
+                                {snippet.text}
+                              </span>
+                            </label>
+                          ))}
+                          {selectedSnippets.size > 0 && (
+                            <Button
+                              size="sm"
+                              className="w-full mt-2"
+                              onClick={addSelectedToNotes}
+                            >
+                              add {selectedSnippets.size} snippet(s) to notes
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
