@@ -326,15 +326,15 @@ fn detect_mode(apps: &[AppActivity], windows: &[WindowActivity]) -> &'static str
         }
     }
 
-    // Check browser windows for communication/meeting sites
+    // Check browser windows for meeting sites only (e.g. meet.google.com in URL bar).
+    // Communication sites (slack, discord) in browser titles are too noisy —
+    // searching "slack alternatives" shouldn't classify the user as "communication" mode.
+    // Only native communication apps (from classify_app) count for that mode.
     for w in windows {
         if !BROWSER_APPS.iter().any(|b| *b == w.app_name.to_lowercase()) {
             continue;
         }
         let lower = w.window_name.to_lowercase();
-        if COMMUNICATION_SITES.iter().any(|s| lower.contains(s)) {
-            *scores.entry("communication").or_insert(0) += w.cnt;
-        }
         if MEETING_SITES.iter().any(|s| lower.contains(s)) {
             *scores.entry("meeting").or_insert(0) += w.cnt;
         }
@@ -618,12 +618,21 @@ fn idle_suggestions(top_apps: &[String], windows: &[WindowActivity]) -> Vec<Sugg
     suggestions
 }
 
+/// Known app/service names that should only appear in suggestions if the user
+/// actually has activity data for them. Prevents "summarize my slack
+/// conversations" when the user doesn't use Slack.
+const KNOWN_SERVICE_NAMES: &[&str] = &[
+    "slack", "discord", "teams", "zoom", "notion", "obsidian", "telegram",
+    "whatsapp", "linear", "jira", "figma", "github", "gitlab",
+    "premiere", "final cut", "davinci", "capcut",
+];
+
 fn template_suggestions(
     mode: &str,
     top_apps: &[String],
     windows: &[WindowActivity],
 ) -> Vec<Suggestion> {
-    match mode {
+    let mut suggestions = match mode {
         "coding" => coding_suggestions(top_apps),
         "browsing" => browsing_suggestions(windows),
         "meeting" => meeting_suggestions(),
@@ -631,7 +640,52 @@ fn template_suggestions(
         "communication" => communication_suggestions(windows),
         "video_editing" => video_editing_suggestions(top_apps),
         _ => idle_suggestions(top_apps, windows),
+    };
+
+    // Filter out suggestions that reference apps/services the user hasn't used.
+    // Build a lowercase set of all app names and window titles from actual data.
+    let user_context: String = top_apps
+        .iter()
+        .map(|a| a.to_lowercase())
+        .chain(windows.iter().map(|w| w.app_name.to_lowercase()))
+        .chain(windows.iter().map(|w| w.window_name.to_lowercase()))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    suggestions.retain(|s| {
+        let text = s.text.to_lowercase();
+        // If the suggestion mentions a known service name, only keep it if
+        // that service actually appears in the user's recent activity.
+        for service in KNOWN_SERVICE_NAMES {
+            if text.contains(service) && !user_context.contains(service) {
+                return false;
+            }
+        }
+        true
+    });
+
+    // Backfill if filtering removed too many suggestions
+    if suggestions.len() < 4 {
+        let fillers = [
+            "summarize my activity from the last hour",
+            "which apps did I use most today",
+            "show my recent screen activity",
+            "what was I working on",
+        ];
+        for filler in fillers {
+            if suggestions.len() >= 4 {
+                break;
+            }
+            if !suggestions.iter().any(|s| s.text == filler) {
+                suggestions.push(Suggestion {
+                    text: filler.into(),
+                });
+            }
+        }
     }
+
+    suggestions.truncate(4);
+    suggestions
 }
 
 // ─── Suggestion generation ──────────────────────────────────────────────────
@@ -909,14 +963,14 @@ Format: {"suggestions":["suggestion1","suggestion2","suggestion3","suggestion4"]
 SUGGESTIONS — 4 natural sentences the user can click to ask about their activity:
 - all lowercase plain english, NO hyphens, NO question marks
 - 5-10 words, start with: summarize, show, list, compare, find, what, how much
-- reference specific apps/people/topics from the data below
-- example style: "summarize my slack conversations from today"
+- ONLY reference apps, people, and topics that appear in the activity data below. NEVER mention apps or services the user hasn't actually used.
+- be specific to what the user actually did, not generic
 
 TAGS — 3-8 short hyphenated labels for search/filtering:
 - lowercase with hyphens, no spaces: "coding", "rust", "debugging-auth", "meeting-with-sarah"
 - include: activity type, specific apps, topics, people, projects
 
-Output ONLY the JSON on a SINGLE LINE. Do NOT copy examples — use actual data.
+Output ONLY the JSON on a SINGLE LINE. Do NOT invent or assume any app usage not present in the data.
 "#;
 
 /// Result from a single AI call that returns both suggestions and tags.
