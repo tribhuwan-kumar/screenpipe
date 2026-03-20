@@ -9,12 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Trash2,
   Pencil,
   Check,
@@ -23,8 +17,6 @@ import {
   GitMerge,
   ArrowUpDown,
   Sparkles,
-  ChevronRight,
-  ChevronDown,
 } from "lucide-react";
 
 interface MeetingRecord {
@@ -262,15 +254,7 @@ export function MeetingsSection() {
 
   const [suggestingAttendees, setSuggestingAttendees] = useState(false);
 
-  // Notes modal state
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [notesModalLoading, setNotesModalLoading] = useState(false);
-  const [notesApps, setNotesApps] = useState<{ name: string; minutes: number }[]>([]);
-  const [expandedApp, setExpandedApp] = useState<string | null>(null);
-  const [appSnippets, setAppSnippets] = useState<{ text: string; timestamp: string; windowName: string }[]>([]);
-  const [loadingSnippets, setLoadingSnippets] = useState(false);
-  const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(new Set());
-  const [notesModalMeeting, setNotesModalMeeting] = useState<MeetingRecord | null>(null);
+
 
   const suggestAttendees = async (meeting: MeetingRecord) => {
     setSuggestingAttendees(true);
@@ -337,133 +321,6 @@ export function MeetingsSection() {
     } finally {
       setSuggestingAttendees(false);
     }
-  };
-
-  const openNotesModal = async (meeting: MeetingRecord) => {
-    setNotesModalMeeting(meeting);
-    setNotesModalOpen(true);
-    setNotesModalLoading(true);
-    setExpandedApp(null);
-    setAppSnippets([]);
-    setSelectedSnippets(new Set());
-
-    try {
-      const startTime = new Date(meeting.meeting_start).toISOString();
-      const endTime = meeting.meeting_end
-        ? new Date(meeting.meeting_end).toISOString()
-        : new Date().toISOString();
-
-      const res = await fetch(
-        `http://localhost:3030/activity-summary?start_time=${startTime}&end_time=${endTime}`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      // Filter out the meeting app itself and screenpipe
-      const meetingAppLower = meeting.meeting_app.toLowerCase();
-      const apps = (data.apps || [])
-        .filter((a: { name: string; minutes: number }) => {
-          const n = a.name.toLowerCase();
-          return !n.includes("screenpipe") && !n.includes(meetingAppLower) && a.minutes > 0;
-        })
-        .sort((a: { minutes: number }, b: { minutes: number }) => b.minutes - a.minutes);
-
-      setNotesApps(apps);
-    } catch (err) {
-      toast({ title: "failed to load apps", description: String(err), variant: "destructive" });
-    } finally {
-      setNotesModalLoading(false);
-    }
-  };
-
-  const loadAppSnippets = async (appName: string) => {
-    if (expandedApp === appName) {
-      setExpandedApp(null);
-      return;
-    }
-    setExpandedApp(appName);
-    setLoadingSnippets(true);
-    setSelectedSnippets(new Set());
-    setAppSnippets([]);
-
-    try {
-      const meeting = notesModalMeeting!;
-      const startTime = new Date(meeting.meeting_start).toISOString();
-      const endTime = meeting.meeting_end
-        ? new Date(meeting.meeting_end).toISOString()
-        : new Date().toISOString();
-
-      const res = await fetch(
-        `http://localhost:3030/search?content_type=accessibility&app_name=${encodeURIComponent(appName)}&start_time=${startTime}&end_time=${endTime}&limit=50`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      const seen = new Set<string>();
-      const snippets: { text: string; timestamp: string; windowName: string }[] = [];
-      for (const item of data.data || []) {
-        const raw = item.content?.text?.trim();
-        const windowName = item.content?.window_name || "";
-        if (!raw || raw.length < 20) continue;
-
-        // clean: split into lines, filter noise
-        const lines = raw
-          .replace(/([a-z])([A-Z])/g, "$1\n$2") // camelCase breaks
-          .split(/[\n\r]+/)
-          .map((l: string) => l.trim())
-          .filter((l: string) => {
-            if (l.length < 3) return false;
-            // skip UI noise: single icons, classNames, short fragments
-            if (/^[•\-\*\|=\s]+$/.test(l)) return false;
-            if (/^(className|icon|group|id|label|data)\s*[:=]/i.test(l)) return false;
-            return true;
-          });
-
-        const cleaned = lines.join("\n");
-        if (cleaned.length < 20) continue;
-
-        const key = cleaned.slice(0, 120);
-        if (!seen.has(key)) {
-          seen.add(key);
-          snippets.push({
-            text: cleaned,
-            timestamp: item.content.timestamp || "",
-            windowName,
-          });
-        }
-      }
-      setAppSnippets(snippets);
-    } catch (err) {
-      toast({ title: "failed to load snippets", description: String(err), variant: "destructive" });
-    } finally {
-      setLoadingSnippets(false);
-    }
-  };
-
-  const toggleSnippet = (idx: number) => {
-    setSelectedSnippets((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  };
-
-  const addSelectedToNotes = () => {
-    const texts = Array.from(selectedSnippets)
-      .sort()
-      .map((i) => appSnippets[i].text);
-    if (texts.length === 0) return;
-
-    const appLabel = expandedApp || "";
-    const block = `[${appLabel}]\n${texts.join("\n\n")}`;
-
-    setEditState((s) => ({
-      ...s,
-      note: s.note ? `${s.note}\n\n---\n\n${block}` : block,
-    }));
-    toast({ title: `${texts.length} snippet(s) added` });
-    setNotesModalOpen(false);
   };
 
   const cancelEdit = () => {
@@ -706,26 +563,15 @@ export function MeetingsSection() {
                           )}
                         </Button>
                       </div>
-                      <div className="flex gap-1.5 items-start">
-                        <textarea
-                          value={editState.note}
-                          onChange={(e) =>
-                            setEditState((s) => ({ ...s, note: e.target.value }))
-                          }
-                          className="flex-1 rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[2rem]"
-                          placeholder="paste note here..."
-                          rows={2}
-                        />
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 shrink-0 mt-0.5"
-                          onClick={() => openNotesModal(meeting)}
-                          title="suggest from apps used during meeting"
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      <textarea
+                        value={editState.note}
+                        onChange={(e) =>
+                          setEditState((s) => ({ ...s, note: e.target.value }))
+                        }
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[2rem]"
+                        placeholder="paste note here..."
+                        rows={2}
+                      />
                       <div className="flex gap-2 flex-wrap">
                         <label className="text-xs text-muted-foreground">
                           start
@@ -906,101 +752,6 @@ export function MeetingsSection() {
         </div>
       )}
 
-      {/* Notes suggestion modal */}
-      <Dialog open={notesModalOpen} onOpenChange={setNotesModalOpen}>
-        <DialogContent className="max-w-lg max-h-[70vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="text-sm">
-              apps used during meeting
-            </DialogTitle>
-          </DialogHeader>
-
-          {notesModalLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : notesApps.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              no apps found during this meeting
-            </p>
-          ) : (
-            <div className="flex-1 overflow-y-auto space-y-1">
-              {notesApps.map((app) => (
-                <div key={app.name} className="border rounded-md">
-                  <button
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                    onClick={() => loadAppSnippets(app.name)}
-                  >
-                    {expandedApp === app.name ? (
-                      <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    <span className="font-medium truncate">{app.name}</span>
-                    <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                      {app.minutes}m
-                    </span>
-                  </button>
-
-                  {expandedApp === app.name && (
-                    <div className="border-t px-3 py-2 space-y-1.5">
-                      {loadingSnippets ? (
-                        <div className="flex items-center justify-center py-3">
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : appSnippets.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-2">
-                          no text captured from this app
-                        </p>
-                      ) : (
-                        <>
-                          {appSnippets.map((snippet, idx) => (
-                            <label
-                              key={idx}
-                              className="flex gap-2 items-start cursor-pointer hover:bg-muted/40 rounded-md p-2 -mx-1 border border-transparent hover:border-border transition-colors"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedSnippets.has(idx)}
-                                onChange={() => toggleSnippet(idx)}
-                                className="mt-1 shrink-0"
-                              />
-                              <div className="min-w-0 flex-1">
-                                {snippet.windowName && (
-                                  <div className="text-[10px] text-muted-foreground/60 font-mono mb-0.5 truncate">
-                                    {snippet.windowName}
-                                  </div>
-                                )}
-                                <div className="text-xs text-foreground/80 whitespace-pre-wrap line-clamp-4 leading-relaxed">
-                                  {snippet.text}
-                                </div>
-                                {snippet.timestamp && (
-                                  <div className="text-[10px] text-muted-foreground/40 mt-1">
-                                    {new Date(snippet.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                                  </div>
-                                )}
-                              </div>
-                            </label>
-                          ))}
-                          {selectedSnippets.size > 0 && (
-                            <Button
-                              size="sm"
-                              className="w-full mt-2"
-                              onClick={addSelectedToNotes}
-                            >
-                              add {selectedSnippets.size} snippet(s) to notes
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
