@@ -926,6 +926,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const piMessageIdRef = useRef<string | null>(null);
   const piContentBlocksRef = useRef<ContentBlock[]>([]);
   const piStartInFlightRef = useRef(false);
+  const piFirstCallRetried = useRef(false);
   const piStoppedIntentionallyRef = useRef(false);
   const piCrashCountRef = useRef(0);
   const piLastCrashRef = useRef(0);
@@ -2010,11 +2011,18 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
           }
         } else if (data.type === "response" && data.success === false) {
           const errorStr = data.error || "Unknown error";
-          // Suppress Pi agent first-call bug (pi-mono#2461) — the warmup
-          // prompt absorbs this crash, but the error event still fires.
-          // Pi auto-retries and the next call works.
+          // Pi agent first-call bug (pi-mono#2461) — first RPC prompt crashes.
+          // Auto-retry the same prompt once. The second call works.
           if (errorStr.includes("startsWith") || errorStr.includes("text.startsWith")) {
-            console.warn("[Pi] suppressing known first-call bug:", errorStr);
+            console.warn("[Pi] first-call bug hit, auto-retrying prompt:", errorStr);
+            if (piMessageIdRef.current && !piFirstCallRetried.current) {
+              piFirstCallRetried.current = true;
+              // Re-send the last prompt
+              const lastUserMsg = messages.findLast(m => m.role === "user");
+              if (lastUserMsg?.content) {
+                commands.piPrompt(PI_CHAT_SESSION, lastUserMsg.content, null).catch(() => {});
+              }
+            }
             return;
           }
           if (piMessageIdRef.current) {
