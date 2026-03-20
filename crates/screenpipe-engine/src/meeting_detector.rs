@@ -109,7 +109,7 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &["microsoft teams", "teams"],
                 windows_process_names: &["ms-teams.exe", "teams.exe"],
-                browser_url_patterns: &["teams.microsoft.com", "teams.live.com"],
+                browser_url_patterns: &["teams.microsoft.com", "teams.live.com", "Microsoft Teams"],
             },
             call_signals: vec![
                 CallSignal::AutomationId("hangup-button"),
@@ -126,6 +126,12 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
                 // Fallback: Teams on some Windows machines exposes "Leave" as a
                 // non-Button control type (Custom, Text, etc.). Match by name only.
                 CallSignal::NameContains("leave"),
+                // Teams web (browser): mute is AXCheckBox with keyboard shortcut in name.
+                // "Mute mic (⇧ ⌘ M)" is only present during an active call.
+                CallSignal::RoleWithName {
+                    role: "AXCheckBox",
+                    name_contains: "Mute mic",
+                },
             ],
             min_signals_required: 1,
         },
