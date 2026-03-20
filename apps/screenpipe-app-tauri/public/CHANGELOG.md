@@ -6,4 +6,4 @@
 
 - Fix audio transcriptions not being assigned to all overlapping frames in timeline
 
-#### **Full Changelog:** [b79b960c..d2912ada](https://github.com/mediar-ai/screenpipe/compare/b79b960c..d2912ada)
+#### **Full Changelog:** [b79b960c..d2912ada](https://github.com/screenpipe/screenpipe/compare/b79b960c..d2912ada)

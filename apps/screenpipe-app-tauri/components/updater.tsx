@@ -10,11 +10,9 @@ import type { UpdateChannel } from "@/lib/hooks/use-settings";
 const UPDATE_ENDPOINTS = {
   stable: [
     "https://screenpi.pe/api/app-update/stable",
-    "https://cdn.crabnebula.app/update/mediar/screenpipe",
   ],
   beta: [
     "https://screenpi.pe/api/app-update/beta",
-    "https://cdn.crabnebula.app/update/mediar/screenpipe-beta",
   ],
 } as const;
 
