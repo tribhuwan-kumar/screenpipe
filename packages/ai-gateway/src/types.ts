@@ -153,6 +153,10 @@ export interface Env {
 	OPENROUTER_API_KEY: string;
 	// Admin API auth
 	ADMIN_SECRET: string;
+	// Self-hosted Whisper A/B test
+	SELF_HOSTED_TRANSCRIPTION_URL?: string;
+	WHISPER_TRAFFIC_PCT?: string;
+	WHISPER_DUAL_SEND_PCT?: string;
 	// Configurable tier limits (override defaults without redeploying)
 	LIMIT_ANONYMOUS_DAILY?: string;
 	LIMIT_ANONYMOUS_RPM?: string;

@@ -6,7 +6,7 @@ import { RateLimiter, checkRateLimit } from './utils/rate-limiter';
 import { trackUsage, getUsageStatus, isModelAllowed, getTierConfig } from './services/usage-tracker';
 import { handleChatCompletions } from './handlers/chat';
 import { handleModelListing } from './handlers/models';
-import { handleFileTranscription } from './handlers/transcription';
+import { handleFileTranscription, handleABTestAdmin } from './handlers/transcription';
 import { handleVoiceTranscription, handleVoiceQuery, handleTextToSpeech, handleVoiceChat } from './handlers/voice';
 import { handleVertexProxy, handleVertexModels } from './handlers/vertex-proxy';
 import { handleWebSearch } from './handlers/web-search';
@@ -68,6 +68,16 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 			const range = parseInt(url.searchParams.get('range') || '7', 10);
 			const summary = await getSpendSummary(env, range);
 			return addCorsHeaders(createSuccessResponse(summary));
+		}
+
+		// Admin A/B test results endpoint
+		if (path === '/v1/admin/transcription-ab' && request.method === 'GET') {
+			const authHeader = request.headers.get('Authorization');
+			const token = authHeader?.replace('Bearer ', '');
+			if (!env.ADMIN_SECRET || token !== env.ADMIN_SECRET) {
+				return addCorsHeaders(createErrorResponse(401, 'unauthorized'));
+			}
+			return addCorsHeaders(await handleABTestAdmin(request, env));
 		}
 
 		// Chat completions - main AI endpoint
@@ -239,7 +249,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 			const estimatedSeconds = contentLength > 0 ? contentLength / 8000 : 30;
 			const estimatedCost = (estimatedSeconds / 3600) * 0.26;
 
-			const response = await handleFileTranscription(request, env);
+			const response = await handleFileTranscription(request, env, ctx, authResult.deviceId);
 
 			// Log cost after successful transcription
 			if (response.ok) {
