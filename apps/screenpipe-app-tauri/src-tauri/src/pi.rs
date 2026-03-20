@@ -1477,6 +1477,27 @@ pub async fn pi_start_inner(
         }
     }
 
+    // Workaround for Pi agent bug: first RPC prompt always fails with
+    // "Cannot read properties of undefined (reading 'startsWith')" (pi-mono#2461).
+    // Send a silent warmup prompt that absorbs the crash, so the user's first
+    // real message hits on the second (working) call.
+    {
+        let pool = state.0.lock().await;
+        if let Some(m) = pool.sessions.get(&sid) {
+            if let Some(ref qh) = m.queue_handle {
+                let warmup = serde_json::json!({"type": "prompt", "content": "."});
+                let qh = qh.clone();
+                tokio::spawn(async move {
+                    match qh.send(warmup, crate::pi_command_queue::WaitMode::StreamThenWaitDone).await {
+                        Ok(rx) => { let _ = rx.await; }
+                        Err(e) => debug!("Pi warmup send failed (non-fatal): {}", e),
+                    }
+                    debug!("Pi warmup prompt completed (absorbed first-call bug)");
+                });
+            }
+        }
+    }
+
     Ok(snapshot)
 }
 
