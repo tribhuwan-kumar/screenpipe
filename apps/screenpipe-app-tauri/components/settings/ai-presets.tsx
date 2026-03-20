@@ -34,7 +34,25 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
+  GripVertical,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Textarea } from "../ui/textarea";
 import {
   Tooltip,
@@ -1148,33 +1166,39 @@ const AISection = ({
       {(settingsPreset?.provider === "claude-code" || settingsPreset?.provider === "anthropic") && (
         <div className="w-full">
           <div className="flex flex-col gap-3 mb-4 w-full">
-            <Label className="flex items-center gap-1">How do you want to log in?</Label>
+            <Label className="flex items-center gap-1 text-xs text-muted-foreground">choose how to connect</Label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => handleAiProviderChange("claude-code")}
                 className={cn(
-                  "flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-colors hover:bg-accent",
+                  "flex flex-col items-start gap-1.5 rounded-lg border-2 p-3 text-left transition-colors hover:bg-accent",
                   settingsPreset?.provider === "claude-code"
                     ? "border-primary bg-accent"
                     : "border-border"
                 )}
               >
-                <span className="font-medium text-sm">Claude.ai Subscription</span>
-                <span className="text-xs text-muted-foreground">Use your Claude Pro, Team, or Enterprise subscription</span>
+                <span className="font-medium text-sm">sign in with claude</span>
+                <span className="text-xs text-muted-foreground leading-relaxed">use your existing claude pro/team subscription. no API key needed.</span>
+                {settingsPreset?.provider === "claude-code" && (
+                  <span className="text-[10px] text-muted-foreground/60 mt-0.5">recommended</span>
+                )}
               </button>
               <button
                 type="button"
                 onClick={() => handleAiProviderChange("anthropic")}
                 className={cn(
-                  "flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-colors hover:bg-accent",
+                  "flex flex-col items-start gap-1.5 rounded-lg border-2 p-3 text-left transition-colors hover:bg-accent",
                   settingsPreset?.provider === "anthropic"
                     ? "border-primary bg-accent"
                     : "border-border"
                 )}
               >
-                <span className="font-medium text-sm">Anthropic Console</span>
-                <span className="text-xs text-muted-foreground">Pay for API usage through your Console account</span>
+                <span className="font-medium text-sm">API key</span>
+                <span className="text-xs text-muted-foreground leading-relaxed">pay per usage with an API key from console.anthropic.com</span>
+                {settingsPreset?.provider === "anthropic" && (
+                  <span className="text-[10px] text-muted-foreground/60 mt-0.5">for developers</span>
+                )}
               </button>
             </div>
 
@@ -1210,10 +1234,10 @@ const AISection = ({
                   ) : claudeCodeLoggedIn ? (
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                   ) : null}
-                  {claudeCodeLoggedIn ? "Sign out" : "Sign in with Claude"}
+                  {claudeCodeLoggedIn ? "sign out" : "sign in with claude.ai"}
                 </Button>
                 {claudeCodeLoggedIn && (
-                  <span className="text-sm text-muted-foreground">Signed in</span>
+                  <span className="text-sm text-muted-foreground">connected — your subscription is active</span>
                 )}
               </div>
             )}
