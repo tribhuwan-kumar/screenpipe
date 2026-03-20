@@ -964,7 +964,7 @@ dependencies = [
  "sha1 0.10.6",
  "sync_wrapper 1.0.2",
  "tokio",
- "tokio-tungstenite 0.24.0",
+ "tokio-tungstenite",
  "tower 0.5.3",
  "tower-layer",
  "tower-service",
@@ -2592,33 +2592,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
  "serde",
- "uuid",
-]
-
-[[package]]
-name = "deepgram"
-version = "0.6.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e55d68eeaf55308feb5cb6e948d49efa8564d0536a7375d8a9e06acbb5773a"
-dependencies = [
- "anyhow",
- "bytes",
- "futures",
- "http 1.4.0",
- "pin-project",
- "reqwest 0.12.12",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sha256",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.27.0",
- "tokio-util",
- "tracing",
- "tungstenite 0.27.0",
- "url",
  "uuid",
 ]
 
@@ -9316,7 +9289,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.210"
+version = "2.2.211"
 dependencies = [
  "anyhow",
  "arboard",
@@ -9428,7 +9401,6 @@ dependencies = [
  "cpal",
  "crossbeam",
  "dashmap",
- "deepgram",
  "dirs 5.0.1",
  "env_logger",
  "esaxx-rs",
@@ -10304,19 +10276,6 @@ dependencies = [
  "cfg-if 1.0.4",
  "cpufeatures",
  "digest 0.11.1",
-]
-
-[[package]]
-name = "sha256"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f880fc8562bdeb709793f00eb42a2ad0e672c4f883bbe59122b926eca935c8f6"
-dependencies = [
- "async-trait",
- "bytes",
- "hex",
- "sha2 0.10.9",
- "tokio",
 ]
 
 [[package]]
@@ -12328,23 +12287,7 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite 0.24.0",
-]
-
-[[package]]
-name = "tokio-tungstenite"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "489a59b6730eda1b0171fcfda8b121f4bee2b35cba8645ca35c5f7ba3eb736c1"
-dependencies = [
- "futures-util",
- "log",
- "rustls",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tungstenite 0.27.0",
- "webpki-roots 0.26.11",
+ "tungstenite",
 ]
 
 [[package]]
@@ -12703,25 +12646,6 @@ dependencies = [
  "rand 0.8.5",
  "sha1 0.10.6",
  "thiserror 1.0.69",
- "utf-8",
-]
-
-[[package]]
-name = "tungstenite"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eadc29d668c91fcc564941132e17b28a7ceb2f3ebf0b9dae3e03fd7a6748eb0d"
-dependencies = [
- "bytes",
- "data-encoding",
- "http 1.4.0",
- "httparse",
- "log",
- "rand 0.9.2",
- "rustls",
- "rustls-pki-types",
- "sha1 0.10.6",
- "thiserror 2.0.18",
  "utf-8",
 ]
 
