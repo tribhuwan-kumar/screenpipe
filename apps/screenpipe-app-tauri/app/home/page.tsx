@@ -55,6 +55,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { useTeam } from "@/lib/hooks/use-team";
 import { useIsEnterpriseBuild } from "@/lib/hooks/use-is-enterprise-build";
+import { useEnterprisePolicy } from "@/lib/hooks/use-enterprise-policy";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { commands } from "@/lib/utils/tauri";
 import { toast } from "@/components/ui/use-toast";
@@ -111,6 +112,7 @@ function SettingsPageContent() {
   const { settings } = useSettings();
   const teamState = useTeam();
   const isEnterprise = useIsEnterpriseBuild();
+  const { isSectionHidden } = useEnterprisePolicy();
 
   // Sidebar collapse state (persisted in localStorage)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -311,14 +313,14 @@ function SettingsPageContent() {
     }
   };
 
-  // Top-level nav items
+  // Top-level nav items (filtered by enterprise policy)
   const mainSections = [
     { id: "home", label: "Home", icon: <Home className="h-4 w-4" /> },
     { id: "pipes", label: "Pipes", icon: <Workflow className="h-4 w-4" /> },
     { id: "timeline", label: "Timeline", icon: <Clock className="h-4 w-4" /> },
-  ];
+  ].filter((s) => !isSectionHidden(s.id));
 
-  // Settings modal sidebar items
+  // Settings modal sidebar items (filtered by enterprise policy)
   const settingsModalSections: { id: SettingsModalSection; label: string; icon: React.ReactNode; group?: string }[] = [
     { id: "display", label: "Display", icon: <Layout className="h-4 w-4" />, group: "app" },
     { id: "general", label: "General", icon: <SettingsIcon className="h-4 w-4" />, group: "app" },
@@ -334,7 +336,7 @@ function SettingsPageContent() {
     { id: "team", label: "Team", icon: <Users className="h-4 w-4" />, group: "account" },
     ...(!isEnterprise ? [{ id: "account" as SettingsModalSection, label: "Account", icon: <User className="h-4 w-4" />, group: "account" }] : []),
     ...(!isEnterprise ? [{ id: "referral" as SettingsModalSection, label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" }] : []),
-  ];
+  ].filter((s) => !isSectionHidden(s.id));
 
   const appGroup = settingsModalSections.filter(s => s.group === "app");
   const dataGroup = settingsModalSections.filter(s => s.group === "data");
