@@ -432,7 +432,7 @@ export function AIProviderConfig({
             autoCapitalize="off"
             disabled={
               Boolean(defaultPreset?.id) &&
-              !defaultPreset?.id?.endsWith("-copy")
+              settings.aiPresets.some((p) => p.id === defaultPreset?.id)
             }
           />
         </div>
@@ -1022,10 +1022,10 @@ export const AIPresetsSelector = ({
 
     // If we're editing an existing preset
     if (selectedPresetToEdit) {
-      // If this is a copy operation, treat it as a new preset
+      // If this is a copy/duplicate operation, treat it as a new preset
       if (
         preset.id !== selectedPresetToEdit.id ||
-        preset.id.endsWith("-copy")
+        !settings.aiPresets.some((p) => p.id === preset.id)
       ) {
         // Check for duplicate ID
         const existingPreset = settings.aiPresets.find(
@@ -1134,9 +1134,16 @@ export const AIPresetsSelector = ({
   };
 
   const handleDuplicatePreset = (preset: AIPreset) => {
+    const baseName = preset.id.replace(/ \d+$/, "");
+    let counter = 2;
+    let newName = `${baseName} ${counter}`;
+    while (settings.aiPresets.some((p) => p.id.toLowerCase() === newName.toLowerCase())) {
+      counter++;
+      newName = `${baseName} ${counter}`;
+    }
     setSelectedPresetToEdit({
       ...preset,
-      id: `${preset.id}-copy`,
+      id: newName,
       defaultPreset: false,
     });
     setDialogOpen(true);

@@ -1715,9 +1715,18 @@ export const AIPresets = () => {
     const presetToDuplicate = settings.aiPresets.find((p) => p.id === id);
     if (!presetToDuplicate) return;
 
+    // Find a unique name by appending a number
+    const baseName = presetToDuplicate.id.replace(/ \d+$/, "");
+    let counter = 2;
+    let newName = `${baseName} ${counter}`;
+    while (settings.aiPresets.some((p) => p.id.toLowerCase() === newName.toLowerCase())) {
+      counter++;
+      newName = `${baseName} ${counter}`;
+    }
+
     const newPreset = {
       ...presetToDuplicate,
-      id: `${presetToDuplicate.id} copy`,
+      id: newName,
       defaultPreset: false,
     };
 
