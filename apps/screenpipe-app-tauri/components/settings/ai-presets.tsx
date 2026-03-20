@@ -5,6 +5,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { homeDir, join } from "@tauri-apps/api/path";
 import { Button } from "../ui/button";
 import {
   DEFAULT_PROMPT,
@@ -487,11 +488,11 @@ const AISection = ({
         break;
       case "claude-code":
         newUrl = "";
-        newModel = "claude-sonnet-4-5-20250514";
+        newModel = "claude-sonnet-4-6";
         break;
       case "anthropic":
         newUrl = "https://api.anthropic.com";
-        newModel = "claude-sonnet-4-5-20250514";
+        newModel = "claude-sonnet-4-6";
         break;
       case "pi":
         newUrl = ""; // Pi uses RPC mode, not HTTP
@@ -511,7 +512,6 @@ const AISection = ({
 
   const runDiagnostics = useCallback(async () => {
     if (settingsPreset?.provider === "pi") return;
-    if (settingsPreset?.provider === "claude-code") return;
 
     // Abort any previous run
     diagnosticsAbortRef.current?.abort();
@@ -541,12 +541,13 @@ const AISection = ({
 
     // Determine models URL
     const isAnthropic = settingsPreset?.provider === "anthropic";
+    const isClaudeCode = settingsPreset?.provider === "claude-code";
     let modelsUrl: string;
     if (settingsPreset?.provider === "native-ollama") {
       modelsUrl = "http://localhost:11434/api/tags";
     } else if (settingsPreset?.provider === "openai" || settingsPreset?.provider === "openai-chatgpt") {
       modelsUrl = "https://api.openai.com/v1/models";
-    } else if (isAnthropic) {
+    } else if (isAnthropic || isClaudeCode) {
       modelsUrl = "https://api.anthropic.com/v1/models";
     } else {
       modelsUrl = `${settingsPreset?.url}/models`;
@@ -580,6 +581,60 @@ const AISection = ({
       ...prev,
       endpoint: { status: "running", message: "Connecting..." },
     }));
+
+    // Claude Code: test through Pi (real usage path), not direct API
+    if (isClaudeCode) {
+      try {
+        // Step 1: Verify OAuth token
+        setTestResults((prev) => ({
+          ...prev,
+          endpoint: { status: "running", message: "Getting OAuth token..." },
+        }));
+
+        const tokenResult = await commands.claudeOauthGetToken();
+        if (tokenResult.status !== "ok") {
+          skipRemaining("endpoint", "OAuth token unavailable. Try signing in again.");
+          return;
+        }
+
+        setTestResults((prev) => ({
+          ...prev,
+          endpoint: { status: "pass", message: "OAuth token obtained" },
+          auth: { status: "running", message: "Starting Pi agent..." },
+        }));
+
+        // Step 2: Start Pi with claude-code config (tests auth)
+        const providerConfig: any = {
+          provider: settingsPreset?.provider || "claude-code",
+          url: settingsPreset?.url || "",
+          model: settingsPreset?.model || "",
+          apiKey: null,
+          maxTokens: (settingsPreset as any)?.maxTokens ?? 4096,
+          systemPrompt: null,
+        };
+
+        const home = await homeDir();
+        const dir = await join(home, ".screenpipe", "pi-diagnostics");
+
+        const piStartResult = await commands.piStart("pi-diagnostics", dir, settings.user?.token ?? null, providerConfig);
+        if (piStartResult.status !== "ok") {
+          skipRemaining("auth", `Pi failed to start: ${piStartResult.error}`);
+          return;
+        }
+
+        setTestResults((prev) => ({
+          ...prev,
+          auth: { status: "pass", message: "Pi agent started successfully" },
+          models: { status: "pass", message: "Using known models" },
+          chat: { status: "pass", message: "Ready to chat" },
+        }));
+        setTestStatus("done");
+        return;
+      } catch (err) {
+        skipRemaining("endpoint", `Error: ${err}`);
+        return;
+      }
+    }
 
     // Anthropic: skip /v1/models (may not be available for all keys) and go straight to chat test
     let modelsResponse: Response | null = null;
@@ -889,15 +944,15 @@ const AISection = ({
             } else {
               // Fallback to hardcoded models
               setModels([
-                { id: "claude-opus-4-6-20250828", name: "Claude Opus 4.6", provider: "anthropic" },
-                { id: "claude-sonnet-4-5-20250514", name: "Claude Sonnet 4.5", provider: "anthropic" },
+                { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
+                { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.5", provider: "anthropic" },
                 { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
               ]);
             }
           } catch {
             setModels([
-              { id: "claude-opus-4-6-20250828", name: "Claude Opus 4.6", provider: "anthropic" },
-              { id: "claude-sonnet-4-5-20250514", name: "Claude Sonnet 4.5", provider: "anthropic" },
+              { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
+              { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.5", provider: "anthropic" },
               { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
             ]);
           }
@@ -907,8 +962,8 @@ const AISection = ({
         case "claude-code": {
           // Hardcoded model list — Claude Pro/Max subscription models
           setModels([
-            { id: "claude-opus-4-6-20250828", name: "Claude Opus 4.6", provider: "claude-code" },
-            { id: "claude-sonnet-4-5-20250514", name: "Claude Sonnet 4.5", provider: "claude-code" },
+            { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "claude-code" },
+            { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.5", provider: "claude-code" },
             { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "claude-code" },
           ]);
           break;
@@ -1037,7 +1092,6 @@ const AISection = ({
   // Auto-trigger diagnostics when provider + url + apiKey are set (debounced)
   useEffect(() => {
     if (settingsPreset?.provider === "pi") return;
-    if (settingsPreset?.provider === "claude-code") return;
     if (!settingsPreset?.provider) return;
 
     const needsApiKey =

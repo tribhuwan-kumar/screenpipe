@@ -565,7 +565,7 @@ export function AIProviderConfig({
                   ...formData,
                   provider: "claude-code",
                   url: "",
-                  model: "claude-sonnet-4-5-20250514",
+                  model: "claude-sonnet-4-6",
                 });
               }
             }}
@@ -816,7 +816,7 @@ export function AIProviderConfig({
                 type="button"
                 onClick={() => {
                   setSelectedProvider("claude-code");
-                  setFormData({ ...formData, provider: "claude-code", url: "", model: "claude-sonnet-4-5-20250514" });
+                  setFormData({ ...formData, provider: "claude-code", url: "", model: "claude-sonnet-4-6" });
                 }}
                 className={`flex flex-col items-start gap-0.5 rounded-md border-2 p-2 text-left text-xs transition-colors hover:bg-accent ${
                   selectedProvider === "claude-code" ? "border-primary bg-accent" : "border-border"
@@ -829,7 +829,7 @@ export function AIProviderConfig({
                 type="button"
                 onClick={() => {
                   setSelectedProvider("anthropic");
-                  setFormData({ ...formData, provider: "anthropic", url: "https://api.anthropic.com", model: "claude-sonnet-4-5-20250514" });
+                  setFormData({ ...formData, provider: "anthropic", url: "https://api.anthropic.com", model: "claude-sonnet-4-6" });
                 }}
                 className={`flex flex-col items-start gap-0.5 rounded-md border-2 p-2 text-left text-xs transition-colors hover:bg-accent ${
                   selectedProvider === "anthropic" ? "border-primary bg-accent" : "border-border"
@@ -882,8 +882,8 @@ export function AIProviderConfig({
                   <SelectValue placeholder="select model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="claude-opus-4-6-20250828">claude opus 4.6</SelectItem>
-                  <SelectItem value="claude-sonnet-4-5-20250514">claude sonnet 4.5</SelectItem>
+                  <SelectItem value="claude-opus-4-6">claude opus 4.6</SelectItem>
+                  <SelectItem value="claude-sonnet-4-6">claude sonnet 4.5</SelectItem>
                   <SelectItem value="claude-haiku-4-5-20251001">claude haiku 4.5</SelectItem>
                 </SelectContent>
               </Select>
