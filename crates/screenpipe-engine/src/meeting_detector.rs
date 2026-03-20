@@ -137,7 +137,13 @@ pub fn load_detection_profiles() -> Vec<MeetingDetectionProfile> {
             app_identifiers: AppIdentifiers {
                 macos_app_names: &["zoom.us", "zoom"],
                 windows_process_names: &["zoom.exe"],
-                browser_url_patterns: &["zoom.us/j", "zoom.us/wc", "zoom.us/my"],
+                browser_url_patterns: &[
+                    "zoom.us/j",
+                    "zoom.us/wc",
+                    "zoom.us/my",
+                    // Browser page title during a Zoom web meeting (URL not in title)
+                    "zoom meeting",
+                ],
             },
             call_signals: vec![
                 // macOS menu bar signals (Zoom only exposes AXMenuBar, no AXWindow)
@@ -1120,8 +1126,8 @@ fn windows_scan_process_uia(
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, IUIAutomation, IUIAutomationCondition, TreeScope_Descendants,
-        UIA_AutomationIdPropertyId, UIA_NamePropertyId,
+        CUIAutomation, IUIAutomation, IUIAutomationCondition, PropertyConditionFlags_IgnoreCase,
+        TreeScope_Descendants, UIA_AutomationIdPropertyId, UIA_NamePropertyId,
     };
 
     unsafe {
@@ -1132,13 +1138,15 @@ fn windows_scan_process_uia(
 
         // Build UIA property conditions from our signals for FindAll search.
         // This pierces WebView2/Electron boundaries that TreeWalker cannot traverse.
+        // Uses IgnoreCase so "leave" matches "Leave", "LEAVE", etc.
         let mut conditions = Vec::new();
         for signal in signals {
             match signal {
                 CallSignal::AutomationId(id) => {
-                    if let Ok(cond) = automation.CreatePropertyCondition(
+                    if let Ok(cond) = automation.CreatePropertyConditionEx(
                         UIA_AutomationIdPropertyId,
                         &windows::core::VARIANT::from(*id),
+                        PropertyConditionFlags_IgnoreCase,
                     ) {
                         conditions.push(cond);
                     }
@@ -1149,11 +1157,12 @@ fn windows_scan_process_uia(
                     ..
                 } => {
                     // UIA PropertyCondition doesn't support substring match,
-                    // so we search for exact name. For "leave"/"hang up" this works
-                    // because the button name IS the keyword.
-                    if let Ok(cond) = automation.CreatePropertyCondition(
+                    // so we search for exact name with case-insensitive matching.
+                    // For "leave"/"hang up" this works because the button name IS the keyword.
+                    if let Ok(cond) = automation.CreatePropertyConditionEx(
                         UIA_NamePropertyId,
                         &windows::core::VARIANT::from(*name),
+                        PropertyConditionFlags_IgnoreCase,
                     ) {
                         conditions.push(cond);
                     }
@@ -3109,6 +3118,79 @@ mod tests {
         };
         let label = format_signal_match(&signal, "window", Some("Zoom Meeting"), None);
         assert_eq!(label, "window_title=Zoom Meeting (Zoom Meeting)");
+    }
+
+    #[test]
+    fn test_zoom_browser_url_patterns_include_page_title() {
+        // Zoom web client shows "Zoom Meeting" as page title, not the URL.
+        // Browsers display this as "Zoom Meeting - Google Chrome" etc.
+        // The browser_url_patterns must include "zoom meeting" to catch this.
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .expect("Zoom profile not found");
+
+        let has_page_title_pattern = zoom
+            .app_identifiers
+            .browser_url_patterns
+            .iter()
+            .any(|p| p.to_lowercase().contains("zoom meeting"));
+        assert!(
+            has_page_title_pattern,
+            "Zoom browser_url_patterns must include 'zoom meeting' for page title matching"
+        );
+    }
+
+    #[test]
+    fn test_zoom_browser_window_title_matches() {
+        // Simulate what find_running_meeting_apps does for browser window title matching
+        let profiles = load_detection_profiles();
+        let zoom = profiles
+            .iter()
+            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .expect("Zoom profile not found");
+
+        let browser_titles = [
+            "Zoom Meeting - Google Chrome",
+            "Zoom Meeting 40-Minutes - Microsoft Edge",
+            "zoom.us/j/12345 - Firefox",
+            "zoom.us/wc/join/12345 - Brave",
+        ];
+
+        for title in &browser_titles {
+            let title_lower = title.to_lowercase();
+            let matched = zoom
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
+                .any(|p| title_lower.contains(&p.to_lowercase()));
+            assert!(
+                matched,
+                "Browser title '{}' should match Zoom URL patterns",
+                title
+            );
+        }
+
+        // Non-meeting Zoom pages should NOT match
+        let non_meeting_titles = [
+            "Zoom Workplace - Google Chrome",
+            "Zoom - Sign In - Firefox",
+            "Google Search - Chrome",
+        ];
+        for title in &non_meeting_titles {
+            let title_lower = title.to_lowercase();
+            let matched = zoom
+                .app_identifiers
+                .browser_url_patterns
+                .iter()
+                .any(|p| title_lower.contains(&p.to_lowercase()));
+            assert!(
+                !matched,
+                "Non-meeting title '{}' should NOT match Zoom URL patterns",
+                title
+            );
+        }
     }
 }
 
