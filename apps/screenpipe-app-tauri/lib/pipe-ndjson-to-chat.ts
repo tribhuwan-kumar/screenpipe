@@ -66,12 +66,27 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
           .join("\n");
       }
       if (text.trim()) {
-        messages.push({
+        // Detect pipe system prompts and give them a short display label
+        const isPipePrompt = text.includes("Time range:") && text.includes("Execute the pipe now.");
+        const msg: any = {
           id: `pipe-msg-${messageCounter++}`,
           role: "user",
           content: text.trim(),
           timestamp: turnTimestamp,
-        });
+        };
+        if (isPipePrompt) {
+          // Extract just the time range for the label
+          const match = text.match(/Time range: (\S+) to (\S+)/);
+          if (match) {
+            const start = new Date(match[1]);
+            const end = new Date(match[2]);
+            const fmt = (d: Date) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+            msg.displayContent = `pipe executed (${fmt(start)} – ${fmt(end)})`;
+          } else {
+            msg.displayContent = "pipe executed";
+          }
+        }
+        messages.push(msg);
       }
       continue;
     }
@@ -105,14 +120,42 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
           currentBlocks.push({ type: "text", text: currentText.trim() });
           currentText = "";
         }
-        currentToolCall = { name: ae.toolName || "unknown", input: "" };
+        // toolName may be on the event or inside partial.content[].name
+        let toolName = ae.toolName || "unknown";
+        if (toolName === "unknown" && ae.partial?.content) {
+          for (const c of ae.partial.content) {
+            if (c.type === "toolCall" && c.name) { toolName = c.name; break; }
+          }
+        }
+        currentToolCall = { name: toolName, input: "" };
       } else if (ae.type === "toolcall_delta" && ae.delta && currentToolCall) {
         currentToolCall.input += ae.delta;
-      } else if (ae.type === "toolcall_end" && currentToolCall) {
+      } else if (ae.type === "toolcall_end") {
+        // Parse args: try accumulated delta input first, then fall back to partial
+        let args: Record<string, any> = {};
+        const rawInput = currentToolCall?.input || "";
+        if (rawInput) {
+          try { args = JSON.parse(rawInput); } catch { args = { raw: rawInput }; }
+        } else if (ae.partial?.content) {
+          for (const c of ae.partial.content) {
+            if (c.type === "toolCall" && c.arguments) { args = c.arguments; break; }
+          }
+        }
+        // Also grab tool name from end event if we missed it at start
+        let toolName = currentToolCall?.name || "unknown";
+        if (toolName === "unknown" && ae.partial?.content) {
+          for (const c of ae.partial.content) {
+            if (c.type === "toolCall" && c.name) { toolName = c.name; break; }
+          }
+        }
         currentBlocks.push({
-          type: "tool_use",
-          name: currentToolCall.name,
-          input: currentToolCall.input,
+          type: "tool",
+          toolCall: {
+            id: `pipe-tool-${messageCounter}-${currentBlocks.length}`,
+            toolName,
+            args,
+            isRunning: false,
+          },
         });
         currentToolCall = null;
       }
@@ -131,12 +174,14 @@ export function parsePipeNdjsonToMessages(raw: string): ChatMessage[] {
           .map((b: any) => b.text)
           .join("\n");
         if (resultText) {
-          currentBlocks.push({
-            type: "tool_result",
-            content: resultText.length > 2000
-              ? resultText.slice(0, 2000) + "\n... (truncated)"
-              : resultText,
-          });
+          const truncated = resultText.length > 2000
+            ? resultText.slice(0, 2000) + "\n... (truncated)"
+            : resultText;
+          // Attach result to the last tool block if possible
+          const lastBlock = currentBlocks[currentBlocks.length - 1];
+          if (lastBlock?.type === "tool" && lastBlock.toolCall && !lastBlock.toolCall.result) {
+            lastBlock.toolCall.result = truncated;
+          }
         }
       }
       continue;

@@ -81,18 +81,18 @@ describe("parsePipeNdjsonToMessages", () => {
     const assistant = msgs[1];
     expect(assistant.role).toBe("assistant");
     expect(assistant.contentBlocks).toBeDefined();
-    // Should have: text block + tool_use block
+    // Should have: text block + tool block
     const textBlock = assistant.contentBlocks!.find(
       (b: any) => b.type === "text"
     );
     const toolBlock = assistant.contentBlocks!.find(
-      (b: any) => b.type === "tool_use"
+      (b: any) => b.type === "tool"
     );
     expect(textBlock).toBeDefined();
     expect(textBlock.text).toBe("Let me search.");
     expect(toolBlock).toBeDefined();
-    expect(toolBlock.name).toBe("bash");
-    expect(toolBlock.input).toContain("curl");
+    expect(toolBlock.toolCall.toolName).toBe("bash");
+    expect(JSON.stringify(toolBlock.toolCall.args)).toContain("curl");
   });
 
   // ─── tool results ─────────────────────────────────────────────────
@@ -110,14 +110,14 @@ describe("parsePipeNdjsonToMessages", () => {
 
     const msgs = parsePipeNdjsonToMessages(stdout);
     expect(msgs.length).toBeGreaterThanOrEqual(1);
-    // The assistant message should have tool_result in contentBlocks
+    // The assistant message should have tool block with result attached
     const assistant = msgs.find((m) => m.role === "assistant");
     expect(assistant).toBeDefined();
-    const resultBlock = assistant!.contentBlocks?.find(
-      (b: any) => b.type === "tool_result"
+    const toolBlock = assistant!.contentBlocks?.find(
+      (b: any) => b.type === "tool" && b.toolCall?.result
     );
-    expect(resultBlock).toBeDefined();
-    expect(resultBlock.content).toContain("file1.txt");
+    expect(toolBlock).toBeDefined();
+    expect(toolBlock.toolCall.result).toContain("file1.txt");
   });
 
   it("truncates large tool results to 2000 chars", () => {
@@ -125,18 +125,20 @@ describe("parsePipeNdjsonToMessages", () => {
     const stdout = [
       '{"type":"message_start","message":{"role":"assistant","content":[]}}',
       '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Working.","partial":{}}}',
-      `{"type":"tool_execution_end","toolCallId":"t1","toolName":"bash","result":{"content":[{"type":"text","text":"${bigResult}"}]},"isError":false}`,
+      '{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1,"toolName":"bash","partial":{}}}',
+      '{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"t1","name":"bash","arguments":{"command":"big"}},"partial":{}}}',
       '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"stop"}}',
+      `{"type":"tool_execution_end","toolCallId":"t1","toolName":"bash","result":{"content":[{"type":"text","text":"${bigResult}"}]},"isError":false}`,
     ].join("\n");
 
     const msgs = parsePipeNdjsonToMessages(stdout);
     const assistant = msgs.find((m) => m.role === "assistant");
-    const resultBlock = assistant?.contentBlocks?.find(
-      (b: any) => b.type === "tool_result"
+    const toolBlock = assistant?.contentBlocks?.find(
+      (b: any) => b.type === "tool" && b.toolCall?.result
     );
-    expect(resultBlock).toBeDefined();
-    expect(resultBlock.content.length).toBeLessThan(2100);
-    expect(resultBlock.content).toContain("... (truncated)");
+    expect(toolBlock).toBeDefined();
+    expect(toolBlock.toolCall.result.length).toBeLessThan(2100);
+    expect(toolBlock.toolCall.result).toContain("... (truncated)");
   });
 
   // ─── thinking blocks ──────────────────────────────────────────────
@@ -197,11 +199,11 @@ describe("parsePipeNdjsonToMessages", () => {
     // First assistant has tool call
     expect(msgs[1].role).toBe("assistant");
     expect(msgs[1].contentBlocks).toBeDefined();
-    const toolUse = msgs[1].contentBlocks!.find(
-      (b: any) => b.type === "tool_use"
+    const toolBlock = msgs[1].contentBlocks!.find(
+      (b: any) => b.type === "tool"
     );
-    expect(toolUse).toBeDefined();
-    expect(toolUse.name).toBe("bash");
+    expect(toolBlock).toBeDefined();
+    expect(toolBlock.toolCall.toolName).toBe("bash");
 
     // Second assistant has final text
     const lastAssistant = msgs[msgs.length - 1];
@@ -332,11 +334,11 @@ describe("parsePipeNdjsonToMessages", () => {
     // Second: assistant with tool call to read SKILL.md
     expect(msgs[1].role).toBe("assistant");
     expect(msgs[1].contentBlocks).toBeDefined();
-    const toolUse = msgs[1].contentBlocks!.find(
-      (b: any) => b.type === "tool_use"
+    const toolBlock = msgs[1].contentBlocks!.find(
+      (b: any) => b.type === "tool"
     );
-    expect(toolUse).toBeDefined();
-    expect(toolUse.name).toBe("read");
+    expect(toolBlock).toBeDefined();
+    expect(toolBlock.toolCall.toolName).toBe("read");
 
     // Last: assistant with final verdict
     const lastMsg = msgs[msgs.length - 1];
@@ -382,11 +384,13 @@ describe("parsePipeNdjsonToMessages", () => {
     const firstAssistant = msgs[1];
     expect(firstAssistant.role).toBe("assistant");
     expect(firstAssistant.contentBlocks).toBeDefined();
-    // Should have text, tool_use, and tool_result blocks
+    // Should have text and tool blocks (tool_result is attached to the tool block)
     const blockTypes = firstAssistant.contentBlocks!.map((b: any) => b.type);
     expect(blockTypes).toContain("text");
-    expect(blockTypes).toContain("tool_use");
-    expect(blockTypes).toContain("tool_result");
+    expect(blockTypes).toContain("tool");
+    // Tool result should be attached to the tool block
+    const toolBlock = firstAssistant.contentBlocks!.find((b: any) => b.type === "tool");
+    expect(toolBlock.toolCall.result).toContain("WezTerm");
 
     const lastAssistant = msgs[msgs.length - 1];
     expect(lastAssistant.role).toBe("assistant");
