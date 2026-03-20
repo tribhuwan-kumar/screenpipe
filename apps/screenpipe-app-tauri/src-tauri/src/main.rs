@@ -539,6 +539,7 @@ async fn main() {
                 recording::get_audio_devices,
                 // Commands from commands.rs
                 commands::is_enterprise_build_cmd,
+                commands::get_enterprise_license_key,
                 commands::get_disk_usage,
                 commands::open_pipe_window,
                 commands::update_show_screenpipe_shortcut,
@@ -764,6 +765,7 @@ async fn main() {
         .manage(pipe_suggestions_state)
         .invoke_handler(tauri::generate_handler![
             commands::is_enterprise_build_cmd,
+            commands::get_enterprise_license_key,
             spawn_screenpipe,
             stop_screenpipe,
             recording::get_monitors,

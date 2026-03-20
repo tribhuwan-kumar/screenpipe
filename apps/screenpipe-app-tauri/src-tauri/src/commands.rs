@@ -98,6 +98,38 @@ pub fn is_enterprise_build_cmd(app_handle: tauri::AppHandle) -> bool {
     is_enterprise_build(&app_handle)
 }
 
+/// Read the enterprise license key from `enterprise.json` next to the executable.
+/// Admins push this file via Intune/MDM to a protected directory (e.g. Program Files)
+/// that employees cannot modify. Returns None if the file doesn't exist or is invalid.
+#[tauri::command]
+#[specta::specta]
+pub fn get_enterprise_license_key() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+
+    // Check next to executable first (Program Files on Windows, .app/Contents/MacOS on macOS)
+    let config_path = exe_dir.join("enterprise.json");
+
+    // On macOS, also check the Resources directory inside the .app bundle
+    #[cfg(target_os = "macos")]
+    let config_path = if config_path.exists() {
+        config_path
+    } else {
+        exe_dir.join("../Resources/enterprise.json")
+    };
+
+    if !config_path.exists() {
+        return None;
+    }
+
+    let contents = std::fs::read_to_string(&config_path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&contents).ok()?;
+    parsed
+        .get("license_key")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn write_browser_log(level: String, message: String) {
