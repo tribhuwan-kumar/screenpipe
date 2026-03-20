@@ -6119,7 +6119,7 @@ LIMIT ? OFFSET ?
         offset: u32,
     ) -> Result<Vec<MeetingRecord>, SqlxError> {
         let mut sql = String::from(
-            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, \
+            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, note, \
              detection_source, created_at FROM meetings WHERE 1=1",
         );
         if start_time.is_some() {
@@ -6156,7 +6156,7 @@ LIMIT ? OFFSET ?
 
     pub async fn get_meeting_by_id(&self, id: i64) -> Result<MeetingRecord, SqlxError> {
         let meeting = sqlx::query_as::<_, MeetingRecord>(
-            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, \
+            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, note, \
              detection_source, created_at FROM meetings WHERE id = ?1",
         )
         .bind(id)
@@ -6302,7 +6302,7 @@ LIMIT ? OFFSET ?
         tx.commit().await?;
         // Fetch and return the surviving record
         let meeting = sqlx::query_as::<_, MeetingRecord>(
-            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, \
+            "SELECT id, meeting_start, meeting_end, meeting_app, title, attendees, note, \
              detection_source, created_at FROM meetings WHERE id = ?1",
         )
         .bind(survivor_id)

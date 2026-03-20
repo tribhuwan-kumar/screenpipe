@@ -16,6 +16,7 @@ import {
   Loader2,
   GitMerge,
   ArrowUpDown,
+  Sparkles,
 } from "lucide-react";
 
 interface MeetingRecord {
@@ -251,6 +252,65 @@ export function MeetingsSection() {
     });
   };
 
+  const [suggesting, setSuggesting] = useState(false);
+
+  const suggestFromScreenpipe = async (meeting: MeetingRecord) => {
+    setSuggesting(true);
+    try {
+      const startTime = new Date(meeting.meeting_start).toISOString();
+      const endTime = meeting.meeting_end
+        ? new Date(meeting.meeting_end).toISOString()
+        : new Date().toISOString();
+
+      // Fetch audio transcriptions during meeting window for speakers + notes
+      const audioRes = await fetch(
+        `http://localhost:3030/search?content_type=audio&start_time=${startTime}&end_time=${endTime}&limit=100`
+      );
+      if (!audioRes.ok) throw new Error(`HTTP ${audioRes.status}`);
+      const audioData = await audioRes.json();
+
+      const speakers = new Set<string>();
+      const transcriptLines: string[] = [];
+
+      for (const item of audioData.data || []) {
+        if (item.type === "Audio" && item.content) {
+          const speaker = item.content.speaker_name;
+          if (speaker && speaker !== "unknown" && !speaker.startsWith("speaker_")) {
+            speakers.add(speaker);
+          }
+          const text = item.content.transcription?.trim();
+          if (text) {
+            const prefix = speaker && speaker !== "unknown" ? `${speaker}: ` : "";
+            transcriptLines.push(`${prefix}${text}`);
+          }
+        }
+      }
+
+      // Build suggestions
+      const suggestedAttendees = Array.from(speakers).join(", ");
+      const suggestedNote = transcriptLines.slice(0, 50).join("\n");
+
+      setEditState((s) => ({
+        ...s,
+        attendees: s.attendees || suggestedAttendees,
+        note: s.note || suggestedNote,
+      }));
+
+      toast({
+        title: "suggestions loaded",
+        description: `${speakers.size} speaker(s), ${transcriptLines.length} transcript line(s)`,
+      });
+    } catch (err) {
+      toast({
+        title: "failed to load suggestions",
+        description: String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   const cancelEdit = () => {
     setEditingId(null);
   };
@@ -484,6 +544,20 @@ export function MeetingsSection() {
                         placeholder="paste note here..."
                         rows={2}
                       />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-xs w-fit"
+                        onClick={() => suggestFromScreenpipe(meeting)}
+                        disabled={suggesting}
+                      >
+                        {suggesting ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3 w-3" />
+                        )}
+                        {suggesting ? "loading..." : "suggest from recordings"}
+                      </Button>
                       <div className="flex gap-2 flex-wrap">
                         <label className="text-xs text-muted-foreground">
                           start
