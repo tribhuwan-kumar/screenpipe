@@ -85,14 +85,19 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				})));
 			}
 
-			// Per-user daily cost cap — skip for zero-cost models (they're free to us)
-			if (!isZeroCostModel(body.model)) {
+			// Per-user daily cost cap — only for expensive models (weight >= 3).
+			// Cheap models (weight 0-1) like qwen3.5-flash, haiku, deepseek-chat
+			// should not trigger cost caps — they're affordable and pipes need them.
+			// Subscribed users get 5x higher cap.
+			const modelWeight = getModelWeight(body.model);
+			if (!isZeroCostModel(body.model) && modelWeight >= 3) {
 				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
-				const maxCost = getMaxDailyCostPerUser(env);
+				const baseCap = getMaxDailyCostPerUser(env);
+				const maxCost = authResult.tier === 'subscribed' ? baseCap * 5 : baseCap;
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+						message: `You've reached your daily AI usage limit. Try a free model or wait until tomorrow.`,
 						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
 					})));
 				}
@@ -317,14 +322,16 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				// If body parse fails, let the proxy handle the error downstream
 			}
 
-			// Per-user daily cost cap — all paid models
-			if (!isZeroCostModel(parsedModel)) {
+			// Per-user daily cost cap — only expensive models (weight >= 3)
+			const msgModelWeight = getModelWeight(parsedModel);
+			if (!isZeroCostModel(parsedModel) && msgModelWeight >= 3) {
 				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
-				const maxCost = getMaxDailyCostPerUser(env);
+				const baseCap = getMaxDailyCostPerUser(env);
+				const maxCost = authResult.tier === 'subscribed' ? baseCap * 5 : baseCap;
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+						message: `You've reached your daily AI usage limit. Try a free model or wait until tomorrow.`,
 						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
 					})));
 				}
@@ -415,14 +422,16 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 				// body parse failure — proceed with defaults
 			}
 
-			// Per-user daily cost cap — all paid models
-			if (!isZeroCostModel(ocModel)) {
+			// Per-user daily cost cap — only expensive models (weight >= 3)
+			const ocModelWeight = getModelWeight(ocModel);
+			if (!isZeroCostModel(ocModel) && ocModelWeight >= 3) {
 				const dailyCost = await getDailyUserCost(env, authResult.deviceId);
-				const maxCost = getMaxDailyCostPerUser(env);
+				const baseCap = getMaxDailyCostPerUser(env);
+				const maxCost = authResult.tier === 'subscribed' ? baseCap * 5 : baseCap;
 				if (dailyCost >= maxCost) {
 					return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 						error: 'daily_cost_limit_exceeded',
-						message: `You've reached your daily AI usage limit. Try a free model or come back tomorrow.`,
+						message: `You've reached your daily AI usage limit. Try a free model or wait until tomorrow.`,
 						free_models: ['qwen/qwen3-coder:free', 'stepfun/step-3.5-flash:free', 'gemini-3-flash'],
 					})));
 				}

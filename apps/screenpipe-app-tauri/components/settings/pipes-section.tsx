@@ -1256,20 +1256,12 @@ export function PipesSection() {
               <div className="flex items-center gap-2 text-xs px-4 py-2">
                 <span className="text-muted-foreground">
                   {limitError.type === "credits_exhausted"
-                    ? "no credits remaining — buy more at screenpi.pe"
+                    ? "daily ai usage limit reached — try a lighter model or wait until tomorrow"
                     : limitError.message}
                   {limitError.resets_at && (
                     <> · resets {new Date(limitError.resets_at).toLocaleTimeString()}</>
                   )}
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 text-[11px] px-2"
-                  onClick={() => openUrl("https://screenpi.pe/billing")}
-                >
-                  buy credits →
-                </Button>
               </div>
             );
           })()}
