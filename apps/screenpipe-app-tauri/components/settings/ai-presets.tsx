@@ -1697,6 +1697,111 @@ const providerImageSrc: Record<string, string> = {
   pi: "/images/screenpipe.png",
 };
 
+// Sortable preset card for drag-and-drop reordering
+function SortablePresetCard({
+  preset,
+  isDefault,
+  hasValidation,
+  onEdit,
+  onDuplicate,
+  onSetDefault,
+  onDelete,
+  isLoading,
+}: {
+  preset: AIPreset;
+  isDefault: boolean;
+  hasValidation: boolean;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onSetDefault: () => void;
+  onDelete: () => void;
+  isLoading: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: preset.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "p-3 relative group transition-all hover:shadow-md border-border bg-card cursor-pointer",
+        isDefault && "ring-2 ring-primary/20",
+        isDragging && "shadow-lg"
+      )}
+      onClick={onEdit}
+    >
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <button
+              className="cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground shrink-0"
+              {...attributes}
+              {...listeners}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GripVertical className="w-4 h-4" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={providerImageSrc[preset.provider]}
+              alt={`${preset.provider} logo`}
+              className="w-6 h-6 opacity-80 rounded shrink-0"
+            />
+            <h3 className="text-sm font-semibold text-foreground truncate" title={preset.id}>
+              {formatPresetName(preset.id)}
+            </h3>
+            {isDefault && (
+              <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                default
+              </Badge>
+            )}
+            {!hasValidation && (
+              <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+            )}
+          </div>
+          {hasValidation ? (
+            <CheckCircle2 className="h-4 w-4 text-foreground/50 shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="font-mono bg-muted px-1.5 py-0.5 rounded truncate max-w-[180px]" title={preset.model || 'Not set'}>
+            {preset.model || 'Not set'}
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5 pt-1.5 border-t border-border">
+          <Button variant="ghost" size="sm" className="text-[11px] h-6 px-2" onClick={(e) => { e.stopPropagation(); onDuplicate(); }} disabled={isLoading}>
+            <Copy className="w-3 h-3 mr-1" />duplicate
+          </Button>
+          <Button variant="ghost" size="sm" className="text-[11px] h-6 px-2" onClick={(e) => { e.stopPropagation(); onSetDefault(); }} disabled={isLoading || isDefault}>
+            <Star className="w-3 h-3 mr-1" />{isDefault ? "default" : "set default"}
+          </Button>
+          {!isDefault && (
+            <Button variant="ghost" size="sm" className="text-[11px] h-6 px-2 text-destructive hover:text-destructive ml-auto" onClick={(e) => { e.stopPropagation(); onDelete(); }} disabled={isLoading}>
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export const AIPresets = () => {
   const { settings, updateSettings } = useSettings();
   const [createPresetsDialog, setCreatePresentDialog] = useState(false);
@@ -1709,6 +1814,28 @@ export const AIPresets = () => {
   const [isDuplicating, setIsDuplicating] = useState(false);
   const isEnterprise = useIsEnterpriseBuild();
   const [piAvailable, setPiAvailable] = useState(false);
+
+  // Drag-and-drop sensors with activation distance to avoid conflicts with clicks
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const presets = settings.aiPresets;
+      const oldIndex = presets.findIndex((p) => p.id === active.id);
+      const newIndex = presets.findIndex((p) => p.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = arrayMove(presets, oldIndex, newIndex);
+      updateSettings({ aiPresets: reordered });
+    },
+    [settings.aiPresets, updateSettings]
+  );
 
   // Check Pi availability (installed at app startup by Rust background thread)
   useEffect(() => {
@@ -1921,74 +2048,32 @@ export const AIPresets = () => {
         </Button>
       </div>
 
-      <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-3">
-        {settings.aiPresets.filter((preset) => !isEnterprise || preset.provider !== "pi").map((preset) => {
-          const isDefault = preset.defaultPreset;
-          const hasValidation = preset.provider && preset.model && preset.url;
-
-          return (
-            <Card
-              key={preset.id}
-              className={cn(
-                "p-3 relative group transition-all hover:shadow-md border-border bg-card cursor-pointer",
-                isDefault && "ring-2 ring-primary/20"
-              )}
-              onClick={() => {
-                setSelectedPreset(preset);
-                setIsDuplicating(false);
-                setCreatePresentDialog(true);
-              }}
-            >
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={providerImageSrc[preset.provider]}
-                      alt={`${preset.provider} logo`}
-                      className="w-6 h-6 opacity-80 rounded shrink-0"
-                    />
-                    <h3 className="text-sm font-semibold text-foreground truncate" title={preset.id}>
-                      {formatPresetName(preset.id)}
-                    </h3>
-                    {isDefault && (
-                      <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                        default
-                      </Badge>
-                    )}
-                    {!hasValidation && (
-                      <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
-                    )}
-                  </div>
-                  {hasValidation ? (
-                    <CheckCircle2 className="h-4 w-4 text-foreground/50 shrink-0" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded truncate max-w-[180px]" title={preset.model || 'Not set'}>
-                    {preset.model || 'Not set'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-0.5 pt-1.5 border-t border-border">
-                  <Button variant="ghost" size="sm" className="text-[11px] h-6 px-2" onClick={(e) => { e.stopPropagation(); duplicatePreset(preset.id); }} disabled={isLoading}>
-                    <Copy className="w-3 h-3 mr-1" />duplicate
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-[11px] h-6 px-2" onClick={(e) => { e.stopPropagation(); setPresetToSetDefault(preset.id); }} disabled={isLoading || isDefault}>
-                    <Star className="w-3 h-3 mr-1" />{isDefault ? "default" : "set default"}
-                  </Button>
-                  {!isDefault && (
-                    <Button variant="ghost" size="sm" className="text-[11px] h-6 px-2 text-destructive hover:text-destructive ml-auto" onClick={(e) => { e.stopPropagation(); setPresetToDelete(preset.id); }} disabled={isLoading}>
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext
+          items={settings.aiPresets.filter((preset) => !isEnterprise || preset.provider !== "pi").map((p) => p.id)}
+          strategy={rectSortingStrategy}
+        >
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-3">
+            {settings.aiPresets.filter((preset) => !isEnterprise || preset.provider !== "pi").map((preset) => (
+              <SortablePresetCard
+                key={preset.id}
+                preset={preset}
+                isDefault={preset.defaultPreset}
+                hasValidation={!!(preset.provider && preset.model && preset.url)}
+                onEdit={() => {
+                  setSelectedPreset(preset);
+                  setIsDuplicating(false);
+                  setCreatePresentDialog(true);
+                }}
+                onDuplicate={() => duplicatePreset(preset.id)}
+                onSetDefault={() => setPresetToSetDefault(preset.id)}
+                onDelete={() => setPresetToDelete(preset.id)}
+                isLoading={isLoading}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       <AlertDialog
         open={!!presetToDelete}
