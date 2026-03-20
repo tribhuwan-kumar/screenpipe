@@ -332,8 +332,8 @@ function SettingsPageContent() {
     { id: "memories", label: "Memories", icon: <Sparkles className="h-4 w-4" />, group: "data" },
     { id: "connections", label: "Connections", icon: <Plug className="h-4 w-4" />, group: "data" },
     { id: "team", label: "Team", icon: <Users className="h-4 w-4" />, group: "account" },
-    { id: "account", label: "Account", icon: <User className="h-4 w-4" />, group: "account" },
-    { id: "referral", label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" },
+    { id: "account" as SettingsModalSection, label: "Account", icon: <User className="h-4 w-4" />, group: "account" },
+    { id: "referral" as SettingsModalSection, label: "Get free month", icon: <Gift className="h-4 w-4" />, group: "account" },
   ].filter((s) => !isSectionHidden(s.id));
 
   const appGroup = settingsModalSections.filter(s => s.group === "app");
