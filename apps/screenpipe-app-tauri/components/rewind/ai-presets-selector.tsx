@@ -510,10 +510,10 @@ export function AIProviderConfig({
 
           <Button
             type="button"
-            variant={selectedProvider === "anthropic" ? "default" : "outline"}
+            variant={(selectedProvider as string) === "anthropic" ? "default" : "outline"}
             className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
             onClick={() => {
-              if (selectedProvider !== "anthropic") {
+              if ((selectedProvider as string) !== "anthropic") {
                 setSelectedProvider("anthropic");
                 setFormData({
                   ...formData,

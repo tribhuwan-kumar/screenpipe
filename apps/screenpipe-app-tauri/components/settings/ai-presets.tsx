@@ -1082,10 +1082,9 @@ const AISection = ({
             title="Claude.ai"
             description="Use your Claude Pro/Max subscription or Anthropic API key"
             imageSrc="/images/claude-ai.svg"
-            selected={settingsPreset?.provider === "anthropic"}
+            selected={(settingsPreset?.provider as string) === "anthropic"}
             onClick={() => {
-              // Default to claude-code (subscription) when first selecting Anthropic
-              if (settingsPreset?.provider !== "anthropic") {
+              if ((settingsPreset?.provider as string) !== "anthropic") {
                 handleAiProviderChange("anthropic");
               }
             }}
