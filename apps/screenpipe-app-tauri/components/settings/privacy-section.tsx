@@ -476,6 +476,31 @@ export function PrivacySection() {
       </Card>
 
       {/* Window Filtering */}
+      {/* DRM Streaming Pause */}
+      <Card>
+        <CardContent className="px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <Tv className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div>
+                <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  pause for streaming apps
+                  <HelpTooltip text="pauses all screen capture when netflix, disney+, hulu, prime video, and other DRM streaming apps are focused. this prevents black screens caused by DRM copy protection detecting screen recording. capture resumes automatically when you switch to a non-browser app." />
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  avoid DRM black screens on netflix, disney+, etc.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="pauseOnDrmContent"
+              checked={Boolean(settings.pauseOnDrmContent ?? false)}
+              onCheckedChange={handleDrmPauseToggle}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="space-y-2">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
           Content filters
