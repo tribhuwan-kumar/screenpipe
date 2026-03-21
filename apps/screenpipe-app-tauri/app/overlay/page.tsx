@@ -77,7 +77,7 @@ class TimelineErrorBoundary extends React.Component<
   }
 }
 
-export default function Home() {
+export default function OverlayPage() {
   const { settings, updateSettings, loadUser, reloadStore, isSettingsLoaded, loadingError } = useSettings();
   const { toast } = useToast();
   const { onboardingData } = useOnboarding();
@@ -141,7 +141,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // add a shortcut to hide main window when pressed esc
+    // add a shortcut to hide overlay window when pressed esc
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         commands.closeWindow("Main");
