@@ -753,26 +753,19 @@ jobs:
         shell: powershell
         run: |
           dotnet tool install --global AzureSignTool
-          # Ensure signtool.exe is on PATH — search all Windows SDK bin directories
-          $found = $false
-          foreach ($base in @("C:\Program Files (x86)\Windows Kits\10\bin", "C:\Program Files\Windows Kits\10\bin")) {
-            if (Test-Path $base) {
-              foreach ($arch in @("x64", "arm64", "x86")) {
-                $sdkBin = Get-ChildItem "$base\*\$arch" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
-                if ($sdkBin -and (Test-Path "$($sdkBin.FullName)\signtool.exe")) {
-                  echo "$($sdkBin.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-                  Write-Host "Added $($sdkBin.FullName) to PATH (signtool.exe)"
-                  $found = $true
-                  break
-                }
-              }
-              if ($found) { break }
-            }
-          }
-          if (-not $found) {
-            Write-Host "WARNING: signtool.exe not found in any Windows SDK bin directory"
-            # List available SDK paths for debugging
-            Get-ChildItem "C:\Program Files*\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+          # Find signtool.exe and make it available everywhere (PATH + copy to system dir)
+          $signtool = Get-ChildItem "C:\Program Files*\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($signtool) {
+            $dir = $signtool.DirectoryName
+            echo "$dir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            Write-Host "Found signtool.exe at: $($signtool.FullName)"
+            # Copy to a system directory so Tauri's bundler can find it regardless of SDK detection
+            Copy-Item $signtool.FullName "C:\Windows\System32\signtool.exe" -Force -ErrorAction SilentlyContinue
+            Write-Host "Copied signtool.exe to C:\Windows\System32\"
+          } else {
+            Write-Host "ERROR: signtool.exe not found anywhere"
+            Get-ChildItem "C:\Program Files*\Windows Kits" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "sign*" } | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            exit 1
           }
 
       - name: Build (Windows)
