@@ -127,7 +127,10 @@ pub async fn retention_configure(
                     state.retention_state.inner.clone(),
                     run_now,
                 );
-                info!("retention: re-enabled with {}d", runtime.config.retention_days);
+                info!(
+                    "retention: re-enabled with {}d",
+                    runtime.config.retention_days
+                );
             }
 
             Ok(Json(json!({

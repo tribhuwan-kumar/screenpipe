@@ -25,8 +25,7 @@ static DRM_CONTENT_PAUSED: AtomicBool = AtomicBool::new(false);
 /// Global reference to the UI recorder's stop flag.
 /// Set during startup so the DRM detector can stop the UI recorder
 /// (which holds native event taps that keep Screen Recording active).
-static UI_RECORDER_STOP_FLAG: Lazy<Mutex<Option<Arc<AtomicBool>>>> =
-    Lazy::new(|| Mutex::new(None));
+static UI_RECORDER_STOP_FLAG: Lazy<Mutex<Option<Arc<AtomicBool>>>> = Lazy::new(|| Mutex::new(None));
 
 /// Register the UI recorder's stop flag so DRM detector can stop it.
 pub fn set_ui_recorder_stop_flag(flag: Arc<AtomicBool>) {

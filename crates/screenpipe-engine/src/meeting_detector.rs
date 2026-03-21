@@ -1209,10 +1209,8 @@ fn windows_scan_process_uia(
                             .to_lowercase()
                             .contains(&title_contains.to_lowercase())
                         {
-                            let label = format!(
-                                "window_title={} ({})",
-                                title_contains, window_name_str
-                            );
+                            let label =
+                                format!("window_title={} ({})", title_contains, window_name_str);
                             if !found.contains(&label) {
                                 info!(
                                     "meeting scanner: matched window title '{}' on '{}'",
@@ -3094,7 +3092,11 @@ mod tests {
         let profiles = load_detection_profiles();
         let zoom = profiles
             .iter()
-            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .find(|p| {
+                p.app_identifiers
+                    .windows_process_names
+                    .contains(&"zoom.exe")
+            })
             .expect("Zoom profile not found");
 
         let has_window_title = zoom.call_signals.iter().any(|s| {
@@ -3111,7 +3113,11 @@ mod tests {
         let profiles = load_detection_profiles();
         let zoom = profiles
             .iter()
-            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .find(|p| {
+                p.app_identifiers
+                    .windows_process_names
+                    .contains(&"zoom.exe")
+            })
             .expect("Zoom profile not found");
 
         // Verify the NameContains signals for Zoom on Windows exist
@@ -3125,7 +3131,9 @@ mod tests {
             .collect();
 
         assert!(
-            signal_names.iter().any(|n| n.contains("Zoom Video Container")),
+            signal_names
+                .iter()
+                .any(|n| n.contains("Zoom Video Container")),
             "Missing 'Zoom Video Container' signal, found: {:?}",
             signal_names
         );
@@ -3148,7 +3156,11 @@ mod tests {
         let profiles = load_detection_profiles();
         let zoom = profiles
             .iter()
-            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .find(|p| {
+                p.app_identifiers
+                    .windows_process_names
+                    .contains(&"zoom.exe")
+            })
             .expect("Zoom profile not found");
 
         let has_page_title_pattern = zoom
@@ -3194,9 +3206,10 @@ mod tests {
             .find(|p| p.app_identifiers.macos_app_names.contains(&"zoom.us"))
             .expect("Zoom profile not found");
 
-        let has_mute_menu = zoom.call_signals.iter().any(|s| {
-            matches!(s, CallSignal::MenuItemId(id) if id.contains("Mute"))
-        });
+        let has_mute_menu = zoom
+            .call_signals
+            .iter()
+            .any(|s| matches!(s, CallSignal::MenuItemId(id) if id.contains("Mute")));
         assert!(
             !has_mute_menu,
             "Zoom profile must NOT have onMuteAudio:/onMuteVideo: signals — \
@@ -3288,9 +3301,9 @@ mod tests {
             })
             .expect("Google Meet profile not found");
 
-        let has_cmd_d = meet.call_signals.iter().any(|s| {
-            matches!(s, CallSignal::KeyboardShortcut(k) if k.contains('D') || k.contains('d'))
-        });
+        let has_cmd_d = meet.call_signals.iter().any(
+            |s| matches!(s, CallSignal::KeyboardShortcut(k) if k.contains('D') || k.contains('d')),
+        );
         assert!(
             !has_cmd_d,
             "Google Meet profile must NOT have Cmd+D/Ctrl+D signals (browser bookmark false positive)"
@@ -3427,7 +3440,13 @@ mod tests {
         // A random AXButton with ⌘D in its description (e.g. bookmark button)
         // should not be detected as a meeting signal
         assert!(
-            check_signal_match(&signal_cmd_d, "AXButton", None, Some("Add bookmark ⌘D"), None),
+            check_signal_match(
+                &signal_cmd_d,
+                "AXButton",
+                None,
+                Some("Add bookmark ⌘D"),
+                None
+            ),
             "KeyboardShortcut signal itself matches — this test verifies the signal \
              was REMOVED from the Google Meet profile, not that matching is broken"
         );
@@ -3498,7 +3517,11 @@ mod tests {
         let profiles = load_detection_profiles();
         let zoom = profiles
             .iter()
-            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .find(|p| {
+                p.app_identifiers
+                    .windows_process_names
+                    .contains(&"zoom.exe")
+            })
             .expect("Zoom profile not found");
 
         let browser_titles = [
@@ -3575,7 +3598,11 @@ mod windows_live_tests {
                 let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
                 println!(
                     "  {} (pid={}) => in_call={}, signals={}, matched={:?}",
-                    app.app_name, app.pid, result.is_in_call, result.signals_found, result.matched_signals
+                    app.app_name,
+                    app.pid,
+                    result.is_in_call,
+                    result.signals_found,
+                    result.matched_signals
                 );
             }
         } else {
@@ -3593,7 +3620,11 @@ mod windows_live_tests {
 
         let zoom_profile = profiles
             .iter()
-            .find(|p| p.app_identifiers.windows_process_names.contains(&"zoom.exe"))
+            .find(|p| {
+                p.app_identifiers
+                    .windows_process_names
+                    .contains(&"zoom.exe")
+            })
             .expect("Zoom profile must exist");
 
         let scanner = MeetingUiScanner::new();
@@ -3612,10 +3643,7 @@ mod windows_live_tests {
 
         // If Zoom is running with a meeting, this should detect it
         if !zoom_procs.is_empty() {
-            println!(
-                "\n=== RESULT: Zoom meeting detected = {} ===",
-                any_in_call
-            );
+            println!("\n=== RESULT: Zoom meeting detected = {} ===", any_in_call);
         }
     }
 }

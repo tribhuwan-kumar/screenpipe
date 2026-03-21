@@ -569,10 +569,7 @@ impl SCServer {
                 "/retention/configure",
                 axum::routing::post(crate::retention::retention_configure),
             )
-            .route(
-                "/retention/status",
-                get(crate::retention::retention_status),
-            )
+            .route("/retention/status", get(crate::retention::retention_status))
             .route(
                 "/retention/run",
                 axum::routing::post(crate::retention::retention_run),
@@ -727,18 +724,36 @@ impl SCServer {
             .route("/ws/health", get(ws_health_handler))
             .route("/ws/metrics", get(ws_metrics_handler))
             // Browser extension bridge
-            .route("/browser/ws", get({
-                let bridge = app_state.browser_bridge.clone();
-                move |ws| crate::routes::browser::browser_ws_handler(ws, axum::extract::State(bridge))
-            }))
-            .route("/browser/eval", axum::routing::post({
-                let bridge = app_state.browser_bridge.clone();
-                move |body| crate::routes::browser::browser_eval_handler(axum::extract::State(bridge), body)
-            }))
-            .route("/browser/status", get({
-                let bridge = app_state.browser_bridge.clone();
-                move || crate::routes::browser::browser_status_handler(axum::extract::State(bridge))
-            }))
+            .route(
+                "/browser/ws",
+                get({
+                    let bridge = app_state.browser_bridge.clone();
+                    move |ws| {
+                        crate::routes::browser::browser_ws_handler(ws, axum::extract::State(bridge))
+                    }
+                }),
+            )
+            .route(
+                "/browser/eval",
+                axum::routing::post({
+                    let bridge = app_state.browser_bridge.clone();
+                    move |body| {
+                        crate::routes::browser::browser_eval_handler(
+                            axum::extract::State(bridge),
+                            body,
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/browser/status",
+                get({
+                    let bridge = app_state.browser_bridge.clone();
+                    move || {
+                        crate::routes::browser::browser_status_handler(axum::extract::State(bridge))
+                    }
+                }),
+            )
             .route(
                 "/frames/export",
                 get(handle_video_export_ws).post(handle_video_export_post),

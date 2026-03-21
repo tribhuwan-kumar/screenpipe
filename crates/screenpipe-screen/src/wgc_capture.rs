@@ -79,15 +79,13 @@ impl PersistentCapture {
                 break;
             }
             match receiver.recv_timeout(Duration::from_millis(500)) {
-                Ok(frame) => {
-                    match latest_frame.lock() {
-                        Ok(mut slot) => *slot = Some(frame),
-                        Err(_) => {
-                            tracing::error!("WGC consumer: frame mutex poisoned, exiting");
-                            break;
-                        }
+                Ok(frame) => match latest_frame.lock() {
+                    Ok(mut slot) => *slot = Some(frame),
+                    Err(_) => {
+                        tracing::error!("WGC consumer: frame mutex poisoned, exiting");
+                        break;
                     }
-                }
+                },
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                     // No frame — WGC only fires on content change; continue
                 }

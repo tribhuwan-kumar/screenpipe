@@ -54,7 +54,9 @@ impl OutputRecoveryBackoff {
             // Set to epoch-ish so the first check always fires.
             // Use checked_sub to avoid panic on Windows when uptime < 3600s
             // (Instant - Duration panics if result would be before boot time).
-            last_attempt: Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or(Instant::now()),
+            last_attempt: Instant::now()
+                .checked_sub(Duration::from_secs(3600))
+                .unwrap_or(Instant::now()),
         }
     }
 
@@ -571,7 +573,8 @@ pub async fn start_device_monitor(
                                         match audio_manager.start_device(&default_output).await {
                                             Ok(()) => {
                                                 failed_devices.remove(&device_name);
-                                                default_tracker.last_output = Some(device_name.clone());
+                                                default_tracker.last_output =
+                                                    Some(device_name.clone());
                                                 output_recovery_backoff.reset();
                                                 info!(
                                                     "[DEVICE_RECOVERY] output device restored, device={}", device_name
@@ -590,7 +593,9 @@ pub async fn start_device_monitor(
                                     Err(e) => {
                                         let is_permanent = is_permanent_output_error(&e);
                                         output_recovery_backoff.record_failure(is_permanent);
-                                        if output_recovery_backoff.attempts <= 3 || output_recovery_backoff.attempts % 30 == 0 {
+                                        if output_recovery_backoff.attempts <= 3
+                                            || output_recovery_backoff.attempts % 30 == 0
+                                        {
                                             // Log first 3 attempts, then every 30th to avoid spam
                                             warn!(
                                                 "[DEVICE_RECOVERY] no output device available (attempt {}, {}, next retry in {}s): {}",
@@ -889,9 +894,8 @@ mod tests {
         );
         assert!(is_permanent_output_error(&permanent));
 
-        let transient = anyhow::anyhow!(
-            "ScreenCaptureKit unavailable for output audio capture: timeout"
-        );
+        let transient =
+            anyhow::anyhow!("ScreenCaptureKit unavailable for output audio capture: timeout");
         assert!(!is_permanent_output_error(&transient));
 
         let other = anyhow::anyhow!("some random error");

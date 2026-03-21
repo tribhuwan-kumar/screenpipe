@@ -373,7 +373,8 @@ impl AudioManager {
                 recording_sender.clone(),
                 is_running.clone(),
                 metrics,
-            )).await;
+            ))
+            .await;
 
             // Check for JoinError (task panic/cancel)
             if let Err(ref e) = record_result {

@@ -722,7 +722,10 @@ async fn setup_pipe_permissions(
             } else {
                 let ext_content = include_str!("../../assets/extensions/screenpipe-permissions.ts");
                 if let Err(e) = std::fs::write(&ext_path, ext_content) {
-                    warn!("failed to install permissions extension for offline mode: {}", e);
+                    warn!(
+                        "failed to install permissions extension for offline mode: {}",
+                        e
+                    );
                 }
             }
         }
@@ -2426,7 +2429,10 @@ impl PipeManager {
         // Increment generation — the scheduler loop checks this on every tick.
         // If a stale task somehow survives stop_scheduler(), the generation
         // mismatch will cause it to exit on its next iteration.
-        let generation = self.scheduler_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let generation = self
+            .scheduler_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
         let generation_ref = self.scheduler_generation.clone();
 
         let pipes = self.pipes.clone();
@@ -2932,7 +2938,8 @@ impl PipeManager {
     /// to exit. Safe to call multiple times. Safe to call if no scheduler is running.
     pub async fn stop_scheduler(&mut self) {
         // Increment generation to invalidate any running scheduler
-        self.scheduler_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.scheduler_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         // Signal via watch channel
         if let Some(tx) = self.shutdown_tx.take() {
@@ -2943,10 +2950,7 @@ impl PipeManager {
         if let Some(handle) = self.scheduler_handle.take() {
             handle.abort();
             // Wait with timeout — the task should exit quickly after abort
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                handle,
-            ).await {
+            match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
                 Ok(Ok(())) => info!("pipe scheduler stopped cleanly"),
                 Ok(Err(e)) if e.is_cancelled() => info!("pipe scheduler aborted"),
                 Ok(Err(e)) => warn!("pipe scheduler task panicked: {}", e),
@@ -3428,7 +3432,8 @@ mod tests {
 
     /// Helper: create a minimal PipeManager for testing (no executors, no store).
     fn test_pipe_manager() -> PipeManager {
-        let dir = std::env::temp_dir().join(format!("screenpipe-test-pipes-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("screenpipe-test-pipes-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         PipeManager::new(dir, HashMap::new(), None, 0)
     }
@@ -3437,12 +3442,20 @@ mod tests {
     async fn test_scheduler_starts_and_stops() {
         let mut pm = test_pipe_manager();
         assert!(pm.scheduler_handle.is_none());
-        assert_eq!(pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(
+            pm.scheduler_generation
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
 
         pm.start_scheduler().await.unwrap();
         assert!(pm.scheduler_handle.is_some());
         // Generation: stop_scheduler increments (0→1), start_scheduler increments (1→2)
-        assert!(pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+        assert!(
+            pm.scheduler_generation
+                .load(std::sync::atomic::Ordering::SeqCst)
+                >= 1
+        );
 
         pm.stop_scheduler().await;
         assert!(pm.scheduler_handle.is_none());
@@ -3454,13 +3467,22 @@ mod tests {
         let mut pm = test_pipe_manager();
 
         pm.start_scheduler().await.unwrap();
-        let gen1 = pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst);
+        let gen1 = pm
+            .scheduler_generation
+            .load(std::sync::atomic::Ordering::SeqCst);
         assert!(gen1 >= 1);
 
         // Starting again should stop the old one and increment generation further
         pm.start_scheduler().await.unwrap();
-        let gen2 = pm.scheduler_generation.load(std::sync::atomic::Ordering::SeqCst);
-        assert!(gen2 > gen1, "generation should increase: {} > {}", gen2, gen1);
+        let gen2 = pm
+            .scheduler_generation
+            .load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            gen2 > gen1,
+            "generation should increase: {} > {}",
+            gen2,
+            gen1
+        );
         assert!(pm.scheduler_handle.is_some());
     }
 
@@ -3518,7 +3540,8 @@ mod tests {
         assert!(
             gen_after_drop > gen_before_drop,
             "drop should increment generation: {} > {}",
-            gen_after_drop, gen_before_drop
+            gen_after_drop,
+            gen_before_drop
         );
     }
 

@@ -92,4 +92,3 @@ pub async fn record_and_transcribe(
     }
     Ok(())
 }
-

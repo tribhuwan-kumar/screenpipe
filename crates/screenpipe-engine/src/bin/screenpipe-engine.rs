@@ -548,12 +548,10 @@ async fn main() -> anyhow::Result<()> {
         Some(detector)
     };
 
-    let mut audio_manager_builder = config
-        .to_audio_manager_builder(
-            PathBuf::from(output_path_clone.clone().to_string()),
-            audio_devices,
-        )
-        ;
+    let mut audio_manager_builder = config.to_audio_manager_builder(
+        PathBuf::from(output_path_clone.clone().to_string()),
+        audio_devices,
+    );
 
     if let Some(ref detector) = meeting_detector {
         audio_manager_builder = audio_manager_builder.meeting_detector(detector.clone());

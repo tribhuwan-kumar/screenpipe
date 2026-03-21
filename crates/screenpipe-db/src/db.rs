@@ -4628,7 +4628,10 @@ impl DatabaseManager {
 
         // 12. Commit — if this fails, no files are touched
         tx.commit().await.map_err(|e| {
-            error!("failed to commit delete_time_range_local transaction: {}", e);
+            error!(
+                "failed to commit delete_time_range_local transaction: {}",
+                e
+            );
             e
         })?;
 

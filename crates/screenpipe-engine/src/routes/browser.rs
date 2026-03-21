@@ -103,9 +103,7 @@ pub struct StatusResponseBody {
 // ---------------------------------------------------------------------------
 
 /// GET /browser/status — check if the extension is connected
-pub async fn browser_status_handler(
-    State(bridge): State<Arc<BrowserBridge>>,
-) -> impl IntoResponse {
+pub async fn browser_status_handler(State(bridge): State<Arc<BrowserBridge>>) -> impl IntoResponse {
     Json(StatusResponseBody {
         connected: bridge.is_connected().await,
     })
@@ -150,8 +148,10 @@ pub async fn browser_eval_handler(
 
     let send_result = {
         let mut sink = ext_tx.lock().await;
-        sink.send(Message::Text(serde_json::to_string(&ws_msg).unwrap().into()))
-            .await
+        sink.send(Message::Text(
+            serde_json::to_string(&ws_msg).unwrap().into(),
+        ))
+        .await
     };
 
     if let Err(e) = send_result {
@@ -171,8 +171,19 @@ pub async fn browser_eval_handler(
     // Wait for response
     match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), resp_rx).await {
         Ok(Ok(r)) => {
-            let status = if r.ok { StatusCode::OK } else { StatusCode::UNPROCESSABLE_ENTITY };
-            (status, Json(EvalResponseBody { success: r.ok, result: r.result, error: r.error }))
+            let status = if r.ok {
+                StatusCode::OK
+            } else {
+                StatusCode::UNPROCESSABLE_ENTITY
+            };
+            (
+                status,
+                Json(EvalResponseBody {
+                    success: r.ok,
+                    result: r.result,
+                    error: r.error,
+                }),
+            )
         }
         Ok(Err(_)) => (
             StatusCode::BAD_GATEWAY,
