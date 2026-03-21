@@ -53,8 +53,7 @@ describe("TextOverlay", () => {
 				originalHeight={1080}
 				displayedWidth={960}
 				displayedHeight={540}
-				selectable={false}
-			/>
+		/>
 		);
 		expect(container.firstChild).toBeNull();
 	});
@@ -70,8 +69,7 @@ describe("TextOverlay", () => {
 				originalHeight={1080}
 				displayedWidth={960}
 				displayedHeight={540}
-				selectable={true}
-			/>
+		/>
 		);
 		expect(container.firstChild).not.toBeNull();
 		// Should have clickable block divs (one per text position)
