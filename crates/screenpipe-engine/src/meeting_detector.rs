@@ -484,8 +484,8 @@ impl MeetingUiScanner {
     ///
     /// Wraps the AX walk in `std::panic::catch_unwind` to survive cidre FFI panics.
     #[cfg(target_os = "macos")]
-    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
-        let app_name = get_app_name_for_pid(pid).unwrap_or_else(|| format!("pid:{}", pid));
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile, app_name: &str) -> ScanResult {
+        let app_name = app_name.to_string();
         let max_depth = self.max_depth;
         let scan_timeout = self.scan_timeout;
         let precomputed = PrecomputedSignal::from_signals(&profile.call_signals);
@@ -583,8 +583,8 @@ impl MeetingUiScanner {
 
     /// Windows: scan a process's windows via UI Automation for call control signals.
     #[cfg(target_os = "windows")]
-    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
-        let app_name = windows_get_process_name(pid).unwrap_or_else(|| format!("pid:{}", pid));
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile, app_name: &str) -> ScanResult {
+        let app_name = app_name.to_string();
         let max_depth = self.max_depth;
         let scan_timeout = self.scan_timeout;
         let signals = profile.call_signals.clone();
@@ -631,9 +631,9 @@ impl MeetingUiScanner {
 
     /// Fallback for platforms other than macOS and Windows.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile, app_name: &str) -> ScanResult {
         let _ = profile;
-        let app_name = format!("pid:{}", pid);
+        let app_name = app_name.to_string();
         ScanResult {
             app_name,
             profile_index: 0,
@@ -962,15 +962,6 @@ fn get_ax_identifier(elem: &cidre::ax::UiElement) -> Option<String> {
     None
 }
 
-/// Get the app name for a PID on macOS.
-#[cfg(target_os = "macos")]
-fn get_app_name_for_pid(pid: i32) -> Option<String> {
-    cidre::objc::ar_pool(|| -> Option<String> {
-        let app = cidre::ns::RunningApp::with_pid(pid)?;
-        app.localized_name().map(|s| s.to_string())
-    })
-}
-
 // ============================================================================
 // Windows UIA Helpers
 // ============================================================================
@@ -1031,29 +1022,23 @@ fn windows_enumerate_processes() -> Vec<WindowsProcessInfo> {
     results
 }
 
-/// Get process name by PID on Windows.
+/// Enumerate all visible windows with titles on Windows.
+/// Returns (pid, title) for each visible window. Used both for:
+/// - Pre-filtering PIDs that have visible windows (avoids UIA scans on windowless processes)
+/// - Browser URL pattern matching via window titles
 #[cfg(target_os = "windows")]
-fn windows_get_process_name(pid: i32) -> Option<String> {
-    windows_enumerate_processes()
-        .into_iter()
-        .find(|p| p.pid == pid as u32)
-        .map(|p| p.name)
-}
-
-/// Enumerate visible window titles and their PIDs on Windows.
-#[cfg(target_os = "windows")]
-fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
+fn enumerate_visible_windows() -> Vec<(u32, String)> {
     use std::sync::Mutex;
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
-    let results: Arc<Mutex<Vec<(i32, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let results: Arc<Mutex<Vec<(u32, String)>>> = Arc::new(Mutex::new(Vec::new()));
     let results_clone = results.clone();
 
     unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let results = &*(lparam.0 as *const Mutex<Vec<(i32, String)>>);
+        let results = &*(lparam.0 as *const Mutex<Vec<(u32, String)>>);
 
         if IsWindowVisible(hwnd).as_bool() {
             let mut text = [0u16; 512];
@@ -1063,7 +1048,7 @@ fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
                 let mut pid: u32 = 0;
                 GetWindowThreadProcessId(hwnd, Some(&mut pid));
                 if let Ok(mut r) = results.lock() {
-                    r.push((pid as i32, title));
+                    r.push((pid, title));
                 }
             }
         }
@@ -1073,7 +1058,7 @@ fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
     unsafe {
         let _ = EnumWindows(
             Some(enum_callback),
-            LPARAM(&*results_clone as *const Mutex<Vec<(i32, String)>> as isize),
+            LPARAM(&*results_clone as *const Mutex<Vec<(u32, String)>> as isize),
         );
     }
 
@@ -1731,25 +1716,26 @@ fn has_browser_meeting_url(pid: i32, url_patterns: &[&str]) -> bool {
 }
 
 /// Windows: find running meeting app processes by matching process names and browser window titles.
+///
+/// Uses a single `EnumWindows` call (`enumerate_visible_windows`) to both:
+/// - Pre-filter PIDs to only those with visible windows (avoids UIA scans on windowless processes)
+/// - Match browser URL patterns via window titles (no second EnumWindows needed)
 #[cfg(target_os = "windows")]
 pub fn find_running_meeting_apps(
     profiles: &[MeetingDetectionProfile],
     currently_tracking: Option<&ActiveTracking>,
 ) -> Vec<RunningMeetingApp> {
-    use std::collections::{HashMap, HashSet};
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
-    };
+    use std::collections::HashSet;
 
     let mut results = Vec::new();
     let mut seen_pids = HashSet::new();
 
-    // Build a map of process name -> (pid, exe_name) for all running processes
+    // Single process snapshot + single EnumWindows call for the entire cycle
     let process_map = windows_enumerate_processes();
+    let visible_windows = enumerate_visible_windows();
+    let visible_pids: HashSet<u32> = visible_windows.iter().map(|(pid, _)| *pid).collect();
 
-    // First, handle currently tracked process
+    // First, handle currently tracked process (always keep scanning even without visible window)
     if let Some(tracking) = currently_tracking {
         if process_map.iter().any(|p| p.pid == tracking.pid as u32) {
             results.push(RunningMeetingApp {
@@ -1767,6 +1753,8 @@ pub fn find_running_meeting_apps(
     }
 
     // Match native app processes + their child processes (e.g., Teams spawns msedgewebview2.exe)
+    // Only include PIDs that have at least one visible window to avoid UIA scans on
+    // windowless processes (e.g., Discord spawns 6+ processes but only 1 has a window).
     for (idx, profile) in profiles.iter().enumerate() {
         for proc in process_map.iter() {
             let proc_name_lower = proc.name.to_lowercase();
@@ -1776,8 +1764,10 @@ pub fn find_running_meeting_apps(
                 .iter()
                 .any(|n| proc_name_lower == n.to_lowercase());
 
-            if matches_native && !seen_pids.contains(&(proc.pid as i32)) {
-                // Add the main process
+            if matches_native
+                && !seen_pids.contains(&(proc.pid as i32))
+                && visible_pids.contains(&proc.pid)
+            {
                 results.push(RunningMeetingApp {
                     pid: proc.pid as i32,
                     app_name: proc.name.clone(),
@@ -1793,6 +1783,7 @@ pub fn find_running_meeting_apps(
                 for child in process_map.iter() {
                     if child.parent_pid == proc.pid
                         && !seen_pids.contains(&(child.pid as i32))
+                        && visible_pids.contains(&child.pid)
                         && UI_CHILD_PROCESS_NAMES
                             .iter()
                             .any(|n| child.name.eq_ignore_ascii_case(n))
@@ -1810,9 +1801,7 @@ pub fn find_running_meeting_apps(
         }
     }
 
-    // Match browser URL patterns via window titles
-    let window_titles = windows_enumerate_window_titles();
-
+    // Match browser URL patterns via window titles (reuses enumerate_visible_windows data)
     let browser_process_names: &[&str] = &[
         "chrome.exe",
         "msedge.exe",
@@ -1828,15 +1817,15 @@ pub fn find_running_meeting_apps(
             continue;
         }
 
-        for (pid, title) in &window_titles {
-            if seen_pids.contains(pid) {
+        for (pid, title) in &visible_windows {
+            if seen_pids.contains(&(*pid as i32)) {
                 continue;
             }
 
             // Check if this is a browser process
             let proc_name = process_map
                 .iter()
-                .find(|p| p.pid == *pid as u32)
+                .find(|p| p.pid == *pid)
                 .map(|p| p.name.to_lowercase());
             let is_browser = proc_name
                 .as_ref()
@@ -1853,12 +1842,12 @@ pub fn find_running_meeting_apps(
                 .any(|p| title_lower.contains(&p.to_lowercase()))
             {
                 results.push(RunningMeetingApp {
-                    pid: *pid,
+                    pid: *pid as i32,
                     app_name: proc_name.unwrap_or_default(),
                     profile_index: idx,
                     browser_url: Some(title.clone()),
                 });
-                seen_pids.insert(*pid);
+                seen_pids.insert(*pid as i32);
                 break;
             }
         }
@@ -1886,7 +1875,8 @@ pub fn find_running_meeting_apps(
 const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Scan interval when idle and meeting apps are running but no call detected.
-const IDLE_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(10);
+/// 15s is still fast enough to catch meeting start within one cycle (join click takes seconds).
+const IDLE_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Scan interval when idle and no meeting apps are running at all.
 const IDLE_NO_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(30);
@@ -2125,9 +2115,8 @@ pub async fn run_meeting_detection_loop(
             let mut results = Vec::new();
             for app in &apps_for_scan {
                 let mut result =
-                    scanner_clone.scan_process(app.pid, &profiles_for_scan[app.profile_index]);
+                    scanner_clone.scan_process(app.pid, &profiles_for_scan[app.profile_index], &app.app_name);
                 result.profile_index = app.profile_index;
-                result.app_name = app.app_name.clone();
                 results.push(result);
             }
             results
@@ -3237,6 +3226,7 @@ mod tests {
         // Only 1 signal found — below the threshold of 2
         let results = vec![ScanResult {
             app_name: "zoom.us".to_string(),
+            profile_index: 0,
             is_in_call: false, // 1 signal < min_signals_required(2) = not in call
             signals_found: 1,
             matched_signals: vec!["menu_bar_item=Meeting".to_string()],
@@ -3256,6 +3246,7 @@ mod tests {
         let state = MeetingState::Idle;
         let results = vec![ScanResult {
             app_name: "zoom.us".to_string(),
+            profile_index: 0,
             is_in_call: true, // 2 signals >= min_signals_required(2) = in call
             signals_found: 2,
             matched_signals: vec![
@@ -3572,7 +3563,7 @@ mod windows_live_tests {
             println!("\n=== Step 2: scanning for call controls ===");
             let scanner = MeetingUiScanner::new();
             for app in &apps {
-                let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
+                let result = scanner.scan_process(app.pid, &profiles[app.profile_index], &app.app_name);
                 println!(
                     "  {} (pid={}) => in_call={}, signals={}, matched={:?}",
                     app.app_name, app.pid, result.is_in_call, result.signals_found, result.matched_signals
@@ -3600,7 +3591,7 @@ mod windows_live_tests {
         let mut any_in_call = false;
         for proc in &zoom_procs {
             println!("\n  Scanning zoom.exe pid={}", proc.pid);
-            let result = scanner.scan_process(proc.pid as i32, zoom_profile);
+            let result = scanner.scan_process(proc.pid as i32, zoom_profile, &proc.name);
             println!(
                 "    in_call={}, signals={}, matched={:?}",
                 result.is_in_call, result.signals_found, result.matched_signals
@@ -3702,7 +3693,7 @@ mod live_tests {
             println!("\n=== Step 2: scanning for call controls ===");
             let scanner = MeetingUiScanner::new();
             for app in &apps {
-                let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
+                let result = scanner.scan_process(app.pid, &profiles[app.profile_index], &app.app_name);
                 println!(
                     "  {} => in_call={}, signals={}, matched={:?}",
                     app.app_name, result.is_in_call, result.signals_found, result.matched_signals
