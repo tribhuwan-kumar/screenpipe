@@ -484,8 +484,8 @@ impl MeetingUiScanner {
     ///
     /// Wraps the AX walk in `std::panic::catch_unwind` to survive cidre FFI panics.
     #[cfg(target_os = "macos")]
-    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile, app_name: &str) -> ScanResult {
-        let app_name = app_name.to_string();
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
+        let app_name = get_app_name_for_pid(pid).unwrap_or_else(|| format!("pid:{}", pid));
         let max_depth = self.max_depth;
         let scan_timeout = self.scan_timeout;
         let precomputed = PrecomputedSignal::from_signals(&profile.call_signals);
@@ -583,8 +583,8 @@ impl MeetingUiScanner {
 
     /// Windows: scan a process's windows via UI Automation for call control signals.
     #[cfg(target_os = "windows")]
-    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile, app_name: &str) -> ScanResult {
-        let app_name = app_name.to_string();
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
+        let app_name = windows_get_process_name(pid).unwrap_or_else(|| format!("pid:{}", pid));
         let max_depth = self.max_depth;
         let scan_timeout = self.scan_timeout;
         let signals = profile.call_signals.clone();
@@ -631,9 +631,9 @@ impl MeetingUiScanner {
 
     /// Fallback for platforms other than macOS and Windows.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile, app_name: &str) -> ScanResult {
+    pub fn scan_process(&self, pid: i32, profile: &MeetingDetectionProfile) -> ScanResult {
         let _ = profile;
-        let app_name = app_name.to_string();
+        let app_name = format!("pid:{}", pid);
         ScanResult {
             app_name,
             profile_index: 0,
@@ -962,6 +962,15 @@ fn get_ax_identifier(elem: &cidre::ax::UiElement) -> Option<String> {
     None
 }
 
+/// Get the app name for a PID on macOS.
+#[cfg(target_os = "macos")]
+fn get_app_name_for_pid(pid: i32) -> Option<String> {
+    cidre::objc::ar_pool(|| -> Option<String> {
+        let app = cidre::ns::RunningApp::with_pid(pid)?;
+        app.localized_name().map(|s| s.to_string())
+    })
+}
+
 // ============================================================================
 // Windows UIA Helpers
 // ============================================================================
@@ -1022,36 +1031,40 @@ fn windows_enumerate_processes() -> Vec<WindowsProcessInfo> {
     results
 }
 
-/// Enumerate all visible windows with titles on Windows.
-/// Returns (pid, title) for each visible window. Used both for:
-/// - Pre-filtering PIDs that have visible windows (avoids UIA scans on windowless processes)
-/// - Browser URL pattern matching via window titles
+/// Get process name by PID on Windows.
 #[cfg(target_os = "windows")]
-fn enumerate_visible_windows() -> Vec<(u32, String)> {
+fn windows_get_process_name(pid: i32) -> Option<String> {
+    windows_enumerate_processes()
+        .into_iter()
+        .find(|p| p.pid == pid as u32)
+        .map(|p| p.name)
+}
+
+/// Enumerate visible window titles and their PIDs on Windows.
+#[cfg(target_os = "windows")]
+fn windows_enumerate_window_titles() -> Vec<(i32, String)> {
     use std::sync::Mutex;
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
-    let results: Arc<Mutex<Vec<(u32, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let results: Arc<Mutex<Vec<(i32, String)>>> = Arc::new(Mutex::new(Vec::new()));
     let results_clone = results.clone();
 
     unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let results = &*(lparam.0 as *const Mutex<Vec<(u32, String)>>);
+        let results = &*(lparam.0 as *const Mutex<Vec<(i32, String)>>);
 
         if IsWindowVisible(hwnd).as_bool() {
-            let mut pid: u32 = 0;
-            GetWindowThreadProcessId(hwnd, Some(&mut pid));
             let mut text = [0u16; 512];
             let len = GetWindowTextW(hwnd, &mut text);
-            let title = if len > 0 {
-                String::from_utf16_lossy(&text[..len as usize])
-            } else {
-                String::new()
-            };
-            if let Ok(mut r) = results.lock() {
-                r.push((pid, title));
+            if len > 0 {
+                let title = String::from_utf16_lossy(&text[..len as usize]);
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if let Ok(mut r) = results.lock() {
+                    r.push((pid as i32, title));
+                }
             }
         }
         BOOL(1)
@@ -1060,7 +1073,7 @@ fn enumerate_visible_windows() -> Vec<(u32, String)> {
     unsafe {
         let _ = EnumWindows(
             Some(enum_callback),
-            LPARAM(&*results_clone as *const Mutex<Vec<(u32, String)>> as isize),
+            LPARAM(&*results_clone as *const Mutex<Vec<(i32, String)>> as isize),
         );
     }
 
@@ -1718,36 +1731,25 @@ fn has_browser_meeting_url(pid: i32, url_patterns: &[&str]) -> bool {
 }
 
 /// Windows: find running meeting app processes by matching process names and browser window titles.
-///
-/// Uses a single `EnumWindows` call (`enumerate_visible_windows`) to both:
-/// - Pre-filter PIDs to only those with visible windows (avoids UIA scans on windowless processes)
-/// - Match browser URL patterns via window titles (no second EnumWindows needed)
 #[cfg(target_os = "windows")]
 pub fn find_running_meeting_apps(
     profiles: &[MeetingDetectionProfile],
     currently_tracking: Option<&ActiveTracking>,
 ) -> Vec<RunningMeetingApp> {
-    let process_map = windows_enumerate_processes();
-    let visible_windows = enumerate_visible_windows();
-    filter_meeting_apps(profiles, currently_tracking, &process_map, &visible_windows)
-}
-
-/// Pure filtering logic for matching meeting app processes against profiles.
-/// Separated from OS calls so it can be unit-tested with mock data.
-#[cfg(target_os = "windows")]
-fn filter_meeting_apps(
-    profiles: &[MeetingDetectionProfile],
-    currently_tracking: Option<&ActiveTracking>,
-    process_map: &[WindowsProcessInfo],
-    visible_windows: &[(u32, String)],
-) -> Vec<RunningMeetingApp> {
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    };
 
     let mut results = Vec::new();
     let mut seen_pids = HashSet::new();
-    let visible_pids: HashSet<u32> = visible_windows.iter().map(|(pid, _)| *pid).collect();
 
-    // First, handle currently tracked process (always keep scanning even without visible window)
+    // Build a map of process name -> (pid, exe_name) for all running processes
+    let process_map = windows_enumerate_processes();
+
+    // First, handle currently tracked process
     if let Some(tracking) = currently_tracking {
         if process_map.iter().any(|p| p.pid == tracking.pid as u32) {
             results.push(RunningMeetingApp {
@@ -1765,8 +1767,6 @@ fn filter_meeting_apps(
     }
 
     // Match native app processes + their child processes (e.g., Teams spawns msedgewebview2.exe)
-    // Only include PIDs that have at least one visible window to avoid UIA scans on
-    // windowless processes (e.g., Discord spawns 6+ processes but only 1 has a window).
     for (idx, profile) in profiles.iter().enumerate() {
         for proc in process_map.iter() {
             let proc_name_lower = proc.name.to_lowercase();
@@ -1776,10 +1776,8 @@ fn filter_meeting_apps(
                 .iter()
                 .any(|n| proc_name_lower == n.to_lowercase());
 
-            if matches_native
-                && !seen_pids.contains(&(proc.pid as i32))
-                && visible_pids.contains(&proc.pid)
-            {
+            if matches_native && !seen_pids.contains(&(proc.pid as i32)) {
+                // Add the main process
                 results.push(RunningMeetingApp {
                     pid: proc.pid as i32,
                     app_name: proc.name.clone(),
@@ -1795,7 +1793,6 @@ fn filter_meeting_apps(
                 for child in process_map.iter() {
                     if child.parent_pid == proc.pid
                         && !seen_pids.contains(&(child.pid as i32))
-                        && visible_pids.contains(&child.pid)
                         && UI_CHILD_PROCESS_NAMES
                             .iter()
                             .any(|n| child.name.eq_ignore_ascii_case(n))
@@ -1813,7 +1810,9 @@ fn filter_meeting_apps(
         }
     }
 
-    // Match browser URL patterns via window titles (reuses enumerate_visible_windows data)
+    // Match browser URL patterns via window titles
+    let window_titles = windows_enumerate_window_titles();
+
     let browser_process_names: &[&str] = &[
         "chrome.exe",
         "msedge.exe",
@@ -1829,15 +1828,15 @@ fn filter_meeting_apps(
             continue;
         }
 
-        for (pid, title) in visible_windows {
-            if seen_pids.contains(&(*pid as i32)) {
+        for (pid, title) in &window_titles {
+            if seen_pids.contains(pid) {
                 continue;
             }
 
             // Check if this is a browser process
             let proc_name = process_map
                 .iter()
-                .find(|p| p.pid == *pid)
+                .find(|p| p.pid == *pid as u32)
                 .map(|p| p.name.to_lowercase());
             let is_browser = proc_name
                 .as_ref()
@@ -1854,12 +1853,12 @@ fn filter_meeting_apps(
                 .any(|p| title_lower.contains(&p.to_lowercase()))
             {
                 results.push(RunningMeetingApp {
-                    pid: *pid as i32,
+                    pid: *pid,
                     app_name: proc_name.unwrap_or_default(),
                     profile_index: idx,
                     browser_url: Some(title.clone()),
                 });
-                seen_pids.insert(*pid as i32);
+                seen_pids.insert(*pid);
                 break;
             }
         }
@@ -1887,8 +1886,7 @@ pub fn find_running_meeting_apps(
 const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Scan interval when idle and meeting apps are running but no call detected.
-/// 15s is still fast enough to catch meeting start within one cycle (join click takes seconds).
-const IDLE_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(15);
+const IDLE_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Scan interval when idle and no meeting apps are running at all.
 const IDLE_NO_APPS_SCAN_INTERVAL: Duration = Duration::from_secs(30);
@@ -2127,8 +2125,9 @@ pub async fn run_meeting_detection_loop(
             let mut results = Vec::new();
             for app in &apps_for_scan {
                 let mut result =
-                    scanner_clone.scan_process(app.pid, &profiles_for_scan[app.profile_index], &app.app_name);
+                    scanner_clone.scan_process(app.pid, &profiles_for_scan[app.profile_index]);
                 result.profile_index = app.profile_index;
+                result.app_name = app.app_name.clone();
                 results.push(result);
             }
             results
@@ -3238,7 +3237,6 @@ mod tests {
         // Only 1 signal found — below the threshold of 2
         let results = vec![ScanResult {
             app_name: "zoom.us".to_string(),
-            profile_index: 0,
             is_in_call: false, // 1 signal < min_signals_required(2) = not in call
             signals_found: 1,
             matched_signals: vec!["menu_bar_item=Meeting".to_string()],
@@ -3258,7 +3256,6 @@ mod tests {
         let state = MeetingState::Idle;
         let results = vec![ScanResult {
             app_name: "zoom.us".to_string(),
-            profile_index: 0,
             is_in_call: true, // 2 signals >= min_signals_required(2) = in call
             signals_found: 2,
             matched_signals: vec![
@@ -3549,184 +3546,6 @@ mod tests {
 
 #[cfg(test)]
 #[cfg(target_os = "windows")]
-mod filter_meeting_apps_tests {
-    use super::*;
-
-    fn mock_process(pid: u32, parent: u32, name: &str) -> WindowsProcessInfo {
-        WindowsProcessInfo {
-            pid,
-            parent_pid: parent,
-            name: name.to_string(),
-        }
-    }
-
-    fn zoom_profile() -> MeetingDetectionProfile {
-        // Minimal Zoom-like profile for testing
-        MeetingDetectionProfile {
-            app_identifiers: AppIdentifiers {
-                macos_app_names: &["zoom.us"],
-                windows_process_names: &["zoom.exe"],
-                browser_url_patterns: &["zoom.us/j/", "zoom.us/wc/"],
-            },
-            call_signals: vec![CallSignal::NameContains("leave")],
-            min_signals_required: 1,
-        }
-    }
-
-    fn discord_profile() -> MeetingDetectionProfile {
-        MeetingDetectionProfile {
-            app_identifiers: AppIdentifiers {
-                macos_app_names: &["discord"],
-                windows_process_names: &["discord.exe"],
-                browser_url_patterns: &[],
-            },
-            call_signals: vec![CallSignal::NameContains("disconnect")],
-            min_signals_required: 1,
-        }
-    }
-
-    fn meet_profile() -> MeetingDetectionProfile {
-        MeetingDetectionProfile {
-            app_identifiers: AppIdentifiers {
-                macos_app_names: &[],
-                windows_process_names: &[],
-                browser_url_patterns: &["meet.google.com"],
-            },
-            call_signals: vec![CallSignal::NameContains("leave")],
-            min_signals_required: 1,
-        }
-    }
-
-    // ── Visible-window pre-filter tests ─────────────────────────────
-
-    #[test]
-    fn test_process_with_visible_window_is_included() {
-        let profiles = vec![zoom_profile()];
-        let procs = vec![mock_process(100, 0, "zoom.exe")];
-        // PID 100 has a visible window (even with empty title)
-        let windows = vec![(100u32, String::new())];
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        assert_eq!(apps.len(), 1);
-        assert_eq!(apps[0].pid, 100);
-    }
-
-    #[test]
-    fn test_process_without_visible_window_is_excluded() {
-        let profiles = vec![zoom_profile()];
-        let procs = vec![mock_process(100, 0, "zoom.exe")];
-        // No visible windows at all
-        let windows: Vec<(u32, String)> = vec![];
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        assert!(apps.is_empty(), "process without visible window should be excluded");
-    }
-
-    #[test]
-    fn test_titleless_visible_window_still_includes_pid() {
-        // Regression test: Zoom has visible windows without titles.
-        // The PID filter must include these.
-        let profiles = vec![zoom_profile()];
-        let procs = vec![mock_process(100, 0, "zoom.exe")];
-        let windows = vec![(100u32, String::new())]; // visible but no title
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        assert_eq!(apps.len(), 1, "titleless visible window should still match PID");
-    }
-
-    #[test]
-    fn test_discord_multiple_pids_only_windowed_ones_included() {
-        // Discord spawns 6+ processes but only 1-2 have visible windows.
-        let profiles = vec![discord_profile()];
-        let procs = vec![
-            mock_process(10, 0, "Discord.exe"),  // main, has window
-            mock_process(11, 10, "Discord.exe"),  // renderer, no window
-            mock_process(12, 10, "Discord.exe"),  // GPU, no window
-            mock_process(13, 10, "Discord.exe"),  // utility, no window
-        ];
-        // Only PID 10 has a visible window
-        let windows = vec![(10u32, "Discord".to_string())];
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        assert_eq!(apps.len(), 1);
-        assert_eq!(apps[0].pid, 10);
-    }
-
-    // ── Currently-tracked process bypass ────────────────────────────
-
-    #[test]
-    fn test_tracked_process_included_even_without_visible_window() {
-        let profiles = vec![zoom_profile()];
-        let procs = vec![mock_process(100, 0, "zoom.exe")];
-        let windows: Vec<(u32, String)> = vec![]; // no visible windows
-        let tracking = ActiveTracking {
-            pid: 100,
-            profile_index: 0,
-        };
-
-        let apps = filter_meeting_apps(&profiles, Some(&tracking), &procs, &windows);
-        assert_eq!(apps.len(), 1, "tracked process should bypass visible-window filter");
-        assert_eq!(apps[0].pid, 100);
-    }
-
-    // ── Child process (Teams webview) tests ─────────────────────────
-
-    #[test]
-    fn test_teams_webview_child_included_when_has_window() {
-        let teams_profile = MeetingDetectionProfile {
-            app_identifiers: AppIdentifiers {
-                macos_app_names: &["com.microsoft.teams2"],
-                windows_process_names: &["ms-teams.exe"],
-                browser_url_patterns: &[],
-            },
-            call_signals: vec![CallSignal::NameContains("leave")],
-            min_signals_required: 1,
-        };
-        let profiles = vec![teams_profile];
-        let procs = vec![
-            mock_process(200, 0, "ms-teams.exe"),
-            mock_process(201, 200, "msedgewebview2.exe"), // has window
-            mock_process(202, 200, "msedgewebview2.exe"), // no window
-        ];
-        let windows = vec![
-            (200u32, "Microsoft Teams".to_string()),
-            (201u32, String::new()),
-            // PID 202 has no visible window
-        ];
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        let pids: Vec<i32> = apps.iter().map(|a| a.pid).collect();
-        assert!(pids.contains(&200), "Teams main process should be included");
-        assert!(pids.contains(&201), "webview child WITH window should be included");
-        assert!(!pids.contains(&202), "webview child WITHOUT window should be excluded");
-    }
-
-    // ── Browser URL matching tests ──────────────────────────────────
-
-    #[test]
-    fn test_browser_url_matched_via_window_title() {
-        let profiles = vec![meet_profile()];
-        let procs = vec![mock_process(300, 0, "chrome.exe")];
-        let windows = vec![(300u32, "meet.google.com/abc-defg-hij - Google Chrome".to_string())];
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        assert_eq!(apps.len(), 1);
-        assert_eq!(apps[0].browser_url.as_deref(), Some("meet.google.com/abc-defg-hij - Google Chrome"));
-    }
-
-    #[test]
-    fn test_non_browser_process_not_matched_for_url_patterns() {
-        let profiles = vec![meet_profile()];
-        let procs = vec![mock_process(300, 0, "notepad.exe")];
-        let windows = vec![(300u32, "meet.google.com - Notepad".to_string())];
-
-        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
-        assert!(apps.is_empty(), "non-browser process should not match URL patterns");
-    }
-}
-
-#[cfg(test)]
-#[cfg(target_os = "windows")]
 mod windows_live_tests {
     use super::*;
 
@@ -3753,7 +3572,7 @@ mod windows_live_tests {
             println!("\n=== Step 2: scanning for call controls ===");
             let scanner = MeetingUiScanner::new();
             for app in &apps {
-                let result = scanner.scan_process(app.pid, &profiles[app.profile_index], &app.app_name);
+                let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
                 println!(
                     "  {} (pid={}) => in_call={}, signals={}, matched={:?}",
                     app.app_name, app.pid, result.is_in_call, result.signals_found, result.matched_signals
@@ -3781,7 +3600,7 @@ mod windows_live_tests {
         let mut any_in_call = false;
         for proc in &zoom_procs {
             println!("\n  Scanning zoom.exe pid={}", proc.pid);
-            let result = scanner.scan_process(proc.pid as i32, zoom_profile, &proc.name);
+            let result = scanner.scan_process(proc.pid as i32, zoom_profile);
             println!(
                 "    in_call={}, signals={}, matched={:?}",
                 result.is_in_call, result.signals_found, result.matched_signals
@@ -3883,7 +3702,7 @@ mod live_tests {
             println!("\n=== Step 2: scanning for call controls ===");
             let scanner = MeetingUiScanner::new();
             for app in &apps {
-                let result = scanner.scan_process(app.pid, &profiles[app.profile_index], &app.app_name);
+                let result = scanner.scan_process(app.pid, &profiles[app.profile_index]);
                 println!(
                     "  {} => in_call={}, signals={}, matched={:?}",
                     app.app_name, result.is_in_call, result.signals_found, result.matched_signals
