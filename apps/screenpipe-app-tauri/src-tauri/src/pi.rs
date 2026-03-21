@@ -597,10 +597,31 @@ fn ensure_web_search_extension(
         .join("extensions");
     let ext_path = ext_dir.join("web-search.ts");
 
-    let is_screenpipe_cloud = match provider_config {
-        Some(config) => matches!(config.provider.as_str(), "screenpipe-cloud" | "pi"),
-        None => true, // default preset = screenpipe cloud
+    // Offline mode: never install web search (it calls api.screenpi.pe)
+    // Re-read from store.bin each time (not cached) so runtime toggles take effect
+    let offline = {
+        let store_path = screenpipe_core::paths::default_screenpipe_data_dir().join("store.bin");
+        std::fs::read_to_string(&store_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .map(|data| {
+                data.get("offlineMode")
+                    .and_then(|v| v.as_bool())
+                    .or_else(|| {
+                        data.get("settings")
+                            .and_then(|s| s.get("offlineMode"))
+                            .and_then(|v| v.as_bool())
+                    })
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false)
     };
+
+    let is_screenpipe_cloud = !offline
+        && match provider_config {
+            Some(config) => matches!(config.provider.as_str(), "screenpipe-cloud" | "pi"),
+            None => true, // default preset = screenpipe cloud
+        };
 
     if is_screenpipe_cloud {
         std::fs::create_dir_all(&ext_dir)
