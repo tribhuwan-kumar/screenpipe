@@ -142,7 +142,7 @@ pub async fn sync_init(
     let service_config = SyncServiceConfig {
         enabled: true,
         sync_interval_secs: request.sync_interval_secs.unwrap_or(300),
-        sync_types: vec![BlobType::Ocr, BlobType::Transcripts],
+        sync_types: vec![BlobType::Ocr, BlobType::Transcripts, BlobType::Accessibility],
         max_blobs_per_cycle: 10,
         sync_on_startup: true,
     };

@@ -13,7 +13,6 @@ export type AIProviderType =
 	| "openai"
 	| "openai-chatgpt"
 	| "anthropic"
-	| "claude-code"
 	| "custom"
 	| "embedded"
 	| "pi";
@@ -62,9 +61,6 @@ export type AIPreset = {
 	  }
 	| {
 			provider: "openai-chatgpt";
-	  }
-	| {
-			provider: "claude-code";
 	  }
 );
 
@@ -146,6 +142,8 @@ export type Settings = SettingsStore & {
 	showRestartNotifications?: boolean;
 	/** Offline mode — blocks all external network from pipes, disables PostHog telemetry, keeps Sentry crash reports */
 	offlineMode?: boolean;
+	/** Pause all screen capture when a DRM streaming app (Netflix, Disney+, etc.) is focused */
+	pauseOnDrmContent?: boolean;
 	/** Notification preferences — which notification sources are enabled */
 	notificationPrefs?: {
 		captureStalls: boolean;
@@ -306,6 +304,7 @@ let DEFAULT_SETTINGS: Settings = {
 			cloudArchiveRetentionDays: 7,
 			filterMusic: false,
 			ignoreIncognitoWindows: true,
+			pauseOnDrmContent: false,
 		};
 
 export function createDefaultSettingsObject(): Settings {

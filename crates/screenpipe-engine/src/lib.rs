@@ -12,6 +12,7 @@ pub mod cli;
 pub mod cloud_search;
 pub mod connections_api;
 pub mod core;
+pub mod drm_detector;
 pub mod logging;
 pub mod pipe_permissions_middleware;
 pub mod pipe_store;

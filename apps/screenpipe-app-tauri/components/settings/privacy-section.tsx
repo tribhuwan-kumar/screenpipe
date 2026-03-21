@@ -16,6 +16,7 @@ import {
   RefreshCw,
   AppWindowMac,
   WifiOff,
+  Tv,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -205,6 +206,10 @@ export function PrivacySection() {
 
   const handleIncognitoToggle = (checked: boolean) => {
     handleSettingsChange({ ignoreIncognitoWindows: checked }, true);
+  };
+
+  const handleDrmPauseToggle = (checked: boolean) => {
+    handleSettingsChange({ pauseOnDrmContent: checked }, true);
   };
 
   const handleAnalyticsToggle = (checked: boolean) => {

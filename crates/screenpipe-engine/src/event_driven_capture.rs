@@ -215,6 +215,7 @@ pub async fn event_driven_capture_loop(
     vision_metrics: Arc<screenpipe_screen::PipelineMetrics>,
     hot_frame_cache: Option<Arc<HotFrameCache>>,
     use_pii_removal: bool,
+    pause_on_drm_content: bool,
     languages: Vec<screenpipe_core::Language>,
     power_profile_rx: Option<watch::Receiver<PowerProfile>>,
 ) -> Result<()> {
@@ -269,6 +270,7 @@ pub async fn event_driven_capture_loop(
             &tree_walker_config,
             &CaptureTrigger::Manual,
             use_pii_removal,
+            pause_on_drm_content,
             &languages,
             None, // first capture — no previous hash
             last_db_write,
@@ -319,6 +321,11 @@ pub async fn event_driven_capture_loop(
 
         // Skip capture while the screen is locked / screensaver active
         if crate::sleep_monitor::screen_is_locked() {
+            tokio::time::sleep(poll_interval).await;
+            continue;
+        }
+
+        if crate::drm_detector::drm_content_paused() {
             tokio::time::sleep(poll_interval).await;
             continue;
         }
@@ -441,6 +448,7 @@ pub async fn event_driven_capture_loop(
                         &tree_walker_config,
                         &trigger,
                         use_pii_removal,
+                        pause_on_drm_content,
                         &languages,
                         last_content_hash,
                         last_db_write,
@@ -674,6 +682,7 @@ async fn do_capture(
     tree_walker_config: &TreeWalkerConfig,
     trigger: &CaptureTrigger,
     use_pii_removal: bool,
+    pause_on_drm_content: bool,
     languages: &[screenpipe_core::Language],
     previous_content_hash: Option<i64>,
     last_db_write: Instant,
@@ -783,6 +792,20 @@ async fn do_capture(
             "skipping capture: no app detected and screen is locked on monitor {}",
             monitor_id
         );
+        return Ok(CaptureOutput {
+            result: None,
+            image,
+            elements_deduped: false,
+        });
+    }
+
+    // DRM content detection: set global pause flag so monitor watcher
+    // stops all monitors and releases SCK handles.
+    if crate::drm_detector::check_and_update_drm_state(
+        pause_on_drm_content,
+        app_name_owned.as_deref(),
+        browser_url_owned.as_deref(),
+    ) {
         return Ok(CaptureOutput {
             result: None,
             image,

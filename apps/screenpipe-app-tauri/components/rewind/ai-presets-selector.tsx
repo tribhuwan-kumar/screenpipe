@@ -122,52 +122,6 @@ export const DEFAULT_PROMPT = `Rules:
 - Always answer my question/intent, do not make up things
 `;
 
-function ClaudeCodeSignInButton() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    commands.claudeOauthStatus().then((res) => {
-      if (res.status === "ok") setLoggedIn(res.data.logged_in);
-    });
-  }, []);
-
-  return (
-    <Button
-      type="button"
-      variant={loggedIn ? "outline" : "default"}
-      disabled={loading}
-      className="h-7 text-xs w-full"
-      onClick={async () => {
-        if (loggedIn) {
-          setLoading(true);
-          await commands.claudeOauthLogout();
-          setLoggedIn(false);
-          setLoading(false);
-        } else {
-          setLoading(true);
-          try {
-            const res = await commands.claudeOauthLogin();
-            if (res.status === "ok" && res.data) setLoggedIn(true);
-          } catch (e) {
-            console.error("claude oauth failed:", e);
-          }
-          setLoading(false);
-        }
-      }}
-    >
-      {loading ? (
-        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-      ) : loggedIn ? (
-        <Check className="h-3 w-3 mr-1 text-green-500" />
-      ) : (
-        <LogIn className="h-3 w-3 mr-1" />
-      )}
-      {loggedIn ? "signed in — sign out" : "sign in with claude"}
-    </Button>
-  );
-}
-
 function ChatGptSignInButton() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -556,14 +510,14 @@ export function AIProviderConfig({
 
           <Button
             type="button"
-            variant={selectedProvider === "claude-code" || selectedProvider === "anthropic" ? "default" : "outline"}
+            variant={selectedProvider === "anthropic" || selectedProvider === "anthropic" ? "default" : "outline"}
             className="flex h-8 items-center justify-center gap-1.5 text-xs px-3"
             onClick={() => {
-              if (selectedProvider !== "claude-code" && selectedProvider !== "anthropic") {
-                setSelectedProvider("claude-code");
+              if (selectedProvider !== "anthropic" && selectedProvider !== "anthropic") {
+                setSelectedProvider("anthropic");
                 setFormData({
                   ...formData,
-                  provider: "claude-code",
+                  provider: "anthropic",
                   url: "",
                   model: "claude-sonnet-4-6",
                 });
@@ -808,45 +762,8 @@ export function AIProviderConfig({
           </div>
         )}
 
-        {(selectedProvider === "claude-code" || selectedProvider === "anthropic") && (
+        {selectedProvider === "anthropic" && (
           <div className="space-y-1">
-            <Label className="text-xs">how do you want to log in?</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedProvider("claude-code");
-                  setFormData({ ...formData, provider: "claude-code", url: "", model: "claude-sonnet-4-6" });
-                }}
-                className={`flex flex-col items-start gap-0.5 rounded-md border-2 p-2 text-left text-xs transition-colors hover:bg-accent ${
-                  selectedProvider === "claude-code" ? "border-primary bg-accent" : "border-border"
-                }`}
-              >
-                <span className="font-medium">Claude.ai Subscription</span>
-                <span className="text-[10px] text-muted-foreground">Claude Pro, Team, or Enterprise</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedProvider("anthropic");
-                  setFormData({ ...formData, provider: "anthropic", url: "https://api.anthropic.com", model: "claude-sonnet-4-6" });
-                }}
-                className={`flex flex-col items-start gap-0.5 rounded-md border-2 p-2 text-left text-xs transition-colors hover:bg-accent ${
-                  selectedProvider === "anthropic" ? "border-primary bg-accent" : "border-border"
-                }`}
-              >
-                <span className="font-medium">Anthropic Console</span>
-                <span className="text-[10px] text-muted-foreground">Pay via API usage</span>
-              </button>
-            </div>
-
-            {selectedProvider === "claude-code" && (
-              <div className="space-y-1 pt-1">
-                <Label className="text-xs">claude account</Label>
-                <ClaudeCodeSignInButton />
-              </div>
-            )}
-
             {selectedProvider === "anthropic" && (
               <div className="space-y-1 pt-1">
                 <Label htmlFor="anthropicApiKey" className="text-xs">api key</Label>

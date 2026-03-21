@@ -129,7 +129,7 @@ const INITIAL_DIAGNOSTICS: DiagnosticResults = {
 };
 
 export interface AIProviderCardProps {
-  type: "openai" | "openai-chatgpt" | "claude-code" | "native-ollama" | "anthropic" | "custom" | "embedded" | "pi";
+  type: "openai" | "openai-chatgpt" | "native-ollama" | "anthropic" | "custom" | "embedded" | "pi";
   title: string;
   description: string;
   imageSrc: string;
@@ -229,8 +229,6 @@ const AISection = ({
   const diagnosticsAbortRef = useRef<AbortController | null>(null);
   const [chatgptLoggedIn, setChatgptLoggedIn] = useState(false);
   const [chatgptLoading, setChatgptLoading] = useState(false);
-  const [claudeCodeLoggedIn, setClaudeCodeLoggedIn] = useState(false);
-  const [claudeCodeLoading, setClaudeCodeLoading] = useState(false);
 
   // Filter presets the same way the UI does so hidden presets don't block creation
   const visiblePresets = useMemo(
@@ -294,16 +292,6 @@ const AISection = ({
     }
   }, [settingsPreset?.provider]);
 
-  // Check Claude Code OAuth status when provider is selected
-  useEffect(() => {
-    if (settingsPreset?.provider === "claude-code") {
-      commands.claudeOauthStatus().then((res) => {
-        if (res.status === "ok") {
-          setClaudeCodeLoggedIn(res.data.logged_in);
-        }
-      });
-    }
-  }, [settingsPreset?.provider]);
 
   const isFormValid = useMemo(() => {
     return Object.keys(validationErrors).length === 0 && 
@@ -486,7 +474,7 @@ const AISection = ({
         newUrl = "https://api.openai.com/v1";
         newModel = "gpt-5.4";
         break;
-      case "claude-code":
+      case "anthropic":
         newUrl = "";
         newModel = "claude-sonnet-4-6";
         break;
@@ -541,13 +529,12 @@ const AISection = ({
 
     // Determine models URL
     const isAnthropic = settingsPreset?.provider === "anthropic";
-    const isClaudeCode = settingsPreset?.provider === "claude-code";
     let modelsUrl: string;
     if (settingsPreset?.provider === "native-ollama") {
       modelsUrl = "http://localhost:11434/api/tags";
     } else if (settingsPreset?.provider === "openai" || settingsPreset?.provider === "openai-chatgpt") {
       modelsUrl = "https://api.openai.com/v1/models";
-    } else if (isAnthropic || isClaudeCode) {
+    } else if (isAnthropic) {
       modelsUrl = "https://api.anthropic.com/v1/models";
     } else {
       modelsUrl = `${settingsPreset?.url}/models`;
@@ -581,60 +568,6 @@ const AISection = ({
       ...prev,
       endpoint: { status: "running", message: "Connecting..." },
     }));
-
-    // Claude Code: test through Pi (real usage path), not direct API
-    if (isClaudeCode) {
-      try {
-        // Step 1: Verify OAuth token
-        setTestResults((prev) => ({
-          ...prev,
-          endpoint: { status: "running", message: "Getting OAuth token..." },
-        }));
-
-        const tokenResult = await commands.claudeOauthGetToken();
-        if (tokenResult.status !== "ok") {
-          skipRemaining("endpoint", "OAuth token unavailable. Try signing in again.");
-          return;
-        }
-
-        setTestResults((prev) => ({
-          ...prev,
-          endpoint: { status: "pass", message: "OAuth token obtained" },
-          auth: { status: "running", message: "Starting Pi agent..." },
-        }));
-
-        // Step 2: Start Pi with claude-code config (tests auth)
-        const providerConfig: any = {
-          provider: settingsPreset?.provider || "claude-code",
-          url: settingsPreset?.url || "",
-          model: settingsPreset?.model || "",
-          apiKey: null,
-          maxTokens: (settingsPreset as any)?.maxTokens ?? 4096,
-          systemPrompt: null,
-        };
-
-        const home = await homeDir();
-        const dir = await join(home, ".screenpipe", "pi-diagnostics");
-
-        const piStartResult = await commands.piStart("pi-diagnostics", dir, settings.user?.token ?? null, providerConfig);
-        if (piStartResult.status !== "ok") {
-          skipRemaining("auth", `Pi failed to start: ${piStartResult.error}`);
-          return;
-        }
-
-        setTestResults((prev) => ({
-          ...prev,
-          auth: { status: "pass", message: "Pi agent started successfully" },
-          models: { status: "pass", message: "Using known models" },
-          chat: { status: "pass", message: "Ready to chat" },
-        }));
-        setTestStatus("done");
-        return;
-      } catch (err) {
-        skipRemaining("endpoint", `Error: ${err}`);
-        return;
-      }
-    }
 
     // Anthropic: skip /v1/models (may not be available for all keys) and go straight to chat test
     let modelsResponse: Response | null = null;
@@ -844,7 +777,7 @@ const AISection = ({
 
   const isApiKeyRequired =
     settingsPreset?.provider !== "openai-chatgpt" &&
-    settingsPreset?.provider !== "claude-code" &&
+    settingsPreset?.provider !== "anthropic" &&
     settingsPreset?.url !== "https://api.screenpi.pe/v1" &&
     settingsPreset?.url !== "http://localhost:11434/v1" &&
     settingsPreset?.url !== "embedded";
@@ -959,12 +892,12 @@ const AISection = ({
           break;
         }
 
-        case "claude-code": {
+        case "anthropic": {
           // Hardcoded model list — Claude Pro/Max subscription models
           setModels([
-            { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "claude-code" },
-            { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.5", provider: "claude-code" },
-            { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "claude-code" },
+            { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
+            { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.5", provider: "anthropic" },
+            { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" },
           ]);
           break;
         }
@@ -1149,11 +1082,11 @@ const AISection = ({
             title="Claude.ai"
             description="Use your Claude Pro/Max subscription or Anthropic API key"
             imageSrc="/images/claude-ai.svg"
-            selected={settingsPreset?.provider === "anthropic" || settingsPreset?.provider === "claude-code"}
+            selected={settingsPreset?.provider === "anthropic" || settingsPreset?.provider === "anthropic"}
             onClick={() => {
               // Default to claude-code (subscription) when first selecting Anthropic
-              if (settingsPreset?.provider !== "anthropic" && settingsPreset?.provider !== "claude-code") {
-                handleAiProviderChange("claude-code");
+              if (settingsPreset?.provider !== "anthropic" && settingsPreset?.provider !== "anthropic") {
+                handleAiProviderChange("anthropic");
               }
             }}
           />
@@ -1217,87 +1150,6 @@ const AISection = ({
         />
       )}
 
-      {(settingsPreset?.provider === "claude-code" || settingsPreset?.provider === "anthropic") && (
-        <div className="w-full">
-          <div className="flex flex-col gap-3 mb-4 w-full">
-            <Label className="flex items-center gap-1 text-xs text-muted-foreground">choose how to connect</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => handleAiProviderChange("claude-code")}
-                className={cn(
-                  "flex flex-col items-start gap-1.5 rounded-lg border-2 p-3 text-left transition-colors hover:bg-accent",
-                  settingsPreset?.provider === "claude-code"
-                    ? "border-primary bg-accent"
-                    : "border-border"
-                )}
-              >
-                <span className="font-medium text-sm">sign in with claude</span>
-                <span className="text-xs text-muted-foreground leading-relaxed">use your existing claude pro/team subscription. no API key needed.</span>
-                {settingsPreset?.provider === "claude-code" && (
-                  <span className="text-[10px] text-muted-foreground/60 mt-0.5">recommended</span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAiProviderChange("anthropic")}
-                className={cn(
-                  "flex flex-col items-start gap-1.5 rounded-lg border-2 p-3 text-left transition-colors hover:bg-accent",
-                  settingsPreset?.provider === "anthropic"
-                    ? "border-primary bg-accent"
-                    : "border-border"
-                )}
-              >
-                <span className="font-medium text-sm">API key</span>
-                <span className="text-xs text-muted-foreground leading-relaxed">pay per usage with an API key from console.anthropic.com</span>
-                {settingsPreset?.provider === "anthropic" && (
-                  <span className="text-[10px] text-muted-foreground/60 mt-0.5">for developers</span>
-                )}
-              </button>
-            </div>
-
-            {settingsPreset?.provider === "claude-code" && (
-              <div className="flex items-center gap-3 mt-1">
-                <Button
-                  type="button"
-                  variant={claudeCodeLoggedIn ? "outline" : "default"}
-                  className="transition-none"
-                  disabled={claudeCodeLoading}
-                  onClick={async () => {
-                    if (claudeCodeLoggedIn) {
-                      setClaudeCodeLoading(true);
-                      await commands.claudeOauthLogout();
-                      setClaudeCodeLoggedIn(false);
-                      setClaudeCodeLoading(false);
-                    } else {
-                      setClaudeCodeLoading(true);
-                      try {
-                        const res = await commands.claudeOauthLogin();
-                        if (res.status === "ok" && res.data) {
-                          setClaudeCodeLoggedIn(true);
-                        }
-                      } catch (e) {
-                        console.error("claude oauth failed:", e);
-                      }
-                      setClaudeCodeLoading(false);
-                    }
-                  }}
-                >
-                  {claudeCodeLoading ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : claudeCodeLoggedIn ? (
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                  ) : null}
-                  {claudeCodeLoggedIn ? "sign out" : "sign in with claude.ai"}
-                </Button>
-                {claudeCodeLoggedIn && (
-                  <span className="text-sm text-muted-foreground">connected — your subscription is active</span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {(settingsPreset?.provider === "anthropic" || settingsPreset?.provider === "custom" || (isApiKeyRequired &&
         settingsPreset?.provider === "openai")) && (

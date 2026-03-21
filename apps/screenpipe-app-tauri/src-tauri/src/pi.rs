@@ -696,7 +696,6 @@ fn ensure_pi_config(
             "openai-chatgpt" => "openai-chatgpt",
             "native-ollama" => "ollama",
             "anthropic" => "anthropic-byok",
-            "claude-code" => "anthropic-byok",
             "custom" => "custom",
             _ => "", // screenpipe-cloud already added above
         };
@@ -708,7 +707,7 @@ fn ensure_pi_config(
                 "https://chatgpt.com/backend-api".to_string()
             } else if config.provider == "anthropic" && config.url.is_empty() {
                 "https://api.anthropic.com".to_string()
-            } else if config.provider == "claude-code" && config.url.is_empty() {
+            } else if config.provider == "anthropic" && config.url.is_empty() {
                 "https://api.anthropic.com".to_string()
             } else {
                 config.url.clone()
@@ -721,14 +720,14 @@ fn ensure_pi_config(
                 "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
                 "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
                 "anthropic" => "ANTHROPIC_API_KEY".to_string(), // Pi will read from env
-                "claude-code" => "ANTHROPIC_API_KEY".to_string(), // OAuth token injected at startup
+                "anthropic" => "ANTHROPIC_API_KEY".to_string(), // OAuth token injected at startup
                 "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
                 _ => "".to_string(),
             };
 
             let wire_api = if config.provider == "openai-chatgpt" {
                 "openai-codex-responses"
-            } else if config.provider == "anthropic" || config.provider == "claude-code" {
+            } else if config.provider == "anthropic" {
                 "anthropic-messages"
             } else {
                 "openai-completions"
@@ -968,7 +967,6 @@ pub async fn pi_start_inner(
                 "openai-chatgpt" => "openai-chatgpt",
                 "native-ollama" => "ollama",
                 "anthropic" => "anthropic-byok",
-                "claude-code" => "anthropic-byok",
                 "custom" => "custom",
                 "screenpipe-cloud" | "pi" | _ => "screenpipe",
             };
@@ -1210,22 +1208,6 @@ pub async fn pi_start_inner(
                 Err(e) => {
                     return Err(format!(
                         "ChatGPT OAuth token unavailable: {}. Please sign in again.",
-                        e
-                    ));
-                }
-            }
-        }
-
-        // Claude Code OAuth: inject token — pi detects sk-ant-oat... and activates stealth mode
-        // (Bearer auth, anthropic-beta: claude-code-20250219,oauth-2025-04-20,... headers)
-        if config.provider == "claude-code" {
-            match crate::claude_oauth::get_valid_token().await {
-                Ok(token) => {
-                    cmd.env("ANTHROPIC_API_KEY", token);
-                }
-                Err(e) => {
-                    return Err(format!(
-                        "Claude Code OAuth token unavailable: {}. Please sign in again.",
                         e
                     ));
                 }
