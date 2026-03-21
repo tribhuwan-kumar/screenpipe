@@ -1727,14 +1727,24 @@ pub fn find_running_meeting_apps(
     profiles: &[MeetingDetectionProfile],
     currently_tracking: Option<&ActiveTracking>,
 ) -> Vec<RunningMeetingApp> {
+    let process_map = windows_enumerate_processes();
+    let visible_windows = enumerate_visible_windows();
+    filter_meeting_apps(profiles, currently_tracking, &process_map, &visible_windows)
+}
+
+/// Pure filtering logic for matching meeting app processes against profiles.
+/// Separated from OS calls so it can be unit-tested with mock data.
+#[cfg(target_os = "windows")]
+fn filter_meeting_apps(
+    profiles: &[MeetingDetectionProfile],
+    currently_tracking: Option<&ActiveTracking>,
+    process_map: &[WindowsProcessInfo],
+    visible_windows: &[(u32, String)],
+) -> Vec<RunningMeetingApp> {
     use std::collections::HashSet;
 
     let mut results = Vec::new();
     let mut seen_pids = HashSet::new();
-
-    // Single process snapshot + single EnumWindows call for the entire cycle
-    let process_map = windows_enumerate_processes();
-    let visible_windows = enumerate_visible_windows();
     let visible_pids: HashSet<u32> = visible_windows.iter().map(|(pid, _)| *pid).collect();
 
     // First, handle currently tracked process (always keep scanning even without visible window)
@@ -1819,7 +1829,7 @@ pub fn find_running_meeting_apps(
             continue;
         }
 
-        for (pid, title) in &visible_windows {
+        for (pid, title) in visible_windows {
             if seen_pids.contains(&(*pid as i32)) {
                 continue;
             }
@@ -3534,6 +3544,184 @@ mod tests {
                 title
             );
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(target_os = "windows")]
+mod filter_meeting_apps_tests {
+    use super::*;
+
+    fn mock_process(pid: u32, parent: u32, name: &str) -> WindowsProcessInfo {
+        WindowsProcessInfo {
+            pid,
+            parent_pid: parent,
+            name: name.to_string(),
+        }
+    }
+
+    fn zoom_profile() -> MeetingDetectionProfile {
+        // Minimal Zoom-like profile for testing
+        MeetingDetectionProfile {
+            app_identifiers: AppIdentifiers {
+                macos_app_names: &["zoom.us"],
+                windows_process_names: &["zoom.exe"],
+                browser_url_patterns: &["zoom.us/j/", "zoom.us/wc/"],
+            },
+            call_signals: vec![CallSignal::NameContains("leave")],
+            min_signals_required: 1,
+        }
+    }
+
+    fn discord_profile() -> MeetingDetectionProfile {
+        MeetingDetectionProfile {
+            app_identifiers: AppIdentifiers {
+                macos_app_names: &["discord"],
+                windows_process_names: &["discord.exe"],
+                browser_url_patterns: &[],
+            },
+            call_signals: vec![CallSignal::NameContains("disconnect")],
+            min_signals_required: 1,
+        }
+    }
+
+    fn meet_profile() -> MeetingDetectionProfile {
+        MeetingDetectionProfile {
+            app_identifiers: AppIdentifiers {
+                macos_app_names: &[],
+                windows_process_names: &[],
+                browser_url_patterns: &["meet.google.com"],
+            },
+            call_signals: vec![CallSignal::NameContains("leave")],
+            min_signals_required: 1,
+        }
+    }
+
+    // ── Visible-window pre-filter tests ─────────────────────────────
+
+    #[test]
+    fn test_process_with_visible_window_is_included() {
+        let profiles = vec![zoom_profile()];
+        let procs = vec![mock_process(100, 0, "zoom.exe")];
+        // PID 100 has a visible window (even with empty title)
+        let windows = vec![(100u32, String::new())];
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].pid, 100);
+    }
+
+    #[test]
+    fn test_process_without_visible_window_is_excluded() {
+        let profiles = vec![zoom_profile()];
+        let procs = vec![mock_process(100, 0, "zoom.exe")];
+        // No visible windows at all
+        let windows: Vec<(u32, String)> = vec![];
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        assert!(apps.is_empty(), "process without visible window should be excluded");
+    }
+
+    #[test]
+    fn test_titleless_visible_window_still_includes_pid() {
+        // Regression test: Zoom has visible windows without titles.
+        // The PID filter must include these.
+        let profiles = vec![zoom_profile()];
+        let procs = vec![mock_process(100, 0, "zoom.exe")];
+        let windows = vec![(100u32, String::new())]; // visible but no title
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        assert_eq!(apps.len(), 1, "titleless visible window should still match PID");
+    }
+
+    #[test]
+    fn test_discord_multiple_pids_only_windowed_ones_included() {
+        // Discord spawns 6+ processes but only 1-2 have visible windows.
+        let profiles = vec![discord_profile()];
+        let procs = vec![
+            mock_process(10, 0, "Discord.exe"),  // main, has window
+            mock_process(11, 10, "Discord.exe"),  // renderer, no window
+            mock_process(12, 10, "Discord.exe"),  // GPU, no window
+            mock_process(13, 10, "Discord.exe"),  // utility, no window
+        ];
+        // Only PID 10 has a visible window
+        let windows = vec![(10u32, "Discord".to_string())];
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].pid, 10);
+    }
+
+    // ── Currently-tracked process bypass ────────────────────────────
+
+    #[test]
+    fn test_tracked_process_included_even_without_visible_window() {
+        let profiles = vec![zoom_profile()];
+        let procs = vec![mock_process(100, 0, "zoom.exe")];
+        let windows: Vec<(u32, String)> = vec![]; // no visible windows
+        let tracking = ActiveTracking {
+            pid: 100,
+            profile_index: 0,
+        };
+
+        let apps = filter_meeting_apps(&profiles, Some(&tracking), &procs, &windows);
+        assert_eq!(apps.len(), 1, "tracked process should bypass visible-window filter");
+        assert_eq!(apps[0].pid, 100);
+    }
+
+    // ── Child process (Teams webview) tests ─────────────────────────
+
+    #[test]
+    fn test_teams_webview_child_included_when_has_window() {
+        let teams_profile = MeetingDetectionProfile {
+            app_identifiers: AppIdentifiers {
+                macos_app_names: &["com.microsoft.teams2"],
+                windows_process_names: &["ms-teams.exe"],
+                browser_url_patterns: &[],
+            },
+            call_signals: vec![CallSignal::NameContains("leave")],
+            min_signals_required: 1,
+        };
+        let profiles = vec![teams_profile];
+        let procs = vec![
+            mock_process(200, 0, "ms-teams.exe"),
+            mock_process(201, 200, "msedgewebview2.exe"), // has window
+            mock_process(202, 200, "msedgewebview2.exe"), // no window
+        ];
+        let windows = vec![
+            (200u32, "Microsoft Teams".to_string()),
+            (201u32, String::new()),
+            // PID 202 has no visible window
+        ];
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        let pids: Vec<i32> = apps.iter().map(|a| a.pid).collect();
+        assert!(pids.contains(&200), "Teams main process should be included");
+        assert!(pids.contains(&201), "webview child WITH window should be included");
+        assert!(!pids.contains(&202), "webview child WITHOUT window should be excluded");
+    }
+
+    // ── Browser URL matching tests ──────────────────────────────────
+
+    #[test]
+    fn test_browser_url_matched_via_window_title() {
+        let profiles = vec![meet_profile()];
+        let procs = vec![mock_process(300, 0, "chrome.exe")];
+        let windows = vec![(300u32, "meet.google.com/abc-defg-hij - Google Chrome".to_string())];
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].browser_url.as_deref(), Some("meet.google.com/abc-defg-hij - Google Chrome"));
+    }
+
+    #[test]
+    fn test_non_browser_process_not_matched_for_url_patterns() {
+        let profiles = vec![meet_profile()];
+        let procs = vec![mock_process(300, 0, "notepad.exe")];
+        let windows = vec![(300u32, "meet.google.com - Notepad".to_string())];
+
+        let apps = filter_meeting_apps(&profiles, None, &procs, &windows);
+        assert!(apps.is_empty(), "non-browser process should not match URL patterns");
     }
 }
 
