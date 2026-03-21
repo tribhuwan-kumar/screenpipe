@@ -360,6 +360,9 @@ pub async fn start_embedded_server(
         match start_ui_recording(db_clone, ui_config, capture_trigger_tx).await {
             Ok(handle) => {
                 info!("UI event recording started successfully");
+                // Register stop flag with DRM detector so it can stop the UI recorder
+                // when DRM streaming content is detected (releases event taps).
+                screenpipe_engine::drm_detector::set_ui_recorder_stop_flag(handle.stop_flag());
                 Some(handle)
             }
             Err(e) => {

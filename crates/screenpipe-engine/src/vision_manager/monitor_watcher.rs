@@ -60,10 +60,12 @@ pub async fn start_monitor_watcher(vision_manager: Arc<VisionManager>) -> anyhow
             // This ensures macOS DRM sees no active ScreenCaptureKit usage.
             if drm_detector::drm_content_paused() {
                 if !drm_stopped {
-                    info!("DRM content focused — stopping all vision monitors to release SCK handles");
+                    info!("DRM content focused — stopping vision + UI recorder to release screen capture");
                     if let Err(e) = vision_manager.stop().await {
                         warn!("failed to stop vision manager for DRM pause: {:?}", e);
                     }
+                    // Also stop UI recorder — its native event taps keep Screen Recording active
+                    drm_detector::stop_ui_recorder();
                     drm_stopped = true;
                 }
                 // Poll focused app (Accessibility API only, no SCK) to detect
@@ -83,6 +85,8 @@ pub async fn start_monitor_watcher(vision_manager: Arc<VisionManager>) -> anyhow
                 if let Err(e) = vision_manager.start().await {
                     warn!("failed to restart vision manager after DRM pause: {:?}", e);
                 }
+                // Note: UI recorder cannot be restarted (one-shot design).
+                // It will resume on next app restart. Vision capture resumes immediately.
                 drm_stopped = false;
                 // Re-populate known_monitors after restart
                 if let Ok(monitors) = list_monitors_detailed().await {

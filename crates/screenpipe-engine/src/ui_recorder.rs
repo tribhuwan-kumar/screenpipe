@@ -165,6 +165,11 @@ impl UiRecorderHandle {
         self.stop_flag.store(true, Ordering::SeqCst);
     }
 
+    /// Get the stop flag for external use (e.g. DRM detector).
+    pub fn stop_flag(&self) -> Arc<AtomicBool> {
+        self.stop_flag.clone()
+    }
+
     /// Check if still running
     pub fn is_running(&self) -> bool {
         !self.stop_flag.load(Ordering::Relaxed)

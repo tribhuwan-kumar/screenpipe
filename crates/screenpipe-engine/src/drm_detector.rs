@@ -14,11 +14,36 @@
 //! 3. Only the focused-app poll runs (uses Accessibility APIs, not SCK)
 //! 4. When user switches to a non-streaming app, everything restarts.
 
+use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 /// Global flag — when `true`, all monitors skip screen capture.
 static DRM_CONTENT_PAUSED: AtomicBool = AtomicBool::new(false);
+
+/// Global reference to the UI recorder's stop flag.
+/// Set during startup so the DRM detector can stop the UI recorder
+/// (which holds native event taps that keep Screen Recording active).
+static UI_RECORDER_STOP_FLAG: Lazy<Mutex<Option<Arc<AtomicBool>>>> =
+    Lazy::new(|| Mutex::new(None));
+
+/// Register the UI recorder's stop flag so DRM detector can stop it.
+pub fn set_ui_recorder_stop_flag(flag: Arc<AtomicBool>) {
+    if let Ok(mut guard) = UI_RECORDER_STOP_FLAG.lock() {
+        *guard = Some(flag);
+    }
+}
+
+/// Stop the UI recorder by setting its stop flag.
+pub fn stop_ui_recorder() {
+    if let Ok(guard) = UI_RECORDER_STOP_FLAG.lock() {
+        if let Some(ref flag) = *guard {
+            info!("DRM: stopping UI recorder to release event taps");
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+}
 
 /// Read the current DRM pause state.
 pub fn drm_content_paused() -> bool {
@@ -176,11 +201,9 @@ fn is_browser(app_name: &str) -> bool {
 }
 
 /// Query the current foreground app and check if DRM is still active.
-/// Called from the monitor watcher when monitors are stopped due to DRM.
+/// Called from the Tauri health check to decide when to auto-restart recording.
 ///
-/// Uses only Accessibility APIs (not ScreenCaptureKit) so we don't
-/// keep the SCK permission active.
-///
+/// Uses only Accessibility APIs (not ScreenCaptureKit).
 /// Returns `true` if DRM is still active (stay paused).
 #[cfg(target_os = "macos")]
 pub fn poll_drm_clear() -> bool {
@@ -203,7 +226,7 @@ pub fn poll_drm_clear() -> bool {
                 true
             } else if is_browser(&app_name) {
                 debug!(
-                    "browser '{}' focused — keeping DRM pause (can't check URL without SCK)",
+                    "browser '{}' focused — keeping DRM pause (can't check URL)",
                     app_name
                 );
                 true
