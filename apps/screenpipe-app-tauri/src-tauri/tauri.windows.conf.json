@@ -2,7 +2,6 @@
     "bundle": {
         "publisher": "Mediar, Inc.",
         "windows": {
-            "signCommand": "powershell -ExecutionPolicy Bypass -File sign-azure.ps1 %1",
             "nsis": {
                 "headerImage": "assets/nsis-header.bmp",
                 "sidebarImage": "assets/nsis-sidebar.bmp",
