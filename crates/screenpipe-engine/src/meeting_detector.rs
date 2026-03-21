@@ -1041,15 +1041,17 @@ fn enumerate_visible_windows() -> Vec<(u32, String)> {
         let results = &*(lparam.0 as *const Mutex<Vec<(u32, String)>>);
 
         if IsWindowVisible(hwnd).as_bool() {
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
             let mut text = [0u16; 512];
             let len = GetWindowTextW(hwnd, &mut text);
-            if len > 0 {
-                let title = String::from_utf16_lossy(&text[..len as usize]);
-                let mut pid: u32 = 0;
-                GetWindowThreadProcessId(hwnd, Some(&mut pid));
-                if let Ok(mut r) = results.lock() {
-                    r.push((pid, title));
-                }
+            let title = if len > 0 {
+                String::from_utf16_lossy(&text[..len as usize])
+            } else {
+                String::new()
+            };
+            if let Ok(mut r) = results.lock() {
+                r.push((pid, title));
             }
         }
         BOOL(1)
