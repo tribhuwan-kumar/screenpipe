@@ -13,6 +13,7 @@ import { RefreshCw, HardDrive, Folder, Video, Mic, Database, Calculator, FileTex
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Progress } from "../ui/progress";
+import { RetentionSettings } from "./retention-settings";
 
 export function DiskUsageSection() {
   const { diskUsage, isLoading, error, refetch } = useDiskUsage();
@@ -196,6 +197,8 @@ export function DiskUsageSection() {
           )}
         </CardContent>
       </Card>
+
+      <RetentionSettings />
     </div>
   );
 } 

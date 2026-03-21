@@ -1677,6 +1677,13 @@ async fn main() {
                 sync::auto_start_archive(&app_handle_clone).await;
             });
 
+            // Auto-start local data retention if it was enabled
+            let app_handle_clone = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
+                sync::auto_start_retention(&app_handle_clone).await;
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!())

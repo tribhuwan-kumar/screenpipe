@@ -684,6 +684,58 @@ pub async fn auto_start_archive(app: &AppHandle) {
     }
 }
 
+/// Auto-start local data retention on app launch if previously enabled.
+pub async fn auto_start_retention(app: &AppHandle) {
+    let settings = match SettingsStore::get(app) {
+        Ok(Some(s)) => s,
+        _ => return,
+    };
+
+    let enabled = settings
+        .extra
+        .get("localRetentionEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !enabled {
+        return;
+    }
+
+    let days = settings
+        .extra
+        .get("localRetentionDays")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(30) as u32;
+
+    let client = reqwest::Client::new();
+    let configure_req = serde_json::json!({
+        "enabled": true,
+        "retention_days": days,
+    });
+
+    match client
+        .post("http://localhost:3030/retention/configure")
+        .json(&configure_req)
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            info!("local retention auto-started (retention={}d)", days);
+        }
+        Ok(response) => {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            warn!(
+                "local retention auto-start failed ({}): {}",
+                status, body
+            );
+        }
+        Err(e) => {
+            warn!("local retention auto-start: server not reachable: {}", e);
+        }
+    }
+}
+
 /// Delete all cloud data.
 #[tauri::command]
 #[specta::specta]

@@ -144,6 +144,10 @@ export type Settings = SettingsStore & {
 	offlineMode?: boolean;
 	/** Pause all screen capture when a DRM streaming app (Netflix, Disney+, etc.) is focused */
 	pauseOnDrmContent?: boolean;
+	/** Auto-delete local data older than retention days (free alternative to cloud archive) */
+	localRetentionEnabled?: boolean;
+	/** Days to keep data locally before auto-deleting (default: 30) */
+	localRetentionDays?: number;
 	/** Notification preferences — which notification sources are enabled */
 	notificationPrefs?: {
 		captureStalls: boolean;

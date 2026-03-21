@@ -154,6 +154,8 @@ pub struct AppState {
     pub hot_frame_cache: Arc<HotFrameCache>,
     /// Cloud archive state (initialized via /archive/init endpoint)
     pub archive_state: crate::archive::ArchiveState,
+    /// Local data retention state (auto-delete old data)
+    pub retention_state: crate::retention::RetentionState,
     /// Vault lock manager — encrypts data at rest when locked
     pub vault: screenpipe_vault::VaultManager,
     /// Active manually-started meeting id (set via POST /meetings/start, cleared via POST /meetings/stop)
@@ -441,6 +443,7 @@ impl SCServer {
             frame_extraction_semaphore: Arc::new(tokio::sync::Semaphore::new(3)),
             hot_frame_cache,
             archive_state: crate::archive::ArchiveState::new(),
+            retention_state: crate::retention::RetentionState::new(),
             pipe_permissions: self.pipe_permissions.clone(),
             vault: screenpipe_vault::VaultManager::new(self.screenpipe_dir.clone()),
             manual_meeting: self
@@ -560,6 +563,19 @@ impl SCServer {
             .route(
                 "/archive/run",
                 axum::routing::post(crate::archive::archive_run),
+            )
+            // Local data retention (auto-delete old data)
+            .route(
+                "/retention/configure",
+                axum::routing::post(crate::retention::retention_configure),
+            )
+            .route(
+                "/retention/status",
+                get(crate::retention::retention_status),
+            )
+            .route(
+                "/retention/run",
+                axum::routing::post(crate::retention::retention_run),
             )
             // Vision status endpoint (not in OpenAPI spec to avoid oasgen registration issues)
             .route("/vision/status", get(api_vision_status))

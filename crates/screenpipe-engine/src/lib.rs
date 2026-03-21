@@ -18,6 +18,7 @@ pub mod pipe_permissions_middleware;
 pub mod pipe_store;
 pub mod pipes_api;
 pub mod recording_config;
+pub mod retention;
 pub mod routes;
 
 pub mod event_driven_capture;
