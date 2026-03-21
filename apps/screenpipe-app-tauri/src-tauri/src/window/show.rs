@@ -625,7 +625,7 @@ impl ShowRewindWindow {
                         // and tray on notched MacBooks. NSPanel with proper collection
                         // behaviors handles fullscreen Space visibility instead.
                         let builder = self
-                            .window_builder_with_label(app, "/", main_label_for_mode("window"))
+                            .window_builder_with_label(app, "/overlay", main_label_for_mode("window"))
                             .title("screenpipe")
                             .inner_size(win_w, win_h)
                             .min_inner_size(800.0, 600.0)
@@ -641,7 +641,7 @@ impl ShowRewindWindow {
                     let window = {
                         let app_clone = app.clone();
                         let builder = self
-                            .window_builder_with_label(app, "/", main_label_for_mode("window"))
+                            .window_builder_with_label(app, "/overlay", main_label_for_mode("window"))
                             .title("screenpipe")
                             .inner_size(win_w, win_h)
                             .min_inner_size(800.0, 600.0)
@@ -873,7 +873,7 @@ impl ShowRewindWindow {
                         min.1.min(logical_size.height),
                     );
                     let builder = self
-                        .window_builder_with_label(app, "/", main_label_for_mode("fullscreen"))
+                        .window_builder_with_label(app, "/overlay", main_label_for_mode("fullscreen"))
                         .always_on_top(true)
                         .decorations(false)
                         .skip_taskbar(true)
@@ -922,7 +922,7 @@ impl ShowRewindWindow {
                         min.1.min(logical_size.height),
                     );
                     let builder = self
-                        .window_builder_with_label(app, "/", main_label_for_mode("fullscreen"))
+                        .window_builder_with_label(app, "/overlay", main_label_for_mode("fullscreen"))
                         .title("screenpipe")
                         .visible_on_all_workspaces(true)
                         .always_on_top(true)
@@ -957,7 +957,7 @@ impl ShowRewindWindow {
                     let (linux_w, linux_h) = screen_aware_size(app, 1200.0, 800.0);
                     let app_clone = app.clone();
                     let builder = self
-                        .window_builder_with_label(app, "/", main_label_for_mode("fullscreen"))
+                        .window_builder_with_label(app, "/overlay", main_label_for_mode("fullscreen"))
                         .title("screenpipe")
                         .inner_size(linux_w, linux_h)
                         .min_inner_size(800.0, 600.0)
