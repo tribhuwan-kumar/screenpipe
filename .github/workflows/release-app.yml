@@ -748,10 +748,17 @@ jobs:
             echo "AppImage repacked successfully"
           ' _ {} \;
 
-      - name: Install AzureSignTool (Windows)
+      - name: Install AzureSignTool and ensure signtool on PATH (Windows)
         if: matrix.os_type == 'windows'
         shell: powershell
-        run: dotnet tool install --global AzureSignTool
+        run: |
+          dotnet tool install --global AzureSignTool
+          # Ensure signtool.exe is on PATH — ARM runners only have it in the x64 SDK bin
+          $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if ($sdkBin) {
+            echo "$($sdkBin.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            Write-Host "Added $($sdkBin.FullName) to PATH (signtool.exe)"
+          }
 
       - name: Build (Windows)
         if: matrix.os_type == 'windows'
