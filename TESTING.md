@@ -57,6 +57,9 @@ commits that broke this area: `0752ea59`, `d89c5f14`, `4a64fd1a`, `fa591d6e`, `8
 - [ ] **text selection not blocked by URL overlays** — On URL-heavy pages, verify that text selection is not blocked by clickable URL overlays. (`eb9e65b4`)
 - [ ] **macOS focused-app capture with AX observers** — On macOS, verify that focused-app capture works correctly when switching between applications, utilizing AX observers. (`22830119`)
 - [ ] **macOS native Live Text interaction** — On macOS, verify that native Live Text interaction, including text selection and data detectors, is re-enabled and functions correctly. (`e9c76934`)
+- [ ] **Livetext single worker thread** — verify no GCD thread exhaustion freeze during heavy livetext analysis. (`a3e29d42a`)
+- [ ] **VisionKit semaphore timeouts** — verify no deadlocks in vision pipeline if VisionKit hangs (10s timeout). (`397f46133`)
+- [ ] **Notification panel order_out** — verify no ghost clicks after hiding notification/shortcut panels. (`32fed7c8c`)
 
 
 ### 2. dock icon & tray icon (macOS)
@@ -250,6 +253,7 @@ commits: `94531265`, `d794176a`, `9070639c`, `0378cab1`, `4a3313d3`, `7ffdd4f1`,
 - [ ] **Properly wait for UI recorder tasks before exit** — During a clean quit, verify that all UI recorder tasks complete properly and no orphaned processes or partial recordings remain.
 - [ ] **recording watchdog diagnostics** — Verify that the recording watchdog correctly diagnoses and handles recording issues, and provides useful diagnostic information. (`af2b4f3d`)
 - [ ] **capture stall detection** — Simulate or observe a capture stall. Verify that a notification appears with a "Restart" button to recover. (`d3ead88eb`)
+- [ ] **DB write stall detection** — if DB writes stall, verify a notification appears with a "Restart" button. (`1b4bf7918`)
 - [ ] **clean startup after unclean shutdown on Windows** — On Windows, verify that the app starts cleanly after an unclean shutdown (e.g., force quit), without port 3030 binding failures. (`a8413fe2`)
 
 ### 9. database & storage
@@ -267,11 +271,13 @@ commits: `eea0c865`, `cc09de61`, `e61501da`, `d25191d7`, `60096fb9`
 - [ ] **Audio chunk timestamps** — `start_time` and `end_time` are correctly set for reconciled and retranscribed audio chunks in the database.
 - [ ] **SCREENPIPE_DATA_DIR usage** — Set the `SCREENPIPE_DATA_DIR` environment variable. Verify the app uses this directory for all its data storage. (`d5f30db71`)
 - [ ] **DB pool starvation prevention** — Simulate high database load (e.g., rapid screen activity, many pipes running) and monitor logs. Verify no "database is locked" errors or signs of DB pool starvation.
+- [ ] **DB write coalescing queue** — verify high-frequency captures (e.g. 10 FPS) don't lock the UI or cause write errors. (`c23768f41`)
 - [ ] **Multi-byte window titles in suggestions** — Interact with suggestions for windows that have multi-byte (e.g., Unicode, emoji) characters in their titles. Verify no char boundary panics.
 - [ ] **no concurrent reconciliation issues** — Verify that concurrent reconciliation processes do not cause issues during heavy load or sync operations. (`1d436bc3`)
 - [ ] **pipe_config blobs skipped in sync** — Verify that `pipe_config` blobs are correctly skipped during synchronization, preventing unnecessary data transfer and potential issues. (`08d5c53a`)
 - [ ] **Pi's native auto-compaction for pipe session history** — Verify that Pi's native auto-compaction feature for pipe session history works as expected, preventing indefinite growth of history and maintaining performance. (`8f49e2cf`)
 - [ ] **UTF-8 panic with long multi-byte strings** — Introduce long strings with multi-byte UTF-8 characters (e.g., in window titles, chat input, search queries). Verify no panics occur when these strings are truncated, stored, or processed.
+- [ ] **fsync snapshots before DB commit** — verify data integrity by force-quitting during heavy capture; snapshots should match DB entries. (`2e63282b8`)
 
 - [ ] **slow DB insert warning** — check logs. "Slow DB batch insert" warnings should be <1s in normal operation. >3s indicates contention.
 - [ ] **concurrent DB access** — UI queries + recording inserts happening simultaneously. no "database is locked" errors.
@@ -367,6 +373,7 @@ commits: `f1255eac`, `25cbdc6b`, `2529367d`, `d9821624`, `e61501da`, `039d5fea`,
 - [ ] **refresh button inline with suggestion chips (icon-only)** — Verify that the refresh button for suggestion chips is displayed inline with the chips and is icon-only. (`a80e9ce6`)
 - [ ] **bottom suggestion chips hidden on empty chat** — Verify that bottom suggestion chips are hidden when the chat is empty to avoid duplication. (`d6c4b821`)
 - [ ] **Refresh button for suggestion chips** — A refresh button appears on bottom suggestion chips. Clicking it updates suggestions.
+- [ ] **Timeline refresh button hover** — verify cursor-pointer and hover state on timeline refresh button. (`0cee47b62`)
 - [ ] **Smarter idle suggestions** — Verify that "idle suggestions" appear and are contextually relevant when the user is inactive.
 - [ ] **Hide suggestion chips on empty chat** — Verify that suggestion chips are hidden when the chat is empty to prevent duplication.
 - [ ] **Text selection not blocked by URL overlays** — On URL-heavy pages, verify that text selection is not blocked by clickable URL overlays.
@@ -376,6 +383,11 @@ commits: `f1255eac`, `25cbdc6b`, `2529367d`, `d9821624`, `e61501da`, `039d5fea`,
 - [ ] **Search modal scroll** — Verify that the search modal is scrollable on Windows/Linux embedded timeline and trackpad/wheel scrolling works. (`f108f1f0d`, `2a2bd9b5`, `5762c60bf`)
 - [ ] **Modal scrolling (general)** — Verify that all modals (e.g., settings, pipes, search) are scrollable and handle overflow correctly, especially on Windows and Linux. (`19789657d`)
 - [ ] **Search modal UX** — Verify that click interference from Live Text and wheel handlers is resolved, and app/date filter timezone bugs are fixed. (`0c883819e`, `b7123231`, `f09f1e9aa`)
+- [ ] **Timeline filter viewport scoping** — verify timeline filters apply to current viewport, not a fixed 800-frame window. (`9277431e4`)
+- [ ] **Chat UI code blocks** — verify light text on dark bg in chat code blocks. (`c029f7779`)
+- [ ] **Chat image viewer** — verify images can be viewed in chat. (`2bcdf8d8b`)
+- [ ] **Chat preset dropdown** — verify AI preset switching within chat. (`2bcdf8d8b`)
+- [ ] **Memories Settings UI** — verify frame_id relationship and Memories settings work as expected. (`67f4c4304`)
 
 commits: `f1255eac`, `25cbdc6b`, `2529367d`, `d9821624`
 
@@ -629,6 +641,7 @@ commits: `fa887407`, `815f52e6`, `60840155`, `e66c3ff8`, `c905ffbf`, `01147096`,
 - [ ] **Tool call UI with progress rail** — Execute a pipe that uses tool calls. Verify the redesigned UI featuring a progress rail timeline and auto-collapse for friendly interaction. (`6c23e1399`, `d81ea65c1`)
 - [ ] **In-app Notification Panel** — Use the `/notify` API (e.g., via a pipe). Verify an in-app notification panel appears instead of a system notification. (`34937b2dc`)
 - [ ] **Pipe Suggestions Scheduler** — Verify that pipe suggestions are displayed according to the scheduled intervals. (`41c8b8085`)
+- [ ] **Pipe store stability** — verify null guards, sharp corners, unpublish functionality, and data unwrap fixes. (`603c84f7b`)
 - [ ] **Pi agent & search timeouts** — Run a long-running search or Pi agent task. Verify it doesn't timeout prematurely at 60s (should allow up to 120s for search). (`f01213cf5`)
 
 commits: `fa887407`, `815f52e6`, `60840155`, `e66c3ff8`, `c905ffbf`, `01147096`, `5908d7f4`, `46422869`, `4f43da70`, `71a1a537`, `6abaaa36`
@@ -777,6 +790,7 @@ grep -E "FoundationModels|apple.intelligence|fm_generate" ~/.screenpipe/screenpi
 ### 12. mainland china / great firewall
 
 - [ ] **full app functionality behind GFW** — download, onboarding, AI chat, cloud features, and update checks must all work (or degrade gracefully) on networks subject to the Great Firewall.
+- [ ] **HF_ENDPOINT Chinese mirror** — verify model downloads work in China via the HF mirror. (`7ea1eb94e`)
 
 ### 22. WhatsApp Gateway
 
