@@ -309,6 +309,8 @@ let DEFAULT_SETTINGS: Settings = {
 			filterMusic: false,
 			ignoreIncognitoWindows: true,
 			pauseOnDrmContent: false,
+			localRetentionEnabled: true,
+			localRetentionDays: 14,
 		};
 
 export function createDefaultSettingsObject(): Settings {

@@ -57,7 +57,7 @@ impl Default for RetentionConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            retention_days: 30,
+            retention_days: 14,
         }
     }
 }
@@ -90,7 +90,7 @@ pub async fn retention_configure(
     State(state): State<Arc<AppState>>,
     Json(request): Json<RetentionConfigureRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let retention_days = request.retention_days.unwrap_or(30);
+    let retention_days = request.retention_days.unwrap_or(14);
 
     // Enforce minimum 1 day
     if retention_days < 1 {

@@ -739,7 +739,7 @@ pub async fn auto_start_retention(app: &AppHandle) {
         .extra
         .get("localRetentionDays")
         .and_then(|v| v.as_u64())
-        .unwrap_or(30) as u32;
+        .unwrap_or(14) as u32;
 
     let client = reqwest::Client::new();
     let configure_req = serde_json::json!({
