@@ -83,6 +83,7 @@ export class OpenRouterProvider implements AIProvider {
 			messages: this.formatMessages(body.messages),
 			temperature: body.temperature,
 			stream: true,
+			stream_options: { include_usage: true },
 			response_format: this.formatResponseFormat(body.response_format),
 			tools: body.tools as ChatCompletionCreateParams['tools'],
 		});

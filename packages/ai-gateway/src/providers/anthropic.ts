@@ -358,15 +358,7 @@ export class AnthropicProvider implements AIProvider {
 		return result;
 	}
 
-	formatResponse(response: AnthropicMessage): {
-		choices: Array<{
-			message: {
-				content: string;
-				role: string;
-				tool_calls?: any[];
-			};
-		}>;
-	} {
+	formatResponse(response: AnthropicMessage): any {
 		const textBlock = response.content.find((block): block is TextBlock => block.type === 'text');
 
 		const textContent = textBlock?.text || '';
@@ -389,6 +381,11 @@ export class AnthropicProvider implements AIProvider {
 					},
 				},
 			],
+			usage: {
+				prompt_tokens: response.usage?.input_tokens ?? 0,
+				completion_tokens: response.usage?.output_tokens ?? 0,
+				total_tokens: (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0),
+			},
 		};
 	}
 

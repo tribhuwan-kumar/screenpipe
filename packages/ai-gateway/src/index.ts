@@ -158,9 +158,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 					tier: authResult.tier,
 					provider: inferProvider(body.model),
 					model: body.model,
-					input_tokens: u.input_tokens || null,
-					output_tokens: u.output_tokens || null,
-					estimated_cost_usd: getModelCost(body.model, u.input_tokens || null, u.output_tokens || null),
+					input_tokens: u.input_tokens ?? null,
+					output_tokens: u.output_tokens ?? null,
+					estimated_cost_usd: getModelCost(body.model, u.input_tokens ?? null, u.output_tokens ?? null),
 					endpoint: '/v1/chat/completions',
 					stream: true,
 				})));
@@ -232,8 +232,10 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 
 		if (path === '/v1/listen' && request.method === 'POST') {
 			// Per-user daily cost cap for transcription
+			// 2x safety margin: free=$10/day, subscribed=$50/day
 			const dailyCost = await getDailyUserCost(env, authResult.deviceId);
-			const maxCost = getMaxDailyCostPerUser(env);
+			const baseCap = getMaxDailyCostPerUser(env);
+			const maxCost = authResult.tier === 'subscribed' ? baseCap * 10 : baseCap * 2;
 			if (dailyCost >= maxCost) {
 				return addCorsHeaders(createErrorResponse(429, JSON.stringify({
 					error: 'daily_cost_limit_exceeded',
@@ -373,9 +375,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 					tier: authResult.tier,
 					provider: inferProvider(parsedModel),
 					model: parsedModel,
-					input_tokens: u.input_tokens || null,
-					output_tokens: u.output_tokens || null,
-					estimated_cost_usd: getModelCost(parsedModel, u.input_tokens || null, u.output_tokens || null),
+					input_tokens: u.input_tokens ?? null,
+					output_tokens: u.output_tokens ?? null,
+					estimated_cost_usd: getModelCost(parsedModel, u.input_tokens ?? null, u.output_tokens ?? null),
 					endpoint: '/v1/messages',
 					stream: true,
 				})));
@@ -473,9 +475,9 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 					tier: authResult.tier,
 					provider: inferProvider(ocModel),
 					model: ocModel,
-					input_tokens: u.input_tokens || null,
-					output_tokens: u.output_tokens || null,
-					estimated_cost_usd: getModelCost(ocModel, u.input_tokens || null, u.output_tokens || null),
+					input_tokens: u.input_tokens ?? null,
+					output_tokens: u.output_tokens ?? null,
+					estimated_cost_usd: getModelCost(ocModel, u.input_tokens ?? null, u.output_tokens ?? null),
 					endpoint: '/anthropic/v1/messages',
 					stream: true,
 				})));

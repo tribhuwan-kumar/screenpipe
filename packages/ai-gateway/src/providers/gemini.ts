@@ -198,6 +198,8 @@ export class GeminiProvider implements AIProvider {
 
 		let toolCallIndex = 0;
 		let pendingWebSearch: { name: string; args: any } | null = null;
+		let inputTokens = 0;
+		let outputTokens = 0;
 
 		return new ReadableStream({
 			async start(controller) {
@@ -205,6 +207,22 @@ export class GeminiProvider implements AIProvider {
 					while (true) {
 						const { done, value } = await reader.read();
 						if (done) {
+							// Emit usage data in OpenAI format before [DONE]
+							if (inputTokens > 0 || outputTokens > 0) {
+								controller.enqueue(
+									new TextEncoder().encode(
+										`data: ${JSON.stringify({
+											choices: [],
+											usage: {
+												prompt_tokens: inputTokens,
+												completion_tokens: outputTokens,
+												total_tokens: inputTokens + outputTokens,
+											},
+										})}\n\n`
+									)
+								);
+							}
+
 							// Before closing, check if we have a pending web search to execute
 							if (pendingWebSearch) {
 								const query = pendingWebSearch.args?.query || pendingWebSearch.args?.q || '';
@@ -261,6 +279,13 @@ export class GeminiProvider implements AIProvider {
 							if (line.startsWith('data: ')) {
 								try {
 									const data = JSON.parse(line.slice(6));
+
+									// Capture usage from Gemini's usageMetadata
+									if (data.usageMetadata) {
+										inputTokens = data.usageMetadata.promptTokenCount ?? inputTokens;
+										outputTokens = data.usageMetadata.candidatesTokenCount ?? outputTokens;
+									}
+
 									const parts = data.candidates?.[0]?.content?.parts || [];
 
 									for (const part of parts) {
@@ -714,6 +739,16 @@ export class GeminiProvider implements AIProvider {
 		const result: any = {
 			choices: [{ message }],
 		};
+
+		// Include usage from Gemini's usageMetadata
+		const usageMetadata = response.usageMetadata;
+		if (usageMetadata) {
+			result.usage = {
+				prompt_tokens: usageMetadata.promptTokenCount ?? 0,
+				completion_tokens: usageMetadata.candidatesTokenCount ?? 0,
+				total_tokens: usageMetadata.totalTokenCount ?? 0,
+			};
+		}
 
 		if (includeGrounding) {
 			const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
