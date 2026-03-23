@@ -2582,7 +2582,7 @@ mod tests {
     /// Test PI_READY_TIMEOUT constant is sensible
     #[test]
     fn test_ready_timeout_constant() {
-        assert_eq!(super::PI_READY_TIMEOUT.as_secs(), 2);
+        assert_eq!(super::PI_READY_TIMEOUT.as_millis(), 200);
     }
 
     // -- read_lines_lossy unit tests --
