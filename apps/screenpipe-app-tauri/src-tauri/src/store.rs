@@ -23,9 +23,31 @@ pub fn get_store(
     let base_dir = get_base_dir(app, None)?;
     let store_path = base_dir.join("store.bin");
 
-    let store = StoreBuilder::new(app, store_path)
-        .build()
-        .map_err(|e| anyhow::anyhow!(e))?;
+    // Retry with backoff to handle TOCTOU race (EEXIST / os error 17)
+    // when multiple instances or threads race to create store.bin.
+    let mut last_err = None;
+    let store = 'retry: {
+        for attempt in 0..3u32 {
+            match StoreBuilder::new(app, store_path.clone()).build() {
+                Ok(s) => break 'retry s,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("os error 17") || msg.contains("File exists") {
+                        tracing::warn!(
+                            "store build race (attempt {}): {}, retrying",
+                            attempt + 1,
+                            msg
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(100 * (attempt as u64 + 1)));
+                        last_err = Some(e);
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!(e));
+                }
+            }
+        }
+        return Err(anyhow::anyhow!(last_err.unwrap()));
+    };
 
     // If another thread raced us, use their instance
     Ok(STORE_CACHE.get_or_init(|| store).clone())
