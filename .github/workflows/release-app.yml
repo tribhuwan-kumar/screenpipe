@@ -949,10 +949,15 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
-          # Upload helper: tries aws s3 cp first, falls back to curl with
-          # presigned URL. The MacBook self-hosted runner has persistent TLS
-          # failures (SSLV3_ALERT_BAD_RECORD_MAC) with aws cli's Python SSL,
-          # but curl uses macOS SecureTransport which works reliably.
+          # Upload helper: tries aws s3 cp first, falls back to curl.
+          # The self-hosted macOS ARM runner has broken LibreSSL 3.3.6 that causes
+          # SSLV3_ALERT_BAD_RECORD_MAC on large uploads to R2. Both aws cli (Python SSL)
+          # and system curl (LibreSSL) are affected. Use homebrew curl (OpenSSL 3.6.1)
+          # as the reliable fallback.
+          CURL_BIN="/opt/homebrew/opt/curl/bin/curl"
+          if [ ! -x "$CURL_BIN" ]; then
+            CURL_BIN="curl"  # fallback to system curl on non-macOS
+          fi
           upload_with_retry() {
             local src="$1" dst="$2"
             local bucket_path="${dst#s3://}"
@@ -1003,7 +1008,7 @@ jobs:
 
               local auth="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signed_headers}, Signature=${signature}"
 
-              curl -fSs --retry 3 --retry-delay 5 \
+              $CURL_BIN -fSs --retry 3 --retry-delay 5 \
                 -X PUT \
                 -H "Content-Type: ${content_type}" \
                 -H "x-amz-date: ${amz_date}" \
