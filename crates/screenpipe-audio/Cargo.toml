@@ -39,7 +39,7 @@ chrono = { version = "0.4.31", features = ["serde"] }
 # v5/v6: 3x faster, 6000+ languages, better accuracy
 vad-rs = { git = "https://github.com/screenpipe/vad-rs-1.git", default-features = false }
 anyhow = "1.0.86"
-hf-hub = "0.3.2"
+hf-hub = { workspace = true }
 # https://github.com/pdeljanov/Symphonia/tree/master?tab=readme-ov-file#optimizations
 symphonia = { version = "0.5.4", features = ["aac", "isomp4", "opt-simd"] }
 rubato = "0.15.0"
