@@ -645,43 +645,62 @@ pub async fn auto_start_archive(app: &AppHandle) {
         "retention_days": archive_settings.retention_days,
     });
 
-    match client
-        .post("http://localhost:3030/archive/init")
-        .json(&init_request)
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => {
-            info!(
-                "cloud archive auto-started (retention={}d)",
-                archive_settings.retention_days
-            );
+    // Retry up to 5 times with increasing delays if the server isn't ready yet.
+    // The server may still be starting when this runs (15s after app launch).
+    let retry_delays = [0, 5, 10, 15, 30]; // seconds
+    for (attempt, delay) in retry_delays.iter().enumerate() {
+        if *delay > 0 {
+            tokio::time::sleep(tokio::time::Duration::from_secs(*delay)).await;
         }
-        Ok(response) if response.status().as_u16() == 409 => {
-            info!("cloud archive: already initialized, re-enabling");
-            // Already initialized — make sure it's enabled
-            let enable_req = serde_json::json!({ "enabled": true });
-            if let Err(e) = client
-                .post("http://localhost:3030/archive/configure")
-                .json(&enable_req)
-                .send()
-                .await
-            {
-                warn!("cloud archive: failed to re-enable: {}", e);
+
+        match client
+            .post("http://localhost:3030/archive/init")
+            .json(&init_request)
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => {
+                info!(
+                    "cloud archive auto-started (retention={}d)",
+                    archive_settings.retention_days
+                );
+                return;
+            }
+            Ok(response) if response.status().as_u16() == 409 => {
+                info!("cloud archive: already initialized, re-enabling");
+                // Already initialized — make sure it's enabled
+                let enable_req = serde_json::json!({ "enabled": true });
+                if let Err(e) = client
+                    .post("http://localhost:3030/archive/configure")
+                    .json(&enable_req)
+                    .send()
+                    .await
+                {
+                    warn!("cloud archive: failed to re-enable: {}", e);
+                }
+                return;
+            }
+            Ok(response) => {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                warn!(
+                    "cloud archive auto-start: init failed ({}): {} (attempt {}/{})",
+                    status, body, attempt + 1, retry_delays.len()
+                );
+                // Non-transient error (auth, config), don't retry
+                return;
+            }
+            Err(e) => {
+                warn!(
+                    "cloud archive auto-start: server not reachable (attempt {}/{}): {}",
+                    attempt + 1, retry_delays.len(), e
+                );
+                // Transient — server may still be starting, retry
             }
         }
-        Ok(response) => {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            warn!(
-                "cloud archive auto-start: init failed ({}): {}",
-                status, body
-            );
-        }
-        Err(e) => {
-            warn!("cloud archive auto-start: server not reachable: {}", e);
-        }
     }
+
+    warn!("cloud archive auto-start: gave up after {} attempts", retry_delays.len());
 }
 
 /// Auto-start local data retention on app launch if previously enabled.

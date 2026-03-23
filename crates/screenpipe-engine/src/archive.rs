@@ -268,12 +268,26 @@ pub async fn archive_configure(
     Json(request): Json<ArchiveConfigureRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let mut guard = state.archive_state.inner.write().await;
-    let runtime = guard.as_mut().ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "archive not initialized"})),
-        )
-    })?;
+
+    let runtime = match guard.as_mut() {
+        Some(rt) => rt,
+        None => {
+            // Archive not initialized — if caller wants to disable, that's a no-op
+            let wants_enabled = request.enabled.unwrap_or(false);
+            if !wants_enabled {
+                info!("archive: configure(disable) on uninitialized state — no-op");
+                return Ok(Json(json!({
+                    "success": true,
+                    "enabled": false,
+                    "retention_days": request.retention_days.unwrap_or(7),
+                })));
+            }
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "archive not initialized, call /archive/init first"})),
+            ));
+        }
+    };
 
     if let Some(days) = request.retention_days {
         runtime.config.retention_days = days;
