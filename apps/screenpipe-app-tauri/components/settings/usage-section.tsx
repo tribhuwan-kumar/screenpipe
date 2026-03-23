@@ -294,12 +294,16 @@ export function UsageSection() {
       case "screenpipe-cloud":
       case "screenpipe":
       case "pi":
-        return "screenpipe cloud";
+        return "Screenpipe Cloud";
       case "native-ollama":
       case "ollama":
-        return "ollama";
+        return "Ollama";
       case "openai-chatgpt":
-        return "chatgpt";
+        return "ChatGPT";
+      case "openai":
+        return "OpenAI";
+      case "anthropic":
+        return "Anthropic";
       default:
         return p;
     }
@@ -307,9 +311,9 @@ export function UsageSection() {
 
   const sourceIcon = (s: "chat" | "pipe" | "both") => {
     switch (s) {
-      case "chat": return "chat";
-      case "pipe": return "pipe";
-      case "both": return "chat + pipe";
+      case "chat": return "Chat";
+      case "pipe": return "Pipe";
+      case "both": return "Chat + Pipe";
     }
   };
 
@@ -360,26 +364,26 @@ export function UsageSection() {
   return (
     <div className="space-y-6">
       {updating && (
-        <p className="text-xs text-muted-foreground">updating...</p>
+        <p className="text-xs text-muted-foreground">Updating...</p>
       )}
 
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{totalChats}</div>
-            <p className="text-xs text-muted-foreground">conversations</p>
+            <p className="text-xs text-muted-foreground">Conversations</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{filteredChatMsgs}</div>
-            <p className="text-xs text-muted-foreground">chat responses</p>
+            <p className="text-xs text-muted-foreground">Chat responses</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{filteredPipeExecs}</div>
-            <p className="text-xs text-muted-foreground">pipe runs</p>
+            <p className="text-xs text-muted-foreground">Pipe runs</p>
           </CardContent>
         </Card>
       </div>
@@ -402,12 +406,12 @@ export function UsageSection() {
         <div className="rounded-lg border border-dashed p-6 text-center">
           <p className="text-sm text-muted-foreground">
             {timeRange === "all"
-              ? "no model data yet — tracking starts from your next conversation"
-              : `no usage in the last ${timeRange === "day" ? "24 hours" : timeRange === "week" ? "7 days" : "30 days"}`}
+              ? "No model data yet — tracking starts from your next conversation"
+              : `No usage in the last ${timeRange === "day" ? "24 hours" : timeRange === "week" ? "7 days" : "30 days"}`}
           </p>
           {timeRange === "all" && untrackedMessages > 0 && (
             <p className="text-xs text-muted-foreground mt-2">
-              {untrackedMessages} older chat responses without model info
+              {untrackedMessages} older chat responses without model info.
             </p>
           )}
         </div>
@@ -415,10 +419,10 @@ export function UsageSection() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground">
-              requests per model
+              Requests per model
             </h3>
             <span className="text-xs text-muted-foreground">
-              {totalTracked} tracked
+              {totalTracked} Tracked
             </span>
           </div>
           {usage.map((u) => {
@@ -456,7 +460,7 @@ export function UsageSection() {
           })}
           {timeRange === "all" && untrackedMessages > 0 && (
             <p className="text-xs text-muted-foreground pt-2">
-              + {untrackedMessages} older chat responses without model tracking
+              + {untrackedMessages} older chat responses without model tracking.
             </p>
           )}
         </div>
