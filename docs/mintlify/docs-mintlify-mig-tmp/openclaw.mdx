@@ -89,8 +89,12 @@ Screenpipe's MCP server supports [Streamable HTTP transport](https://modelcontex
 **Step 1:** On your computer (where screenpipe runs), start the HTTP MCP server:
 
 ```bash
-npx screenpipe-mcp-http --port 3031
+npx -y screenpipe-mcp-http --port 3031
 ```
+
+<Note>
+`screenpipe-mcp-http` is a binary inside the `screenpipe-mcp` npm package — it's not a separate package. The `-y` flag auto-installs it.
+</Note>
 
 This starts the MCP server on `http://localhost:3031/mcp`.
 
@@ -250,7 +254,7 @@ Then point your OpenClaw skill at the tunnel URL.
 
 ## available MCP tools
 
-When connected via MCP (stdio or HTTP), OpenClaw gets access to these tools:
+When connected via MCP stdio, OpenClaw gets access to these tools. The HTTP server currently only exposes **search-content** — we're working on full parity.
 
 | Tool | Description |
 |------|-------------|
