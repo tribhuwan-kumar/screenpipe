@@ -153,7 +153,8 @@ export function useTimelineKeyboard(opts: {
 	// In embedded mode, only handle closing the search modal (don't close the window)
 	useEffect(() => {
 		if (embedded) return;
-		const unlisten = listen("escape-pressed", () => {
+
+		const handleEscape = () => {
 			// Exit search-result review mode first
 			if (inSearchReviewMode) {
 				clearSearchHighlight();
@@ -171,8 +172,27 @@ export function useTimelineKeyboard(opts: {
 			}
 			pausePlayback();
 			commands.closeWindow("Main");
-		});
-		return () => { unlisten.then((fn) => fn()); };
+		};
+
+		// Listen for Rust global-shortcut Escape event
+		const unlisten = listen("escape-pressed", handleEscape);
+
+		// Fallback: direct keydown listener for Escape.
+		// On Windows, the global shortcut Escape registration can be lost
+		// due to focus races (unregister/register happen in separate threads).
+		// This direct listener works whenever the webview has focus.
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				e.preventDefault();
+				handleEscape();
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+
+		return () => {
+			unlisten.then((fn) => fn());
+			window.removeEventListener("keydown", handleKeyDown);
+		};
 	}, [showSearchModal, embedded, resetFilters, inSearchReviewMode, clearSearchHighlight]);
 
 	// Handle arrow key navigation via JS keydown (no global hotkey stealing)
