@@ -728,51 +728,61 @@ fn ensure_pi_config(
                 "https://chatgpt.com/backend-api".to_string()
             } else if config.provider == "anthropic" && config.url.is_empty() {
                 "https://api.anthropic.com".to_string()
-            } else if config.provider == "anthropic" && config.url.is_empty() {
-                "https://api.anthropic.com".to_string()
+            } else if config.provider == "openai" && config.url.is_empty() {
+                "https://api.openai.com/v1".to_string()
             } else {
                 config.url.clone()
             };
 
-            // Pi resolves apiKey values as env var names, so reference the env var
-            // we'll set when spawning the process
-            let api_key = match config.provider.as_str() {
-                "native-ollama" => "ollama".to_string(), // Ollama ignores API key but Pi requires one
-                "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
-                "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
-                "anthropic" => "ANTHROPIC_API_KEY".to_string(), // Pi will read from env
-                "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
-                _ => "".to_string(),
-            };
-
-            let wire_api = if config.provider == "openai-chatgpt" {
-                "openai-codex-responses"
-            } else if config.provider == "anthropic" {
-                "anthropic-messages"
+            // Pi's models.json schema requires baseUrl to have minLength: 1.
+            // Writing an empty baseUrl poisons the entire file and breaks ALL
+            // providers (including screenpipe cloud). Skip the entry instead.
+            if base_url.is_empty() {
+                warn!(
+                    "skipping pi provider '{}': no baseUrl configured (would invalidate models.json)",
+                    provider_name
+                );
             } else {
-                "openai-completions"
-            };
+                // Pi resolves apiKey values as env var names, so reference the env var
+                // we'll set when spawning the process
+                let api_key = match config.provider.as_str() {
+                    "native-ollama" => "ollama".to_string(), // Ollama ignores API key but Pi requires one
+                    "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
+                    "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
+                    "anthropic" => "ANTHROPIC_API_KEY".to_string(), // Pi will read from env
+                    "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
+                    _ => "".to_string(),
+                };
 
-            let user_provider = json!({
-                "baseUrl": base_url,
-                "api": wire_api,
-                "apiKey": api_key,
-                "models": [
-                    {
-                        "id": config.model,
-                        "name": config.model,
-                        "input": ["text", "image"],
-                        "maxTokens": config.max_tokens,
-                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
-                    }
-                ]
-            });
+                let wire_api = if config.provider == "openai-chatgpt" {
+                    "openai-codex-responses"
+                } else if config.provider == "anthropic" {
+                    "anthropic-messages"
+                } else {
+                    "openai-completions"
+                };
 
-            if let Some(providers) = models_config
-                .get_mut("providers")
-                .and_then(|p| p.as_object_mut())
-            {
-                providers.insert(provider_name.to_string(), user_provider);
+                let user_provider = json!({
+                    "baseUrl": base_url,
+                    "api": wire_api,
+                    "apiKey": api_key,
+                    "models": [
+                        {
+                            "id": config.model,
+                            "name": config.model,
+                            "input": ["text", "image"],
+                            "maxTokens": config.max_tokens,
+                            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+                        }
+                    ]
+                });
+
+                if let Some(providers) = models_config
+                    .get_mut("providers")
+                    .and_then(|p| p.as_object_mut())
+                {
+                    providers.insert(provider_name.to_string(), user_provider);
+                }
             }
         }
     }
@@ -987,7 +997,8 @@ pub async fn pi_start_inner(
                 "openai-chatgpt" => "openai-chatgpt",
                 "native-ollama" => "ollama",
                 "anthropic" => "anthropic-byok",
-                "custom" => "custom",
+                // "custom" requires a valid URL; fall back to screenpipe cloud if missing
+                "custom" if !config.url.is_empty() => "custom",
                 "screenpipe-cloud" | "pi" | _ => "screenpipe",
             };
             let model = resolve_screenpipe_model(&config.model, provider_name);

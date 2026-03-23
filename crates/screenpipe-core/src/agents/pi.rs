@@ -352,38 +352,48 @@ impl PiExecutor {
                     other => (other, provider_url.unwrap_or(""), "CUSTOM_API_KEY"),
                 };
 
-                let wire_api = if prov == "openai-chatgpt" {
-                    "openai-codex-responses"
-                } else if prov == "anthropic" {
-                    "anthropic-messages"
+                // Pi's models.json schema requires baseUrl to have minLength: 1.
+                // Writing an empty baseUrl poisons the entire file and breaks ALL
+                // providers (including screenpipe cloud). Skip the entry instead.
+                if base_url.is_empty() {
+                    warn!(
+                        "pi config: skipping provider '{}': no baseUrl configured (would invalidate models.json)",
+                        pi_provider_name
+                    );
                 } else {
-                    "openai-completions"
-                };
+                    let wire_api = if prov == "openai-chatgpt" {
+                        "openai-codex-responses"
+                    } else if prov == "anthropic" {
+                        "anthropic-messages"
+                    } else {
+                        "openai-completions"
+                    };
 
-                let user_provider = json!({
-                    "baseUrl": base_url,
-                    "api": wire_api,
-                    "apiKey": api_key,
-                    "models": [{
-                        "id": mdl,
-                        "name": mdl,
-                        "input": ["text", "image"],
-                        "maxTokens": 4096,
-                        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
-                    }]
-                });
+                    let user_provider = json!({
+                        "baseUrl": base_url,
+                        "api": wire_api,
+                        "apiKey": api_key,
+                        "models": [{
+                            "id": mdl,
+                            "name": mdl,
+                            "input": ["text", "image"],
+                            "maxTokens": 4096,
+                            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+                        }]
+                    });
 
-                if let Some(providers) = models_config
-                    .get_mut("providers")
-                    .and_then(|p| p.as_object_mut())
-                {
-                    providers.insert(pi_provider_name.to_string(), user_provider);
+                    if let Some(providers) = models_config
+                        .get_mut("providers")
+                        .and_then(|p| p.as_object_mut())
+                    {
+                        providers.insert(pi_provider_name.to_string(), user_provider);
+                    }
+
+                    info!(
+                        "pi config: added provider '{}' with model '{}'",
+                        pi_provider_name, mdl
+                    );
                 }
-
-                info!(
-                    "pi config: added provider '{}' with model '{}'",
-                    pi_provider_name, mdl
-                );
             }
         }
 
