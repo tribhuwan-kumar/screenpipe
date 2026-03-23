@@ -960,9 +960,12 @@ jobs:
             local bucket="${bucket_path%%/*}"
 
             # Try aws cli — set 500MB multipart threshold to force single-part upload
+            # Use --no-verify-ssl to work around persistent SSLV3_ALERT_BAD_RECORD_MAC
+            # on the self-hosted macOS ARM runner (Python SSL vs macOS SecureTransport)
             for attempt in 1 2 3; do
               if AWS_MAX_ATTEMPTS=3 aws s3 cp "$src" "$dst" \
                   --endpoint-url "$R2_ENDPOINT" \
+                  --no-verify-ssl \
                   --no-progress \
                   --expected-size "$(stat -f%z "$src" 2>/dev/null || stat -c%s "$src" 2>/dev/null)" \
                   --cli-read-timeout 300 --cli-connect-timeout 30 \
@@ -979,6 +982,7 @@ jobs:
             for attempt in 1 2 3; do
               if aws s3api put-object \
                   --endpoint-url "$R2_ENDPOINT" \
+                  --no-verify-ssl \
                   --bucket screenpipe-releases \
                   --key "$r2_key" \
                   --body "$src" \
@@ -1003,7 +1007,7 @@ jobs:
 
           # Clean any stale artifacts from previous (failed) runs for this version+target
           echo "cleaning stale R2 artifacts at ${R2_PREFIX}/ ..."
-          aws s3 rm "${R2_PREFIX}/" --recursive --endpoint-url "$R2_ENDPOINT" 2>/dev/null || true
+          aws s3 rm "${R2_PREFIX}/" --recursive --endpoint-url "$R2_ENDPOINT" --no-verify-ssl 2>/dev/null || true
 
           UPLOAD_FAILED=0
 
@@ -1079,7 +1083,7 @@ jobs:
 
           # Clean any stale artifacts from previous (failed) runs for this version+target
           echo "cleaning stale R2 artifacts at ${R2_PREFIX}/ ..."
-          aws s3 rm "${R2_PREFIX}/" --recursive --endpoint-url "$R2_ENDPOINT" 2>/dev/null || true
+          aws s3 rm "${R2_PREFIX}/" --recursive --endpoint-url "$R2_ENDPOINT" --no-verify-ssl 2>/dev/null || true
 
           echo "bundle dir contents:"
           find "${BUNDLE_DIR}" -type f 2>/dev/null || echo "  (bundle dir not found)"
