@@ -441,4 +441,30 @@ mod tests {
         assert!(!drm_content_paused());
     }
 
+    /// Live test: checks poll_drm_clear against the ACTUAL focused app.
+    /// Run with Netflix open in Arc/Chrome: `cargo test --lib -- test_poll_drm_clear_live --ignored`
+    #[test]
+    #[ignore]
+    #[cfg(target_os = "macos")]
+    fn test_poll_drm_clear_live() {
+        // Set DRM paused as if we just detected it
+        DRM_CONTENT_PAUSED.store(true, Ordering::SeqCst);
+
+        let still_drm = poll_drm_clear();
+
+        println!("poll_drm_clear returned: {}", still_drm);
+        println!("drm_content_paused: {}", drm_content_paused());
+
+        // If Netflix is focused in a browser, poll_drm_clear should return true
+        // (DRM still active) because it should detect the Netflix URL
+        assert!(
+            still_drm,
+            "poll_drm_clear should detect Netflix URL in the focused browser"
+        );
+        assert!(
+            drm_content_paused(),
+            "DRM flag should still be set when Netflix is focused"
+        );
+    }
+
 }
