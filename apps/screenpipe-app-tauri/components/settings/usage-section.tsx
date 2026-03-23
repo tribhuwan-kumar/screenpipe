@@ -359,21 +359,9 @@ export function UsageSection() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-medium">
-            usage
-            {updating && (
-              <span className="text-xs text-muted-foreground font-normal ml-2">
-                updating...
-              </span>
-            )}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            ai model usage across chats and pipes
-          </p>
-        </div>
-      </div>
+      {updating && (
+        <p className="text-xs text-muted-foreground">updating...</p>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
         <Card>
