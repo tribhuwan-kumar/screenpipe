@@ -586,7 +586,12 @@ impl SettingsStore {
             true => Ok(None),
             false => {
                 let raw = store.get("settings").unwrap_or(Value::Null);
-                let sanitized = Self::sanitize_legacy_fields(raw);
+                let sanitized = Self::sanitize_legacy_fields(raw.clone());
+                // Persist sanitized fields back to store so the migration only warns once
+                if sanitized != raw {
+                    store.set("settings", sanitized.clone());
+                    let _ = store.save();
+                }
                 let settings = serde_json::from_value(sanitized);
                 match settings {
                     Ok(settings) => Ok(settings),

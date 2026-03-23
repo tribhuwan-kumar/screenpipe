@@ -1139,6 +1139,16 @@ openaiCompatibleApiKey?: string | null;
  */
 openaiCompatibleModel?: string | null; 
 /**
+ * Custom HTTP headers for OpenAI-compatible transcription requests.
+ * JSON object, e.g. {"X-Custom-Header": "value"}.
+ */
+openaiCompatibleHeaders?: { [key in string]: string } | null; 
+/**
+ * Send raw WAV audio instead of MP3 to OpenAI-compatible endpoint.
+ * Some ASR providers prefer uncompressed audio for better accuracy.
+ */
+openaiCompatibleRawAudio?: boolean; 
+/**
  * HTTP server port for the screenpipe API.
  */
 port: number; 

@@ -569,17 +569,13 @@ class NotificationPanelController: NSObject {
         let mouseLocation = NSEvent.mouseLocation
         for screen in NSScreen.screens {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
-                let frame = screen.frame
                 let visible = screen.visibleFrame
-                let margin: CGFloat = 16
-                let shadowPad: CGFloat = 20 // padding inside panel for shadow
-                // Content (320x180) is centered in panel (360x220) with 20px padding.
-                // Right edge of content = panel.x + shadowPad + 320
-                // We want that right edge to be `margin` from screen right edge:
-                //   panel.x + shadowPad + 320 = screen.right - margin
-                //   panel.x = screen.right - margin - shadowPad - 320
-                let x = frame.origin.x + frame.size.width - margin - shadowPad - 320
-                let y = visible.origin.y + visible.size.height - margin - shadowPad - 180
+                // Panel is 360x220, content is 320x180 with 20px SwiftUI padding
+                // (shadow area). Place the panel so its edge aligns with the
+                // visible screen edge — the 20px internal padding becomes the
+                // visual margin, giving equal spacing on top and right.
+                let x = visible.origin.x + visible.size.width - 360
+                let y = visible.origin.y + visible.size.height - 220
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
             }

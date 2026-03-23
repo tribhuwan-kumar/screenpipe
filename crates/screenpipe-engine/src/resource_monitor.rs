@@ -1,13 +1,9 @@
 use chrono::Local;
 use reqwest::Client;
 use serde_json::json;
-use serde_json::Value;
 use std::env;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -377,6 +373,9 @@ impl ResourceMonitor {
         )
     }
 
+    /// Max resource log file size (10 MB). When exceeded the file is truncated.
+    const MAX_RESOURCE_LOG_BYTES: u64 = 10 * 1024 * 1024;
+
     async fn log_to_file(&self, metrics: (f64, f64, f64, f32, f64, Duration)) {
         let (
             total_memory_gb,
@@ -398,21 +397,30 @@ impl ResourceMonitor {
                 "total_virtual_memory_gb": total_virtual_memory_gb,
             });
 
-            if let Ok(mut file) = OpenOptions::new().read(true).write(true).open(filename) {
-                let mut contents = String::new();
-                if file.read_to_string(&mut contents).is_ok() {
-                    if let Ok(mut json_array) = serde_json::from_str::<Value>(&contents) {
-                        if let Some(array) = json_array.as_array_mut() {
-                            array.push(json_data);
-                            if file.set_len(0).is_ok() && file.seek(SeekFrom::Start(0)).is_ok() {
-                                if let Err(e) = file.write_all(json_array.to_string().as_bytes()) {
-                                    error!("Failed to write JSON data to file: {}", e);
-                                }
+            // Append-only JSONL: one JSON object per line, no read-back needed.
+            if let Ok(mut file) = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(filename)
+            {
+                // Truncate if file exceeds size limit to prevent unbounded growth.
+                if let Ok(meta) = file.metadata() {
+                    if meta.len() > Self::MAX_RESOURCE_LOG_BYTES {
+                        if let Ok(f) = OpenOptions::new().write(true).truncate(true).open(filename)
+                        {
+                            drop(f);
+                            // Reopen in append mode after truncation.
+                            if let Ok(reopened) = OpenOptions::new().append(true).open(filename) {
+                                file = reopened;
                             }
                         }
                     }
                 }
-                let _ = file.flush();
+                let mut line = json_data.to_string();
+                line.push('\n');
+                if let Err(e) = file.write_all(line.as_bytes()) {
+                    error!("Failed to write resource log: {}", e);
+                }
             }
         }
     }
@@ -464,12 +472,21 @@ impl ResourceMonitor {
         let mut last_posthog_update = Instant::now();
 
         tokio::spawn(async move {
-            let mut sys = System::new_all();
+            // Only load process + CPU info — skip disks, networks, components.
+            let mut sys = System::new();
+            sys.refresh_cpu();
+            sys.refresh_processes();
+            sys.refresh_memory();
 
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(interval) => {
-                        sys.refresh_all();
+                        // Only refresh what collect_metrics actually uses:
+                        // CPU + process list + system memory totals.
+                        // Skips disks, networks, components — saves allocations.
+                        sys.refresh_cpu();
+                        sys.refresh_processes();
+                        sys.refresh_memory();
                         let now = Instant::now();
                         let should_send_to_posthog = now.duration_since(last_posthog_update) >= posthog_interval;
 

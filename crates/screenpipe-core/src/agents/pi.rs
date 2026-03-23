@@ -998,7 +998,8 @@ impl AgentExecutor for PiExecutor {
         seed_pi_package_json(&install_dir);
 
         let mut cmd = std::process::Command::new(&bun);
-        cmd.current_dir(&install_dir).args(["add", PI_PACKAGE]);
+        cmd.current_dir(&install_dir)
+            .args(["add", PI_PACKAGE, "@anthropic-ai/sdk"]);
 
         #[cfg(windows)]
         {

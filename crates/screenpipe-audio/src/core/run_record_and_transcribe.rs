@@ -194,9 +194,18 @@ async fn flush_audio(
 
     debug!("sending audio segment to audio model");
 
+    // Split off the overlap tail *before* sending to avoid cloning the entire buffer.
+    // The send gets everything except the tail; collected_audio retains only the overlap.
+    let overlap_tail = if collected_audio.len() > overlap_samples {
+        collected_audio.split_off(collected_audio.len() - overlap_samples)
+    } else {
+        collected_audio.clone()
+    };
+    let send_data = std::mem::replace(collected_audio, overlap_tail);
+
     match whisper_sender.send_timeout(
         AudioInput {
-            data: Arc::new(collected_audio.clone()),
+            data: Arc::new(send_data),
             device: audio_stream.device.clone(),
             sample_rate: audio_stream.device_config.sample_rate().0,
             channels: audio_stream.device_config.channels(),
@@ -207,10 +216,6 @@ async fn flush_audio(
         Ok(_) => {
             debug!("sent audio segment to audio model");
             metrics.record_chunk_sent();
-            if collected_audio.len() > overlap_samples {
-                *collected_audio =
-                    collected_audio.split_off(collected_audio.len() - overlap_samples);
-            }
         }
         Err(e) => {
             if e.is_disconnected() {
