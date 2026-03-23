@@ -204,6 +204,9 @@ pub enum Command {
 
     /// Show current auth status
     Whoami,
+
+    /// Check system readiness (permissions, ffmpeg, etc.)
+    Doctor,
 }
 
 // =============================================================================

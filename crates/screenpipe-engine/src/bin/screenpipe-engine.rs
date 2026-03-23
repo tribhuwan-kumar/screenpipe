@@ -287,6 +287,45 @@ async fn main() -> anyhow::Result<()> {
             screenpipe_engine::cli::login::handle_whoami_command().await?;
             return Ok(());
         }
+        Command::Doctor => {
+            eprintln!("screenpipe doctor");
+            eprintln!("=================");
+            eprintln!();
+
+            // permissions
+            eprintln!("permissions:");
+            let perms_ok = screenpipe_core::permissions::preflight_check(true, true);
+            eprintln!();
+
+            // ffmpeg
+            eprintln!("dependencies:");
+            let ffmpeg_ok = find_ffmpeg_path().is_some();
+            if ffmpeg_ok {
+                eprintln!("  ffmpeg: ok");
+            } else {
+                eprintln!("  ffmpeg: missing");
+                eprintln!("    install with: brew install ffmpeg");
+            }
+            eprintln!();
+
+            // port
+            let port_ok = is_local_ipv4_port_free(3030);
+            eprintln!("services:");
+            if port_ok {
+                eprintln!("  port 3030: available");
+            } else {
+                eprintln!("  port 3030: in use (screenpipe may already be running)");
+            }
+            eprintln!();
+
+            if perms_ok && ffmpeg_ok {
+                eprintln!("all checks passed — ready to record");
+            } else {
+                eprintln!("some checks failed — fix the issues above before running screenpipe");
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
         Command::Record(args) => args,
     };
 
