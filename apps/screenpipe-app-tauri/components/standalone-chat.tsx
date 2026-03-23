@@ -219,6 +219,8 @@ interface Message {
   images?: string[]; // base64 data URLs of attached images
   timestamp: number;
   contentBlocks?: ContentBlock[];
+  model?: string;
+  provider?: string;
 }
 
 // Tool icons by name
@@ -2579,7 +2581,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
 
       setMessages((prev) => [
         ...prev,
-        { id: assistantMessageId, role: "assistant", content: "Processing...", timestamp: Date.now() },
+        { id: assistantMessageId, role: "assistant", content: "Processing...", timestamp: Date.now(), model: activePreset?.model, provider: activePreset?.provider },
       ]);
 
       // If Pi's session is out of sync (restart, conversation load), inject history

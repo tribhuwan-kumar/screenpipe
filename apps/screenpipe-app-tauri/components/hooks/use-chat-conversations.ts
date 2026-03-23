@@ -47,6 +47,8 @@ export interface Message {
   images?: string[];
   timestamp: number;
   contentBlocks?: ContentBlock[];
+  model?: string;
+  provider?: string;
 }
 
 // --- Hook options ---
@@ -166,6 +168,8 @@ export function useChatConversations(opts: UseChatConversationsOpts) {
           timestamp: m.timestamp,
           ...(blocks?.length ? { contentBlocks: blocks } : {}),
           ...(m.images?.length ? { images: m.images } : {}),
+          ...(m.model ? { model: m.model } : {}),
+          ...(m.provider ? { provider: m.provider } : {}),
         };
       }),
       createdAt: existing?.createdAt ?? Date.now(),
@@ -268,6 +272,8 @@ export function useChatConversations(opts: UseChatConversationsOpts) {
       timestamp: m.timestamp,
       ...(m.contentBlocks?.length ? { contentBlocks: m.contentBlocks } : {}),
       ...((m as any).images?.length ? { images: (m as any).images } : (m as any).image ? { images: [(m as any).image] } : {}),
+      ...((m as any).model ? { model: (m as any).model } : {}),
+      ...((m as any).provider ? { provider: (m as any).provider } : {}),
     })));
     setConversationId(full.id);
     setShowHistory(false);
