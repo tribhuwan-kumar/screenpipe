@@ -352,12 +352,24 @@ impl VisionManager {
 
         for id in &dead {
             if let Some((_, handle)) = self.recording_tasks.remove(id) {
-                warn!(
-                    "Monitor {} capture task died unexpectedly, removing so it can be restarted",
-                    id
-                );
-                // Await to clean up the JoinHandle
-                let _ = handle.await;
+                // Await to clean up the JoinHandle and capture exit reason
+                match handle.await {
+                    Ok(()) => {
+                        warn!(
+                            "monitor {} capture task exited (see prior error log for cause), will be restarted by monitor watcher",
+                            id
+                        );
+                    }
+                    Err(e) if e.is_cancelled() => {
+                        info!("monitor {} capture task was cancelled", id);
+                    }
+                    Err(e) => {
+                        error!(
+                            "monitor {} capture task panicked: {}, will be restarted by monitor watcher",
+                            id, e
+                        );
+                    }
+                }
             }
         }
 
