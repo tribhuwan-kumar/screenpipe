@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSettings, ChatMessage, ChatConversation } from "@/lib/hooks/use-settings";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, Zap, History, Search, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip, Filter } from "lucide-react";
+import { Loader2, Send, Square, User, Settings, ExternalLink, X, ImageIcon, History, Search, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, Copy, Check, Clock, Paperclip, Filter } from "lucide-react";
 import { SchedulePromptDialog } from "@/components/chat/schedule-prompt-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -36,7 +36,6 @@ import { usePlatform } from "@/lib/hooks/use-platform";
 import { useSqlAutocomplete } from "@/lib/hooks/use-sql-autocomplete";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { useTimelineStore } from "@/lib/hooks/use-timeline-store";
-import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   parseMentions,
@@ -112,16 +111,6 @@ function buildDailyLimitMessage(errorStr: string): string {
 }
 
 /** Extract the gateway-reported tier from an error string, if present. */
-function extractTierFromError(errorStr: string): "anonymous" | "logged_in" | "subscribed" | undefined {
-  try {
-    const match = errorStr.match(/"tier":\s*"([^"]+)"/);
-    if (match?.[1] === "subscribed" || match?.[1] === "logged_in" || match?.[1] === "anonymous") {
-      return match[1] as "anonymous" | "logged_in" | "subscribed";
-    }
-  } catch {}
-  return undefined;
-}
-
 // Helper to get timezone offset string (e.g., "+1" or "-5")
 function getTimezoneOffsetString(): string {
   const offsetMinutes = new Date().getTimezoneOffset();
@@ -905,10 +894,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-  const [upgradeReason, setUpgradeReason] = useState<"daily_limit" | "model_not_allowed" | "rate_limit">("daily_limit");
-  const [upgradeResetsAt, setUpgradeResetsAt] = useState<string | undefined>();
-  const [upgradeTier, setUpgradeTier] = useState<"anonymous" | "logged_in" | "subscribed" | undefined>();
   const [scheduleDialogMessage, setScheduleDialogMessage] = useState<{ prompt: string; response: string } | null>(null);
   const [prefillContext, setPrefillContext] = useState<string | null>(null);
   const [prefillSource, setPrefillSource] = useState<string>("search");
@@ -1770,20 +1755,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             const isDailyLimit = errorStr.includes("daily_limit_exceeded") || errorStr.includes("daily_cost_limit_exceeded");
             const isPerMinuteRate = errorStr.includes("rate limit exceeded") || errorStr.includes("requests per minute");
 
-            // Extract reset time if available
-            try {
-              const resetMatch = errorStr.match(/"reset_in":\s*(\d+)/);
-              const resetsAtMatch = errorStr.match(/"resets_at":\s*"([^"]+)"/);
-              if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
-              else if (resetMatch) setUpgradeResetsAt(`${resetMatch[1]} seconds`);
-            } catch {}
-
             if (isDailyLimit) {
-              setUpgradeReason("daily_limit");
-              setUpgradeTier(extractTierFromError(errorStr));
               posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
-            } else {
-              setUpgradeReason("rate_limit");
             }
 
             if (piMessageIdRef.current) {
@@ -1805,7 +1778,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             }
             // Don't clear refs yet — agent_end will follow
           } else if (errorStr.includes("model_not_allowed")) {
-            setUpgradeReason("model_not_allowed");
             if (piMessageIdRef.current) {
               const msgId = piMessageIdRef.current;
               setMessages((prev) =>
@@ -1829,16 +1801,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               if (isDailyLimit) {
                 try {
                   const match = fullError.match(/"resets_at":\s*"([^"]+)"/);
-                  if (match) setUpgradeResetsAt(match[1]);
                 } catch {}
-                setUpgradeReason("daily_limit");
-                setUpgradeTier(extractTierFromError(fullError));
-                setMessages((prev) =>
+                                  setMessages((prev) =>
                   prev.map((m) => m.id === msgId ? { ...m, content: buildDailyLimitMessage(fullError) } : m)
                 );
               } else {
-                setUpgradeReason("rate_limit");
-                const waitMatch = fullError.match(/wait (\d+) seconds/i);
+                  const waitMatch = fullError.match(/wait (\d+) seconds/i);
                 const waitTime = waitMatch ? waitMatch[1] : "a moment";
                 const content = isPerMinuteRate
                   ? `Rate limited — please wait ${waitTime} seconds and try again.`
@@ -1848,8 +1816,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 );
               }
             } else if (fullError.includes("model_not_allowed")) {
-              setUpgradeReason("model_not_allowed");
-              setMessages((prev) =>
+                setMessages((prev) =>
                 prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade." } : m)
               );
             } else if (fullError.includes("already processing")) {
@@ -1874,16 +1841,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             if (errMsg.includes("credits_exhausted") || errMsg.includes("daily_limit_exceeded") || errMsg.includes("daily_cost_limit_exceeded") || errMsg.includes("429")) {
               try {
                 const resetsAtMatch = errMsg.match(/"resets_at":\s*"([^"]+)"/);
-                if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
-              } catch {}
-              setUpgradeReason("daily_limit");
-              setUpgradeTier(extractTierFromError(errMsg));
-              posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
+                } catch {}
+                            posthog.capture("wall_hit", { reason: "daily_limit", source: "chat" });
               setMessages((prev) =>
                 prev.map((m) => m.id === msgId ? { ...m, content: buildDailyLimitMessage(errMsg) } : m)
               );
             } else if (errMsg.includes("rate limit") || errMsg.includes("rate_limit")) {
-              setUpgradeReason("rate_limit");
               setMessages((prev) =>
                 prev.map((m) => m.id === msgId ? { ...m, content: "Rate limited — try again in a moment." } : m)
               );
@@ -1933,14 +1896,10 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               if (errStr.includes("credits_exhausted") || errStr.includes("daily_limit_exceeded") || errStr.includes("daily_cost_limit_exceeded") || errStr.includes("429")) {
                 try {
                   const resetsAtMatch = errStr.match(/"resets_at":\s*"([^"]+)"/);
-                  if (resetsAtMatch) setUpgradeResetsAt(resetsAtMatch[1]);
-                } catch {}
-                setUpgradeReason("daily_limit");
-                setUpgradeTier(extractTierFromError(errStr));
-                content = buildDailyLimitMessage(errStr);
+                    } catch {}
+                                  content = buildDailyLimitMessage(errStr);
               } else if (errStr.includes("rate limit")) {
-                setUpgradeReason("rate_limit");
-                content = "Rate limited — try again in a moment.";
+                  content = "Rate limited — try again in a moment.";
               } else {
                 content = `Error: ${errStr}`;
               }
@@ -2034,16 +1993,12 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
               if (isDailyLimit) {
                 try {
                   const match = errorStr.match(/"resets_at":\s*"([^"]+)"/);
-                  if (match) setUpgradeResetsAt(match[1]);
                 } catch {}
-                setUpgradeReason("daily_limit");
-                setUpgradeTier(extractTierFromError(errorStr));
-                setMessages((prev) =>
+                                  setMessages((prev) =>
                   prev.map((m) => m.id === msgId ? { ...m, content: buildDailyLimitMessage(errorStr) } : m)
                 );
               } else {
-                setUpgradeReason("rate_limit");
-                const waitMatch = errorStr.match(/wait (\d+) seconds/i);
+                  const waitMatch = errorStr.match(/wait (\d+) seconds/i);
                 const waitTime = waitMatch ? waitMatch[1] : "a moment";
                 const content = isPerMinuteRate
                   ? `Rate limited — please wait ${waitTime} seconds and try again.`
@@ -2053,8 +2008,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 );
               }
             } else if (errorStr.includes("model_not_allowed")) {
-              setUpgradeReason("model_not_allowed");
-              setMessages((prev) =>
+                setMessages((prev) =>
                 prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade." } : m)
               );
             } else {
@@ -2212,7 +2166,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         const line = event.payload;
         if (line.includes("model_not_allowed") || line.includes("403")) {
           const msgId = piMessageIdRef.current;
-          setUpgradeReason("model_not_allowed");
           if (msgId) {
             setMessages((prev) =>
               prev.map((m) => m.id === msgId ? { ...m, content: "This model requires an upgrade — try a different model in your AI preset." } : m)
@@ -3146,22 +3099,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                 )}
               >
                 <MessageContent message={message} onImageClick={(images, index) => setImageViewer({ images, index })} />
-                {/* Upgrade button for daily limit errors (not shown for free model suggestions) */}
-                {message.role === "assistant" &&
-                 !message.content.includes("Switch to a free model") &&
-                 !message.content.includes("temporarily overloaded") &&
-                 (message.content.includes("free queries") ||
-                  message.content.includes("daily Pro limit") ||
-                  message.content.includes("daily query limit") ||
-                  message.content.includes("requires an upgrade")) && (
-                  <button
-                    onClick={() => setShowUpgradeDialog(true)}
-                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:bg-background hover:text-foreground transition-colors duration-150"
-                  >
-                    <Zap className="h-4 w-4" />
-                    upgrade now
-                  </button>
-                )}
               </div>
                 {/* Action buttons - appear on hover, outside the message box */}
                 <div className="flex items-center gap-0.5 self-end mt-1 opacity-0 group-hover/message:opacity-100 transition-all duration-200">
@@ -3745,14 +3682,6 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
       </div> {/* End of max-w-4xl input wrapper */}
       </div>
 
-      <UpgradeDialog
-        open={showUpgradeDialog}
-        onOpenChange={setShowUpgradeDialog}
-        reason={upgradeReason}
-        resetsAt={upgradeResetsAt}
-        source="chat"
-        gatewayTier={upgradeTier}
-      />
 
       {scheduleDialogMessage && (
         <SchedulePromptDialog

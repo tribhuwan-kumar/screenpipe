@@ -35,6 +35,7 @@ pub struct VisionManagerConfig {
     pub use_all_monitors: bool,
     /// Automatically detect and skip incognito / private browsing windows.
     pub ignore_incognito_windows: bool,
+    /// Pause all screen capture when a DRM streaming app (Netflix, etc.) is focused.
     pub pause_on_drm_content: bool,
     /// Languages for OCR recognition.
     pub languages: Vec<screenpipe_core::Language>,

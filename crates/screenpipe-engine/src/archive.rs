@@ -156,8 +156,10 @@ pub async fn archive_init(
     let machine_id = screenpipe_core::sync::get_or_create_machine_id();
 
     // Reuse the sync manager if sync is already initialized (same encryption keys).
-    // This avoids the AEAD decryption failure that occurs when archive derives a
-    // different password than what sync used to encrypt the master key.
+    // If sync is not initialized, derive a deterministic password from the token.
+    // This works for archive-only users but will fail if sync was set up on another
+    // device with a different (random) password — in that case the user must enable
+    // sync first so archive can reuse its manager.
     let manager = {
         let sync_guard = state.sync_state.read().await;
         if let Some(ref sync_rt) = *sync_guard {
@@ -186,21 +188,31 @@ pub async fn archive_init(
                 )
             })?;
 
-            // Derive encryption password from the token (only used when sync is not active)
+            // Derive encryption password from the token (deterministic across devices)
             let password = format!(
                 "screenpipe-archive-{:x}",
                 md5::compute(request.token.as_bytes())
             );
 
-            mgr.initialize(&password).await.map_err(|e| {
-                error!("archive: failed to initialize encryption: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("failed to initialize encryption: {}", e)})),
-                )
-            })?;
-
-            Arc::new(mgr)
+            match mgr.initialize(&password).await {
+                Ok(_) => Arc::new(mgr),
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if err_str.contains("decryption failed") || err_str.contains("authentication error") {
+                        // Keys exist on server but were created with a different password
+                        // (likely from cloud sync setup). User needs to enable sync first.
+                        warn!("archive: encryption keys exist but password doesn't match (likely set up via cloud sync on another device)");
+                        return Err((
+                            StatusCode::PRECONDITION_FAILED,
+                            Json(json!({"error": "encryption keys were set up on another device via cloud sync. please enable cloud sync first in Settings → Sync, then try archive again."})),
+                        ));
+                    }
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("failed to initialize encryption: {}", e)})),
+                    ));
+                }
+            }
         }
     };
 

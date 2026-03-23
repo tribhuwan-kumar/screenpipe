@@ -49,6 +49,7 @@ pub struct RecordingConfig {
     pub ignored_urls: Vec<String>,
     /// Automatically detect and skip incognito / private browsing windows.
     pub ignore_incognito_windows: bool,
+    /// Pause all screen capture when a DRM streaming app (Netflix, etc.) is focused.
     pub pause_on_drm_content: bool,
     pub languages: Vec<Language>,
 

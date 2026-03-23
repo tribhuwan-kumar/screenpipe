@@ -325,6 +325,7 @@ pub async fn event_driven_capture_loop(
             continue;
         }
 
+        // Skip capture while DRM streaming content is focused
         if crate::drm_detector::drm_content_paused() {
             tokio::time::sleep(poll_interval).await;
             continue;
@@ -799,8 +800,9 @@ async fn do_capture(
         });
     }
 
-    // DRM content detection: set global pause flag so monitor watcher
-    // stops all monitors and releases SCK handles.
+    // DRM content detection: check if the focused app/URL is a streaming service.
+    // When detected, set the global pause flag so ALL monitors stop capture
+    // and the monitor watcher releases all SCK handles.
     if crate::drm_detector::check_and_update_drm_state(
         pause_on_drm_content,
         app_name_owned.as_deref(),
