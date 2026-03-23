@@ -639,26 +639,11 @@ pub async fn auto_start_archive(app: &AppHandle) {
         }
     };
 
-    // Try to get the sync password so archive can reuse the same encryption keys
-    // (avoids the "encryption keys set up on another device" error).
-    let sync_password = match CloudSyncSettingsStore::get(app) {
-        Ok(Some(s)) if !s.encrypted_password.is_empty() => {
-            match BASE64.decode(&s.encrypted_password) {
-                Ok(bytes) => String::from_utf8(bytes).ok(),
-                Err(_) => None,
-            }
-        }
-        _ => None,
-    };
-
     let client = reqwest::Client::new();
-    let mut init_request = serde_json::json!({
+    let init_request = serde_json::json!({
         "token": token,
         "retention_days": archive_settings.retention_days,
     });
-    if let Some(ref pw) = sync_password {
-        init_request["password"] = serde_json::json!(pw);
-    }
 
     // Retry up to 5 times with increasing delays if the server isn't ready yet.
     // The server may still be starting when this runs (15s after app launch).

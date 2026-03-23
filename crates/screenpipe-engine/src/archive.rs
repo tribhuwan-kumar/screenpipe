@@ -100,10 +100,6 @@ impl Default for ArchiveConfig {
 pub struct ArchiveInitRequest {
     pub token: String,
     pub retention_days: Option<u32>,
-    /// Optional sync password — if the user has cloud sync set up, pass the
-    /// sync password so archive can reuse the same encryption keys without
-    /// requiring sync to be running.
-    pub password: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -159,89 +155,46 @@ pub async fn archive_init(
     // Use persistent machine ID
     let machine_id = screenpipe_core::sync::get_or_create_machine_id();
 
-    // Reuse the sync manager if sync is already initialized (same encryption keys).
-    // If sync is not initialized, derive a deterministic password from the token.
-    // This works for archive-only users but will fail if sync was set up on another
-    // device with a different (random) password — in that case the user must enable
-    // sync first so archive can reuse its manager.
+    // Archive uses its OWN encryption keys, completely independent of cloud sync.
+    // Keys are derived deterministically from the user's token so they're
+    // consistent across restarts without needing server-side key storage.
     let manager = {
-        let sync_guard = state.sync_state.read().await;
-        if let Some(ref sync_rt) = *sync_guard {
-            info!("archive: reusing sync manager (already initialized)");
-            sync_rt.manager.clone()
-        } else {
-            drop(sync_guard);
+        let device_name = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
+        let device_os = std::env::consts::OS.to_string();
 
-            let device_name = hostname::get()
-                .map(|h| h.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "Unknown".to_string());
-            let device_os = std::env::consts::OS.to_string();
+        let config = SyncClientConfig::new(
+            request.token.clone(),
+            machine_id.clone(),
+            device_name,
+            device_os,
+        );
 
-            let config = SyncClientConfig::new(
-                request.token.clone(),
-                machine_id.clone(),
-                device_name,
-                device_os,
-            );
+        let mgr = SyncManager::new(config).map_err(|e| {
+            error!("archive: failed to create sync manager: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("failed to create sync manager: {}", e)})),
+            )
+        })?;
 
-            let mgr = SyncManager::new(config).map_err(|e| {
-                error!("archive: failed to create sync manager: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("failed to create sync manager: {}", e)})),
-                )
-            })?;
+        // Derive encryption keys locally from the token — no server call,
+        // no dependency on sync's key storage.
+        let password = format!(
+            "screenpipe-archive-{:x}",
+            md5::compute(request.token.as_bytes())
+        );
 
-            // Try passwords in order:
-            // 1. Sync password passed by the caller (if user has sync set up)
-            // 2. Deterministic password derived from token (for archive-only users)
-            let deterministic_pw = format!(
-                "screenpipe-archive-{:x}",
-                md5::compute(request.token.as_bytes())
-            );
+        mgr.initialize_local(&password).await.map_err(|e| {
+            error!("archive: failed to derive encryption keys: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("failed to initialize encryption: {}", e)})),
+            )
+        })?;
 
-            let passwords_to_try: Vec<&str> = match &request.password {
-                Some(pw) if !pw.is_empty() => vec![pw.as_str(), &deterministic_pw],
-                _ => vec![&deterministic_pw],
-            };
-
-            let mut last_err = None;
-            let mut initialized = false;
-
-            for pw in &passwords_to_try {
-                match mgr.initialize(pw).await {
-                    Ok(_) => {
-                        initialized = true;
-                        break;
-                    }
-                    Err(e) => {
-                        let err_str = e.to_string();
-                        if err_str.contains("decryption failed") || err_str.contains("authentication error") {
-                            info!("archive: password attempt failed (key mismatch), trying next");
-                            last_err = Some(e);
-                        } else {
-                            return Err((
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(json!({"error": format!("failed to initialize encryption: {}", e)})),
-                            ));
-                        }
-                    }
-                }
-            }
-
-            if !initialized {
-                warn!("archive: all password attempts failed");
-                return Err((
-                    StatusCode::PRECONDITION_FAILED,
-                    Json(json!({"error": format!(
-                        "encryption key mismatch — try enabling cloud sync first in Settings → Sync, then retry archive. ({})",
-                        last_err.map(|e| e.to_string()).unwrap_or_default()
-                    )})),
-                ));
-            }
-
-            Arc::new(mgr)
-        }
+        Arc::new(mgr)
     };
 
     let archive_config = ArchiveConfig {

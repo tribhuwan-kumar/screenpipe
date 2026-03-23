@@ -51,6 +51,42 @@ impl SyncManager {
         Ok(is_new)
     }
 
+    /// Initialize encryption with a locally-derived key.
+    ///
+    /// Unlike `initialize()`, this does NOT contact the cloud server for key
+    /// management. Instead it derives a deterministic master key from the
+    /// password using a fixed domain-separated salt. This makes the keys
+    /// completely independent of cloud sync's key storage.
+    ///
+    /// Used by cloud archive so it doesn't conflict with sync's encryption
+    /// keys.
+    pub async fn initialize_local(&self, password: &str) -> SyncResult<()> {
+        use super::crypto::{derive_key_from_password, KEY_SIZE, SALT_SIZE};
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        // Fixed domain-separated salt so the same password always produces
+        // the same master key, but a different one from sync's keys.
+        const ARCHIVE_DOMAIN: &[u8] = b"screenpipe-archive-local-keys-v1";
+
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac = <HmacSha256 as Mac>::new_from_slice(ARCHIVE_DOMAIN).unwrap();
+        mac.update(password.as_bytes());
+        let domain_hash = mac.finalize().into_bytes();
+
+        let mut salt = [0u8; SALT_SIZE];
+        salt.copy_from_slice(&domain_hash[..SALT_SIZE]);
+
+        // Derive master key from password + fixed salt
+        let master_key_zeroizing = derive_key_from_password(password, &salt)?;
+        let mut master_key = [0u8; KEY_SIZE];
+        master_key.copy_from_slice(master_key_zeroizing.as_ref());
+
+        let keys = SyncKeys::from_master_key(master_key, 1);
+        *self.keys.write().await = Some(keys);
+        Ok(())
+    }
+
     /// Lock the manager (clear keys from memory).
     ///
     /// Call this when the user logs out or the app is locked.
