@@ -21,6 +21,12 @@ interface ModelEntry {
   best_for: string[];
   speed: 'fast' | 'medium' | 'slow';
   intelligence: 'standard' | 'high' | 'highest';
+  /** Relative cost indicator — drives UI badges, no exact prices shown */
+  cost_tier: 'free' | 'low' | 'medium' | 'high' | 'very_high';
+  /** Where this model shines — drives recommendation pills in UI */
+  recommended_for: ('pipes' | 'chat' | 'coding' | 'analysis')[];
+  /** Optional warning shown when model is selected (e.g. for expensive models) */
+  warning?: string;
   /** Live health status from rolling 5-minute error rate */
   health?: ModelHealthStatus;
 }
@@ -40,6 +46,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['coding', 'reasoning', 'tool use'],
     speed: 'fast',
     intelligence: 'highest',
+    cost_tier: 'free',
+    recommended_for: ['pipes', 'chat', 'coding'],
   },
   {
     id: 'glm-5',
@@ -53,6 +61,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['complex reasoning', 'analysis'],
     speed: 'medium',
     intelligence: 'highest',
+    cost_tier: 'free',
+    recommended_for: ['chat', 'analysis'],
   },
   {
     id: 'kimi-k2.5',
@@ -66,6 +76,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['reasoning', 'general'],
     speed: 'medium',
     intelligence: 'high',
+    cost_tier: 'free',
+    recommended_for: ['pipes', 'chat'],
   },
   {
     id: 'gemini-3-flash',
@@ -79,6 +91,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['general', 'search'],
     speed: 'fast',
     intelligence: 'high',
+    cost_tier: 'free',
+    recommended_for: ['pipes', 'chat'],
   },
   // ── Included with screenpipe ──
   {
@@ -93,6 +107,9 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['complex tasks', 'analysis'],
     speed: 'slow',
     intelligence: 'highest',
+    cost_tier: 'very_high',
+    recommended_for: ['chat', 'analysis'],
+    warning: 'very expensive — will quickly use your daily limit. use haiku or a free model for pipes',
   },
   {
     id: 'claude-sonnet-4-5',
@@ -106,6 +123,9 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['general', 'coding'],
     speed: 'medium',
     intelligence: 'high',
+    cost_tier: 'high',
+    recommended_for: ['chat', 'coding'],
+    warning: 'expensive — consider haiku or a free model for pipes',
   },
   {
     id: 'claude-haiku-4-5',
@@ -119,6 +139,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['quick tasks', 'pipes'],
     speed: 'fast',
     intelligence: 'standard',
+    cost_tier: 'low',
+    recommended_for: ['pipes', 'chat', 'coding'],
   },
   {
     id: 'qwen/qwen3.5-flash-02-23',
@@ -132,6 +154,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['long documents', 'pipes'],
     speed: 'fast',
     intelligence: 'standard',
+    cost_tier: 'low',
+    recommended_for: ['pipes', 'chat'],
   },
   {
     id: 'deepseek/deepseek-chat',
@@ -145,6 +169,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['reasoning', 'coding'],
     speed: 'medium',
     intelligence: 'high',
+    cost_tier: 'low',
+    recommended_for: ['pipes', 'chat', 'coding'],
   },
   {
     id: 'deepseek/deepseek-v3.2-speciale',
@@ -158,6 +184,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['complex reasoning'],
     speed: 'slow',
     intelligence: 'highest',
+    cost_tier: 'medium',
+    recommended_for: ['chat', 'analysis'],
   },
   {
     id: 'qwen/qwen3.5-397b-a17b',
@@ -171,6 +199,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['vision', 'complex tasks'],
     speed: 'slow',
     intelligence: 'highest',
+    cost_tier: 'high',
+    recommended_for: ['chat', 'analysis'],
   },
   {
     id: 'meta-llama/llama-4-scout',
@@ -184,6 +214,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['general', 'pipes'],
     speed: 'fast',
     intelligence: 'standard',
+    cost_tier: 'low',
+    recommended_for: ['pipes', 'chat'],
   },
   {
     id: 'meta-llama/llama-4-maverick',
@@ -197,6 +229,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['reasoning', 'coding'],
     speed: 'medium',
     intelligence: 'high',
+    cost_tier: 'medium',
+    recommended_for: ['chat', 'coding'],
   },
   {
     id: 'gemini-3.1-pro',
@@ -210,6 +244,8 @@ const CURATED_MODELS: ModelEntry[] = [
     best_for: ['reasoning', 'long documents'],
     speed: 'medium',
     intelligence: 'high',
+    cost_tier: 'medium',
+    recommended_for: ['chat', 'analysis'],
   },
 ];
 

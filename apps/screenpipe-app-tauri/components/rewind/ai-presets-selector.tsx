@@ -192,7 +192,7 @@ export function AIProviderConfig({
   const [showApiKey, setShowApiKey] = useState(false);
   const isEnterprise = useIsEnterpriseBuild();
   const [piAvailable, setPiAvailable] = useState(false);
-  const [piModels, setPiModels] = useState<{ id: string; name: string; free?: boolean; health?: { status: string; error_rate_5m: number } }[]>([]);
+  const [piModels, setPiModels] = useState<{ id: string; name: string; free?: boolean; cost_tier?: string; recommended_for?: string[]; warning?: string; health?: { status: string; error_rate_5m: number } }[]>([]);
 
   // Fetch PI models from gateway (single source of truth)
   useEffect(() => {
@@ -209,6 +209,9 @@ export function AIProviderConfig({
             id: m.id,
             name: m.name || m.id,
             free: m.free,
+            cost_tier: m.cost_tier,
+            recommended_for: m.recommended_for,
+            warning: m.warning,
             health: m.health,
           }));
           setPiModels(models);
@@ -821,18 +824,34 @@ export function AIProviderConfig({
                 <SelectValue placeholder="select model" />
               </SelectTrigger>
               <SelectContent>
-                {piModels.map((m) => (
+                {piModels.map((m) => {
+                  const costLabel = m.cost_tier === 'low' ? '$' : m.cost_tier === 'medium' ? '$$' : m.cost_tier === 'high' ? '$$$' : m.cost_tier === 'very_high' ? '$$$$' : '';
+                  return (
                   <SelectItem key={m.id} value={m.id}>
                     <span className="flex items-center gap-1.5">
                       {m.health?.status === 'down' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" title="overloaded" />}
                       {m.health?.status === 'degraded' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500" title="degraded" />}
                       {m.name}{m.free ? " (free)" : ""}
+                      {costLabel && <span className="text-[9px] font-medium text-muted-foreground">{costLabel}</span>}
+                      {m.recommended_for?.includes('pipes') && <span className="text-[9px] text-muted-foreground bg-muted rounded px-1">pipes</span>}
                       {m.health?.status === 'down' && <span className="text-[9px] text-red-400 ml-1">overloaded</span>}
                     </span>
                   </SelectItem>
-                ))}
+                  );
+                })}
               </SelectContent>
             </Select>
+            {(() => {
+              const selectedModel = piModels.find((m) => m.id === formData.model);
+              if (selectedModel?.warning) {
+                return (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    ! {selectedModel.warning}
+                  </p>
+                );
+              }
+              return null;
+            })()}
           </div>
         )}
 
@@ -1513,6 +1532,13 @@ export const AIPresetsSelector = ({
                             <span className="truncate max-w-[120px]">
                               {preset.model}
                             </span>
+                            {(() => {
+                              const m = piModels.find((pm) => pm.id === preset.model);
+                              if (!m) return null;
+                              const label = m.cost_tier === 'low' ? '$' : m.cost_tier === 'medium' ? '$$' : m.cost_tier === 'high' ? '$$$' : m.cost_tier === 'very_high' ? '$$$$' : m.free ? 'free' : '';
+                              const color = 'text-muted-foreground';
+                              return label ? <span className={`text-[9px] font-medium ${color}`}>{label}</span> : null;
+                            })()}
                           </div>
                           <div className="flex items-center gap-1">
                             <Button

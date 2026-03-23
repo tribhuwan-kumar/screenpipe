@@ -158,6 +158,9 @@ export interface AIModel {
   best_for?: string[];
   speed?: string;
   intelligence?: string;
+  cost_tier?: 'free' | 'low' | 'medium' | 'high' | 'very_high';
+  recommended_for?: string[];
+  warning?: string;
 }
 
 export const AIProviderCard = ({
@@ -1326,7 +1329,9 @@ const AISection = ({
                         </CommandGroup>
                       )}
                       <CommandGroup heading={models?.some((m) => m.free) ? "Included with Screenpipe" : "Available Models"}>
-                        {models?.filter((m) => !m.free).map((model) => (
+                        {models?.filter((m) => !m.free).map((model) => {
+                          const costLabel = model.cost_tier === 'low' ? '$' : model.cost_tier === 'medium' ? '$$' : model.cost_tier === 'high' ? '$$$' : model.cost_tier === 'very_high' ? '$$$$' : '';
+                          return (
                           <CommandItem
                             key={model.id}
                             value={model.id}
@@ -1356,17 +1361,24 @@ const AISection = ({
                               <div className="flex items-center justify-between">
                                 <span className="font-medium">{model.name}</span>
                                 <div className="flex items-center gap-1 ml-2">
-                                  {model.intelligence === "highest" && <Badge variant="outline" className="text-[10px]">smartest</Badge>}
-                                  {model.speed === "fast" && model.intelligence !== "highest" && <Badge variant="outline" className="text-[10px]">fast</Badge>}
-                                  {model.tags?.includes("reasoning") && model.intelligence !== "highest" && <Badge variant="outline" className="text-[10px]">reasoning</Badge>}
+                                  {costLabel && <Badge variant="outline" className="text-[10px]">{costLabel}</Badge>}
+                                  {model.speed === "fast" && <Badge variant="outline" className="text-[10px]">fast</Badge>}
                                 </div>
                               </div>
-                              {model.description && (
-                                <span className="text-xs text-muted-foreground">{model.description}{model.context_window ? ` · ${Math.round(model.context_window / 1000)}K ctx` : ""}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {model.description}{model.context_window ? ` · ${Math.round(model.context_window / 1000)}K ctx` : ""}
+                              </span>
+                              {model.recommended_for && model.recommended_for.length > 0 && (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  {model.recommended_for.map((use) => (
+                                    <span key={use} className="text-[9px] rounded bg-muted px-1 py-0.5 text-muted-foreground">{use}</span>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           </CommandItem>
-                        ))}
+                          );
+                        })}
                       </CommandGroup>
                     </>
                   )}
@@ -1374,6 +1386,35 @@ const AISection = ({
               </Command>
             </PopoverContent>
           </Popover>
+          {(() => {
+            const selectedModel = models?.find((m) => m.id === settingsPreset?.model);
+            if (selectedModel?.warning) {
+              return (
+                <div className="flex items-start gap-2 rounded-md border p-3 text-xs text-muted-foreground">
+                  <span className="shrink-0 text-sm">!</span>
+                  <div className="space-y-1">
+                    <p>{selectedModel.warning}</p>
+                    {models?.filter((m) => m.recommended_for?.includes('pipes') && m.id !== selectedModel.id).slice(0, 2).length > 0 && (
+                      <p className="text-muted-foreground">
+                        recommended for pipes:{" "}
+                        {models.filter((m) => m.recommended_for?.includes('pipes') && m.id !== selectedModel.id).slice(0, 3).map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 mr-1 font-medium hover:bg-accent cursor-pointer"
+                            onClick={() => updateSettingsPreset({ model: m.id })}
+                          >
+                            {m.name} {m.free ? "(free)" : ""}
+                          </button>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
           {settingsPreset?.provider === "native-ollama" && (
             <div className="text-xs text-muted-foreground space-y-1">
               <p>
