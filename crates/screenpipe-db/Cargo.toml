@@ -12,7 +12,7 @@ chrono = { version = "0.4.31", features = ["serde"] }
 image = { workspace = true }
 sqlx = { version = "0.7", features = [
   "sqlite",
-  "runtime-tokio-native-tls",
+  "runtime-tokio-rustls",
   "chrono",
   "migrate",
 ] }

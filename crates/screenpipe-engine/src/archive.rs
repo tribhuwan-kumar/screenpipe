@@ -933,7 +933,10 @@ async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow:
     while batch_start < cutoff {
         let batch_end = (batch_start + batch_size).min(cutoff);
 
-        match db.delete_time_range_batch(batch_start, batch_end, false).await {
+        match db
+            .delete_time_range_batch(batch_start, batch_end, false)
+            .await
+        {
             Ok(result) => {
                 let batch_total = result.frames_deleted
                     + result.ocr_deleted
@@ -968,7 +971,10 @@ async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow:
                 }
             }
             Err(e) => {
-                warn!("archive: batch delete failed for range {} to {}: {}", batch_start, batch_end, e);
+                warn!(
+                    "archive: batch delete failed for range {} to {}: {}",
+                    batch_start, batch_end, e
+                );
             }
         }
 

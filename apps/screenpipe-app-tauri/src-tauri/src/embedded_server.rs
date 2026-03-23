@@ -122,9 +122,18 @@ pub async fn start_embedded_server(
         info!("Using Chinese HuggingFace mirror");
     }
 
-    // Screenpipe cloud proxy for deepgram
+    // Screenpipe cloud proxy for deepgram — only when user has no personal key
     if config.audio_transcription_engine == AudioTranscriptionEngine::Deepgram {
-        if let Some(ref user_id) = config.user_id {
+        let has_personal_key = config
+            .deepgram_api_key
+            .as_ref()
+            .map_or(false, |k| !k.is_empty() && k != "default");
+        if has_personal_key {
+            // User has their own Deepgram key — use Deepgram directly, don't proxy
+            std::env::remove_var("DEEPGRAM_API_URL");
+            std::env::remove_var("CUSTOM_DEEPGRAM_API_TOKEN");
+            info!("Using personal Deepgram API key for audio transcription");
+        } else if let Some(ref user_id) = config.user_id {
             std::env::set_var("DEEPGRAM_API_URL", "https://api.screenpi.pe/v1/listen");
             std::env::set_var("CUSTOM_DEEPGRAM_API_TOKEN", user_id);
             info!("Using screenpipe cloud for audio transcription");

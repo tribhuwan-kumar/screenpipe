@@ -3711,7 +3711,10 @@ mod tests {
         );
 
         let (reparsed, reparsed_body) = parse_frontmatter(&serialized).unwrap();
-        assert!(reparsed.config.is_empty(), "extras HashMap should be empty after roundtrip");
+        assert!(
+            reparsed.config.is_empty(),
+            "extras HashMap should be empty after roundtrip"
+        );
         assert_eq!(reparsed.enabled, true);
         assert_eq!(reparsed.schedule, "every 30m");
         assert_eq!(reparsed_body, "Hello prompt");

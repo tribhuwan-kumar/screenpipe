@@ -17,7 +17,7 @@ edition = "2021"
 # AI
 tokenizers = "0.21.0"
 hf-hub = { version = "0.3.2", git = "https://github.com/neo773/hf-hub", features = [
-    "native-tls",
+    "rustls-tls",
 ] }
 log = "0.4"
 tracing = "0.1.40"
@@ -35,12 +35,12 @@ sentry = { version = "0.36.0", features = ["tracing"] }
 tracing-oslog = "0.3.0"
 
 http-cache-reqwest = "0.15.0"
-reqwest = { version = "=0.12.12", features = ["blocking", "multipart", "json"] }
+reqwest = { version = "=0.12.12", default-features = false, features = ["blocking", "multipart", "json", "rustls-tls"] }
 reqwest-middleware = "0.4.1"
 
 
 [patch.crates-io]
-# enables chinese mirror (hf is banned in china) and native-tls
+# enables chinese mirror (hf is banned in china) and rustls-tls
 hf-hub = { git = "https://github.com/neo773/hf-hub" }
 
 [profile.release]

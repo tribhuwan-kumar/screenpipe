@@ -37,8 +37,8 @@ enabled = true
 VERTEX_REGION = "us-east5"
 # Self-hosted Whisper A/B test
 SELF_HOSTED_TRANSCRIPTION_URL = "https://way-blessed-vegetation-engineer.trycloudflare.com"
-WHISPER_TRAFFIC_PCT = "10"
-WHISPER_DUAL_SEND_PCT = "1"
+WHISPER_TRAFFIC_PCT = "40"
+WHISPER_DUAL_SEND_PCT = "0"
 
 # Secrets (set via `wrangler secret put <NAME>`):
 # - VERTEX_SERVICE_ACCOUNT_JSON: GCP service account JSON for Vertex AI

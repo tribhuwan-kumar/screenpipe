@@ -60,7 +60,9 @@ pub async fn start_monitor_watcher(vision_manager: Arc<VisionManager>) -> anyhow
             // This ensures macOS DRM sees no active ScreenCaptureKit usage.
             if drm_detector::drm_content_paused() {
                 if !drm_stopped {
-                    info!("DRM content focused — stopping all vision monitors to release SCK handles");
+                    info!(
+                        "DRM content focused — stopping all vision monitors to release SCK handles"
+                    );
                     if let Err(e) = vision_manager.stop().await {
                         warn!("failed to stop vision manager for DRM pause: {:?}", e);
                     }

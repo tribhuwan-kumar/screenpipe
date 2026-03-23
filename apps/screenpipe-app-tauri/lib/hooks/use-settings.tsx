@@ -465,13 +465,6 @@ function createSettingsStore() {
 			// platform() unavailable (SSR/tests) — keep existing value
 		}
 
-		// Migration: Move users OFF screenpipe-cloud to local transcription (cost reduction)
-		// Previously Pro subscribers were auto-migrated to cloud; now local is preferred.
-		if (settings.audioTranscriptionEngine === "screenpipe-cloud" || settings.audioTranscriptionEngine === "deepgram") {
-			const p = platform();
-			settings.audioTranscriptionEngine = p === "windows" ? "whisper-tiny-quantized" : "whisper-large-v3-turbo";
-			needsUpdate = true;
-		}
 		// Mark pro migration as done so the old migration doesn't re-trigger
 		if (!(settings as any)._proCloudMigrationDone) {
 			(settings as any)._proCloudMigrationDone = true;

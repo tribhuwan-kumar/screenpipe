@@ -270,20 +270,34 @@ impl TranscriptionSession {
                 languages,
                 vocabulary,
             } => {
-                match transcribe_with_deepgram(
-                    api_key,
-                    audio,
-                    device,
-                    sample_rate,
-                    languages.clone(),
-                    vocabulary,
-                )
-                .await
-                {
-                    Ok(t) => Ok(t),
-                    Err(e) => {
-                        error!("device: {}, deepgram transcription failed: {:?}", device, e);
-                        Err(e)
+                // Deepgram is a paid API — skip near-silence to avoid burning costs.
+                // Empirical RMS values (see audio_manager/manager.rs):
+                //   output silence = 0.0, output playing = 0.0028, input speech ≈ 0.05+
+                // Audio here is post-normalization (target RMS 0.2), but true silence
+                // (rms < EPSILON) is not normalized and stays at 0.0.
+                let rms = (audio.iter().map(|s| s * s).sum::<f32>() / audio.len().max(1) as f32).sqrt();
+                if rms < 0.002 {
+                    tracing::debug!(
+                        "device: {}, skipping deepgram — audio RMS {:.6} below silence threshold",
+                        device, rms
+                    );
+                    Ok(String::new())
+                } else {
+                    match transcribe_with_deepgram(
+                        api_key,
+                        audio,
+                        device,
+                        sample_rate,
+                        languages.clone(),
+                        vocabulary,
+                    )
+                    .await
+                    {
+                        Ok(t) => Ok(t),
+                        Err(e) => {
+                            error!("device: {}, deepgram transcription failed: {:?}", device, e);
+                            Err(e)
+                        }
                     }
                 }
             }

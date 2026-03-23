@@ -4835,7 +4835,10 @@ impl DatabaseManager {
         let ui_events_deleted = ui_events_result.rows_affected();
 
         tx.commit().await.map_err(|e| {
-            error!("failed to commit delete_time_range_batch transaction: {}", e);
+            error!(
+                "failed to commit delete_time_range_batch transaction: {}",
+                e
+            );
             e
         })?;
 
@@ -4880,7 +4883,10 @@ impl DatabaseManager {
         let audio_chunks_deleted = audio_chunks_result.rows_affected();
 
         tx.commit().await.map_err(|e| {
-            error!("failed to commit cleanup_orphaned_chunks transaction: {}", e);
+            error!(
+                "failed to commit cleanup_orphaned_chunks transaction: {}",
+                e
+            );
             e
         })?;
 
@@ -4905,7 +4911,11 @@ impl DatabaseManager {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(oldest.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))))
+        Ok(oldest.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        }))
     }
 
     /// Delete all locally-stored data that was synced from a specific remote device.

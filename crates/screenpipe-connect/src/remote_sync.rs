@@ -282,9 +282,10 @@ async fn list_remote_recursive(sftp: &SftpSession, base: &str, prefix: &str) -> 
 
 /// Get remote file metadata (size, mtime). Returns None if file doesn't exist.
 async fn remote_file_meta(sftp: &SftpSession, path: &str) -> Option<(u64, Option<u64>)> {
-    sftp.metadata(path).await.ok().map(|m| {
-        (m.size.unwrap_or(0), m.mtime.map(|t| t as u64))
-    })
+    sftp.metadata(path)
+        .await
+        .ok()
+        .map(|m| (m.size.unwrap_or(0), m.mtime.map(|t| t as u64)))
 }
 
 async fn upload_file(sftp: &SftpSession, local: &Path, remote: &str) -> Result<u64> {
@@ -556,7 +557,6 @@ pub async fn test_connection(config: &SyncConfig) -> Result<()> {
         .await;
     Ok(())
 }
-
 
 // ── Host discovery ──────────────────────────────────────────────────────
 

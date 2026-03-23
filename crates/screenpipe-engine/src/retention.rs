@@ -322,7 +322,10 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
     while batch_start < cutoff {
         let batch_end = (batch_start + batch_size).min(cutoff);
 
-        match db.delete_time_range_batch(batch_start, batch_end, true).await {
+        match db
+            .delete_time_range_batch(batch_start, batch_end, true)
+            .await
+        {
             Ok(result) => {
                 let batch_total = result.frames_deleted
                     + result.ocr_deleted
@@ -358,7 +361,10 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
                 }
             }
             Err(e) => {
-                warn!("retention: batch delete failed for range {} to {}: {}", batch_start, batch_end, e);
+                warn!(
+                    "retention: batch delete failed for range {} to {}: {}",
+                    batch_start, batch_end, e
+                );
             }
         }
 
