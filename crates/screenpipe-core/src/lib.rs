@@ -5,6 +5,7 @@ pub mod agents;
 pub mod ffmpeg;
 pub mod offline;
 pub mod paths;
+pub mod permissions;
 pub mod pipes;
 pub use ffmpeg::find_ffmpeg_path;
 

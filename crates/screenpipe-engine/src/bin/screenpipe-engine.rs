@@ -432,6 +432,17 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Pre-flight permission check (macOS: screen recording, microphone, accessibility)
+    {
+        eprintln!("checking permissions...");
+        if !screenpipe_core::permissions::preflight_check(
+            !config.disable_vision,
+            !config.disable_audio,
+        ) {
+            std::process::exit(1);
+        }
+    }
+
     if !is_local_ipv4_port_free(config.port) {
         error!(
             "you're likely already running screenpipe instance in a different environment, e.g. terminal/ide, close it and restart or use different port"
