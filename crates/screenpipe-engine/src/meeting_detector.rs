@@ -3250,6 +3250,7 @@ mod tests {
         // Only 1 signal found — below the threshold of 2
         let results = vec![ScanResult {
             app_name: "zoom.us".to_string(),
+            profile_index: 0,
             is_in_call: false, // 1 signal < min_signals_required(2) = not in call
             signals_found: 1,
             matched_signals: vec!["menu_bar_item=Meeting".to_string()],
@@ -3269,6 +3270,7 @@ mod tests {
         let state = MeetingState::Idle;
         let results = vec![ScanResult {
             app_name: "zoom.us".to_string(),
+            profile_index: 0,
             is_in_call: true, // 2 signals >= min_signals_required(2) = in call
             signals_found: 2,
             matched_signals: vec![
