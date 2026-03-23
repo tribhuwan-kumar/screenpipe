@@ -959,9 +959,7 @@ jobs:
             local r2_key="${bucket_path#*/}"
             local bucket="${bucket_path%%/*}"
 
-            # Try aws cli — set 500MB multipart threshold to force single-part upload
-            # Use --no-verify-ssl to work around persistent SSLV3_ALERT_BAD_RECORD_MAC
-            # on the self-hosted macOS ARM runner (Python SSL vs macOS SecureTransport)
+            # Try aws cli first
             for attempt in 1 2 3; do
               if AWS_MAX_ATTEMPTS=3 aws s3 cp "$src" "$dst" \
                   --endpoint-url "$R2_ENDPOINT" \
@@ -977,20 +975,50 @@ jobs:
               sleep $((attempt * 5))
             done
 
-            # Fallback: use aws s3api put-object (single PUT, no multipart chunking)
-            echo "  🔄 falling back to s3api put-object for $(basename "$src")..."
+            # Fallback: curl with S3 v4 signing (uses macOS SecureTransport, bypasses Python SSL)
+            echo "  🔄 falling back to curl for $(basename "$src")..."
+            local content_type="application/octet-stream"
+            local date_stamp=$(date -u +%Y%m%d)
+            local amz_date=$(date -u +%Y%m%dT%H%M%SZ)
+            local region="auto"
+            local service="s3"
+            local host="${R2_ENDPOINT#https://}"
+
+            sign_and_upload() {
+              local method="PUT"
+              local canonical_uri="/${r2_key}"
+              local content_sha256=$(shasum -a 256 "$src" | awk '{print $1}')
+              local canonical_headers="content-type:${content_type}\nhost:${host}\nx-amz-content-sha256:${content_sha256}\nx-amz-date:${amz_date}\n"
+              local signed_headers="content-type;host;x-amz-content-sha256;x-amz-date"
+              local canonical_request="${method}\n${canonical_uri}\n\n${canonical_headers}\n${signed_headers}\n${content_sha256}"
+              local cr_hash=$(printf "${canonical_request}" | shasum -a 256 | awk '{print $1}')
+              local scope="${date_stamp}/${region}/${service}/aws4_request"
+              local string_to_sign="AWS4-HMAC-SHA256\n${amz_date}\n${scope}\n${cr_hash}"
+
+              local k_date=$(printf "${date_stamp}" | openssl dgst -sha256 -hex -mac HMAC -macopt "key:AWS4${AWS_SECRET_ACCESS_KEY}" | awk '{print $NF}')
+              local k_region=$(printf "${region}" | openssl dgst -sha256 -hex -mac HMAC -macopt "hexkey:${k_date}" | awk '{print $NF}')
+              local k_service=$(printf "${service}" | openssl dgst -sha256 -hex -mac HMAC -macopt "hexkey:${k_region}" | awk '{print $NF}')
+              local k_signing=$(printf "aws4_request" | openssl dgst -sha256 -hex -mac HMAC -macopt "hexkey:${k_service}" | awk '{print $NF}')
+              local signature=$(printf "${string_to_sign}" | openssl dgst -sha256 -hex -mac HMAC -macopt "hexkey:${k_signing}" | awk '{print $NF}')
+
+              local auth="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signed_headers}, Signature=${signature}"
+
+              curl -fSs --retry 3 --retry-delay 5 \
+                -X PUT \
+                -H "Content-Type: ${content_type}" \
+                -H "x-amz-date: ${amz_date}" \
+                -H "x-amz-content-sha256: ${content_sha256}" \
+                -H "Authorization: ${auth}" \
+                --data-binary "@${src}" \
+                "${R2_ENDPOINT}/${r2_key}"
+            }
+
             for attempt in 1 2 3; do
-              if aws s3api put-object \
-                  --endpoint-url "$R2_ENDPOINT" \
-                  --no-verify-ssl \
-                  --bucket screenpipe-releases \
-                  --key "$r2_key" \
-                  --body "$src" \
-                  --cli-read-timeout 600 --cli-connect-timeout 30 2>&1; then
-                echo "  ✅ $(basename "$src") (s3api)"
+              if sign_and_upload 2>&1; then
+                echo "  ✅ $(basename "$src") (curl)"
                 return 0
               fi
-              echo "  ⚠️ s3api attempt $attempt failed for $(basename "$src")"
+              echo "  ⚠️ curl attempt $attempt failed for $(basename "$src")"
               sleep $((attempt * 10))
             done
             echo "  ❌ failed to upload $(basename "$src") after all attempts"
