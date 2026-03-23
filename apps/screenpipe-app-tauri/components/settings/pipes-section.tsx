@@ -1526,6 +1526,9 @@ export function PipesSection() {
                           {(() => {
                             const presets = [
                               { value: "manual", label: "manual" },
+                              { value: "*/5 8-23 * * *", label: "every 5 min (daytime 8a-11p)" },
+                              { value: "*/15 8-23 * * *", label: "every 15 min (daytime 8a-11p)" },
+                              { value: "*/30 8-23 * * *", label: "every 30 min (daytime 8a-11p)" },
                               { value: "every 5m", label: "every 5 minutes" },
                               { value: "every 15m", label: "every 15 minutes" },
                               { value: "every 30m", label: "every 30 minutes" },

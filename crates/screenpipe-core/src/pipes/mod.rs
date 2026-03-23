@@ -3116,6 +3116,31 @@ pub fn parse_frontmatter(content: &str) -> Result<(PipeConfig, String)> {
 pub fn serialize_pipe(config: &PipeConfig, body: &str) -> Result<String> {
     let mut cfg = config.clone();
     cfg.name = String::new(); // empty → skip_serializing_if kicks in
+
+    // Remove legacy "config" key from extras — old pipe.md files had a nested
+    // `config: { enabled: true }` block that gets captured by the flattened
+    // HashMap and re-emitted forever. Also strip any keys that shadow real
+    // struct fields to prevent duplicates.
+    const KNOWN_FIELDS: &[&str] = &[
+        "config",
+        "name",
+        "schedule",
+        "enabled",
+        "agent",
+        "model",
+        "provider",
+        "preset",
+        "connections",
+        "permissions",
+        "timeout",
+        "source_slug",
+        "installed_version",
+        "source_hash",
+    ];
+    for key in KNOWN_FIELDS {
+        cfg.config.remove(*key);
+    }
+
     let yaml = serde_yaml::to_string(&cfg)?;
     Ok(format!("---\n{}---\n\n{}\n", yaml, body))
 }
@@ -3662,6 +3687,49 @@ mod tests {
         assert_eq!(parsed_body, body);
         // Name should be empty after serialize (skip_serializing_if)
         assert!(parsed.name.is_empty());
+    }
+
+    #[test]
+    fn test_serialize_strips_legacy_config_block() {
+        // Old pipe.md files had `config: { enabled: true }` which gets caught
+        // by the flattened HashMap. Verify serialize_pipe strips it.
+        let content = "---\nschedule: every 30m\nenabled: true\nconfig:\n  enabled: true\n---\n\nHello prompt";
+        let (config, body) = parse_frontmatter(content).unwrap();
+
+        // Confirm the legacy key was captured in the extras HashMap
+        assert!(
+            config.config.contains_key("config"),
+            "expected 'config' key in extras HashMap after parsing legacy frontmatter"
+        );
+
+        // Serialize and re-parse — the nested config block should be gone
+        let serialized = serialize_pipe(&config, &body).unwrap();
+        assert!(
+            !serialized.contains("config:"),
+            "serialized output should not contain legacy 'config:' block, got:\n{}",
+            serialized
+        );
+
+        let (reparsed, reparsed_body) = parse_frontmatter(&serialized).unwrap();
+        assert!(reparsed.config.is_empty(), "extras HashMap should be empty after roundtrip");
+        assert_eq!(reparsed.enabled, true);
+        assert_eq!(reparsed.schedule, "every 30m");
+        assert_eq!(reparsed_body, "Hello prompt");
+    }
+
+    #[test]
+    fn test_serialize_preserves_unknown_extra_fields() {
+        // Extra fields that are NOT known struct fields should survive roundtrip
+        let content = "---\nschedule: every 1h\nenabled: true\nhistory: true\n---\n\nBody";
+        let (config, body) = parse_frontmatter(content).unwrap();
+        assert!(config.config.contains_key("history"));
+
+        let serialized = serialize_pipe(&config, &body).unwrap();
+        assert!(
+            serialized.contains("history: true"),
+            "unknown extra field 'history' should be preserved, got:\n{}",
+            serialized
+        );
     }
 
     // -- schedule parsing ---------------------------------------------------
