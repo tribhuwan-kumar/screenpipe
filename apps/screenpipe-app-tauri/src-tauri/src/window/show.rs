@@ -939,6 +939,7 @@ impl ShowRewindWindow {
                         min.0.min(logical_size.width),
                         min.1.min(logical_size.height),
                     );
+                    let app_clone = app.clone();
                     let builder = self
                         .window_builder_with_label(
                             app,
@@ -952,7 +953,7 @@ impl ShowRewindWindow {
                         .resizable(false)
                         .maximizable(false)
                         .minimizable(false)
-                        .focused(true)
+                        .focused(false)
                         .transparent(true)
                         .visible(false)
                         .skip_taskbar(true)
@@ -960,15 +961,26 @@ impl ShowRewindWindow {
                         .min_inner_size(clamped_min.0, clamped_min.1)
                         .inner_size(logical_size.width, logical_size.height)
                         .max_inner_size(logical_size.width, logical_size.height)
-                        .position(position.x as f64, position.y as f64);
-                    let win = builder.build()?;
-
-                    // Setup Win32 overlay with click-through disabled so user can interact
-                    if let Err(e) = crate::windows_overlay::setup_overlay(&win, false) {
-                        error!("Failed to setup Windows overlay: {}", e);
-                    }
-
-                    win
+                        .position(position.x as f64, position.y as f64)
+                        .on_page_load(move |win, payload| {
+                            if matches!(
+                                payload.event(),
+                                tauri::webview::PageLoadEvent::Finished
+                            ) {
+                                // Setup Win32 overlay AFTER webview loads so the
+                                // window becomes visible only when JS is ready
+                                // to handle keyboard events.
+                                if let Err(e) = crate::windows_overlay::setup_overlay(win, false) {
+                                    tracing::error!("Failed to setup Windows overlay: {}", e);
+                                }
+                                // Activate so keyboard focus goes to the webview
+                                if let Err(e) = crate::windows_overlay::bring_to_front_and_activate(win) {
+                                    tracing::error!("Failed to activate overlay: {}", e);
+                                }
+                                let _ = app_clone.emit("window-focused", true);
+                            }
+                        });
+                    builder.build()?
                 };
 
                 // Linux uses a normal decorated window (overlay not yet implemented).
