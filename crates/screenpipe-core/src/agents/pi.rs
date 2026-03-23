@@ -314,6 +314,15 @@ impl PiExecutor {
             } else {
                 models_config = json!({"providers": {"screenpipe": screenpipe_provider}});
             }
+        } else {
+            // Remove screenpipe provider if it exists from a previous config to avoid
+            // silent credit drain when user explicitly chose a different provider.
+            if let Some(providers) = models_config
+                .get_mut("providers")
+                .and_then(|p| p.as_object_mut())
+            {
+                providers.remove("screenpipe");
+            }
         }
 
         // Add the pipe's own provider (ollama, openai, custom) if specified

@@ -6,12 +6,17 @@
 //!
 //! Replays timeline events from scenario manifests against the real
 //! `MeetingDetector` and measures detection latency, recall, and false positives.
+//!
+//! Note: In v2, MeetingDetector is a thin wrapper around an AtomicBool override.
+//! The actual UI-scanning detection logic lives in `screenpipe-engine::meeting_detector`.
+//! These benchmarks simulate the v2 detection by directly setting the override flag
+//! based on timeline events.
 
 use crate::ground_truth::{ScenarioManifest, SpeechSegment, TimelineEvent};
 use crate::metrics::{self, MeetingDetectionResult};
 
 use screenpipe_audio::core::device::DeviceType;
-use screenpipe_audio::meeting_detector::{CalendarSignal, MeetingDetector};
+use screenpipe_audio::meeting_detector::MeetingDetector;
 use std::collections::HashMap;
 
 /// Expected meeting windows for a scenario: (start_secs, end_secs).
@@ -21,10 +26,47 @@ struct MeetingWindow {
     is_meeting: bool,
 }
 
+/// Known meeting app names (mirrors the logic that was previously in MeetingDetector,
+/// now lives in screenpipe-engine).
+fn is_meeting_app(app_name: &str, window_title: Option<&str>) -> bool {
+    let app_lower = app_name.to_lowercase();
+    let meeting_apps = [
+        "zoom.us",
+        "zoom",
+        "microsoft teams",
+        "teams",
+        "facetime",
+        "webex",
+        "skype",
+        "google meet",
+    ];
+
+    if meeting_apps.iter().any(|&a| app_lower.contains(a)) {
+        return true;
+    }
+
+    // Check window title for browser-based meetings
+    if let Some(title) = window_title {
+        let title_lower = title.to_lowercase();
+        if title_lower.contains("meet.google.com")
+            || title_lower.contains("teams.microsoft.com")
+            || title_lower.contains("zoom.us")
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Simulate a scenario against MeetingDetector second by second.
+///
+/// Since v2 MeetingDetector is just an override flag, this benchmark simulates
+/// the detection logic (app matching, calendar events) inline and sets the
+/// override accordingly.
 async fn replay_scenario(
     events: &[TimelineEvent],
-    speech_segments: &[SpeechSegment],
+    _speech_segments: &[SpeechSegment],
     total_duration_secs: f64,
     meeting_windows: &[MeetingWindow],
 ) -> MeetingDetectionResult {
@@ -36,6 +78,10 @@ async fn replay_scenario(
     // Pre-sort events by time
     let mut sorted_events = events.to_vec();
     sorted_events.sort_by(|a, b| a.time_secs.partial_cmp(&b.time_secs).unwrap());
+
+    // Track meeting state based on events (simulating what screenpipe-engine does)
+    let mut in_meeting_app = false;
+    let mut calendar_active = false;
 
     // Replay second by second
     #[allow(clippy::needless_range_loop)]
@@ -53,65 +99,23 @@ async fn replay_scenario(
                             .map(|s| s.as_str())
                             .unwrap_or("Unknown");
                         let window = event.metadata.get("window_title").map(|s| s.as_str());
-                        detector.on_app_switch(app, window).await;
+                        in_meeting_app = is_meeting_app(app, window);
                     }
                     "calendar_start" => {
-                        let title = event.metadata.get("title").cloned().unwrap_or_default();
-                        let attendees: Vec<String> = event
-                            .metadata
-                            .get("attendees")
-                            .map(|a| a.split(',').map(|s| s.trim().to_string()).collect())
-                            .unwrap_or_default();
-                        let end_event = sorted_events
-                            .iter()
-                            .find(|e| e.event_type == "calendar_end");
-                        let end_ms = end_event
-                            .map(|e| (e.time_secs * 1000.0) as i64)
-                            .unwrap_or((total_duration_secs * 1000.0) as i64);
-
-                        let now_ms = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as i64;
-
-                        // Offset calendar times relative to now
-                        let event_start_ms =
-                            now_ms + (t_secs * 1000.0) as i64 - (t_secs * 1000.0) as i64;
-                        let _event_end_ms = event_start_ms + end_ms - (t_secs * 1000.0) as i64;
-
-                        detector
-                            .on_calendar_events(vec![CalendarSignal {
-                                event_id: "bench-event".to_string(),
-                                title,
-                                start_epoch_ms: now_ms - 1000, // already started
-                                end_epoch_ms: now_ms + (total_duration_secs * 1000.0) as i64,
-                                attendees,
-                                source: "native".to_string(),
-                            }])
-                            .await;
+                        calendar_active = true;
+                    }
+                    "calendar_end" => {
+                        calendar_active = false;
                     }
                     _ => {}
                 }
             }
         }
 
-        // Feed audio activity for speech segments active at this second
-        for seg in speech_segments {
-            if seg.is_speech && t_secs >= seg.start_secs && t_secs < seg.end_secs {
-                let device_type = match seg.channel.as_str() {
-                    "mic" => DeviceType::Input,
-                    "system" => DeviceType::Output,
-                    "both" => {
-                        detector.on_audio_activity(&DeviceType::Input, true);
-                        DeviceType::Output
-                    }
-                    _ => continue,
-                };
-                detector.on_audio_activity(&device_type, true);
-            }
-        }
+        // Set v2 override based on simulated detection
+        detector.set_v2_in_meeting(in_meeting_app || calendar_active);
 
-        // Check grace period
+        // Check grace period (no-op in v2, but call for API coverage)
         detector.check_grace_period().await;
 
         // Sample detection state

@@ -206,9 +206,10 @@ mod query_plan_tests {
 
         let plan = explain(
             &db,
-            r#"SELECT id, text_content, app_name, window_name, timestamp
-            FROM accessibility
-            WHERE timestamp >= '2020-01-01' AND timestamp <= '2030-01-01'
+            r#"SELECT id, accessibility_text, app_name, window_name, timestamp
+            FROM frames
+            WHERE accessibility_text IS NOT NULL AND accessibility_text != ''
+              AND timestamp >= '2020-01-01' AND timestamp <= '2030-01-01'
             ORDER BY timestamp DESC
             LIMIT 20 OFFSET 0"#,
         )

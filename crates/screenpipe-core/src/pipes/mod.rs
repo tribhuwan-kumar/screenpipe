@@ -3799,6 +3799,8 @@ mod tests {
 
     #[test]
     fn test_render_prompt_uses_port() {
+        // render_prompt_with_port is the *user* prompt (time context only).
+        // Port / body / system_prompt are handled by render_pipe_system_prompt.
         let config = PipeConfig {
             name: "test".to_string(),
             schedule: "every 1h".to_string(),
@@ -3816,9 +3818,14 @@ mod tests {
             source_hash: None,
         };
         let prompt = render_prompt_with_port(&config, "body text", 3031, None, None);
-        assert!(prompt.contains("http://localhost:3031"));
-        assert!(!prompt.contains("http://localhost:3030"));
-        assert!(prompt.contains("body text"));
+        // User prompt contains time range and the "Execute" instruction
+        assert!(prompt.contains("Time range:"));
+        assert!(prompt.contains("Execute the pipe now."));
+        // Port / body go into system prompt, not user prompt
+        let sys = render_pipe_system_prompt("body text", 3031, None);
+        assert!(sys.contains("http://localhost:3031"));
+        assert!(!sys.contains("http://localhost:3030"));
+        assert!(sys.contains("body text"));
     }
 
     #[test]
@@ -3839,8 +3846,8 @@ mod tests {
             installed_version: None,
             source_hash: None,
         };
-        let prompt = render_prompt_with_port(&config, "hello", 3030, None, None);
-        assert!(prompt.contains("http://localhost:3030"));
+        let sys = render_pipe_system_prompt("hello", 3030, None);
+        assert!(sys.contains("http://localhost:3030"));
     }
 
     #[test]
@@ -3861,16 +3868,14 @@ mod tests {
             installed_version: None,
             source_hash: None,
         };
-        let prompt = render_prompt_with_port(
-            &config,
+        let sys = render_pipe_system_prompt(
             "body text",
             3030,
             Some("You are a helpful assistant"),
-            None,
         );
-        assert!(prompt.starts_with("System prompt:\nYou are a helpful assistant\n\n"));
-        assert!(prompt.contains("body text"));
-        assert!(prompt.contains("http://localhost:3030"));
+        assert!(sys.starts_with("You are a helpful assistant\n\n"));
+        assert!(sys.contains("body text"));
+        assert!(sys.contains("http://localhost:3030"));
     }
 
     #[test]
@@ -3891,9 +3896,9 @@ mod tests {
             installed_version: None,
             source_hash: None,
         };
-        let prompt = render_prompt_with_port(&config, "body text", 3030, None, None);
-        assert!(!prompt.contains("System prompt:"));
-        assert!(prompt.contains("body text"));
+        let sys = render_pipe_system_prompt("body text", 3030, None);
+        assert!(!sys.contains("System prompt:"));
+        assert!(sys.contains("body text"));
     }
 
     // -- PipeExecution / SchedulerState serde roundtrip ----------------------

@@ -3242,7 +3242,8 @@ impl DatabaseManager {
                        AND (?4 IS NULL OR LENGTH(COALESCE(frames.full_text, '')) >= ?4)
                        AND (?5 IS NULL OR LENGTH(COALESCE(frames.full_text, '')) <= ?5)
                        AND (?6 IS NULL OR frames.name LIKE '%' || ?6 || '%')
-                       AND (?7 IS NULL OR frames.focused = ?7)"#,
+                       AND (?7 IS NULL OR frames.focused = ?7)
+                       {a11y_filter}"#,
                 fts_join = if has_fts {
                     "JOIN frames_fts ON frames.id = frames_fts.id"
                 } else {
@@ -3250,6 +3251,11 @@ impl DatabaseManager {
                 },
                 fts_condition = if has_fts {
                     "AND frames_fts MATCH ?1"
+                } else {
+                    ""
+                },
+                a11y_filter = if content_type == ContentType::Accessibility {
+                    "AND frames.accessibility_text IS NOT NULL AND frames.accessibility_text != ''"
                 } else {
                     ""
                 }
@@ -3926,7 +3932,7 @@ impl DatabaseManager {
                 {fts_condition}
                 AND (?2 IS NULL OR f.timestamp >= ?2)
                 AND (?3 IS NULL OR f.timestamp <= ?3)
-                AND f.full_text IS NOT NULL AND f.full_text != ''
+                AND f.accessibility_text IS NOT NULL AND f.accessibility_text != ''
             ORDER BY f.timestamp DESC
             LIMIT ?4 OFFSET ?5
             "#,
@@ -6378,15 +6384,33 @@ LIMIT ? OFFSET ?
     // Accessibility Text (Tree Walker)
     // ============================================================================
 
-    /// Deprecated: accessibility table was dropped. This is a no-op kept for test compat.
+    /// Insert accessibility text as a snapshot frame with full_text populated.
+    /// This replaces the old accessibility table insert — data now lives in frames.
     pub async fn insert_accessibility_text(
         &self,
-        _app_name: &str,
-        _window_name: &str,
-        _text_content: &str,
-        _browser_url: Option<&str>,
+        app_name: &str,
+        window_name: &str,
+        text_content: &str,
+        browser_url: Option<&str>,
     ) -> Result<i64, sqlx::Error> {
-        Ok(0)
+        self.insert_snapshot_frame_with_ocr(
+            "test",
+            Utc::now(),
+            "",
+            Some(app_name),
+            Some(window_name),
+            browser_url,
+            false,
+            None,
+            Some(text_content),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 
     /// Get recent UI events for a specific app

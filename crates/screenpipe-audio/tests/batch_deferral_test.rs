@@ -19,116 +19,53 @@ mod tests {
     use std::sync::Arc;
 
     // ---------------------------------------------------------------
-    // 1. Meeting detector state transitions
+    // 1. Meeting detector state transitions (v2 override API)
     // ---------------------------------------------------------------
 
-    #[tokio::test]
-    async fn meeting_starts_when_meeting_app_focused() {
+    #[test]
+    fn meeting_starts_when_v2_override_set() {
         let detector = MeetingDetector::new();
         assert!(
             !detector.is_in_meeting(),
             "should not be in meeting initially"
         );
 
-        detector.on_app_switch("zoom.us", None).await;
+        detector.set_v2_in_meeting(true);
         assert!(
             detector.is_in_meeting(),
-            "should be in meeting after focusing Zoom"
+            "should be in meeting after v2 override set"
         );
     }
 
-    #[tokio::test]
-    async fn meeting_starts_for_various_apps() {
-        for app in &[
-            "zoom.us",
-            "zoom",
-            "microsoft teams",
-            "teams",
-            "facetime",
-            "webex",
-            "skype",
-            "google meet",
-        ] {
-            let detector = MeetingDetector::new();
-            detector.on_app_switch(app, None).await;
-            assert!(
-                detector.is_in_meeting(),
-                "{} should be detected as meeting app",
-                app
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn meeting_starts_for_browser_meet_urls() {
+    #[test]
+    fn meeting_ends_when_v2_override_cleared() {
         let detector = MeetingDetector::new();
 
-        // Browser with Google Meet URL in window title
-        detector
-            .on_app_switch("Google Chrome", Some("Meeting - meet.google.com"))
-            .await;
-        assert!(
-            detector.is_in_meeting(),
-            "Google Meet in Chrome should trigger meeting"
-        );
-    }
-
-    #[tokio::test]
-    async fn non_meeting_app_does_not_trigger_meeting() {
-        let detector = MeetingDetector::new();
-        detector.on_app_switch("Safari", None).await;
-        assert!(
-            !detector.is_in_meeting(),
-            "Safari should not trigger meeting"
-        );
-    }
-
-    #[tokio::test]
-    async fn switching_away_keeps_meeting_during_grace_period() {
-        let detector = MeetingDetector::new();
-
-        // Start meeting
-        detector.on_app_switch("zoom.us", None).await;
+        detector.set_v2_in_meeting(true);
         assert!(detector.is_in_meeting());
 
-        // Switch to another app
-        detector.on_app_switch("Safari", None).await;
-
-        // Should still be in meeting (grace period = 60s, we switched immediately)
+        detector.set_v2_in_meeting(false);
         assert!(
-            detector.is_in_meeting(),
-            "should remain in meeting during grace period"
+            !detector.is_in_meeting(),
+            "should not be in meeting after v2 override cleared"
         );
     }
 
-    #[tokio::test]
-    async fn check_grace_period_does_not_end_meeting_immediately() {
+    #[test]
+    fn toggling_v2_override_multiple_times() {
         let detector = MeetingDetector::new();
 
-        // Start meeting then switch away
-        detector.on_app_switch("zoom.us", None).await;
-        detector.on_app_switch("Safari", None).await;
+        // Start meeting, end, start again
+        detector.set_v2_in_meeting(true);
+        assert!(detector.is_in_meeting());
 
-        // check_grace_period should not end meeting within grace period
-        detector.check_grace_period().await;
+        detector.set_v2_in_meeting(false);
+        assert!(!detector.is_in_meeting());
+
+        detector.set_v2_in_meeting(true);
         assert!(
             detector.is_in_meeting(),
-            "grace period should protect meeting"
-        );
-    }
-
-    #[tokio::test]
-    async fn returning_to_meeting_app_refreshes_state() {
-        let detector = MeetingDetector::new();
-
-        // Start meeting, switch away, come back
-        detector.on_app_switch("zoom.us", None).await;
-        detector.on_app_switch("Safari", None).await;
-        detector.on_app_switch("zoom.us", None).await;
-
-        assert!(
-            detector.is_in_meeting(),
-            "returning to meeting app should keep meeting active"
+            "returning to meeting should keep meeting active"
         );
     }
 
@@ -199,7 +136,7 @@ mod tests {
         let detector = Arc::new(MeetingDetector::new());
         let is_batch_mode = true;
 
-        // --- Chunk 1: No meeting, no audio → transcribe immediately ---
+        // --- Chunk 1: No meeting → transcribe immediately ---
         let was = detector.is_in_audio_session();
         detector.check_grace_period().await;
         let now = detector.is_in_audio_session();
@@ -209,8 +146,8 @@ mod tests {
             "chunk 1: no session → transcribe"
         );
 
-        // --- User opens Zoom ---
-        detector.on_app_switch("zoom.us", None).await;
+        // --- v2 detection system detects meeting (e.g., Zoom UI) ---
+        detector.set_v2_in_meeting(true);
 
         // --- Chunk 2: In meeting, should defer ---
         let was = detector.is_in_audio_session();
@@ -232,22 +169,21 @@ mod tests {
             "chunk 3: still in meeting → defer"
         );
 
-        // --- User switches away from Zoom ---
-        detector.on_app_switch("Safari", None).await;
+        // --- v2 detection system detects meeting ended ---
+        detector.set_v2_in_meeting(false);
 
-        // --- Chunk 4: Just switched, grace period still active ---
-        let was = detector.is_in_audio_session();
+        // --- Chunk 4: Meeting ended → reconcile ---
+        let was = true; // was in session before v2 cleared it
         detector.check_grace_period().await;
         let now = detector.is_in_audio_session();
-        // Grace period is 60s, so we're still "in session"
         assert_eq!(
             decide(is_batch_mode, was, now),
-            BatchDecision::Defer,
-            "chunk 4: grace period → still defer"
+            BatchDecision::Reconcile,
+            "chunk 4: meeting ended → reconcile"
         );
 
-        // --- User returns to Zoom ---
-        detector.on_app_switch("zoom.us", None).await;
+        // --- v2 detects meeting again ---
+        detector.set_v2_in_meeting(true);
 
         // --- Chunk 5: Back in meeting ---
         let was = detector.is_in_audio_session();
@@ -265,8 +201,8 @@ mod tests {
         let detector = Arc::new(MeetingDetector::new());
         let is_batch_mode = false;
 
-        // Open Zoom
-        detector.on_app_switch("zoom.us", None).await;
+        // v2 sets meeting active
+        detector.set_v2_in_meeting(true);
 
         // Realtime should always transcribe, even during meeting
         let was = detector.is_in_audio_session();
@@ -292,6 +228,9 @@ mod tests {
 
     // ---------------------------------------------------------------
     // 4. Audio activity updates meeting detector state
+    //    Note: on_audio_activity is now a no-op in v2; detection is
+    //    UI-based via set_v2_in_meeting(). These tests verify the
+    //    no-op behavior doesn't cause issues.
     // ---------------------------------------------------------------
 
     #[tokio::test]
@@ -299,10 +238,11 @@ mod tests {
         let detector = MeetingDetector::new();
 
         // Simulate bidirectional speech (mic + speaker)
+        // on_audio_activity is a no-op in v2
         detector.on_audio_activity(&DeviceType::Input, true);
         detector.on_audio_activity(&DeviceType::Output, true);
 
-        // Audio alone should NOT start a meeting (needs recent app confirmation)
+        // Audio alone should NOT start a meeting (v2 uses UI detection)
         assert!(
             !detector.is_in_meeting(),
             "audio activity alone should not trigger meeting"
@@ -310,75 +250,17 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
-    // 5. Audio session detection (output audio triggers deferral)
-    //    This tests the new is_in_audio_session() which covers
-    //    YouTube, podcasts, etc. — not just meetings
+    // 5. Audio session detection
+    //    In v2, is_in_audio_session() is identical to is_in_meeting()
+    //    and is driven entirely by the v2 UI-scanning system.
     // ---------------------------------------------------------------
 
-    #[tokio::test]
-    async fn output_audio_triggers_audio_session() {
+    #[test]
+    fn v2_meeting_is_always_an_audio_session() {
         let detector = MeetingDetector::new();
 
-        // No session initially
-        assert!(
-            !detector.is_in_audio_session(),
-            "should not be in session initially"
-        );
-
-        // Simulate output audio (YouTube, podcast, etc.)
-        detector.on_audio_activity(&DeviceType::Output, true);
-
-        // Output audio alone should trigger audio session (but NOT meeting)
-        assert!(
-            !detector.is_in_meeting(),
-            "output audio should not trigger meeting"
-        );
-        assert!(
-            detector.is_in_audio_session(),
-            "output audio should trigger audio session"
-        );
-    }
-
-    #[tokio::test]
-    async fn batch_defers_during_output_audio_session() {
-        let detector = Arc::new(MeetingDetector::new());
-        let is_batch_mode = true;
-
-        // Simulate YouTube playing (output audio only)
-        detector.on_audio_activity(&DeviceType::Output, true);
-
-        let was = detector.is_in_audio_session();
-        detector.check_grace_period().await;
-        let now = detector.is_in_audio_session();
-
-        assert!(was, "should be in audio session from output audio");
-        assert!(now, "should still be in audio session");
-        assert_eq!(
-            decide(is_batch_mode, was, now),
-            BatchDecision::Defer,
-            "batch should defer during output audio session"
-        );
-    }
-
-    #[tokio::test]
-    async fn input_audio_alone_does_not_trigger_session() {
-        let detector = MeetingDetector::new();
-
-        // Input audio alone (no output, no meeting app)
-        detector.on_audio_activity(&DeviceType::Input, true);
-
-        assert!(
-            !detector.is_in_audio_session(),
-            "input audio alone should not trigger session"
-        );
-    }
-
-    #[tokio::test]
-    async fn meeting_is_always_an_audio_session() {
-        let detector = MeetingDetector::new();
-
-        // Start meeting
-        detector.on_app_switch("zoom.us", None).await;
+        // Start meeting via v2 override
+        detector.set_v2_in_meeting(true);
 
         assert!(detector.is_in_meeting(), "should be in meeting");
         assert!(
@@ -387,17 +269,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn no_session_initially() {
+        let detector = MeetingDetector::new();
+
+        assert!(
+            !detector.is_in_audio_session(),
+            "should not be in session initially"
+        );
+    }
+
     // ---------------------------------------------------------------
-    // 6. Meeting detection with multiple device types
-    //    Verifies the handler processes both input + output chunks
+    // 6. Meeting detection with Arc (thread-safe access)
     // ---------------------------------------------------------------
 
     #[tokio::test]
     async fn batch_defers_for_both_device_types() {
         let detector = Arc::new(MeetingDetector::new());
 
-        // Start meeting
-        detector.on_app_switch("zoom.us", None).await;
+        // Start meeting via v2 override
+        detector.set_v2_in_meeting(true);
 
         // Simulate processing chunks from both devices
         for device_name in &["input (input)", "Display 3 (output)"] {
@@ -478,21 +369,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sck_output_audio_triggers_deferral_in_batch_mode() {
-        // End-to-end: SCK output with YouTube audio → session detected → batch defers
+    async fn v2_meeting_triggers_deferral_in_batch_mode() {
+        // End-to-end: v2 detects meeting → session detected → batch defers
         let detector = MeetingDetector::new();
 
-        // Simulate the RMS check + on_audio_activity call as done in manager.rs
-        let sck_rms: f32 = 0.002753; // real measured value
-        let has_activity = has_audio_activity(&DeviceType::Output, sck_rms);
-        assert!(has_activity, "SCK output RMS should pass threshold");
-
-        detector.on_audio_activity(&DeviceType::Output, has_activity);
+        // v2 UI detection sets meeting flag
+        detector.set_v2_in_meeting(true);
 
         // Session should now be active
         assert!(
             detector.is_in_audio_session(),
-            "output audio session should be active after SCK audio"
+            "audio session should be active after v2 meeting detection"
         );
 
         // Batch mode should defer
@@ -502,24 +389,18 @@ mod tests {
         assert_eq!(
             decide(true, was, now),
             BatchDecision::Defer,
-            "batch mode should defer when SCK output has audio"
+            "batch mode should defer when v2 detects meeting"
         );
     }
 
     #[tokio::test]
-    async fn sck_silence_does_not_trigger_deferral() {
-        // End-to-end: SCK silence → no session → batch transcribes immediately
+    async fn no_meeting_does_not_trigger_deferral() {
+        // End-to-end: no meeting → no session → batch transcribes immediately
         let detector = MeetingDetector::new();
-
-        let sck_silence_rms: f32 = 0.0;
-        let has_activity = has_audio_activity(&DeviceType::Output, sck_silence_rms);
-        assert!(!has_activity, "SCK silence should not pass threshold");
-
-        detector.on_audio_activity(&DeviceType::Output, has_activity);
 
         assert!(
             !detector.is_in_audio_session(),
-            "no session when output is silent"
+            "no session when no meeting detected"
         );
 
         let was = detector.is_in_audio_session();
@@ -528,7 +409,7 @@ mod tests {
         assert_eq!(
             decide(true, was, now),
             BatchDecision::TranscribeNow,
-            "batch should transcribe immediately when output is silent"
+            "batch should transcribe immediately when no meeting"
         );
     }
 }

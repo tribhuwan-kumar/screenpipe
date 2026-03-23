@@ -5,6 +5,7 @@ use screenpipe_engine::video_utils::extract_frames_from_video;
 use screenpipe_screen::capture_screenshot_by_window::CapturedWindow;
 #[cfg(target_os = "macos")]
 use screenpipe_screen::perform_ocr_apple;
+use dirs::home_dir;
 use std::path::PathBuf;
 use tokio::fs;
 use tracing::info;

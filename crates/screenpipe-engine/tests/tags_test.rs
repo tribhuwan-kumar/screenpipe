@@ -158,6 +158,9 @@ async fn test_add_tags_and_search() {
             ContentItem::Input(_) => {
                 unreachable!()
             }
+            ContentItem::Memory(_) => {
+                unreachable!()
+            }
         }
     }
 }
@@ -324,13 +327,13 @@ async fn test_search_by_multiple_tags() {
         .await
         .unwrap();
 
-    // Search for items with multiple tags, excluding UI content
+    // Search for items with multiple tags (vision+audio), excluding UI content
     let search_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/search?content_type=audio")
+                .uri("/search?content_type=all")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -360,6 +363,9 @@ async fn test_search_by_multiple_tags() {
             }
             ContentItem::Input(_) => {
                 panic!("Input content should not be included in the results");
+            }
+            ContentItem::Memory(_) => {
+                panic!("Memory content should not be included in the results");
             }
         }
     }

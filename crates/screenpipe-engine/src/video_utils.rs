@@ -1031,9 +1031,17 @@ mod pii_redaction_tests {
     use image::{ImageBuffer, Rgb};
 
     fn create_test_jpeg() -> Vec<u8> {
-        // Create a simple 100x100 white image
+        // Create a 100x100 image with a checkerboard pattern so that
+        // blurring a region actually changes pixel values (a uniform
+        // white image stays white after Gaussian blur).
         let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
-            ImageBuffer::from_fn(100, 100, |_, _| Rgb([255, 255, 255]));
+            ImageBuffer::from_fn(100, 100, |x, y| {
+                if (x / 5 + y / 5) % 2 == 0 {
+                    Rgb([0, 0, 0])
+                } else {
+                    Rgb([255, 255, 255])
+                }
+            });
         let dynamic_img = DynamicImage::ImageRgb8(img);
 
         let mut output = Cursor::new(Vec::new());
