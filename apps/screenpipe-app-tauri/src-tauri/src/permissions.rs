@@ -399,6 +399,7 @@ pub fn do_permissions_check(initial_check: bool) -> OSPermissionsCheck {
 /// Known Chromium-based browsers that use AppleScript for incognito detection
 /// and (in Arc's case) URL capture. Each needs its own Automation permission.
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 struct ChromiumBrowserInfo {
     name: &'static str,
     bundle_id: &'static str,

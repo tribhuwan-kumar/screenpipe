@@ -381,7 +381,7 @@ async fn main() {
     let offline_mode = store_bool("offlineMode").unwrap_or(false);
     // PostHog is disabled by either telemetry toggle or offline mode
     // Sentry stays enabled in offline mode (crash reports still sent)
-    let posthog_disabled = telemetry_disabled || offline_mode;
+    let _posthog_disabled = telemetry_disabled || offline_mode;
 
     let app_version = env!("CARGO_PKG_VERSION");
     // Sentry disabled only when telemetry is explicitly off, NOT for offline mode

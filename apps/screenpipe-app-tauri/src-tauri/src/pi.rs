@@ -741,7 +741,6 @@ fn ensure_pi_config(
                 "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
                 "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
                 "anthropic" => "ANTHROPIC_API_KEY".to_string(), // Pi will read from env
-                "anthropic" => "ANTHROPIC_API_KEY".to_string(), // OAuth token injected at startup
                 "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
                 _ => "".to_string(),
             };
