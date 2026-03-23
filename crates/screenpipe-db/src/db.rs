@@ -4654,6 +4654,22 @@ impl DatabaseManager {
         })
     }
 
+    /// Returns the oldest timestamp across frames and audio_transcriptions.
+    /// Used by retention to avoid scanning from epoch.
+    pub async fn get_oldest_timestamp(&self) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+        let oldest: Option<String> = sqlx::query_scalar(
+            r#"SELECT MIN(ts) FROM (
+                SELECT MIN(timestamp) AS ts FROM frames
+                UNION ALL
+                SELECT MIN(timestamp) AS ts FROM audio_transcriptions
+            )"#,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(oldest.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))))
+    }
+
     /// Delete all locally-stored data that was synced from a specific remote device.
     /// Uses JOINs to find related OCR/transcription records since those tables
     /// lack a direct machine_id column.

@@ -301,38 +301,73 @@ fn spawn_retention_loop(
 }
 
 async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow::Result<u64> {
-    let epoch = DateTime::<Utc>::MIN_UTC;
-    let result = db.delete_time_range_local(epoch, cutoff).await?;
+    // Delete in 1-hour batches to avoid holding the write semaphore for minutes.
+    // The write semaphore has a 10s timeout — a single massive transaction would
+    // block ALL other DB writes (vision capture, audio, etc.) causing PoolTimedOut
+    // crashes. By batching, each transaction holds the semaphore for only seconds.
+    let batch_size = Duration::hours(1);
+    let mut total: u64 = 0;
 
-    let total = result.frames_deleted
-        + result.ocr_deleted
-        + result.audio_transcriptions_deleted
-        + result.ui_events_deleted;
-
-    if total > 0 {
-        info!(
-            "retention: deleted frames={} ocr={} audio={} ui_events={} \
-             (video_files={} snapshot_files={} audio_files={})",
-            result.frames_deleted,
-            result.ocr_deleted,
-            result.audio_transcriptions_deleted,
-            result.ui_events_deleted,
-            result.video_files.len(),
-            result.snapshot_files.len(),
-            result.audio_files.len(),
-        );
-    }
-
-    // Delete media files from disk AFTER successful DB commit
-    for path in result
-        .video_files
-        .iter()
-        .chain(result.audio_files.iter())
-        .chain(result.snapshot_files.iter())
-    {
-        if let Err(e) = tokio::fs::remove_file(path).await {
-            warn!("retention: failed to delete file {}: {}", path, e);
+    // Find the oldest data timestamp to avoid scanning from epoch
+    let oldest = match db.get_oldest_timestamp().await {
+        Ok(Some(ts)) => ts,
+        Ok(None) => return Ok(0), // empty DB
+        Err(e) => {
+            warn!("retention: failed to get oldest timestamp: {}", e);
+            return Ok(0);
         }
+    };
+
+    let mut batch_start = oldest;
+
+    while batch_start < cutoff {
+        let batch_end = (batch_start + batch_size).min(cutoff);
+
+        match db.delete_time_range_local(batch_start, batch_end).await {
+            Ok(result) => {
+                let batch_total = result.frames_deleted
+                    + result.ocr_deleted
+                    + result.audio_transcriptions_deleted
+                    + result.ui_events_deleted;
+
+                if batch_total > 0 {
+                    info!(
+                        "retention: batch deleted frames={} ocr={} audio={} ui_events={} \
+                         (video_files={} snapshot_files={} audio_files={})",
+                        result.frames_deleted,
+                        result.ocr_deleted,
+                        result.audio_transcriptions_deleted,
+                        result.ui_events_deleted,
+                        result.video_files.len(),
+                        result.snapshot_files.len(),
+                        result.audio_files.len(),
+                    );
+                }
+
+                total += batch_total;
+
+                // Delete media files from disk AFTER successful DB commit
+                for path in result
+                    .video_files
+                    .iter()
+                    .chain(result.audio_files.iter())
+                    .chain(result.snapshot_files.iter())
+                {
+                    if let Err(e) = tokio::fs::remove_file(path).await {
+                        warn!("retention: failed to delete file {}: {}", path, e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("retention: batch delete failed for range {} to {}: {}", batch_start, batch_end, e);
+                // Continue with next batch instead of aborting entire cleanup
+            }
+        }
+
+        batch_start = batch_end;
+
+        // Yield between batches so other writes can acquire the semaphore
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
     Ok(total)

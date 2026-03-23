@@ -916,33 +916,70 @@ async fn count_records_in_range(
 /// Delete data before cutoff and remove orphan media files from disk.
 /// Only deletes video/snapshot files that have been uploaded to cloud
 /// (cloud_blob_id IS NOT NULL).
+///
+/// Batches deletes into 1-hour chunks to avoid holding the write semaphore
+/// for minutes. A single massive transaction blocks ALL other DB writes
+/// (vision capture, audio, etc.) causing PoolTimedOut crashes.
 async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow::Result<()> {
-    let epoch = DateTime::<Utc>::MIN_UTC;
-    let result = db.delete_time_range(epoch, cutoff).await?;
+    let batch_size = Duration::hours(1);
 
-    info!(
-        "archive: deleted frames={} ocr={} audio={} accessibility={} ui_events={} \
-         (video_files={} snapshot_files={} audio_files={})",
-        result.frames_deleted,
-        result.ocr_deleted,
-        result.audio_transcriptions_deleted,
-        result.accessibility_deleted,
-        result.ui_events_deleted,
-        result.video_files.len(),
-        result.snapshot_files.len(),
-        result.audio_files.len(),
-    );
-
-    // Delete orphan media files from disk (only those confirmed uploaded)
-    for path in result
-        .video_files
-        .iter()
-        .chain(result.audio_files.iter())
-        .chain(result.snapshot_files.iter())
-    {
-        if let Err(e) = tokio::fs::remove_file(path).await {
-            warn!("archive: failed to delete file {}: {}", path, e);
+    let oldest = match db.get_oldest_timestamp().await {
+        Ok(Some(ts)) => ts,
+        Ok(None) => return Ok(()),
+        Err(e) => {
+            warn!("archive: failed to get oldest timestamp: {}", e);
+            return Ok(());
         }
+    };
+
+    let mut batch_start = oldest;
+
+    while batch_start < cutoff {
+        let batch_end = (batch_start + batch_size).min(cutoff);
+
+        match db.delete_time_range(batch_start, batch_end).await {
+            Ok(result) => {
+                let batch_total = result.frames_deleted
+                    + result.ocr_deleted
+                    + result.audio_transcriptions_deleted
+                    + result.ui_events_deleted;
+
+                if batch_total > 0 {
+                    info!(
+                        "archive: batch deleted frames={} ocr={} audio={} accessibility={} ui_events={} \
+                         (video_files={} snapshot_files={} audio_files={})",
+                        result.frames_deleted,
+                        result.ocr_deleted,
+                        result.audio_transcriptions_deleted,
+                        result.accessibility_deleted,
+                        result.ui_events_deleted,
+                        result.video_files.len(),
+                        result.snapshot_files.len(),
+                        result.audio_files.len(),
+                    );
+                }
+
+                // Delete orphan media files from disk (only those confirmed uploaded)
+                for path in result
+                    .video_files
+                    .iter()
+                    .chain(result.audio_files.iter())
+                    .chain(result.snapshot_files.iter())
+                {
+                    if let Err(e) = tokio::fs::remove_file(path).await {
+                        warn!("archive: failed to delete file {}: {}", path, e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("archive: batch delete failed for range {} to {}: {}", batch_start, batch_end, e);
+            }
+        }
+
+        batch_start = batch_end;
+
+        // Yield between batches so other writes can acquire the semaphore
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
     Ok(())

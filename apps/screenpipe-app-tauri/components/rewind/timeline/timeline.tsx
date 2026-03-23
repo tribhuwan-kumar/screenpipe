@@ -1322,7 +1322,7 @@ export const TimelineSlider = ({
 					if (scrubberRef) (scrubberRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
 				}}
 				tabIndex={0}
-				className="w-full overflow-x-auto overflow-y-visible scrollbar-hide bg-gradient-to-t from-black/50 to-black/0 outline-none"
+				className="w-full overflow-x-auto overflow-y-visible scrollbar-hide bg-gradient-to-t from-foreground/5 to-transparent outline-none"
 				style={{
 					paddingTop: "60px", // Space for tooltips above
 					paddingBottom: "24px", // Space for time axis below
