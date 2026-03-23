@@ -100,6 +100,10 @@ impl Default for ArchiveConfig {
 pub struct ArchiveInitRequest {
     pub token: String,
     pub retention_days: Option<u32>,
+    /// Optional sync password — if the user has cloud sync set up, pass the
+    /// sync password so archive can reuse the same encryption keys without
+    /// requiring sync to be running.
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -188,31 +192,55 @@ pub async fn archive_init(
                 )
             })?;
 
-            // Derive encryption password from the token (deterministic across devices)
-            let password = format!(
+            // Try passwords in order:
+            // 1. Sync password passed by the caller (if user has sync set up)
+            // 2. Deterministic password derived from token (for archive-only users)
+            let deterministic_pw = format!(
                 "screenpipe-archive-{:x}",
                 md5::compute(request.token.as_bytes())
             );
 
-            match mgr.initialize(&password).await {
-                Ok(_) => Arc::new(mgr),
-                Err(e) => {
-                    let err_str = e.to_string();
-                    if err_str.contains("decryption failed") || err_str.contains("authentication error") {
-                        // Keys exist on server but were created with a different password
-                        // (likely from cloud sync setup). User needs to enable sync first.
-                        warn!("archive: encryption keys exist but password doesn't match (likely set up via cloud sync on another device)");
-                        return Err((
-                            StatusCode::PRECONDITION_FAILED,
-                            Json(json!({"error": "encryption keys were set up on another device via cloud sync. please enable cloud sync first in Settings → Sync, then try archive again."})),
-                        ));
+            let passwords_to_try: Vec<&str> = match &request.password {
+                Some(pw) if !pw.is_empty() => vec![pw.as_str(), &deterministic_pw],
+                _ => vec![&deterministic_pw],
+            };
+
+            let mut last_err = None;
+            let mut initialized = false;
+
+            for pw in &passwords_to_try {
+                match mgr.initialize(pw).await {
+                    Ok(_) => {
+                        initialized = true;
+                        break;
                     }
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": format!("failed to initialize encryption: {}", e)})),
-                    ));
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.contains("decryption failed") || err_str.contains("authentication error") {
+                            info!("archive: password attempt failed (key mismatch), trying next");
+                            last_err = Some(e);
+                        } else {
+                            return Err((
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(json!({"error": format!("failed to initialize encryption: {}", e)})),
+                            ));
+                        }
+                    }
                 }
             }
+
+            if !initialized {
+                warn!("archive: all password attempts failed");
+                return Err((
+                    StatusCode::PRECONDITION_FAILED,
+                    Json(json!({"error": format!(
+                        "encryption key mismatch — try enabling cloud sync first in Settings → Sync, then retry archive. ({})",
+                        last_err.map(|e| e.to_string()).unwrap_or_default()
+                    )})),
+                ));
+            }
+
+            Arc::new(mgr)
         }
     };
 

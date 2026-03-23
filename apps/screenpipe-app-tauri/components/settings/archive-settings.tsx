@@ -116,13 +116,23 @@ export function ArchiveSettings() {
 
     try {
       if (enabled) {
-        // Initialize archive — encryption key is derived server-side from the token
+        // Pass sync password if available so archive can reuse the same
+        // encryption keys (avoids "set up on another device" error).
+        let syncPassword: string | undefined;
+        try {
+          const store = await getStore();
+          syncPassword = (await store.get<string>("sync_password")) ?? undefined;
+        } catch {
+          // best effort
+        }
+
         const res = await fetch("http://localhost:3030/archive/init", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             token: settings.user?.token,
             retention_days: retentionDays,
+            ...(syncPassword ? { password: syncPassword } : {}),
           }),
         });
 
