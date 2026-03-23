@@ -158,9 +158,50 @@ pub async fn spawn_screenpipe(
     let last_spawn = state.last_spawn_epoch.load(Ordering::SeqCst);
     if last_spawn > 0 && now_epoch.saturating_sub(last_spawn) < RESTART_COOLDOWN_SECS {
         let remaining = RESTART_COOLDOWN_SECS - now_epoch.saturating_sub(last_spawn);
-        warn!(
-            "Restart cooldown active ({remaining}s remaining). Skipping spawn to prevent restart spam."
-        );
+        warn!("Restart cooldown active ({remaining}s remaining). Deferring spawn.");
+        // Schedule a deferred restart after cooldown expires so the server
+        // doesn't stay dead if no other caller triggers spawn_screenpipe.
+        let last_spawn_epoch = state.last_spawn_epoch.clone();
+        let is_starting = state.is_starting.clone();
+        let handle = state.handle.clone();
+        let app_handle = app.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(remaining + 1)).await;
+            info!("Cooldown expired, checking if server needs restart");
+            // Check health first — if server is already running, skip
+            let port = SettingsStore::get(&app_handle)
+                .ok()
+                .flatten()
+                .map(|s| s.recording.port)
+                .unwrap_or(3030);
+            if let Ok(resp) = reqwest::Client::new()
+                .get(format!("http://localhost:{}/health", port))
+                .timeout(std::time::Duration::from_secs(2))
+                .send()
+                .await
+            {
+                if resp.status().is_success() {
+                    info!("Deferred spawn: server already healthy, skipping");
+                    return;
+                }
+            }
+            // Server not running — check if handle exists
+            {
+                let handle_guard = handle.lock().await;
+                if handle_guard.is_some() {
+                    info!(
+                        "Deferred spawn: handle exists but unhealthy, skipping (may be starting)"
+                    );
+                    return;
+                }
+            }
+            // No handle, not healthy — trigger restart via invoke
+            info!("Deferred spawn: server dead, triggering restart");
+            is_starting.store(false, Ordering::SeqCst);
+            // Reset cooldown so the deferred spawn isn't blocked again
+            last_spawn_epoch.store(0, Ordering::SeqCst);
+            let _ = app_handle.emit("request-server-restart", ());
+        });
         return Ok(());
     }
 

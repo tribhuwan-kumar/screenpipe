@@ -78,8 +78,21 @@ export function usePermissionMonitor() {
       }, 300000);
     });
 
+    // Listen for deferred restart requests from the cooldown logic in recording.rs.
+    // When a restart is blocked by cooldown, the backend schedules a deferred check
+    // and emits this event if the server is still dead after cooldown expires.
+    const unlistenRestart = listen("request-server-restart", async () => {
+      console.log("Deferred server restart requested by backend");
+      try {
+        await commands.spawnScreenpipe(null);
+      } catch (error) {
+        console.error("Deferred server restart failed:", error);
+      }
+    });
+
     return () => {
       unlisten.then((fn) => fn());
+      unlistenRestart.then((fn) => fn());
     };
   }, [pathname]);
 }
