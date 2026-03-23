@@ -173,32 +173,6 @@ pub fn check_and_update_drm_state(
     }
 }
 
-/// Known browser app names that can host DRM content in tabs.
-/// When one of these is focused, we can't determine the URL without the
-/// accessibility tree (which requires an active capture), so we keep the
-/// DRM pause active. Only clears when user switches to a non-browser app.
-const BROWSER_APPS: &[&str] = &[
-    "arc",
-    "google chrome",
-    "chrome",
-    "safari",
-    "firefox",
-    "microsoft edge",
-    "edge",
-    "brave browser",
-    "brave",
-    "opera",
-    "vivaldi",
-    "chromium",
-    "zen browser",
-    "orion",
-];
-
-fn is_browser(app_name: &str) -> bool {
-    let lower = app_name.to_lowercase();
-    BROWSER_APPS.iter().any(|&b| lower.contains(b))
-}
-
 /// Query the current foreground app and check if DRM is still active.
 /// Called from the Tauri health check to decide when to auto-restart recording.
 ///
@@ -223,13 +197,14 @@ pub fn poll_drm_clear() -> bool {
             if is_drm_app(&app_name) {
                 debug!("DRM app still focused: {}", app_name);
                 true
-            } else if is_browser(&app_name) {
-                debug!(
-                    "browser '{}' focused — keeping DRM pause (can't check URL)",
-                    app_name
-                );
-                true
             } else {
+                // Clear DRM pause when ANY non-DRM app is focused, including browsers.
+                // The previous behavior kept DRM paused when a browser was focused
+                // (because we can't check the URL without capture running), but this
+                // caused false positives: switching tabs away from a streaming site
+                // would keep capture paused indefinitely. If the user switches back
+                // to a DRM tab, check_and_update_drm_state() will re-trigger on the
+                // next capture cycle.
                 info!("focused app is now '{}' — clearing DRM pause", app_name);
                 set_drm_paused(false);
                 false
@@ -357,14 +332,4 @@ mod tests {
         assert!(!drm_content_paused());
     }
 
-    #[test]
-    fn test_is_browser() {
-        assert!(is_browser("Arc"));
-        assert!(is_browser("Google Chrome"));
-        assert!(is_browser("Safari"));
-        assert!(is_browser("Firefox"));
-        assert!(!is_browser("Finder"));
-        assert!(!is_browser("Terminal"));
-        assert!(!is_browser("WezTerm"));
-    }
 }
