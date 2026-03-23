@@ -770,10 +770,13 @@ async fn main() {
     #[cfg(target_os = "macos")]
     let app = app.plugin(tauri_nspanel::init());
 
+    let sync_scheduler = screenpipe_connect::sync_scheduler::SyncScheduler::new();
+
     let app = app.manage(recording_state)
         .manage(pi_state)
         .manage(suggestions_state)
         .manage(pipe_suggestions_state)
+        .manage(sync_scheduler)
         .invoke_handler(tauri::generate_handler![
             commands::is_enterprise_build_cmd,
             commands::get_enterprise_license_key,
@@ -910,7 +913,10 @@ async fn main() {
             // Remote sync (OpenClaw)
             remote_sync_commands::remote_sync_test,
             remote_sync_commands::remote_sync_now,
-            remote_sync_commands::remote_sync_discover_hosts
+            remote_sync_commands::remote_sync_discover_hosts,
+            remote_sync_commands::remote_sync_start_scheduler,
+            remote_sync_commands::remote_sync_stop_scheduler,
+            remote_sync_commands::remote_sync_scheduler_status
         ])
         .setup(move |app| {
             //deep link register_all

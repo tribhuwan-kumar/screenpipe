@@ -11,11 +11,9 @@ import { Switch } from "@/components/ui/switch";
 import {
   Loader2,
   RefreshCw,
-  Server,
   Eye,
   EyeOff,
   Settings2,
-  Check,
   X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -47,6 +45,12 @@ interface SyncResult {
   files_transferred: number;
   bytes_transferred: number;
   error: string | null;
+}
+
+interface SchedulerStatus {
+  running: boolean;
+  last_sync: string | null;
+  last_error: string | null;
 }
 
 const DEFAULT_CONFIG: SyncConfig = {
@@ -98,8 +102,24 @@ export function OpenClawCard() {
   const [showKey, setShowKey] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [discoveredHosts, setDiscoveredHosts] = useState<DiscoveredHost[]>([]);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const syncCancelledRef = useRef(false);
+  const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll scheduler status to keep UI in sync with backend
+  const pollSchedulerStatus = useCallback(async () => {
+    try {
+      const status = await invoke<SchedulerStatus>("remote_sync_scheduler_status");
+      if (status.last_sync) {
+        setLastSync(status.last_sync);
+        try { localStorage?.setItem("openclaw-last-sync", status.last_sync); } catch {}
+      }
+      if (status.last_error) {
+        setSyncError(status.last_error);
+      } else if (status.running) {
+        setSyncError(null);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const loaded = loadConfig();
@@ -113,7 +133,14 @@ export function OpenClawCard() {
     invoke<DiscoveredHost[]>("remote_sync_discover_hosts")
       .then(setDiscoveredHosts)
       .catch(() => {});
-  }, []);
+
+    // Check scheduler status on mount
+    pollSchedulerStatus();
+
+    return () => {
+      if (statusPollRef.current) clearInterval(statusPollRef.current);
+    };
+  }, [pollSchedulerStatus]);
 
   const updateConfig = useCallback((patch: Partial<SyncConfig>) => {
     setConfig((prev) => {
@@ -175,20 +202,39 @@ export function OpenClawCard() {
     setSyncError(null);
   };
 
+  // Start/stop backend scheduler when auto-sync is toggled
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    const manageScheduler = async () => {
+      if (config.enabled && config.host && config.user) {
+        try {
+          const dataDir = await getDataDir();
+          await invoke("remote_sync_start_scheduler", {
+            config: toRustConfig(config),
+            dataDir,
+          });
+          posthog.capture("openclaw_sync_enabled", { interval: config.intervalMinutes });
 
-    if (config.enabled && config.host && config.user) {
-      handleSyncNow();
-      intervalRef.current = setInterval(handleSyncNow, config.intervalMinutes * 60 * 1000);
-      posthog.capture("openclaw_sync_enabled", { interval: config.intervalMinutes });
-    }
+          // Poll status every 30s while scheduler is running
+          if (statusPollRef.current) clearInterval(statusPollRef.current);
+          statusPollRef.current = setInterval(pollSchedulerStatus, 30_000);
+        } catch (e) {
+          setSyncError(String(e));
+        }
+      } else {
+        try {
+          await invoke("remote_sync_stop_scheduler");
+        } catch {}
+        if (statusPollRef.current) {
+          clearInterval(statusPollRef.current);
+          statusPollRef.current = null;
+        }
+      }
+    };
+
+    manageScheduler();
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (statusPollRef.current) clearInterval(statusPollRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.enabled, config.host, config.user, config.intervalMinutes]);
