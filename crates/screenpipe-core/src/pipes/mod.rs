@@ -3868,11 +3868,7 @@ mod tests {
             installed_version: None,
             source_hash: None,
         };
-        let sys = render_pipe_system_prompt(
-            "body text",
-            3030,
-            Some("You are a helpful assistant"),
-        );
+        let sys = render_pipe_system_prompt("body text", 3030, Some("You are a helpful assistant"));
         assert!(sys.starts_with("You are a helpful assistant\n\n"));
         assert!(sys.contains("body text"));
         assert!(sys.contains("http://localhost:3030"));

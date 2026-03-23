@@ -466,5 +466,4 @@ mod tests {
             "DRM flag should still be set when Netflix is focused"
         );
     }
-
 }

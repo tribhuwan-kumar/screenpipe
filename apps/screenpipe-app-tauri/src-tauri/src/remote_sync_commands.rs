@@ -52,9 +52,7 @@ pub async fn remote_sync_start_scheduler(
 
 /// Stop the background sync scheduler.
 #[tauri::command]
-pub async fn remote_sync_stop_scheduler(
-    scheduler: State<'_, SyncScheduler>,
-) -> Result<(), String> {
+pub async fn remote_sync_stop_scheduler(scheduler: State<'_, SyncScheduler>) -> Result<(), String> {
     scheduler.stop();
     Ok(())
 }

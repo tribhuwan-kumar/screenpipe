@@ -132,76 +132,76 @@ pub fn recreate_tray(app: &AppHandle) {
     let _ = app.run_on_main_thread(move || {
         if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::window::with_autorelease_pool(|| {
-            let app = app_for_thread;
-            let update_item = match UPDATE_MENU_ITEM.lock() {
-                Ok(guard) => guard.clone(),
-                Err(_) => {
-                    error!("failed to lock UPDATE_MENU_ITEM for tray recreation");
-                    return;
-                }
-            };
-
-            // Remove the old tray icon (must be on main thread for NSStatusBar)
-            debug!("recreate_tray: removing old tray icon");
-            let _old = app.remove_tray_by_id("screenpipe_main");
-            // Drop the old tray icon explicitly on main thread
-            drop(_old);
-            debug!("recreate_tray: old tray removed, building new one");
-
-            // Create a new tray icon — macOS assigns it the rightmost position
-            let icon = match app.path().resolve(
-                "assets/screenpipe-logo-tray-white.png",
-                tauri::path::BaseDirectory::Resource,
-            ) {
-                Ok(path) => tauri::image::Image::from_path(path).ok(),
-                Err(_) => {
-                    tauri::image::Image::from_path("assets/screenpipe-logo-tray-white.png").ok()
-                }
-            };
-
-            let mut builder = TrayIconBuilder::<Wry>::with_id("screenpipe_main")
-                .icon_as_template(true)
-                .show_menu_on_left_click(!cfg!(target_os = "windows"));
-
-            if let Some(ref icon) = icon {
-                if icon.width() > 0 && icon.height() > 0 {
-                    builder = builder.icon(icon.clone());
-                } else {
-                    error!(
-                        "tray icon has zero dimensions ({}x{}), skipping",
-                        icon.width(),
-                        icon.height()
-                    );
-                }
-            } else {
-                error!("failed to load tray icon for recreation");
-            }
-
-            debug!("recreate_tray: calling builder.build()");
-            match builder.build(&app) {
-                Ok(new_tray) => {
-                    debug!("recreate_tray: build succeeded, setting menu");
-                    // Setup menu
-                    if let Ok(menu) =
-                        create_dynamic_menu(&app, &MenuState::default(), update_item.as_ref())
-                    {
-                        // Keep a clone alive to prevent use-after-free (see PREVIOUS_TRAY_MENU doc).
-                        if let Ok(mut guard) = PREVIOUS_TRAY_MENU.lock() {
-                            *guard = Some(menu.clone());
-                        }
-                        let _ = new_tray.set_menu(Some(menu));
+                let app = app_for_thread;
+                let update_item = match UPDATE_MENU_ITEM.lock() {
+                    Ok(guard) => guard.clone(),
+                    Err(_) => {
+                        error!("failed to lock UPDATE_MENU_ITEM for tray recreation");
+                        return;
                     }
-                    // NOTE: do NOT re-register click handlers here.
-                    // The handler from setup_tray() is keyed by tray ID and persists
-                    // across tray icon recreation. Re-registering causes double-firing.
+                };
 
-                    info!("tray icon recreated at rightmost position");
+                // Remove the old tray icon (must be on main thread for NSStatusBar)
+                debug!("recreate_tray: removing old tray icon");
+                let _old = app.remove_tray_by_id("screenpipe_main");
+                // Drop the old tray icon explicitly on main thread
+                drop(_old);
+                debug!("recreate_tray: old tray removed, building new one");
+
+                // Create a new tray icon — macOS assigns it the rightmost position
+                let icon = match app.path().resolve(
+                    "assets/screenpipe-logo-tray-white.png",
+                    tauri::path::BaseDirectory::Resource,
+                ) {
+                    Ok(path) => tauri::image::Image::from_path(path).ok(),
+                    Err(_) => {
+                        tauri::image::Image::from_path("assets/screenpipe-logo-tray-white.png").ok()
+                    }
+                };
+
+                let mut builder = TrayIconBuilder::<Wry>::with_id("screenpipe_main")
+                    .icon_as_template(true)
+                    .show_menu_on_left_click(!cfg!(target_os = "windows"));
+
+                if let Some(ref icon) = icon {
+                    if icon.width() > 0 && icon.height() > 0 {
+                        builder = builder.icon(icon.clone());
+                    } else {
+                        error!(
+                            "tray icon has zero dimensions ({}x{}), skipping",
+                            icon.width(),
+                            icon.height()
+                        );
+                    }
+                } else {
+                    error!("failed to load tray icon for recreation");
                 }
-                Err(e) => {
-                    error!("failed to recreate tray icon: {}", e);
+
+                debug!("recreate_tray: calling builder.build()");
+                match builder.build(&app) {
+                    Ok(new_tray) => {
+                        debug!("recreate_tray: build succeeded, setting menu");
+                        // Setup menu
+                        if let Ok(menu) =
+                            create_dynamic_menu(&app, &MenuState::default(), update_item.as_ref())
+                        {
+                            // Keep a clone alive to prevent use-after-free (see PREVIOUS_TRAY_MENU doc).
+                            if let Ok(mut guard) = PREVIOUS_TRAY_MENU.lock() {
+                                *guard = Some(menu.clone());
+                            }
+                            let _ = new_tray.set_menu(Some(menu));
+                        }
+                        // NOTE: do NOT re-register click handlers here.
+                        // The handler from setup_tray() is keyed by tray ID and persists
+                        // across tray icon recreation. Re-registering causes double-firing.
+
+                        info!("tray icon recreated at rightmost position");
+                    }
+                    Err(e) => {
+                        error!("failed to recreate tray icon: {}", e);
+                    }
                 }
-            }
-        }); // with_autorelease_pool
+            }); // with_autorelease_pool
         })) {
             // The panic hook already sent the panic message + backtrace to Sentry
             // (as a Fatal-level capture_message). Log here for local diagnostics.

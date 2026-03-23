@@ -285,11 +285,13 @@ impl TranscriptionSession {
                 //   output silence = 0.0, output playing = 0.0028, input speech ≈ 0.05+
                 // Audio here is post-normalization (target RMS 0.2), but true silence
                 // (rms < EPSILON) is not normalized and stays at 0.0.
-                let rms = (audio.iter().map(|s| s * s).sum::<f32>() / audio.len().max(1) as f32).sqrt();
+                let rms =
+                    (audio.iter().map(|s| s * s).sum::<f32>() / audio.len().max(1) as f32).sqrt();
                 if rms < 0.002 {
                     tracing::debug!(
                         "device: {}, skipping deepgram — audio RMS {:.6} below silence threshold",
-                        device, rms
+                        device,
+                        rms
                     );
                     Ok(String::new())
                 } else {

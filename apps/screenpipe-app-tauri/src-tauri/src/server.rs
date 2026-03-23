@@ -243,9 +243,7 @@ async fn kill_process_on_port(port: u16) {
 }
 
 pub async fn run_server(app_handle: tauri::AppHandle, port: u16) {
-    let state = ServerState {
-        app_handle,
-    };
+    let state = ServerState { app_handle };
 
     let cors = CorsLayer::new()
         .allow_origin("*".parse::<HeaderValue>().unwrap())
@@ -310,10 +308,10 @@ async fn send_notification(
     info!("Received notification request: {:?}", payload);
 
     // Build the panel payload matching what the frontend expects
-    let panel_id = payload.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let dismiss_ms = payload.auto_dismiss_ms
-        .or(payload.timeout)
-        .unwrap_or(20000);
+    let panel_id = payload
+        .id
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let dismiss_ms = payload.auto_dismiss_ms.or(payload.timeout).unwrap_or(20000);
 
     let panel_payload = serde_json::json!({
         "id": panel_id,

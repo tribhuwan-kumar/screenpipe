@@ -129,14 +129,8 @@ mod accessibility {
 
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
-        fn AXIsProcessTrusted() -> bool;
         fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
         static kAXTrustedCheckOptionPrompt: *const std::ffi::c_void;
-    }
-
-    /// Check if the app has accessibility permission (without prompting)
-    pub fn is_trusted() -> bool {
-        unsafe { AXIsProcessTrusted() }
     }
 
     /// Check accessibility permission and show system prompt if not granted
@@ -324,8 +318,9 @@ pub fn do_permissions_check(initial_check: bool) -> OSPermissionsCheck {
                 use objc::*;
 
                 let cls = objc::class!(AVCaptureDevice);
-                let status: AVAuthorizationStatus =
-                    unsafe { msg_send![cls, authorizationStatusForMediaType:media_type.into_ns_str()] };
+                let status: AVAuthorizationStatus = unsafe {
+                    msg_send![cls, authorizationStatusForMediaType:media_type.into_ns_str()]
+                };
                 match status {
                     AVAuthorizationStatus::NotDetermined => OSPermissionStatus::Empty,
                     AVAuthorizationStatus::Authorized => OSPermissionStatus::Granted,

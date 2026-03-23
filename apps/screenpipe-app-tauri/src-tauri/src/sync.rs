@@ -685,7 +685,10 @@ pub async fn auto_start_archive(app: &AppHandle) {
                 let body = response.text().await.unwrap_or_default();
                 warn!(
                     "cloud archive auto-start: init failed ({}): {} (attempt {}/{})",
-                    status, body, attempt + 1, retry_delays.len()
+                    status,
+                    body,
+                    attempt + 1,
+                    retry_delays.len()
                 );
                 // Non-transient error (auth, config), don't retry
                 return;
@@ -693,14 +696,19 @@ pub async fn auto_start_archive(app: &AppHandle) {
             Err(e) => {
                 warn!(
                     "cloud archive auto-start: server not reachable (attempt {}/{}): {}",
-                    attempt + 1, retry_delays.len(), e
+                    attempt + 1,
+                    retry_delays.len(),
+                    e
                 );
                 // Transient — server may still be starting, retry
             }
         }
     }
 
-    warn!("cloud archive auto-start: gave up after {} attempts", retry_delays.len());
+    warn!(
+        "cloud archive auto-start: gave up after {} attempts",
+        retry_delays.len()
+    );
 }
 
 /// Auto-start local data retention on app launch if previously enabled.
@@ -744,10 +752,7 @@ pub async fn auto_start_retention(app: &AppHandle) {
         Ok(response) => {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            warn!(
-                "local retention auto-start failed ({}): {}",
-                status, body
-            );
+            warn!("local retention auto-start failed ({}): {}", status, body);
         }
         Err(e) => {
             warn!("local retention auto-start: server not reachable: {}", e);

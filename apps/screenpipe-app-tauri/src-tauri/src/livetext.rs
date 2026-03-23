@@ -79,44 +79,47 @@ fn get_analyze_worker() -> &'static std::sync::mpsc::SyncSender<AnalyzeRequest> 
 
                     // Check generation before expensive work
                     if ANALYZE_GENERATION.load(std::sync::atomic::Ordering::SeqCst) != latest.gen {
-                        let _ = latest.reply.send(Err("skipped: newer analyze request pending".to_string()));
+                        let _ = latest
+                            .reply
+                            .send(Err("skipped: newer analyze request pending".to_string()));
                         continue;
                     }
 
-                    let result = crate::window::with_autorelease_pool(|| -> Result<String, String> {
-                        let path_c = CString::new(latest.image_path.clone())
-                            .map_err(|e| format!("invalid path: {}", e))?;
-                        let frame_id_c = CString::new(latest.frame_id.clone())
-                            .map_err(|e| format!("invalid frame_id: {}", e))?;
+                    let result =
+                        crate::window::with_autorelease_pool(|| -> Result<String, String> {
+                            let path_c = CString::new(latest.image_path.clone())
+                                .map_err(|e| format!("invalid path: {}", e))?;
+                            let frame_id_c = CString::new(latest.frame_id.clone())
+                                .map_err(|e| format!("invalid frame_id: {}", e))?;
 
-                        let mut out_text: *mut std::os::raw::c_char = std::ptr::null_mut();
-                        let mut out_error: *mut std::os::raw::c_char = std::ptr::null_mut();
+                            let mut out_text: *mut std::os::raw::c_char = std::ptr::null_mut();
+                            let mut out_error: *mut std::os::raw::c_char = std::ptr::null_mut();
 
-                        let status = unsafe {
-                            livetext_ffi::lt_analyze_image(
-                                path_c.as_ptr(),
-                                frame_id_c.as_ptr(),
-                                latest.x,
-                                latest.y,
-                                latest.w,
-                                latest.h,
-                                &mut out_text,
-                                &mut out_error,
-                            )
-                        };
+                            let status = unsafe {
+                                livetext_ffi::lt_analyze_image(
+                                    path_c.as_ptr(),
+                                    frame_id_c.as_ptr(),
+                                    latest.x,
+                                    latest.y,
+                                    latest.w,
+                                    latest.h,
+                                    &mut out_text,
+                                    &mut out_error,
+                                )
+                            };
 
-                        unsafe {
-                            if status != 0 {
-                                let err = extract_and_free(out_error)
-                                    .unwrap_or_else(|| "unknown error".to_string());
-                                extract_and_free(out_text);
-                                return Err(format!("live text analysis failed: {}", err));
+                            unsafe {
+                                if status != 0 {
+                                    let err = extract_and_free(out_error)
+                                        .unwrap_or_else(|| "unknown error".to_string());
+                                    extract_and_free(out_text);
+                                    return Err(format!("live text analysis failed: {}", err));
+                                }
+                                let text = extract_and_free(out_text).unwrap_or_default();
+                                extract_and_free(out_error);
+                                Ok(text)
                             }
-                            let text = extract_and_free(out_text).unwrap_or_default();
-                            extract_and_free(out_error);
-                            Ok(text)
-                        }
-                    });
+                        });
                     let _ = latest.reply.send(result);
                 }
             })
@@ -131,7 +134,8 @@ fn get_analyze_worker() -> &'static std::sync::mpsc::SyncSender<AnalyzeRequest> 
 pub async fn livetext_is_available() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
-        let result = crate::window::with_autorelease_pool(|| unsafe { livetext_ffi::lt_is_available() });
+        let result =
+            crate::window::with_autorelease_pool(|| unsafe { livetext_ffi::lt_is_available() });
         info!(
             "livetext_is_available: lt_is_available() returned {}",
             result
@@ -218,7 +222,10 @@ pub async fn livetext_analyze(
         let _ = worker.try_send(AnalyzeRequest {
             image_path,
             frame_id,
-            x, y, w, h,
+            x,
+            y,
+            w,
+            h,
             gen,
             reply: reply_tx,
         });
@@ -257,7 +264,13 @@ pub async fn livetext_prefetch(paths: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn livetext_update_position(frame_id: String, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
+pub async fn livetext_update_position(
+    frame_id: String,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let frame_id_c = CString::new(frame_id).map_err(|e| format!("invalid frame_id: {}", e))?;

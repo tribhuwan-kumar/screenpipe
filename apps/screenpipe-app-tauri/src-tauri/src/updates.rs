@@ -281,7 +281,9 @@ impl UpdatesManager {
                 let _ = self.app.run_on_main_thread(move || {
                     crate::window::with_autorelease_pool(|| {
                         if let Some(tray) = app_clone.tray_by_id("screenpipe_main") {
-                            if let Err(e) = crate::safe_icon::safe_set_icon_as_template(&tray, image) {
+                            if let Err(e) =
+                                crate::safe_icon::safe_set_icon_as_template(&tray, image)
+                            {
                                 error!("failed to set tray update icon: {}", e);
                             }
                         }

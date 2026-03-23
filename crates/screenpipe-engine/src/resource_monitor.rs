@@ -398,11 +398,7 @@ impl ResourceMonitor {
             });
 
             // Append-only JSONL: one JSON object per line, no read-back needed.
-            if let Ok(mut file) = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(filename)
-            {
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(filename) {
                 // Truncate if file exceeds size limit to prevent unbounded growth.
                 if let Ok(meta) = file.metadata() {
                     if meta.len() > Self::MAX_RESOURCE_LOG_BYTES {

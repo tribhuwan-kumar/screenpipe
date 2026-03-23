@@ -341,9 +341,7 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
             // Connection errors = server unreachable (crash, restart, port conflict).
             // Unhealthy = server responding but reporting a problem (DB issues, stalls).
             match &health_result {
-                Ok(health)
-                    if health.status == "unhealthy" || health.status == "error" =>
-                {
+                Ok(health) if health.status == "unhealthy" || health.status == "error" => {
                     ever_connected = true;
                     consecutive_failures = 0;
                     consecutive_unhealthy = consecutive_unhealthy.saturating_add(1);
@@ -378,11 +376,14 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
 
             // Filter monitors to only show actively recording ones
             if let Ok(Some(store)) = crate::store::SettingsStore::get(&app) {
-                if !store.recording.use_all_monitors && !store.recording.monitor_ids.is_empty()
+                if !store.recording.use_all_monitors
+                    && !store.recording.monitor_ids.is_empty()
                     && store.recording.monitor_ids != vec!["default".to_string()]
                 {
                     devices.retain(|d| {
-                        if d.kind != DeviceKind::Monitor { return true; }
+                        if d.kind != DeviceKind::Monitor {
+                            return true;
+                        }
                         store.recording.monitor_ids.iter().any(|allowed| {
                             // Stable ID format: "Display 3_1920x1080_0,0"
                             // Extract name prefix before last '_' (position coords)
@@ -390,7 +391,8 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                             // Health monitor format: "Display 3 (1920x1080)"
                             // Extract just the display name
                             let health_name = d.name.split(" (").next().unwrap_or(&d.name);
-                            let allowed_short = allowed_name.split('_').next().unwrap_or(allowed_name);
+                            let allowed_short =
+                                allowed_name.split('_').next().unwrap_or(allowed_name);
                             health_name == allowed_short
                         })
                     });
@@ -458,7 +460,9 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
             // If we see a new epoch, set the grace period so the new pipeline
             // has time to warm up before we start stall-checking.
             if let Some(rec_state) = app.try_state::<crate::recording::RecordingState>() {
-                let current_epoch = rec_state.last_spawn_epoch.load(std::sync::atomic::Ordering::SeqCst);
+                let current_epoch = rec_state
+                    .last_spawn_epoch
+                    .load(std::sync::atomic::Ordering::SeqCst);
                 if current_epoch > 0 && current_epoch != last_known_spawn_epoch {
                     if last_known_spawn_epoch > 0 {
                         // A restart happened — activate grace period
@@ -502,7 +506,9 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                     let should_resume = tokio::task::spawn_blocking(|| {
                         // poll_drm_clear returns true = still DRM, false = cleared
                         !screenpipe_engine::drm_detector::poll_drm_clear()
-                    }).await.unwrap_or(false);
+                    })
+                    .await
+                    .unwrap_or(false);
                     if should_resume {
                         info!("DRM content no longer focused — auto-restarting recording");
                         let _ = app.emit("shortcut-start-recording", ());
@@ -567,7 +573,10 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         consecutive_audio_stall = consecutive_audio_stall.saturating_add(1);
                     } else {
                         if consecutive_audio_stall >= CAPTURE_STALL_THRESHOLD {
-                            info!("audio capture recovered after {} stale checks", consecutive_audio_stall);
+                            info!(
+                                "audio capture recovered after {} stale checks",
+                                consecutive_audio_stall
+                            );
                         }
                         consecutive_audio_stall = 0;
                     }
@@ -579,7 +588,10 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         consecutive_vision_stall = consecutive_vision_stall.saturating_add(1);
                     } else {
                         if consecutive_vision_stall >= CAPTURE_STALL_THRESHOLD {
-                            info!("vision capture recovered after {} stale checks", consecutive_vision_stall);
+                            info!(
+                                "vision capture recovered after {} stale checks",
+                                consecutive_vision_stall
+                            );
                         }
                         consecutive_vision_stall = 0;
                     }
@@ -623,12 +635,17 @@ pub async fn start_health_check(app: tauri::AppHandle) -> Result<()> {
                         }
                     }
 
-                    if consecutive_vision_stall == CAPTURE_STALL_THRESHOLD && notifications_enabled {
+                    if consecutive_vision_stall == CAPTURE_STALL_THRESHOLD && notifications_enabled
+                    {
                         let cooldown_ok = last_vision_notification
                             .map(|t| now_instant.duration_since(t) >= NOTIFICATION_COOLDOWN)
                             .unwrap_or(true);
                         if cooldown_ok {
-                            let reason = if vision_db_stalled { "db write stall" } else { "capture stall" };
+                            let reason = if vision_db_stalled {
+                                "db write stall"
+                            } else {
+                                "capture stall"
+                            };
                             warn!(
                                 "vision {} for {}s, showing restart notification",
                                 reason, CAPTURE_STALL_THRESHOLD
@@ -671,7 +688,8 @@ async fn show_capture_stall_notification(app: &tauri::AppHandle, system: &str) -
         ],
         "autoDismissMs": 30000
     });
-    crate::commands::show_notification_panel(app.clone(), payload.to_string()).await
+    crate::commands::show_notification_panel(app.clone(), payload.to_string())
+        .await
         .map_err(|e| anyhow::anyhow!(e))
 }
 
@@ -1091,22 +1109,30 @@ mod tests {
 
     #[test]
     fn test_starting_shows_healthy_icon() {
-        assert!(!is_unhealthy_icon(status_to_icon_key(RecordingStatus::Starting)));
+        assert!(!is_unhealthy_icon(status_to_icon_key(
+            RecordingStatus::Starting
+        )));
     }
 
     #[test]
     fn test_recording_shows_healthy_icon() {
-        assert!(!is_unhealthy_icon(status_to_icon_key(RecordingStatus::Recording)));
+        assert!(!is_unhealthy_icon(status_to_icon_key(
+            RecordingStatus::Recording
+        )));
     }
 
     #[test]
     fn test_stopped_shows_failed_icon() {
-        assert!(is_unhealthy_icon(status_to_icon_key(RecordingStatus::Stopped)));
+        assert!(is_unhealthy_icon(status_to_icon_key(
+            RecordingStatus::Stopped
+        )));
     }
 
     #[test]
     fn test_error_shows_failed_icon() {
-        assert!(is_unhealthy_icon(status_to_icon_key(RecordingStatus::Error)));
+        assert!(is_unhealthy_icon(status_to_icon_key(
+            RecordingStatus::Error
+        )));
     }
 
     // ==================== realistic boot sequence simulation ====================

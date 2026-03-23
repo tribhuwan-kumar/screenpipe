@@ -10,7 +10,9 @@ use super::util::with_autorelease_pool;
 /// BFS through the subview hierarchy starting from `content_view` to find a WKWebView.
 /// Returns the WKWebView if found, or `nil` if not.
 #[cfg(target_os = "macos")]
-pub(crate) unsafe fn find_wkwebview(content_view: tauri_nspanel::cocoa::base::id) -> tauri_nspanel::cocoa::base::id {
+pub(crate) unsafe fn find_wkwebview(
+    content_view: tauri_nspanel::cocoa::base::id,
+) -> tauri_nspanel::cocoa::base::id {
     use objc::{class, msg_send, sel, sel_impl};
     use tauri_nspanel::cocoa::base::{id, nil};
     use tauri_nspanel::cocoa::foundation::NSArray;

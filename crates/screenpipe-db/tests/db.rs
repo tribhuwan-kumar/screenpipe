@@ -483,12 +483,11 @@ mod tests {
         println!("Frames FTS data (full_text): {:?}", ocr_fts_data);
 
         // check if frames_fts is properly indexed
-        let frame_fts_data: Vec<(i64, String, String, String)> = sqlx::query_as(
-            "SELECT id, browser_url, app_name, window_name FROM frames_fts",
-        )
-        .fetch_all(&db.pool)
-        .await
-        .unwrap();
+        let frame_fts_data: Vec<(i64, String, String, String)> =
+            sqlx::query_as("SELECT id, browser_url, app_name, window_name FROM frames_fts")
+                .fetch_all(&db.pool)
+                .await
+                .unwrap();
         println!("Frames FTS data: {:?}", frame_fts_data);
 
         let insert_result = db

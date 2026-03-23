@@ -14,9 +14,7 @@ mod ffi {
         pub fn notif_is_available() -> c_int;
         pub fn notif_show(json: *const c_char) -> c_int;
         pub fn notif_hide() -> c_int;
-        pub fn notif_set_action_callback(
-            cb: Option<extern "C" fn(*const c_char)>,
-        );
+        pub fn notif_set_action_callback(cb: Option<extern "C" fn(*const c_char)>);
     }
 
     /// Returns true if the native SwiftUI panel is compiled in and the OS supports it.

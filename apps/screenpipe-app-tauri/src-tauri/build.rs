@@ -301,7 +301,10 @@ void notif_free_string(char* ptr) { if (ptr) free(ptr); }
         .arg(stub_src.to_str().unwrap())
         .status()
         .expect("failed to compile notification panel stub");
-    assert!(status.success(), "notification panel stub compilation failed");
+    assert!(
+        status.success(),
+        "notification panel stub compilation failed"
+    );
 
     let status = Command::new("ar")
         .args(["rcs"])
@@ -447,7 +450,11 @@ int shortcut_is_available(void) { return 0; }
 
     let target_arch =
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".to_string());
-    let cc_arch = if target_arch == "x86_64" { "x86_64" } else { "arm64" };
+    let cc_arch = if target_arch == "x86_64" {
+        "x86_64"
+    } else {
+        "arm64"
+    };
     let status = Command::new("cc")
         .args(["-c", "-arch", cc_arch, "-o"])
         .arg(out_dir.join("shortcut_reminder_stub.o").to_str().unwrap())

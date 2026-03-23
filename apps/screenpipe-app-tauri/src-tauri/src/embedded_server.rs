@@ -289,9 +289,12 @@ pub async fn start_embedded_server(
     let initial_power_pref = config
         .power_mode
         .as_deref()
-        .and_then(|s| serde_json::from_value::<screenpipe_engine::power::PowerMode>(
-            serde_json::Value::String(s.to_string()),
-        ).ok())
+        .and_then(|s| {
+            serde_json::from_value::<screenpipe_engine::power::PowerMode>(
+                serde_json::Value::String(s.to_string()),
+            )
+            .ok()
+        })
         .unwrap_or_default();
     let power_manager = start_power_manager_with_pref(initial_power_pref);
 

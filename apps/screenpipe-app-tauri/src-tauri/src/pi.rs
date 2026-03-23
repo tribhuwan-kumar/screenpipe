@@ -371,7 +371,6 @@ impl PiManager {
     pub fn is_running(&mut self) -> bool {
         self.check_alive()
     }
-
 }
 
 /// Get the Pi config directory (~/.pi/agent)
@@ -918,10 +917,12 @@ fn kill_orphan_pi_processes(managed_alive: bool) {
 }
 
 /// Max time to wait for Pi to emit its first stdout line (readiness handshake).
-/// Pi RPC mode doesn't emit anything until it receives a command, so this is
-/// effectively a "wait for the process to be alive and accepting stdin" timeout.
-/// Keep this short — the process is ready as soon as it starts the readline loop.
-const PI_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+/// Pi RPC mode doesn't emit anything until it receives a command, so this
+/// always times out — it's just a grace period to let bun finish loading before
+/// we check if the process crashed. Bun 1.3+ accepts stdin immediately after
+/// spawn (the old 2s delay was needed for bun 1.2's readline pipe bug), so
+/// 200ms is enough to detect immediate-exit crashes without delaying first chat.
+const PI_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Resolve a model name for the screenpipe provider.
 ///
@@ -1312,10 +1313,7 @@ pub async fn pi_start_inner(
     }
 
     // Grab queue_state for the stdout reader before dropping the lock
-    let queue_state_for_reader = pool
-        .sessions
-        .get(&sid)
-        .and_then(|m| m.queue_state.clone());
+    let queue_state_for_reader = pool.sessions.get(&sid).and_then(|m| m.queue_state.clone());
 
     // Snapshot the state BEFORE dropping the lock, so we don't hold it during I/O
     let snapshot = match pool.sessions.get_mut(&sid) {
@@ -1401,7 +1399,9 @@ pub async fn pi_start_inner(
                         if let Some(id) = event.get("id").and_then(|v| v.as_str()) {
                             let mut pending = pending_for_reader.lock().unwrap();
                             if let Some(tx) = pending.remove(id) {
-                                if let Ok(rpc) = serde_json::from_value::<RpcResponse>(event.clone()) {
+                                if let Ok(rpc) =
+                                    serde_json::from_value::<RpcResponse>(event.clone())
+                                {
                                     let _ = tx.send(rpc);
                                 }
                             }
@@ -1548,7 +1548,9 @@ pub async fn pi_prompt(
             return Err("Pi is not running".to_string());
         }
         m.last_activity = std::time::Instant::now();
-        m.queue_handle.clone().ok_or("Pi command queue not initialized")?
+        m.queue_handle
+            .clone()
+            .ok_or("Pi command queue not initialized")?
     };
 
     let mut cmd = json!({
@@ -1564,7 +1566,8 @@ pub async fn pi_prompt(
     let rx = queue
         .send(cmd, crate::pi_command_queue::WaitMode::StreamThenWaitDone)
         .await?;
-    rx.await.map_err(|_| "Pi command queue dropped".to_string())?
+    rx.await
+        .map_err(|_| "Pi command queue dropped".to_string())?
 }
 
 /// Abort current Pi operation. Priority command — cancels all pending commands
@@ -1580,7 +1583,9 @@ pub async fn pi_abort(state: State<'_, PiState>, session_id: Option<String>) -> 
             return Err("Pi is not running".to_string());
         }
         m.last_activity = std::time::Instant::now();
-        m.queue_handle.clone().ok_or("Pi command queue not initialized")?
+        m.queue_handle
+            .clone()
+            .ok_or("Pi command queue not initialized")?
     };
     queue.abort().await
 }
@@ -1602,7 +1607,9 @@ pub async fn pi_new_session(
             return Err("Pi is not running".to_string());
         }
         m.last_activity = std::time::Instant::now();
-        m.queue_handle.clone().ok_or("Pi command queue not initialized")?
+        m.queue_handle
+            .clone()
+            .ok_or("Pi command queue not initialized")?
     };
     let rx = queue
         .send(
@@ -1610,7 +1617,8 @@ pub async fn pi_new_session(
             crate::pi_command_queue::WaitMode::WaitDone,
         )
         .await?;
-    rx.await.map_err(|_| "Pi command queue dropped".to_string())?
+    rx.await
+        .map_err(|_| "Pi command queue dropped".to_string())?
 }
 
 /// Check if pi is available
@@ -2087,7 +2095,10 @@ pub fn ensure_pi_installed_background() {
                     info!("Pi installed but missing lru-cache overrides — patching");
                 }
                 if needs_upgrade {
-                    info!("Pi version mismatch — upgrading to {} in background", PI_PACKAGE);
+                    info!(
+                        "Pi version mismatch — upgrading to {} in background",
+                        PI_PACKAGE
+                    );
                 }
                 seed_pi_package_json(&install_dir);
                 if needs_lru_fix {

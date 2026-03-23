@@ -185,14 +185,16 @@ pub fn spawn_queue(
                     // Write to stdin
                     let write_result = {
                         let mut stdin_guard = stdin.lock().await;
-                        let cmd_str = serde_json::to_string(&payload)
-                            .unwrap_or_else(|_| "{}".to_string());
+                        let cmd_str =
+                            serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
                         info!(
                             "pi_command_queue: writing {} ({}), {} bytes",
-                            cmd_type, req_id, cmd_str.len()
+                            cmd_type,
+                            req_id,
+                            cmd_str.len()
                         );
-                        let result = writeln!(*stdin_guard, "{}", cmd_str)
-                            .and_then(|_| stdin_guard.flush());
+                        let result =
+                            writeln!(*stdin_guard, "{}", cmd_str).and_then(|_| stdin_guard.flush());
                         result
                     };
 
@@ -240,7 +242,10 @@ pub fn spawn_queue(
                         }
                     }
                     if cancelled > 0 {
-                        info!("pi_command_queue: abort cancelled {} pending commands", cancelled);
+                        info!(
+                            "pi_command_queue: abort cancelled {} pending commands",
+                            cancelled
+                        );
                     }
 
                     // Write abort to stdin
@@ -249,11 +254,10 @@ pub fn spawn_queue(
                     let abort_cmd = json!({"type": "abort", "id": &req_id});
                     let write_result = {
                         let mut stdin_guard = stdin.lock().await;
-                        let cmd_str = serde_json::to_string(&abort_cmd)
-                            .unwrap_or_else(|_| "{}".to_string());
+                        let cmd_str =
+                            serde_json::to_string(&abort_cmd).unwrap_or_else(|_| "{}".to_string());
                         info!("pi_command_queue: writing abort ({})", req_id);
-                        writeln!(*stdin_guard, "{}", cmd_str)
-                            .and_then(|_| stdin_guard.flush())
+                        writeln!(*stdin_guard, "{}", cmd_str).and_then(|_| stdin_guard.flush())
                     };
 
                     if let Err(e) = write_result {
@@ -288,7 +292,10 @@ async fn wait_for_done_or_terminated(
 ) -> bool {
     // Fast path: already terminated
     if !*alive_rx.borrow() {
-        warn!("pi_command_queue: process already dead, skipping wait for {}", cmd_type);
+        warn!(
+            "pi_command_queue: process already dead, skipping wait for {}",
+            cmd_type
+        );
         return false;
     }
 
@@ -364,7 +371,9 @@ mod tests {
 
         // Send a command in the background
         let h = tokio::spawn(async move {
-            let result = handle.send(json!({"type": "prompt"}), WaitMode::StreamThenWaitDone).await;
+            let result = handle
+                .send(json!({"type": "prompt"}), WaitMode::StreamThenWaitDone)
+                .await;
             assert!(result.is_ok());
             // The receiver should work
             let rx = result.unwrap();
@@ -390,13 +399,15 @@ mod tests {
         let h1 = {
             let h = handle.clone();
             tokio::spawn(async move {
-                h.send(json!({"type": "prompt"}), WaitMode::StreamThenWaitDone).await
+                h.send(json!({"type": "prompt"}), WaitMode::StreamThenWaitDone)
+                    .await
             })
         };
         let h2 = {
             let h = handle.clone();
             tokio::spawn(async move {
-                h.send(json!({"type": "new_session"}), WaitMode::WaitDone).await
+                h.send(json!({"type": "new_session"}), WaitMode::WaitDone)
+                    .await
             })
         };
 

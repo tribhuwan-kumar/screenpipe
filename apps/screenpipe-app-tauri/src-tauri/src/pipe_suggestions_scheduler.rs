@@ -136,7 +136,10 @@ async fn start_scheduler_inner(
         loop {
             // Show notification
             if let Err(e) = show_pipe_suggestion(&app_handle).await {
-                warn!("pipe suggestions scheduler: failed to show notification: {}", e);
+                warn!(
+                    "pipe suggestions scheduler: failed to show notification: {}",
+                    e
+                );
             } else {
                 // Update last_shown_at
                 if let Ok(mut s) = PipeSuggestionsSettingsStore::get(&app_handle)
@@ -144,7 +147,10 @@ async fn start_scheduler_inner(
                 {
                     s.last_shown_at = Some(chrono::Utc::now().to_rfc3339());
                     if let Err(e) = s.save(&app_handle) {
-                        error!("pipe suggestions scheduler: failed to save last_shown_at: {}", e);
+                        error!(
+                            "pipe suggestions scheduler: failed to save last_shown_at: {}",
+                            e
+                        );
                     }
                 }
             }

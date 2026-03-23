@@ -161,7 +161,9 @@ pub(crate) unsafe fn attach_magnify_gesture_to_view(view: tauri_nspanel::cocoa::
         let handler_class = match Class::get("ScreenpipeMagnifyHandler") {
             Some(cls) => cls,
             None => {
-                tracing::warn!("ScreenpipeMagnifyHandler class not registered yet — skipping gesture attach");
+                tracing::warn!(
+                    "ScreenpipeMagnifyHandler class not registered yet — skipping gesture attach"
+                );
                 return;
             }
         };

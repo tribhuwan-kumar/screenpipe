@@ -68,9 +68,7 @@ pub fn preflight_check(need_screen: bool, need_audio: bool) -> bool {
             _ => {
                 eprintln!("  screen recording: missing");
                 eprintln!("    grant access to \"{}\" in:", terminal);
-                eprintln!(
-                    "    System Settings > Privacy & Security > Screen Recording"
-                );
+                eprintln!("    System Settings > Privacy & Security > Screen Recording");
                 ok = false;
             }
         }
@@ -85,9 +83,7 @@ pub fn preflight_check(need_screen: bool, need_audio: bool) -> bool {
             _ => {
                 eprintln!("  microphone: missing");
                 eprintln!("    grant access to \"{}\" in:", terminal);
-                eprintln!(
-                    "    System Settings > Privacy & Security > Microphone"
-                );
+                eprintln!("    System Settings > Privacy & Security > Microphone");
                 ok = false;
             }
         }
@@ -101,9 +97,7 @@ pub fn preflight_check(need_screen: bool, need_audio: bool) -> bool {
         _ => {
             eprintln!("  accessibility: missing (input capture will be disabled)");
             eprintln!("    grant access to \"{}\" in:", terminal);
-            eprintln!(
-                "    System Settings > Privacy & Security > Accessibility"
-            );
+            eprintln!("    System Settings > Privacy & Security > Accessibility");
             // not a hard failure
         }
     }

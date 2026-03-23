@@ -107,8 +107,8 @@ use base64::Engine;
 use health::start_health_check;
 use log_files::{get_log_files, get_screenpipe_data_dir};
 use shortcuts::{
-    initialize_global_shortcuts, resume_global_shortcuts,
-    suspend_global_shortcuts, update_global_shortcuts,
+    initialize_global_shortcuts, resume_global_shortcuts, suspend_global_shortcuts,
+    update_global_shortcuts,
 };
 use vault::{vault_status, vault_unlock};
 use window::RewindWindowId;
@@ -372,12 +372,16 @@ async fn main() {
     // Helper: look up a bool key in the store JSON (check both top-level and nested "settings")
     let store_bool = |key: &str| -> Option<bool> {
         store_json.as_ref().and_then(|data| {
-            data.get(key)
-                .and_then(|v| v.as_bool())
-                .or_else(|| data.get("settings").and_then(|s| s.get(key)).and_then(|v| v.as_bool()))
+            data.get(key).and_then(|v| v.as_bool()).or_else(|| {
+                data.get("settings")
+                    .and_then(|s| s.get(key))
+                    .and_then(|v| v.as_bool())
+            })
         })
     };
-    let telemetry_disabled = store_bool("analyticsEnabled").map(|enabled| !enabled).unwrap_or(false);
+    let telemetry_disabled = store_bool("analyticsEnabled")
+        .map(|enabled| !enabled)
+        .unwrap_or(false);
     let offline_mode = store_bool("offlineMode").unwrap_or(false);
     // PostHog is disabled by either telemetry toggle or offline mode
     // Sentry stays enabled in offline mode (crash reports still sent)
@@ -1775,7 +1779,8 @@ async fn main() {
                                 }
                             }
                         })
-                    }).join();
+                    })
+                    .join();
 
                     // Cleanup Pi sidecar
                     let app_handle_pi = app_handle.app_handle().clone();
