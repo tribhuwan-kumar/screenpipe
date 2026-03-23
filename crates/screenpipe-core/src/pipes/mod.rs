@@ -1351,6 +1351,8 @@ impl PipeManager {
 
         let pipe_dir = self.pipes_dir.clone().join(name);
 
+        let pipe_system_prompt =
+            render_pipe_system_prompt(&body, self.api_port, preset_prompt.as_deref());
         let prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
         let pipe_name = name.to_string();
 
@@ -1445,7 +1447,7 @@ impl PipeManager {
                     Some(pid_tx),
                     line_tx,
                     history_enabled,
-                    None, // manual run — gateway-side caching still applies
+                    Some(&pipe_system_prompt),
                 ),
             )
             .await;
@@ -1766,6 +1768,8 @@ impl PipeManager {
                 .unwrap_or(false);
 
             // Build prompt with context header
+            let pipe_system_prompt =
+                render_pipe_system_prompt(&body, self.api_port, preset_prompt.as_deref());
             let prompt = self.render_prompt(&config, &body, preset_prompt.as_deref());
 
             // Create a channel so the executor can report PID immediately
@@ -1851,7 +1855,7 @@ impl PipeManager {
                     Some(pid_tx),
                     line_tx,
                     history_enabled,
-                    None, // manual run — gateway-side caching still applies
+                    Some(&pipe_system_prompt),
                 ),
             )
             .await;

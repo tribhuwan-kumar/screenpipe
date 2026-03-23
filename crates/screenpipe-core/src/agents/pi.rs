@@ -520,6 +520,9 @@ impl PiExecutor {
                         "custom" => {
                             cmd.env("CUSTOM_API_KEY", key);
                         }
+                        "google" => {
+                            cmd.env("GOOGLE_API_KEY", key);
+                        }
                         // Ensure screenpipe API key is set as env var fallback
                         "screenpipe" if self.user_token.is_none() => {
                             cmd.env("SCREENPIPE_API_KEY", key);
@@ -629,6 +632,9 @@ impl PiExecutor {
                         }
                         "custom" => {
                             cmd.env("CUSTOM_API_KEY", key);
+                        }
+                        "google" => {
+                            cmd.env("GOOGLE_API_KEY", key);
                         }
                         // Ensure screenpipe API key is set as env var fallback
                         "screenpipe" if self.user_token.is_none() => {
