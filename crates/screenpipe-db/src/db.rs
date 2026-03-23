@@ -4429,8 +4429,14 @@ impl DatabaseManager {
         .await?;
         let audio_chunks_deleted = audio_chunks_result.rows_affected();
 
-        // 9. accessibility table was dropped by migration
-        let accessibility_deleted: u64 = 0;
+        // 9. Delete accessibility records
+        let accessibility_result =
+            sqlx::query("DELETE FROM accessibility WHERE timestamp BETWEEN ?1 AND ?2")
+                .bind(&start_str)
+                .bind(&end_str)
+                .execute(&mut **tx.conn())
+                .await?;
+        let accessibility_deleted = accessibility_result.rows_affected();
 
         // 10. Delete ui_events — triggers ui_events_fts delete
         let ui_events_result =
@@ -4615,9 +4621,16 @@ impl DatabaseManager {
         .await?;
         let audio_chunks_deleted = audio_chunks_result.rows_affected();
 
-        let accessibility_deleted: u64 = 0;
+        // 11. Delete accessibility records
+        let accessibility_result =
+            sqlx::query("DELETE FROM accessibility WHERE timestamp BETWEEN ?1 AND ?2")
+                .bind(&start_str)
+                .bind(&end_str)
+                .execute(&mut **tx.conn())
+                .await?;
+        let accessibility_deleted = accessibility_result.rows_affected();
 
-        // 11. Delete ui_events
+        // 12. Delete ui_events
         let ui_events_result =
             sqlx::query("DELETE FROM ui_events WHERE timestamp BETWEEN ?1 AND ?2")
                 .bind(&start_str)
@@ -4803,6 +4816,15 @@ impl DatabaseManager {
 
         // NO orphan audio_chunks cleanup here — done separately
 
+        // Delete accessibility records
+        let accessibility_result =
+            sqlx::query("DELETE FROM accessibility WHERE timestamp BETWEEN ?1 AND ?2")
+                .bind(&start_str)
+                .bind(&end_str)
+                .execute(&mut **tx.conn())
+                .await?;
+        let accessibility_deleted = accessibility_result.rows_affected();
+
         // Delete ui_events
         let ui_events_result =
             sqlx::query("DELETE FROM ui_events WHERE timestamp BETWEEN ?1 AND ?2")
@@ -4818,8 +4840,8 @@ impl DatabaseManager {
         })?;
 
         debug!(
-            "delete_time_range_batch committed: frames={}, ocr={}, audio_transcriptions={}, ui_events={}",
-            frames_deleted, ocr_deleted, audio_transcriptions_deleted, ui_events_deleted
+            "delete_time_range_batch committed: frames={}, ocr={}, audio_transcriptions={}, accessibility={}, ui_events={}",
+            frames_deleted, ocr_deleted, audio_transcriptions_deleted, accessibility_deleted, ui_events_deleted
         );
 
         Ok(DeleteTimeRangeResult {
@@ -4828,7 +4850,7 @@ impl DatabaseManager {
             audio_transcriptions_deleted,
             audio_chunks_deleted: 0,
             video_chunks_deleted: 0,
-            accessibility_deleted: 0,
+            accessibility_deleted,
             ui_events_deleted,
             video_files,
             audio_files,
