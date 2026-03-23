@@ -1532,13 +1532,6 @@ export const AIPresetsSelector = ({
                             <span className="truncate max-w-[120px]">
                               {preset.model}
                             </span>
-                            {(() => {
-                              const m = piModels.find((pm) => pm.id === preset.model);
-                              if (!m) return null;
-                              const label = m.cost_tier === 'low' ? '$' : m.cost_tier === 'medium' ? '$$' : m.cost_tier === 'high' ? '$$$' : m.cost_tier === 'very_high' ? '$$$$' : m.free ? 'free' : '';
-                              const color = 'text-muted-foreground';
-                              return label ? <span className={`text-[9px] font-medium ${color}`}>{label}</span> : null;
-                            })()}
                           </div>
                           <div className="flex items-center gap-1">
                             <Button
