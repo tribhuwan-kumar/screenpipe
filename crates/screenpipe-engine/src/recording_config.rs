@@ -61,6 +61,8 @@ pub struct RecordingConfig {
     pub openai_compatible_endpoint: Option<String>,
     pub openai_compatible_api_key: Option<String>,
     pub openai_compatible_model: Option<String>,
+    pub openai_compatible_headers: Option<std::collections::HashMap<String, String>>,
+    pub openai_compatible_raw_audio: bool,
 
     // Speaker identification
     /// User's display name for calendar-assisted speaker ID.
@@ -143,6 +145,8 @@ impl RecordingConfig {
             openai_compatible_endpoint: settings.openai_compatible_endpoint.clone(),
             openai_compatible_api_key: settings.openai_compatible_api_key.clone(),
             openai_compatible_model: settings.openai_compatible_model.clone(),
+            openai_compatible_headers: settings.openai_compatible_headers.clone(),
+            openai_compatible_raw_audio: settings.openai_compatible_raw_audio,
             user_name: settings.user_name.clone(),
             video_quality: settings.video_quality.clone(),
             use_chinese_mirror: settings.use_chinese_mirror,

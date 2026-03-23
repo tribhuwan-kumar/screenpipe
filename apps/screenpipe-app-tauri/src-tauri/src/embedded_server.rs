@@ -205,6 +205,8 @@ pub async fn start_embedded_server(
                     .clone()
                     .unwrap_or_else(|| DEFAULT_OPENAI_COMPATIBLE_MODEL.to_string()),
                 client: None, // Will be created in TranscriptionEngine::new() via get_or_create_client()
+                headers: config.openai_compatible_headers.clone(),
+                raw_audio: config.openai_compatible_raw_audio,
             })
         } else {
             None

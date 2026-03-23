@@ -66,6 +66,10 @@ pub struct OpenAICompatibleConfig {
     pub api_key: Option<String>,
     pub model: String,
     pub client: Option<Arc<Client>>,
+    /// Custom HTTP headers to include in transcription requests.
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    /// Send raw WAV audio instead of MP3.
+    pub raw_audio: bool,
 }
 
 impl Default for OpenAICompatibleConfig {
@@ -75,6 +79,8 @@ impl Default for OpenAICompatibleConfig {
             api_key: None,
             model: DEFAULT_OPENAI_COMPATIBLE_MODEL.to_string(),
             client: None,
+            headers: None,
+            raw_audio: false,
         }
     }
 }
@@ -214,6 +220,8 @@ pub async fn stt(
             sample_rate,
             languages.clone(),
             &vocab_words,
+            config.headers.as_ref(),
+            config.raw_audio,
         )
         .await
         {

@@ -1436,6 +1436,42 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                   )}
                 </div>
 
+                {/* Raw Audio Toggle */}
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.openaiCompatibleRawAudio || false}
+                    onChange={(e) => handleSettingsChange({ openaiCompatibleRawAudio: e.target.checked }, true)}
+                    className="rounded border-border"
+                  />
+                  <span>send raw WAV audio (instead of MP3)</span>
+                </label>
+
+                {/* Custom Headers */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">custom headers (JSON)</label>
+                  <Input
+                    value={settings.openaiCompatibleHeaders ? JSON.stringify(settings.openaiCompatibleHeaders) : ""}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      if (!val) {
+                        handleSettingsChange({ openaiCompatibleHeaders: undefined }, true);
+                        return;
+                      }
+                      try {
+                        const parsed = JSON.parse(val);
+                        if (typeof parsed === "object" && !Array.isArray(parsed)) {
+                          handleSettingsChange({ openaiCompatibleHeaders: parsed }, true);
+                        }
+                      } catch {
+                        // Don't update until valid JSON
+                      }
+                    }}
+                    placeholder='{"X-Custom-Header": "value"}'
+                    className="h-7 text-xs font-mono"
+                  />
+                </div>
+
                 {/* Connection Test Panel */}
                 <div className="border rounded-lg">
                   <button

@@ -7,6 +7,7 @@ use mp3lame_encoder::{Builder, FlushNoGap, MonoPcm};
 use reqwest::{multipart, Client, Response};
 use screenpipe_core::Language;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -29,6 +30,8 @@ use crate::transcription::stt::OPENAI_COMPATIBLE_TIMEOUT_SECS;
 /// * `languages` - Language hints (passed to API if supported)
 /// * `vocabulary` - Optional vocabulary/hotwords passed as `prompt` field
 ///   (used by VibeVoice-ASR `--context`, Whisper `--initial-prompt`, etc.)
+/// * `custom_headers` - Optional custom HTTP headers to include in the request
+/// * `raw_audio` - If true, send uncompressed WAV instead of MP3
 pub async fn transcribe_with_openai_compatible(
     client: Option<Arc<Client>>,
     endpoint: &str,
@@ -39,14 +42,22 @@ pub async fn transcribe_with_openai_compatible(
     sample_rate: u32,
     languages: Vec<Language>,
     vocabulary: &[String],
+    custom_headers: Option<&HashMap<String, String>>,
+    raw_audio: bool,
 ) -> Result<String> {
     debug!(
-        "starting openai compatible transcription to {} with model {}",
-        endpoint, model
+        "starting openai compatible transcription to {} with model {} (raw_audio={})",
+        endpoint, model, raw_audio
     );
 
-    // Encode as MP3 for smaller upload size
-    let (mp3_data, _content_type) = create_mp3_data(audio_data, sample_rate)?;
+    // Encode audio in the requested format
+    let (audio_bytes, file_name, mime_type) = if raw_audio {
+        let wav_data = create_wav_data(audio_data, sample_rate)?;
+        (wav_data, "audio.wav", "audio/wav")
+    } else {
+        let (mp3_data, mime) = create_mp3_data(audio_data, sample_rate)?;
+        (mp3_data, "audio.mp3", mime)
+    };
 
     // Use provided client or create a new one
     let client = match client {
@@ -65,9 +76,9 @@ pub async fn transcribe_with_openai_compatible(
         .text("response_format", "json".to_string())
         .part(
             "file",
-            multipart::Part::bytes(mp3_data)
-                .file_name("audio.mp3")
-                .mime_str("audio/mpeg")?,
+            multipart::Part::bytes(audio_bytes)
+                .file_name(file_name.to_string())
+                .mime_str(mime_type)?,
         );
 
     // Add language if specified
@@ -99,10 +110,65 @@ pub async fn transcribe_with_openai_compatible(
         }
     }
 
+    // Add custom headers
+    if let Some(headers) = custom_headers {
+        for (name, value) in headers {
+            if let (Ok(header_name), Ok(header_value)) = (
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+                reqwest::header::HeaderValue::from_str(value),
+            ) {
+                request = request.header(header_name, header_value);
+            }
+        }
+    }
+
     // Send request
     let response = request.send().await?;
 
     handle_response(response, device).await
+}
+
+/// Create WAV data from f32 audio samples (uncompressed PCM).
+fn create_wav_data(audio_data: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
+    let num_channels: u16 = 1;
+    let bits_per_sample: u16 = 16;
+    let byte_rate = sample_rate * u32::from(num_channels) * u32::from(bits_per_sample) / 8;
+    let block_align = num_channels * bits_per_sample / 8;
+
+    // Convert f32 to i16
+    let pcm_i16: Vec<i16> = audio_data
+        .iter()
+        .map(|&s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+        .collect();
+
+    let data_size = (pcm_i16.len() * 2) as u32;
+    let file_size = 36 + data_size;
+
+    let mut wav = Vec::with_capacity(44 + data_size as usize);
+
+    // RIFF header
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&file_size.to_le_bytes());
+    wav.extend_from_slice(b"WAVE");
+
+    // fmt chunk
+    wav.extend_from_slice(b"fmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes()); // chunk size
+    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM format
+    wav.extend_from_slice(&num_channels.to_le_bytes());
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&byte_rate.to_le_bytes());
+    wav.extend_from_slice(&block_align.to_le_bytes());
+    wav.extend_from_slice(&bits_per_sample.to_le_bytes());
+
+    // data chunk
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_size.to_le_bytes());
+    for sample in &pcm_i16 {
+        wav.extend_from_slice(&sample.to_le_bytes());
+    }
+
+    Ok(wav)
 }
 
 fn create_mp3_data(audio_data: &[f32], sample_rate: u32) -> Result<(Vec<u8>, &'static str)> {
@@ -253,5 +319,19 @@ mod tests {
         // MP3 should be much smaller than raw WAV
         let raw_wav_size = audio_data.len() * 4; // f32 = 4 bytes
         assert!(mp3_data.len() < raw_wav_size / 2);
+    }
+
+    #[test]
+    fn test_create_wav_data() {
+        let audio_data: Vec<f32> = vec![0.0, 0.5, 0.0, -0.5, 0.0];
+        let result = create_wav_data(&audio_data, 16000);
+        assert!(result.is_ok());
+
+        let wav_data = result.unwrap();
+        // WAV header is 44 bytes + 2 bytes per sample
+        assert_eq!(wav_data.len(), 44 + audio_data.len() * 2);
+        // Check RIFF header
+        assert_eq!(&wav_data[0..4], b"RIFF");
+        assert_eq!(&wav_data[8..12], b"WAVE");
     }
 }

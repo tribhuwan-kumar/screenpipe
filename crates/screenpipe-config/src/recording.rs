@@ -165,6 +165,16 @@ pub struct RecordingSettings {
     #[serde(rename = "openaiCompatibleModel", default)]
     pub openai_compatible_model: Option<String>,
 
+    /// Custom HTTP headers for OpenAI-compatible transcription requests.
+    /// JSON object, e.g. {"X-Custom-Header": "value"}.
+    #[serde(rename = "openaiCompatibleHeaders", default)]
+    pub openai_compatible_headers: Option<std::collections::HashMap<String, String>>,
+
+    /// Send raw WAV audio instead of MP3 to OpenAI-compatible endpoint.
+    /// Some ASR providers prefer uncompressed audio for better accuracy.
+    #[serde(rename = "openaiCompatibleRawAudio", default)]
+    pub openai_compatible_raw_audio: bool,
+
     // ── System ─────────────────────────────────────────────────────────
     /// HTTP server port for the screenpipe API.
     pub port: u16,
@@ -250,6 +260,8 @@ impl Default for RecordingSettings {
             openai_compatible_endpoint: None,
             openai_compatible_api_key: None,
             openai_compatible_model: None,
+            openai_compatible_headers: None,
+            openai_compatible_raw_audio: false,
             port: 3030,
             power_mode: None,
             use_chinese_mirror: false,

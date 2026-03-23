@@ -46,6 +46,8 @@ pub enum TranscriptionEngine {
         client: Arc<Client>,
         languages: Vec<Language>,
         vocabulary: Vec<VocabularyEntry>,
+        headers: Option<std::collections::HashMap<String, String>>,
+        raw_audio: bool,
     },
     Disabled,
 }
@@ -81,6 +83,8 @@ impl TranscriptionEngine {
                     client,
                     languages,
                     vocabulary,
+                    headers: oc_config.headers,
+                    raw_audio: oc_config.raw_audio,
                 })
             }
 
@@ -189,6 +193,8 @@ impl TranscriptionEngine {
                 client,
                 languages,
                 vocabulary,
+                headers,
+                raw_audio,
             } => Ok(TranscriptionSession::OpenAICompatible {
                 endpoint: endpoint.clone(),
                 api_key: api_key.clone(),
@@ -196,6 +202,8 @@ impl TranscriptionEngine {
                 client: client.clone(),
                 languages: languages.clone(),
                 vocabulary: vocabulary.clone(),
+                headers: headers.clone(),
+                raw_audio: *raw_audio,
             }),
             Self::Disabled => Ok(TranscriptionSession::Disabled),
         }
@@ -250,6 +258,8 @@ pub enum TranscriptionSession {
         client: Arc<Client>,
         languages: Vec<Language>,
         vocabulary: Vec<VocabularyEntry>,
+        headers: Option<std::collections::HashMap<String, String>>,
+        raw_audio: bool,
     },
     Disabled,
 }
@@ -340,6 +350,8 @@ impl TranscriptionSession {
                 client,
                 languages,
                 vocabulary,
+                headers,
+                raw_audio,
             } => {
                 // Convert vocabulary entries to words for the API
                 let vocab_words: Vec<String> = vocabulary.iter().map(|v| v.word.clone()).collect();
@@ -353,6 +365,8 @@ impl TranscriptionSession {
                     sample_rate,
                     languages.clone(),
                     &vocab_words,
+                    headers.as_ref(),
+                    *raw_audio,
                 )
                 .await
                 {

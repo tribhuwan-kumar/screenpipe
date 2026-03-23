@@ -73,6 +73,8 @@ export interface ChatMessage {
 	content: string;
 	timestamp: number;
 	contentBlocks?: any[];
+	model?: string;
+	provider?: string;
 }
 
 export interface ChatConversation {
@@ -128,6 +130,10 @@ export type Settings = SettingsStore & {
 	openaiCompatibleApiKey?: string;
 	/** OpenAI-compatible transcription model name */
 	openaiCompatibleModel?: string;
+	/** Custom HTTP headers for OpenAI-compatible transcription (JSON object) */
+	openaiCompatibleHeaders?: Record<string, string>;
+	/** Send raw WAV audio instead of MP3 to OpenAI-compatible endpoint */
+	openaiCompatibleRawAudio?: boolean;
 	/** Filter music-dominant audio before transcription (reduces Spotify/YouTube music noise) */
 	filterMusic?: boolean;
 	/** Maximum batch transcription duration in seconds (0 = engine default: Deepgram 3600s, Whisper 600s) */
