@@ -12,7 +12,7 @@ static DEF: IntegrationDef = IntegrationDef {
     name: "Todoist",
     icon: "todoist",
     category: Category::Productivity,
-    description: "Create tasks in Todoist. Use POST https://api.todoist.com/rest/v2/tasks with Bearer {api_token} and {\"content\": \"...\"}",
+    description: "Create tasks in Todoist. Use POST https://api.todoist.com/api/v1/tasks with Bearer {api_token} and {\"content\": \"...\"}",
     fields: &[FieldDef {
         key: "api_token",
         label: "API Token",
@@ -33,7 +33,7 @@ impl Integration for Todoist {
     async fn test(&self, client: &reqwest::Client, creds: &Map<String, Value>) -> Result<String> {
         let token = require_str(creds, "api_token")?;
         let resp = client
-            .get("https://api.todoist.com/rest/v2/projects")
+            .get("https://api.todoist.com/api/v1/projects")
             .bearer_auth(token)
             .send()
             .await?

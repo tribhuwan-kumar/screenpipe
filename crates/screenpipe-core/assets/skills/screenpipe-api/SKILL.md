@@ -256,7 +256,7 @@ Returns credentials to use with service APIs directly:
 - **Telegram**: `bot_token` + `chat_id` → `POST https://api.telegram.org/bot{token}/sendMessage`
 - **Slack**: `webhook_url` → `POST {webhook_url}` with `{"text": "..."}`
 - **Discord**: `webhook_url` → `POST {webhook_url}` with `{"content": "..."}`
-- **Todoist**: `api_token` → `POST https://api.todoist.com/rest/v2/tasks` with Bearer auth
+- **Todoist**: `api_token` → `POST https://api.todoist.com/api/v1/tasks` with Bearer auth
 - **Teams**: `webhook_url` → `POST {webhook_url}` with `{"text": "..."}`
 - **Email**: `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `from_address`
 
