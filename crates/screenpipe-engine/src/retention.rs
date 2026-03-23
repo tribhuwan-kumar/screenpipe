@@ -301,17 +301,15 @@ fn spawn_retention_loop(
 }
 
 async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow::Result<u64> {
-    // Delete in 1-hour batches to avoid holding the write semaphore for minutes.
-    // The write semaphore has a 10s timeout — a single massive transaction would
-    // block ALL other DB writes (vision capture, audio, etc.) causing PoolTimedOut
-    // crashes. By batching, each transaction holds the semaphore for only seconds.
+    // Delete in 1-hour batches. Each batch only deletes time-bounded rows
+    // (fast, uses indexed timestamp). The expensive orphan cleanup (full-table
+    // NOT IN scans on video_chunks/audio_chunks) runs once at the end.
     let batch_size = Duration::hours(1);
     let mut total: u64 = 0;
 
-    // Find the oldest data timestamp to avoid scanning from epoch
     let oldest = match db.get_oldest_timestamp().await {
         Ok(Some(ts)) => ts,
-        Ok(None) => return Ok(0), // empty DB
+        Ok(None) => return Ok(0),
         Err(e) => {
             warn!("retention: failed to get oldest timestamp: {}", e);
             return Ok(0);
@@ -319,11 +317,12 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
     };
 
     let mut batch_start = oldest;
+    let mut any_deleted = false;
 
     while batch_start < cutoff {
         let batch_end = (batch_start + batch_size).min(cutoff);
 
-        match db.delete_time_range_local(batch_start, batch_end).await {
+        match db.delete_time_range_batch(batch_start, batch_end, true).await {
             Ok(result) => {
                 let batch_total = result.frames_deleted
                     + result.ocr_deleted
@@ -331,6 +330,7 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
                     + result.ui_events_deleted;
 
                 if batch_total > 0 {
+                    any_deleted = true;
                     info!(
                         "retention: batch deleted frames={} ocr={} audio={} ui_events={} \
                          (video_files={} snapshot_files={} audio_files={})",
@@ -346,7 +346,6 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
 
                 total += batch_total;
 
-                // Delete media files from disk AFTER successful DB commit
                 for path in result
                     .video_files
                     .iter()
@@ -360,7 +359,6 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
             }
             Err(e) => {
                 warn!("retention: batch delete failed for range {} to {}: {}", batch_start, batch_end, e);
-                // Continue with next batch instead of aborting entire cleanup
             }
         }
 
@@ -368,6 +366,13 @@ async fn do_local_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> a
 
         // Yield between batches so other writes can acquire the semaphore
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    // One-time orphan cleanup after all batches
+    if any_deleted {
+        if let Err(e) = db.cleanup_orphaned_chunks().await {
+            warn!("retention: orphan chunk cleanup failed: {}", e);
+        }
     }
 
     Ok(total)

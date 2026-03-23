@@ -917,9 +917,9 @@ async fn count_records_in_range(
 /// Only deletes video/snapshot files that have been uploaded to cloud
 /// (cloud_blob_id IS NOT NULL).
 ///
-/// Batches deletes into 1-hour chunks to avoid holding the write semaphore
-/// for minutes. A single massive transaction blocks ALL other DB writes
-/// (vision capture, audio, etc.) causing PoolTimedOut crashes.
+/// Batches deletes into 1-hour chunks. Each batch only deletes time-bounded
+/// rows (fast). The expensive orphan cleanup (full-table NOT IN scans) runs
+/// once at the end.
 async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow::Result<()> {
     let batch_size = Duration::hours(1);
 
@@ -933,11 +933,12 @@ async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow:
     };
 
     let mut batch_start = oldest;
+    let mut any_deleted = false;
 
     while batch_start < cutoff {
         let batch_end = (batch_start + batch_size).min(cutoff);
 
-        match db.delete_time_range(batch_start, batch_end).await {
+        match db.delete_time_range_batch(batch_start, batch_end, false).await {
             Ok(result) => {
                 let batch_total = result.frames_deleted
                     + result.ocr_deleted
@@ -945,13 +946,13 @@ async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow:
                     + result.ui_events_deleted;
 
                 if batch_total > 0 {
+                    any_deleted = true;
                     info!(
-                        "archive: batch deleted frames={} ocr={} audio={} accessibility={} ui_events={} \
+                        "archive: batch deleted frames={} ocr={} audio={} ui_events={} \
                          (video_files={} snapshot_files={} audio_files={})",
                         result.frames_deleted,
                         result.ocr_deleted,
                         result.audio_transcriptions_deleted,
-                        result.accessibility_deleted,
                         result.ui_events_deleted,
                         result.video_files.len(),
                         result.snapshot_files.len(),
@@ -959,7 +960,7 @@ async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow:
                     );
                 }
 
-                // Delete orphan media files from disk (only those confirmed uploaded)
+                // Delete media files from disk
                 for path in result
                     .video_files
                     .iter()
@@ -980,6 +981,13 @@ async fn do_cleanup(db: &Arc<DatabaseManager>, cutoff: DateTime<Utc>) -> anyhow:
 
         // Yield between batches so other writes can acquire the semaphore
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    // One-time orphan cleanup after all batches
+    if any_deleted {
+        if let Err(e) = db.cleanup_orphaned_chunks().await {
+            warn!("archive: orphan chunk cleanup failed: {}", e);
+        }
     }
 
     Ok(())
