@@ -173,6 +173,29 @@ pub fn check_and_update_drm_state(
     }
 }
 
+/// Known browser app names for URL-based DRM checking in poll_drm_clear.
+const BROWSER_APPS: &[&str] = &[
+    "arc",
+    "google chrome",
+    "chrome",
+    "safari",
+    "firefox",
+    "microsoft edge",
+    "edge",
+    "brave browser",
+    "brave",
+    "opera",
+    "vivaldi",
+    "chromium",
+    "zen browser",
+    "orion",
+];
+
+fn is_browser(app_name: &str) -> bool {
+    let lower = app_name.to_lowercase();
+    BROWSER_APPS.iter().any(|&b| lower.contains(b))
+}
+
 /// Query the current foreground app and check if DRM is still active.
 /// Called from the Tauri health check to decide when to auto-restart recording.
 ///
@@ -182,29 +205,60 @@ pub fn check_and_update_drm_state(
 pub fn poll_drm_clear() -> bool {
     use cidre::{ax, ns};
 
-    let result = std::panic::catch_unwind(|| -> Option<String> {
+    let result = std::panic::catch_unwind(|| -> Option<(String, Option<String>)> {
         let sys = ax::UiElement::sys_wide();
         let app = sys.focused_app().ok()?;
         let pid = app.pid().ok()?;
         let name = ns::RunningApp::with_pid(pid)
             .and_then(|app| app.localized_name())
             .map(|s| s.to_string())?;
-        Some(name)
+
+        // For browsers, try to get the URL via AXDocument on the focused window
+        let url = if is_browser(&name) {
+            get_browser_url_ax(&app, &name)
+        } else {
+            None
+        };
+
+        Some((name, url))
     });
 
     match result {
-        Ok(Some(app_name)) => {
+        Ok(Some((app_name, url))) => {
             if is_drm_app(&app_name) {
                 debug!("DRM app still focused: {}", app_name);
                 true
+            } else if is_browser(&app_name) {
+                // Browser focused — check the URL to decide
+                match url {
+                    Some(ref u) if is_drm_url(u) => {
+                        debug!(
+                            "browser '{}' still on DRM URL: {} — keeping pause",
+                            app_name, u
+                        );
+                        true
+                    }
+                    Some(ref u) => {
+                        info!(
+                            "browser '{}' on non-DRM URL: {} — clearing DRM pause",
+                            app_name, u
+                        );
+                        set_drm_paused(false);
+                        false
+                    }
+                    None => {
+                        // Can't determine URL — clear pause to avoid false positives.
+                        // If the tab is still DRM, check_and_update_drm_state will
+                        // re-trigger on the next capture cycle.
+                        info!(
+                            "browser '{}' focused but can't determine URL — clearing DRM pause",
+                            app_name
+                        );
+                        set_drm_paused(false);
+                        false
+                    }
+                }
             } else {
-                // Clear DRM pause when ANY non-DRM app is focused, including browsers.
-                // The previous behavior kept DRM paused when a browser was focused
-                // (because we can't check the URL without capture running), but this
-                // caused false positives: switching tabs away from a streaming site
-                // would keep capture paused indefinitely. If the user switches back
-                // to a DRM tab, check_and_update_drm_state() will re-trigger on the
-                // next capture cycle.
                 info!("focused app is now '{}' — clearing DRM pause", app_name);
                 set_drm_paused(false);
                 false
@@ -218,6 +272,61 @@ pub fn poll_drm_clear() -> bool {
             warn!("panic querying focused app, keeping DRM pause");
             true
         }
+    }
+}
+
+/// Get the browser URL using only Accessibility APIs (no SCK).
+/// Tries AXDocument on the focused window, then AppleScript for Arc.
+#[cfg(target_os = "macos")]
+fn get_browser_url_ax(app: &cidre::ax::UiElement, app_name: &str) -> Option<String> {
+    use cidre::{ax, cf};
+
+    // Try to get the focused window
+    let window_val = app.attr_value(ax::attr::focused_window()).ok()?;
+    // Safety: focused_window returns an AXUIElement
+    let window: &ax::UiElement = unsafe { std::mem::transmute(&*window_val) };
+
+    // Tier 1: AXDocument attribute (works for Safari, Chrome, etc.)
+    if let Ok(val) = window.attr_value(ax::attr::document()) {
+        if val.get_type_id() == cf::String::type_id() {
+            let s: &cf::String = unsafe { std::mem::transmute(&*val) };
+            let url = s.to_string();
+            if url.starts_with("http://") || url.starts_with("https://") {
+                debug!("poll_drm: AXDocument URL: {}", url);
+                return Some(url);
+            }
+        }
+    }
+
+    // Tier 2: AppleScript for Arc
+    let app_lower = app_name.to_lowercase();
+    if app_lower.contains("arc") {
+        if let Some(url) = get_arc_url_for_drm() {
+            return Some(url);
+        }
+    }
+
+    None
+}
+
+/// Get Arc browser's active tab URL via AppleScript (for DRM polling only).
+#[cfg(target_os = "macos")]
+fn get_arc_url_for_drm() -> Option<String> {
+    let script = r#"tell application "Arc" to return URL of active tab of front window"#;
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if url.starts_with("http://") || url.starts_with("https://") {
+        debug!("poll_drm: Arc AppleScript URL: {}", url);
+        Some(url)
+    } else {
+        None
     }
 }
 

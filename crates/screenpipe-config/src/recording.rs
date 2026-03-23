@@ -127,7 +127,7 @@ pub struct RecordingSettings {
     pub ignore_incognito_windows: bool,
 
     /// Pause all screen capture when a DRM streaming app (Netflix, etc.) is focused.
-    #[serde(rename = "pauseOnDrmContent", default)]
+    #[serde(rename = "pauseOnDrmContent", default = "default_true")]
     pub pause_on_drm_content: bool,
 
     /// Languages for transcription (ISO 639-1 codes).
@@ -242,7 +242,7 @@ impl Default for RecordingSettings {
             included_windows: vec![],
             ignored_urls: vec![],
             ignore_incognito_windows: true,
-            pause_on_drm_content: false,
+            pause_on_drm_content: true,
             languages: vec![],
             use_pii_removal: false,
             user_id: String::new(),
@@ -259,6 +259,10 @@ impl Default for RecordingSettings {
             enable_accessibility: true,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_fps() -> f32 {
