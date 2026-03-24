@@ -405,7 +405,7 @@ dependencies = [
 [[package]]
 name = "antirez-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=b199cf5b3d1e0e87604f02910240a2bc8851cf9a#b199cf5b3d1e0e87604f02910240a2bc8851cf9a"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=a57ceda#a57ceda074f445506b03561bbaaa1f2b050d9831"
 dependencies = [
  "cc",
 ]
@@ -822,11 +822,16 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=b199cf5b3d1e0e87604f02910240a2bc8851cf9a#b199cf5b3d1e0e87604f02910240a2bc8851cf9a"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=a57ceda#a57ceda074f445506b03561bbaaa1f2b050d9831"
 dependencies = [
  "antirez-asr-sys",
+ "half",
  "hf-hub 0.4.3",
+ "ndarray",
+ "ort",
+ "ort-sys",
  "qwen3-asr-sys",
+ "realfft",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1173,26 +1178,6 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.71.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
-dependencies = [
- "bitflags 2.11.0",
- "cexpr",
- "clang-sys",
- "itertools 0.13.0",
- "log",
- "prettyplease",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 2.1.1",
- "shlex",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -1202,6 +1187,8 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "itertools 0.13.0",
+ "log",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -4467,7 +4454,6 @@ dependencies = [
  "indicatif",
  "libc",
  "log",
- "native-tls",
  "num_cpus",
  "rand 0.9.2",
  "reqwest 0.12.12",
@@ -8280,7 +8266,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=b199cf5b3d1e0e87604f02910240a2bc8851cf9a#b199cf5b3d1e0e87604f02910240a2bc8851cf9a"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=a57ceda#a57ceda074f445506b03561bbaaa1f2b050d9831"
 dependencies = [
  "cc",
  "cmake",
@@ -9347,7 +9333,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.241"
+version = "2.2.254"
 dependencies = [
  "anyhow",
  "arboard",
@@ -9422,6 +9408,7 @@ dependencies = [
  "tauri-plugin-webdriver",
  "tauri-specta",
  "tauri-utils",
+ "tikv-jemallocator",
  "tokio",
  "tower-http 0.4.4",
  "tracing",
@@ -9448,7 +9435,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-audio"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "audiopipe",
@@ -9501,7 +9488,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-config"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "dirs 6.0.0",
  "serde",
@@ -9512,7 +9499,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-connect"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9538,7 +9525,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-core"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -9580,7 +9567,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-db"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9604,7 +9591,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-engine"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9667,7 +9654,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-events"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9683,7 +9670,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-screen"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "accessibility-sys",
  "anyhow",
@@ -9719,7 +9706,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-vault"
-version = "0.3.229"
+version = "0.3.232"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -12160,6 +12147,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "tikv-jemalloc-sys"
+version = "0.6.1+5.3.0-1-ge13ca993e8ccb9ba9847cc330696e02839f328f7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8aa5b2ab86a2cefa406d889139c162cbb230092f7d1d7cbc1716405d852a3b"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
+name = "tikv-jemallocator"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0359b4327f954e0567e69fb191cf1436617748813819c94b8cd4a431422d053a"
+dependencies = [
+ "libc",
+ "tikv-jemalloc-sys",
+]
+
+[[package]]
 name = "time"
 version = "0.3.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13600,8 +13607,8 @@ dependencies = [
 
 [[package]]
 name = "whisper-rs"
-version = "0.15.1"
-source = "git+https://github.com/divanshu-go/whisper-rs.git?rev=43a3a2cd4db3609fa266a0d695b00acb737be1b3#43a3a2cd4db3609fa266a0d695b00acb737be1b3"
+version = "0.16.0"
+source = "git+https://github.com/screenpipe/whisper-rs.git?rev=97e4070#97e40705033724dee601e89f3bd701af8096c846"
 dependencies = [
  "tracing",
  "whisper-rs-sys",
@@ -13609,13 +13616,14 @@ dependencies = [
 
 [[package]]
 name = "whisper-rs-sys"
-version = "0.14.1"
-source = "git+https://github.com/divanshu-go/whisper-rs.git?rev=43a3a2cd4db3609fa266a0d695b00acb737be1b3#43a3a2cd4db3609fa266a0d695b00acb737be1b3"
+version = "0.15.0"
+source = "git+https://github.com/screenpipe/whisper-rs.git?rev=97e4070#97e40705033724dee601e89f3bd701af8096c846"
 dependencies = [
- "bindgen 0.71.1",
+ "bindgen 0.72.1",
  "cfg-if 1.0.4",
  "cmake",
  "fs_extra",
+ "semver",
 ]
 
 [[package]]
