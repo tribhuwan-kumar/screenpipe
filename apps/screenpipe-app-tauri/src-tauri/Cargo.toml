@@ -177,7 +177,7 @@ futures-channel = "0.3.30"
 lazy_static = "1.5.0"
 
 [features]
-default = ["custom-protocol", "qwen3-asr"]
+default = ["custom-protocol", "qwen3-asr", "parakeet"]
 metal = ["screenpipe-audio/metal"]
 pulseaudio = ["screenpipe-audio/pulseaudio"]
 vulkan = ["screenpipe-audio/vulkan"]
@@ -199,6 +199,7 @@ enterprise-build = []
 apple-intelligence = ["screenpipe-engine/apple-intelligence"]
 
 qwen3-asr = ["screenpipe-engine/qwen3-asr"]
+parakeet = ["screenpipe-engine/parakeet"]
 jemalloc = ["tikv-jemallocator"]
 
 

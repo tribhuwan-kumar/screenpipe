@@ -133,7 +133,7 @@ tower = { version = "0.4", features = ["util"] }
 criterion = { workspace = true }
 
 [features]
-default = ["qwen3-asr"]
+default = ["qwen3-asr", "parakeet"]
 metal = ["screenpipe-audio/metal"]
 heap-prof = ["dhat"]
 cuda = ["screenpipe-audio/cuda"]
@@ -142,6 +142,7 @@ debug-console = ["console-subscriber"]
 pulseaudio = ["screenpipe-audio/pulseaudio"]
 apple-intelligence = ["dep:screenpipe-apple-intelligence"]
 qwen3-asr = ["screenpipe-audio/qwen3-asr"]
+parakeet = ["screenpipe-audio/parakeet"]
 jemalloc = ["tikv-jemallocator"]
 
 [[bin]]

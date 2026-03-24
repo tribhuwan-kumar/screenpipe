@@ -41,6 +41,8 @@ pub enum CliAudioTranscriptionEngine {
     OpenAICompatible,
     #[clap(name = "qwen3-asr")]
     Qwen3Asr,
+    #[clap(name = "parakeet")]
+    Parakeet,
     /// Disable transcription (audio capture only, no speech-to-text)
     #[clap(name = "disabled")]
     Disabled,
@@ -59,6 +61,7 @@ fn cli_engine_to_str(engine: &CliAudioTranscriptionEngine) -> &'static str {
         }
         CliAudioTranscriptionEngine::OpenAICompatible => "openai-compatible",
         CliAudioTranscriptionEngine::Qwen3Asr => "qwen3-asr",
+        CliAudioTranscriptionEngine::Parakeet => "parakeet",
         CliAudioTranscriptionEngine::Disabled => "disabled",
     }
 }
@@ -87,6 +90,7 @@ impl From<CliAudioTranscriptionEngine> for CoreAudioTranscriptionEngine {
                 CoreAudioTranscriptionEngine::OpenAICompatible
             }
             CliAudioTranscriptionEngine::Qwen3Asr => CoreAudioTranscriptionEngine::Qwen3Asr,
+            CliAudioTranscriptionEngine::Parakeet => CoreAudioTranscriptionEngine::Parakeet,
             CliAudioTranscriptionEngine::Disabled => CoreAudioTranscriptionEngine::Disabled,
         }
     }
