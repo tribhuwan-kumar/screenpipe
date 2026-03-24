@@ -433,6 +433,7 @@ export function AIProviderConfig({
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
+            spellCheck={false}
             disabled={
               Boolean(defaultPreset?.id) &&
               settings.aiPresets.some((p) => p.id === defaultPreset?.id)

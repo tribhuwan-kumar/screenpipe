@@ -1135,6 +1135,8 @@ const AISection = ({
         validation={(value) => validatePresetName(value, visiblePresets, preset?.id)}
         placeholder="Enter preset name"
         required={true}
+        spellCheck={false}
+        autoCorrect="off"
         disabled={!!preset && !isDuplicating && preset.id !== undefined}
         helperText="Only letters, numbers, spaces, hyphens, and underscores allowed"
       />

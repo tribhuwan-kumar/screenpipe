@@ -3592,6 +3592,8 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
                     : "Ask about your screen... (type @ for filters, paste images)"
                 }
                 disabled={!canChat}
+                spellCheck={false}
+                autoCorrect="off"
                 rows={1}
                 className="w-full min-h-[44px] border-0 bg-transparent px-3 py-2.5 pr-3 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 caret-foreground resize-none overflow-y-auto scrollbar-minimal"
                 style={{ maxHeight: "150px" }}
