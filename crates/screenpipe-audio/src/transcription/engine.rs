@@ -138,7 +138,13 @@ impl TranscriptionEngine {
                 .map_err(|e| anyhow!("failed to load whisper model: {}", e))?;
 
                 info!("whisper model loaded successfully");
-                whisper_rs::install_logging_hooks();
+                // NOTE: do NOT call whisper_rs::install_logging_hooks() here.
+                // It redirects ggml/whisper logs into Rust's tracing subscriber via
+                // a global FFI callback. During app restart (process::exit), C++ static
+                // destructors free Metal GPU resources and try to log via this hook —
+                // but the tracing subscriber's thread-local storage is already torn down,
+                // causing a double panic → abort. Without the hook, ggml logs go to
+                // stderr harmlessly.
 
                 Ok(Self::Whisper {
                     context,
