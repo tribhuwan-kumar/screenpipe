@@ -6,6 +6,15 @@
 #![allow(deprecated)] // cocoa/objc crate deprecations — will migrate to objc2 later
 #![allow(unused_imports)]
 
+// Heap profiling: build with `--features heap-prof` then set env:
+//   _RJEM_MALLOC_CONF=prof:true,prof_prefix:/tmp/jeprof
+// Dump profiles at runtime:
+//   curl http://localhost:3030/debug/heap (if endpoint added) or kill -USR1 <pid>
+// Analyze: jeprof --svg target/release/screenpipe-app /tmp/jeprof.*.heap > heap.svg
+#[cfg(feature = "heap-prof")]
+#[global_allocator]
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use analytics::AnalyticsManager;
 use commands::show_main_window;
 use serde_json::json;

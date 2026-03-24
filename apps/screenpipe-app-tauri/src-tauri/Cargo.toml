@@ -1,6 +1,6 @@
 [package]
 name = "screenpipe-app"
-version = "2.2.241"
+version = "2.2.242"
 description = "24/7 memory for your desktop. 100% local."
 authors = ["you"]
 license = ""
@@ -172,6 +172,8 @@ image = "0.25.5"
 futures-channel = "0.3.30"
 lazy_static = "1.5.0"
 
+# Heap profiling (opt-in via --features heap-prof)
+tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true }
 
 [features]
 default = ["custom-protocol", "qwen3-asr"]
@@ -196,6 +198,9 @@ enterprise-build = []
 apple-intelligence = ["screenpipe-engine/apple-intelligence"]
 
 qwen3-asr = ["screenpipe-engine/qwen3-asr"]
+
+# Heap profiling with jemalloc — use for memory debugging only
+heap-prof = ["tikv-jemallocator"]
 
 
 [package.metadata.cargo-machete]
