@@ -348,19 +348,6 @@ impl MacosTreeWalker {
             None
         };
 
-        // Second-pass incognito check using browser URL (catches Arc where
-        // the a11y window name is the Space name, not the page title).
-        // The first check at line ~266 uses window_title which may not match
-        // for Arc. This URL-based check uses the cached incognito tab URLs
-        // populated by the earlier is_incognito() call.
-        if self.config.ignore_incognito_windows {
-            if let Some(ref url) = browser_url {
-                if self.incognito_detector.is_url_incognito(&app_name, url) {
-                    return Ok(TreeWalkResult::Skipped(SkipReason::Incognito));
-                }
-            }
-        }
-
         debug!(
             "tree walk: app={}, window={}, nodes={}, text_len={}, url={:?}, duration={:?}",
             app_name,
