@@ -128,7 +128,7 @@ impl TranscriptionEngine {
                 info!("loading whisper model with GPU acceleration...");
                 let context = tokio::task::spawn_blocking(move || {
                     WhisperContext::new_with_params(
-                        &quantized_path.to_string_lossy(),
+                        &quantized_path,
                         context_param,
                     )
                     .map(Arc::new)
