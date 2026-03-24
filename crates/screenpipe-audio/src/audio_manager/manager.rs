@@ -453,11 +453,14 @@ impl AudioManager {
             // (i.e. the 45s output-speech window expires between deliveries).
             let mut had_deferred_segments = false;
 
-            // Max deferral cap: force reconciliation after this duration even if the
-            // session is still active. Prevents infinite deferral during long calls
-            // or perpetual output-audio sessions (the meeting detector's 45s window
-            // can keep the session alive indefinitely).
-            const MAX_DEFERRAL_SECS: u64 = 600; // 10 minutes
+            // Max deferral cap: use the user's batch duration setting (or the
+            // engine default). This lets meetings accumulate audio up to the
+            // engine's actual capacity before force-transcribing.
+            let max_deferral_secs = batch_max_duration_secs.unwrap_or_else(|| {
+                super::reconciliation::default_max_batch_duration_secs(
+                    &audio_transcription_engine,
+                )
+            });
             let mut deferral_started: Option<std::time::Instant> = None;
 
             while let Ok(audio) = whisper_receiver.recv() {
@@ -562,13 +565,12 @@ impl AudioManager {
                         let session_just_ended =
                             !now_in_session && (was_in_session || had_deferred_segments);
 
-                        // Max deferral cap: force reconciliation if we've been
-                        // deferring longer than MAX_DEFERRAL_SECS, even during an
-                        // active session. Prevents infinite deferral during long
-                        // calls or perpetual output-audio activity.
+                        // Force reconciliation if we've been deferring longer
+                        // than the engine's batch limit. Prevents infinite
+                        // deferral during long calls or perpetual output-audio.
                         let deferral_cap_hit = now_in_session
                             && deferral_started
-                                .is_some_and(|t| t.elapsed().as_secs() >= MAX_DEFERRAL_SECS);
+                                .is_some_and(|t| t.elapsed().as_secs() >= max_deferral_secs);
 
                         if session_just_ended || deferral_cap_hit {
                             // Reconcile: session ended or deferral cap reached
@@ -576,7 +578,7 @@ impl AudioManager {
                             deferral_started = None;
                             if deferral_cap_hit {
                                 info!(
-                                    "batch mode: deferral cap ({MAX_DEFERRAL_SECS}s) reached during active session, force-transcribing"
+                                    "batch mode: deferral cap ({max_deferral_secs}s) reached during active session, force-transcribing"
                                 );
                             } else {
                                 info!(

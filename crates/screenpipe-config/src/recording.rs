@@ -75,8 +75,8 @@ pub struct RecordingSettings {
     pub filter_music: bool,
 
     /// Maximum batch duration in seconds for batch transcription.
-    /// None = use engine-aware defaults (Deepgram=3600s, Whisper/OpenAI=600s).
-    /// Previously stored in SettingsStore.extra["batchMaxDurationSecs"].
+    /// None = use engine-aware defaults (Deepgram=5000s, OpenAI=3000s, Whisper=600s).
+    /// Also controls the max deferral cap during active meetings.
     #[serde(rename = "batchMaxDurationSecs", default)]
     pub batch_max_duration_secs: Option<u64>,
 
