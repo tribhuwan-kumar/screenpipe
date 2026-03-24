@@ -260,9 +260,21 @@ impl MacosTreeWalker {
 
         let window_name = get_string_attr(window, ax::attr::title()).unwrap_or_default();
 
+        // Fast path: Arc (and potentially other browsers) tag incognito windows
+        // with "Incognito" in AXIdentifier (e.g. "bigIncognitoBrowserWindow-...").
+        // This is more reliable than AppleScript which Arc 1.138+ broke entirely.
+        if self.config.ignore_incognito_windows {
+            if let Some(ax_id) = get_string_attr(window, ax::attr::id()) {
+                let ax_id_lower = ax_id.to_lowercase();
+                if ax_id_lower.contains("incognito") || ax_id_lower.contains("private") {
+                    return Ok(TreeWalkResult::Skipped(SkipReason::Incognito));
+                }
+            }
+        }
+
         // Skip incognito / private browsing windows.  Uses the full detector
         // which checks AppleScript window properties for Chromium browsers
-        // (Arc, Chrome, Edge, etc.) and falls back to localized title matching.
+        // (Chrome, Edge, etc.) and falls back to localized title matching.
         if self.config.ignore_incognito_windows
             && self
                 .incognito_detector
@@ -335,19 +347,6 @@ impl MacosTreeWalker {
         } else {
             None
         };
-
-        // Second-pass incognito check using browser URL (catches Arc where
-        // the a11y window name is the Space name, not the page title).
-        // The first check at line ~266 uses window_title which may not match
-        // for Arc. This URL-based check uses the cached incognito tab URLs
-        // populated by the earlier is_incognito() call.
-        if self.config.ignore_incognito_windows {
-            if let Some(ref url) = browser_url {
-                if self.incognito_detector.is_url_incognito(&app_name, url) {
-                    return Ok(TreeWalkResult::Skipped(SkipReason::Incognito));
-                }
-            }
-        }
 
         debug!(
             "tree walk: app={}, window={}, nodes={}, text_len={}, url={:?}, duration={:?}",
