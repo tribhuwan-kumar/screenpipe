@@ -300,7 +300,6 @@ let DEFAULT_SETTINGS: Settings = {
 			disableVision: false,
 			disableOcr: false,
 			useAllMonitors: true,
-			adaptiveFps: false,
 			showShortcutOverlay: true,
 			chatHistory: {
 				conversations: [],
