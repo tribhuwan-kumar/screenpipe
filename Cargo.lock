@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "antirez-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=2449595#2449595c9b66295f407106f021884aaa51cfcced"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=eaeaa80#eaeaa805c4acdc6ea3b4ea06067e1c5b8d26a909"
 dependencies = [
  "cc",
 ]
@@ -540,7 +540,7 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=2449595#2449595c9b66295f407106f021884aaa51cfcced"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=eaeaa80#eaeaa805c4acdc6ea3b4ea06067e1c5b8d26a909"
 dependencies = [
  "antirez-asr-sys",
  "half",
@@ -784,26 +784,6 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.71.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
-dependencies = [
- "bitflags 2.11.0",
- "cexpr",
- "clang-sys",
- "itertools 0.10.5",
- "log",
- "prettyplease",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 2.1.1",
- "shlex",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -813,6 +793,8 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "itertools 0.10.5",
+ "log",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -3197,7 +3179,7 @@ dependencies = [
  "hyper",
  "libc",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -5699,7 +5681,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5736,7 +5718,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -5759,7 +5741,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=2449595#2449595c9b66295f407106f021884aaa51cfcced"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=eaeaa80#eaeaa805c4acdc6ea3b4ea06067e1c5b8d26a909"
 dependencies = [
  "cc",
  "cmake",
@@ -6562,7 +6544,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-audio"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "audiopipe",
@@ -6620,7 +6602,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-config"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "dirs 6.0.0",
  "serde",
@@ -6632,7 +6614,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-connect"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6658,7 +6640,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-core"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -6701,7 +6683,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-db"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6726,7 +6708,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-engine"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6796,7 +6778,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-events"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6814,7 +6796,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-screen"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "accessibility-sys",
  "anyhow",
@@ -6854,7 +6836,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-vault"
-version = "0.3.231"
+version = "0.3.232"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -9290,8 +9272,8 @@ dependencies = [
 
 [[package]]
 name = "whisper-rs"
-version = "0.15.1"
-source = "git+https://github.com/divanshu-go/whisper-rs.git?rev=43a3a2cd4db3609fa266a0d695b00acb737be1b3#43a3a2cd4db3609fa266a0d695b00acb737be1b3"
+version = "0.16.0"
+source = "git+https://codeberg.org/tazz4843/whisper-rs.git?rev=129b9826dc8c385f6a28198bdc4f8a275385fe85#129b9826dc8c385f6a28198bdc4f8a275385fe85"
 dependencies = [
  "tracing",
  "whisper-rs-sys",
@@ -9299,13 +9281,14 @@ dependencies = [
 
 [[package]]
 name = "whisper-rs-sys"
-version = "0.14.1"
-source = "git+https://github.com/divanshu-go/whisper-rs.git?rev=43a3a2cd4db3609fa266a0d695b00acb737be1b3#43a3a2cd4db3609fa266a0d695b00acb737be1b3"
+version = "0.15.0"
+source = "git+https://codeberg.org/tazz4843/whisper-rs.git?rev=129b9826dc8c385f6a28198bdc4f8a275385fe85#129b9826dc8c385f6a28198bdc4f8a275385fe85"
 dependencies = [
- "bindgen 0.71.1",
+ "bindgen 0.72.1",
  "cfg-if",
  "cmake",
  "fs_extra",
+ "semver",
 ]
 
 [[package]]
