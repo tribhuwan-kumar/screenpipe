@@ -53,6 +53,18 @@ pub trait IncognitoDetector: Send + Sync {
     /// definitely normal, or falls back to title-based detection when the
     /// platform API is unavailable for this browser.
     fn is_incognito(&self, app_name: &str, process_id: i32, window_title: &str) -> bool;
+
+    /// Check whether a browser URL belongs to an incognito tab.
+    ///
+    /// This is a fallback for browsers like Arc where the accessibility tree
+    /// reports a different window name (Space name) than the AppleScript
+    /// window title. The URL is extracted after the tree walk and can be
+    /// checked against the cached incognito tab URLs.
+    ///
+    /// Default implementation returns `false` (no URL-based detection).
+    fn is_url_incognito(&self, _app_name: &str, _url: &str) -> bool {
+        false
+    }
 }
 
 /// Create the platform-appropriate incognito detector.
