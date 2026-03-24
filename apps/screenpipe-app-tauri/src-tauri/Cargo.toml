@@ -180,6 +180,7 @@ lazy_static = "1.5.0"
 default = ["custom-protocol", "qwen3-asr", "parakeet"]
 metal = ["screenpipe-audio/metal"]
 pulseaudio = ["screenpipe-audio/pulseaudio"]
+directml = ["screenpipe-engine/directml"]
 vulkan = ["screenpipe-audio/vulkan"]
 cargo-clippy = []
 e2e = ["tauri-plugin-webdriver"]
