@@ -120,12 +120,12 @@ impl TranscriptionEngine {
                 #[cfg(feature = "parakeet")]
                 {
                     let model = tokio::task::spawn_blocking(|| {
-                        audiopipe::Model::from_pretrained("parakeet-tdt-0.6b-v2")
+                        audiopipe::Model::from_pretrained("parakeet-tdt-0.6b-v3")
                     })
                     .await
                     .map_err(|e| anyhow!("parakeet model loading task panicked: {}", e))?
                     .map_err(|e| anyhow!("failed to load parakeet model: {}", e))?;
-                    info!("parakeet-tdt-0.6b-v2 model loaded successfully");
+                    info!("parakeet-tdt-0.6b-v3 (multilingual) model loaded successfully");
                     Ok(Self::Parakeet {
                         model: Arc::new(StdMutex::new(model)),
                         vocabulary,

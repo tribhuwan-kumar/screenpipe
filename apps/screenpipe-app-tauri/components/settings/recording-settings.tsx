@@ -1318,17 +1318,6 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                 </SelectContent>
               </Select>
             </div>
-            {hwCapability?.isWeakForLargeModel && settings.audioTranscriptionEngine.includes("large") && (
-              <div className="mt-2 ml-[26px] p-2 rounded-md bg-yellow-500/10 border border-yellow-500/30">
-                <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                  <AlertCircle className="h-3 w-3 inline mr-1" />
-                  {hwCapability.reason}
-                  {settings.user?.cloud_subscribed
-                    ? " Consider switching to Screenpipe Cloud for better performance."
-                    : ` Consider switching to ${hwCapability.recommendedEngine} to avoid high CPU usage.`}
-                </p>
-              </div>
-            )}
             {settings.audioTranscriptionEngine === "deepgram" && (
               <div className="mt-2 ml-[26px] relative">
                 <ValidatedInput

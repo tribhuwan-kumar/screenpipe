@@ -44,8 +44,6 @@ impl DeviceTier {
 /// Called once when creating default settings. Sets values that differ
 /// by operating system (e.g., FPS, ignored windows).
 pub fn apply_platform_defaults(settings: &mut RecordingSettings) {
-    settings.fps = if cfg!(target_os = "macos") { 0.5 } else { 1.0 };
-
     // Platform-specific system windows to ignore
     let mut ignored = vec![
         "bit bar".to_string(),
@@ -80,20 +78,16 @@ pub fn apply_platform_defaults(settings: &mut RecordingSettings) {
 pub fn apply_tier_defaults(settings: &mut RecordingSettings, tier: DeviceTier) {
     match tier {
         DeviceTier::High => {
-            settings.fps = if cfg!(target_os = "macos") { 0.5 } else { 1.0 };
             settings.video_quality = "balanced".to_string();
             settings.power_mode = Some("auto".to_string());
         }
         DeviceTier::Mid => {
-            settings.fps = if cfg!(target_os = "macos") { 0.3 } else { 0.5 };
             settings.video_quality = "balanced".to_string();
             settings.power_mode = Some("auto".to_string());
         }
         DeviceTier::Low => {
-            settings.fps = 0.2;
             settings.video_quality = "low".to_string();
             settings.power_mode = Some("battery_saver".to_string());
-            settings.adaptive_fps = true;
         }
     }
 }
@@ -113,10 +107,8 @@ mod tests {
     fn low_tier_is_conservative() {
         let mut settings = RecordingSettings::default();
         apply_tier_defaults(&mut settings, DeviceTier::Low);
-        assert!(settings.fps <= 0.2);
         assert_eq!(settings.video_quality, "low");
         assert_eq!(settings.power_mode.as_deref(), Some("battery_saver"));
-        assert!(settings.adaptive_fps);
     }
 
     #[test]
