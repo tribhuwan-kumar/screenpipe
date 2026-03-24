@@ -453,14 +453,20 @@ impl AudioManager {
             // (i.e. the 45s output-speech window expires between deliveries).
             let mut had_deferred_segments = false;
 
-            // Max deferral cap: use the user's batch duration setting (or the
-            // engine default). This lets meetings accumulate audio up to the
-            // engine's actual capacity before force-transcribing.
-            let max_deferral_secs = batch_max_duration_secs.unwrap_or_else(|| {
-                super::reconciliation::default_max_batch_duration_secs(
+            // Max deferral cap: hardcoded per engine (user override only for OpenAI-compatible).
+            // This lets meetings accumulate audio up to the engine's optimal capacity.
+            let max_deferral_secs = match *audio_transcription_engine {
+                AudioTranscriptionEngine::OpenAICompatible => {
+                    batch_max_duration_secs.unwrap_or_else(|| {
+                        super::reconciliation::default_max_batch_duration_secs(
+                            &audio_transcription_engine,
+                        )
+                    })
+                }
+                _ => super::reconciliation::default_max_batch_duration_secs(
                     &audio_transcription_engine,
-                )
-            });
+                ),
+            };
             let mut deferral_started: Option<std::time::Instant> = None;
 
             while let Ok(audio) = whisper_receiver.recv() {

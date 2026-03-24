@@ -1610,12 +1610,13 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                   }
                 />
               </div>
-              {["smart", "batch"].includes(settings.transcriptionMode ?? "realtime") && (
+              {["smart", "batch"].includes(settings.transcriptionMode ?? "realtime") &&
+                settings.audioTranscriptionEngine === "openai-compatible" && (
                 <div className="mt-2.5 pt-2.5 border-t border-border/50">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                       Max batch duration
-                      <HelpTooltip text="Maximum duration of audio to batch before transcribing. Longer batches give better context for full meetings. 0 = auto (Deepgram ~83min, OpenAI ~50min, Whisper ~10min). Audio is compressed to MP3 before upload." />
+                      <HelpTooltip text="Maximum audio to batch before transcribing. Depends on your endpoint's file size limit. 0 = auto (~50min). Audio is compressed to MP3 before upload." />
                     </span>
                     <span className="text-xs font-mono text-foreground">
                       {(settings.batchMaxDurationSecs ?? 0) === 0
