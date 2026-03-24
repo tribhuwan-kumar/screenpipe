@@ -968,6 +968,14 @@ fn get_element_at_position(x: f64, y: f64, config: &UiCaptureConfig) -> Option<E
     let sys = ax::UiElement::sys_wide();
     let elem = sys.element_at_pos(x as f32, y as f32).ok()?;
 
+    // Skip elements belonging to our own process to avoid crashes when querying
+    // our overlay views (e.g. shortcut reminder) that may be mid-dismissal
+    if let Ok(pid) = elem.pid() {
+        if pid == std::process::id() as i32 {
+            return None;
+        }
+    }
+
     let role = elem.role().ok().map(|r| {
         let s = format!("{:?}", r);
         if let Some(start) = s.find("AX") {

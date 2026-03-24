@@ -189,6 +189,7 @@ struct ShortcutReminderView: View {
                     .transition(.opacity.combined(with: .scale(scale: 1.2, anchor: .trailing)))
             }
         }
+        .accessibilityHidden(true)
         .animation(.easeInOut(duration: kAnimDur), value: isExpanded)
         .onHover { hovering in
             isExpanded = hovering
