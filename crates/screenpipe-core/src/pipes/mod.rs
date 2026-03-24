@@ -1313,13 +1313,23 @@ impl PipeManager {
                     ),
                 }
             } else {
-                (
-                    config.model.clone(),
-                    config.provider.clone(),
-                    None,
-                    None,
-                    None,
-                )
+                // No preset — use user's default preset
+                match resolve_preset(&self.pipes_dir, "default") {
+                    Some(resolved) => (
+                        resolved.model,
+                        resolved.provider,
+                        resolved.url,
+                        resolved.api_key,
+                        resolved.prompt,
+                    ),
+                    None => (
+                        config.model.clone(),
+                        config.provider.clone(),
+                        None,
+                        None,
+                        None,
+                    ),
+                }
             };
 
         // Create DB execution row
@@ -1729,14 +1739,36 @@ impl PipeManager {
                     }
                 }
             } else {
-                (
-                    config.model.clone(),
-                    config.provider.clone(),
-                    None,
-                    None,
-                    None,
-                    None,
-                )
+                // No preset in pipe config — use the user's default preset
+                // so pipes respect the user's AI settings instead of silently
+                // falling through to screenpipe cloud.
+                match resolve_preset(&self.pipes_dir, "default") {
+                    Some(resolved) => {
+                        info!(
+                            "pipe '{}': no preset configured, using user's default preset → model={}, provider={:?}",
+                            name, resolved.model, resolved.provider
+                        );
+                        (
+                            resolved.model,
+                            resolved.provider,
+                            resolved.url,
+                            resolved.api_key,
+                            resolved.prompt,
+                            None,
+                        )
+                    }
+                    None => {
+                        // No default preset found — fall back to pipe's own config
+                        (
+                            config.model.clone(),
+                            config.provider.clone(),
+                            None,
+                            None,
+                            None,
+                            None,
+                        )
+                    }
+                }
             };
 
             // Create DB execution row
