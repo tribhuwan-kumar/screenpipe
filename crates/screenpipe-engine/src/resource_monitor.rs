@@ -483,6 +483,32 @@ impl ResourceMonitor {
                         sys.refresh_cpu();
                         sys.refresh_processes();
                         sys.refresh_memory();
+
+                        // Tell the system allocator to return freed pages to the OS.
+                        // Without this, the default macOS allocator holds freed large
+                        // allocations as "empty" regions indefinitely, causing RSS to
+                        // grow monotonically even though Rust is freeing correctly.
+                        #[cfg(target_os = "macos")]
+                        {
+                            extern "C" {
+                                fn malloc_zone_pressure_relief(
+                                    zone: *mut std::ffi::c_void,
+                                    goal: usize,
+                                ) -> usize;
+                            }
+                            // zone=NULL means all zones, goal=0 means release as much as possible
+                            let freed = unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) };
+                            if freed > 0 {
+                                debug!("malloc_zone_pressure_relief freed {} bytes", freed);
+                            }
+                        }
+                        #[cfg(target_os = "linux")]
+                        {
+                            extern "C" {
+                                fn malloc_trim(pad: usize) -> std::ffi::c_int;
+                            }
+                            unsafe { malloc_trim(0) };
+                        }
                         let now = Instant::now();
                         let should_send_to_posthog = now.duration_since(last_posthog_update) >= posthog_interval;
 

@@ -118,6 +118,11 @@ dashmap = { workspace = true }
 # Heap profiling (opt-in via --features heap-prof)
 dhat = { version = "0.3", optional = true }
 
+# jemalloc — aggressively returns freed pages to OS, reducing RSS bloat from fragmentation.
+# Default allocator on macOS/Linux. Not used on Windows (unsupported).
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+tikv-jemallocator = { version = "0.6", optional = true }
+
 [dev-dependencies]
 env_logger = "0.10"
 tempfile = "3.3.0"
@@ -137,6 +142,7 @@ debug-console = ["console-subscriber"]
 pulseaudio = ["screenpipe-audio/pulseaudio"]
 apple-intelligence = ["dep:screenpipe-apple-intelligence"]
 qwen3-asr = ["screenpipe-audio/qwen3-asr"]
+jemalloc = ["tikv-jemallocator"]
 
 [[bin]]
 name = "screenpipe"

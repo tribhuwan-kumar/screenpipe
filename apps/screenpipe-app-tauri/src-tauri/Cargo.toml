@@ -121,8 +121,9 @@ screenpipe-events = { path = "../../../crates/screenpipe-events" }
 image = "0.25.5"
 icalendar = "0.17"
 
-# Heap profiling (opt-in via --features heap-prof)
-tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true }
+# jemalloc — aggressively returns freed pages to OS, reducing RSS bloat
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+tikv-jemallocator = { version = "0.6", optional = true }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-cli = "2.4.1"
@@ -198,9 +199,7 @@ enterprise-build = []
 apple-intelligence = ["screenpipe-engine/apple-intelligence"]
 
 qwen3-asr = ["screenpipe-engine/qwen3-asr"]
-
-# Heap profiling with jemalloc — use for memory debugging only
-heap-prof = ["tikv-jemallocator"]
+jemalloc = ["tikv-jemallocator"]
 
 
 [package.metadata.cargo-machete]
