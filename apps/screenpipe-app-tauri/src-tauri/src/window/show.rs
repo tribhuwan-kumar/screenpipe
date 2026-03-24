@@ -970,11 +970,11 @@ impl ShowRewindWindow {
                                 // Setup Win32 overlay AFTER webview loads so the
                                 // window becomes visible only when JS is ready
                                 // to handle keyboard events.
-                                if let Err(e) = crate::windows_overlay::setup_overlay(win, false) {
+                                if let Err(e) = crate::windows_overlay::setup_overlay(&win, false) {
                                     tracing::error!("Failed to setup Windows overlay: {}", e);
                                 }
                                 // Activate so keyboard focus goes to the webview
-                                if let Err(e) = crate::windows_overlay::bring_to_front_and_activate(win) {
+                                if let Err(e) = crate::windows_overlay::bring_to_front_and_activate(&win) {
                                     tracing::error!("Failed to activate overlay: {}", e);
                                 }
                                 let _ = app_clone.emit("window-focused", true);
