@@ -43,7 +43,7 @@ hf-hub = { workspace = true }
 # https://github.com/pdeljanov/Symphonia/tree/master?tab=readme-ov-file#optimizations
 symphonia = { version = "0.5.4", features = ["aac", "isomp4", "opt-simd"] }
 rubato = "0.15.0"
-whisper-rs = { git = "https://codeberg.org/tazz4843/whisper-rs.git", rev = "129b9826dc8c385f6a28198bdc4f8a275385fe85", features = ["tracing_backend"] }
+whisper-rs = { git = "https://github.com/screenpipe/whisper-rs.git", rev = "a7f74b47e4a03ada9ffa7ab92b5401819ffff013", features = ["tracing_backend"] }
 
 # Log
 log = { workspace = true }
