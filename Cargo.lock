@@ -768,7 +768,7 @@ dependencies = [
  "bitflags 2.11.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -792,7 +792,7 @@ dependencies = [
  "bitflags 2.11.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -9273,7 +9273,7 @@ dependencies = [
 [[package]]
 name = "whisper-rs"
 version = "0.16.0"
-source = "git+https://github.com/screenpipe/whisper-rs.git?rev=a7f74b47e4a03ada9ffa7ab92b5401819ffff013#a7f74b47e4a03ada9ffa7ab92b5401819ffff013"
+source = "git+https://github.com/screenpipe/whisper-rs.git?rev=97e4070#97e40705033724dee601e89f3bd701af8096c846"
 dependencies = [
  "tracing",
  "whisper-rs-sys",
@@ -9282,7 +9282,7 @@ dependencies = [
 [[package]]
 name = "whisper-rs-sys"
 version = "0.15.0"
-source = "git+https://github.com/screenpipe/whisper-rs.git?rev=a7f74b47e4a03ada9ffa7ab92b5401819ffff013#a7f74b47e4a03ada9ffa7ab92b5401819ffff013"
+source = "git+https://github.com/screenpipe/whisper-rs.git?rev=97e4070#97e40705033724dee601e89f3bd701af8096c846"
 dependencies = [
  "bindgen 0.72.1",
  "cfg-if",
