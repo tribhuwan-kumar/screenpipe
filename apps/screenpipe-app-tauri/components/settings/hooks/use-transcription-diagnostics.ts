@@ -54,6 +54,10 @@ export function useTranscriptionDiagnostics(opts: {
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
+    // Include user-configured custom headers
+    if (settings.openaiCompatibleHeaders) {
+      Object.assign(headers, settings.openaiCompatibleHeaders);
+    }
 
     const skipRemaining = (failStep: string, message: string) => {
       const steps = ["endpoint", "auth", "models", "transcribe"] as const;
@@ -188,9 +192,13 @@ export function useTranscriptionDiagnostics(opts: {
       formData.append("model", model);
       formData.append("response_format", "json");
 
+      const txHeaders: Record<string, string> = {};
+      if (apiKey) txHeaders["Authorization"] = `Bearer ${apiKey}`;
+      if (settings.openaiCompatibleHeaders) Object.assign(txHeaders, settings.openaiCompatibleHeaders);
+
       const txResponse = await fetch(`${endpoint}/v1/audio/transcriptions`, {
         method: "POST",
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        headers: txHeaders,
         body: formData,
         signal: abort.signal,
       });
