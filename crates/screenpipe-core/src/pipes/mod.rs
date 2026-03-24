@@ -1937,12 +1937,13 @@ impl PipeManager {
                         let _ = store.upsert_scheduler_state(name, output.success).await;
                     }
 
-                    // Update circuit breaker state
+                    // Update circuit breaker state — always record failures
+                    // even with a single preset, so the breaker is pre-tripped
+                    // when the user adds a fallback preset later.
                     if let Some(ref pid) = active_preset_id {
                         if output.success {
                             self.fallback_registry.record_success(pid);
-                        } else if config.preset.len() > 1 {
-                            // Only record failure for fallback if multiple presets configured
+                        } else {
                             self.fallback_registry.record_failure_from_output(
                                 pid,
                                 &output.stderr,
