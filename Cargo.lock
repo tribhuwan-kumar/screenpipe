@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "antirez-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=eaeaa80#eaeaa805c4acdc6ea3b4ea06067e1c5b8d26a909"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=80eba1e#80eba1ef49263ed5bf20ef34ba575d7fca3f99d7"
 dependencies = [
  "cc",
 ]
@@ -540,7 +540,7 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=eaeaa80#eaeaa805c4acdc6ea3b4ea06067e1c5b8d26a909"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=80eba1e#80eba1ef49263ed5bf20ef34ba575d7fca3f99d7"
 dependencies = [
  "antirez-asr-sys",
  "half",
@@ -2976,11 +2976,9 @@ checksum = "629d8f3bbeda9d148036d6b0de0a3ab947abd08ce90626327fc3547a49d59d97"
 dependencies = [
  "dirs 6.0.0",
  "futures",
- "http",
  "indicatif",
  "libc",
  "log",
- "native-tls",
  "num_cpus",
  "rand 0.9.2",
  "reqwest",
@@ -2988,7 +2986,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "ureq 2.12.1",
  "windows-sys 0.60.2",
 ]
 
@@ -3179,7 +3176,7 @@ dependencies = [
  "hyper",
  "libc",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -5681,7 +5678,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5718,7 +5715,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -5741,7 +5738,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=eaeaa80#eaeaa805c4acdc6ea3b4ea06067e1c5b8d26a909"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=80eba1e#80eba1ef49263ed5bf20ef34ba575d7fca3f99d7"
 dependencies = [
  "cc",
  "cmake",
