@@ -112,7 +112,13 @@ pub fn is_enterprise_build_cmd(app_handle: tauri::AppHandle) -> bool {
 #[tauri::command]
 #[specta::specta]
 pub fn get_enterprise_license_key() -> Option<String> {
-    let exe = std::env::current_exe().ok()?;
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            warn!("enterprise: failed to get current_exe: {}", e);
+            return None;
+        }
+    };
     let exe_dir = exe.parent()?;
 
     // Check next to executable first (Program Files on Windows, .app/Contents/MacOS on macOS)
@@ -127,15 +133,40 @@ pub fn get_enterprise_license_key() -> Option<String> {
     };
 
     if !config_path.exists() {
+        info!(
+            "enterprise: no enterprise.json at {}",
+            config_path.display()
+        );
         return None;
     }
 
-    let contents = std::fs::read_to_string(&config_path).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&contents).ok()?;
-    parsed
+    info!("enterprise: found enterprise.json at {}", config_path.display());
+
+    let contents = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            error!("enterprise: failed to read {}: {}", config_path.display(), e);
+            return None;
+        }
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("enterprise: failed to parse enterprise.json: {}", e);
+            return None;
+        }
+    };
+    let key = parsed
         .get("license_key")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+        .map(|s| s.to_string());
+
+    match &key {
+        Some(k) => info!("enterprise: license key loaded ({}...)", &k[..k.len().min(8)]),
+        None => warn!("enterprise: enterprise.json missing 'license_key' field"),
+    }
+
+    key
 }
 
 #[tauri::command]
