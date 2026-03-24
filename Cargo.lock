@@ -1865,6 +1865,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "dhat"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98cd11d84628e233de0ce467de10b8633f4ddaecafadefc86e13b84b8739b827"
+dependencies = [
+ "backtrace",
+ "lazy_static",
+ "mintex",
+ "parking_lot",
+ "rustc-hash 1.1.0",
+ "serde",
+ "serde_json",
+ "thousands",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4131,6 +4147,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mintex"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c505b3e17ed6b70a7ed2e67fbb2c560ee327353556120d6e72f5232b6880d536"
+
+[[package]]
 name = "mio"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5681,7 +5703,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5718,9 +5740,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6544,7 +6566,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-audio"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "anyhow",
  "audiopipe",
@@ -6602,7 +6624,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-config"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "dirs 6.0.0",
  "serde",
@@ -6614,7 +6636,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-connect"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6640,7 +6662,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-core"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -6683,7 +6705,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-db"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6708,7 +6730,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-engine"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6723,6 +6745,7 @@ dependencies = [
  "criterion",
  "crossbeam",
  "dashmap",
+ "dhat",
  "dirs 5.0.1",
  "env_logger",
  "fastrand",
@@ -6776,7 +6799,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-events"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6794,7 +6817,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-screen"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "accessibility-sys",
  "anyhow",
@@ -6834,7 +6857,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-vault"
-version = "0.3.229"
+version = "0.3.230"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -8105,6 +8128,12 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "thousands"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bf63baf9f5039dadc247375c29eb13706706cfde997d0330d05aa63a77d8820"
 
 [[package]]
 name = "thread_local"

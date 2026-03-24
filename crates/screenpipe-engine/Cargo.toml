@@ -115,6 +115,9 @@ tokio-util = { version = "0.7", features = ["io"] }
 once_cell = { workspace = true }
 dashmap = { workspace = true }
 
+# Heap profiling (opt-in via --features heap-prof)
+dhat = { version = "0.3", optional = true }
+
 [dev-dependencies]
 env_logger = "0.10"
 tempfile = "3.3.0"
@@ -127,6 +130,7 @@ criterion = { workspace = true }
 [features]
 default = ["qwen3-asr"]
 metal = ["screenpipe-audio/metal"]
+heap-prof = ["dhat"]
 cuda = ["screenpipe-audio/cuda"]
 vulkan = ["screenpipe-audio/vulkan"]
 debug-console = ["console-subscriber"]
