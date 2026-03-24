@@ -42,7 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { emit, once } from "@tauri-apps/api/event";
+import { emit, once, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { ChatPrefillData } from "@/lib/chat-utils";
 import { commands } from "@/lib/utils/tauri";
 import { cn } from "@/lib/utils";
@@ -669,6 +669,9 @@ export function PipesSection() {
   const [availableConnections, setAvailableConnections] = useState<AvailableConnection[]>([]);
   const [availableUpdates, setAvailableUpdates] = useState<Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }>>({});
   const [updatingPipe, setUpdatingPipe] = useState<string | null>(null);
+  // Live streaming output for running executions: key = "pipeName:executionId"
+  const [liveOutput, setLiveOutput] = useState<Record<string, string[]>>({});
+  const liveOutputRef = useRef<Record<string, string[]>>({});
   const sharedPipeNames = new Set(
     team.configs
       .filter((c) => c.config_type === "pipe" && c.scope === "team")
@@ -911,6 +914,21 @@ export function PipesSection() {
           const execRes = await fetch(`http://localhost:3030/pipes/${exp}/executions?limit=20`);
           const execData = await execRes.json();
           setExecutions(execData.data || []);
+          // Clean up live output for executions that are no longer running
+          const finishedKeys = (execData.data || [])
+            .filter((e: PipeExecution) => e.status !== "running")
+            .map((e: PipeExecution) => `${e.pipe_name}:${e.id}`);
+          if (finishedKeys.length > 0) {
+            const updated = { ...liveOutputRef.current };
+            let changed = false;
+            for (const k of finishedKeys) {
+              if (k in updated) { delete updated[k]; changed = true; }
+            }
+            if (changed) {
+              liveOutputRef.current = updated;
+              setLiveOutput(updated);
+            }
+          }
         } catch {
           // non-fatal
         }
@@ -1091,6 +1109,51 @@ export function PipesSection() {
       }
     };
   }, [savePipeContent]);
+
+  // Listen for pipe_event to stream live output for running executions
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    let mounted = true;
+
+    listen<any>("pipe_event", (event) => {
+      if (!mounted) return;
+      const { pipeName, executionId, event: pipeEvent } = event.payload;
+      if (!pipeName || executionId == null) return;
+
+      const key = `${pipeName}:${executionId}`;
+      let text = "";
+      if (pipeEvent?.type === "raw_line") {
+        text = pipeEvent.text || "";
+      } else if (pipeEvent) {
+        // For structured events (Pi NDJSON), show a summary line
+        if (pipeEvent.type === "message_update" && pipeEvent.assistantMessageEvent) {
+          const evt = pipeEvent.assistantMessageEvent;
+          if (evt.type === "text_delta" && evt.delta) {
+            text = evt.delta;
+          } else if (evt.type === "thinking" && evt.thinking) {
+            text = `[thinking] ${evt.thinking}`;
+          }
+        } else if (pipeEvent.type === "tool_use") {
+          text = `[tool] ${pipeEvent.name || "unknown"}`;
+        } else {
+          text = JSON.stringify(pipeEvent);
+        }
+      }
+
+      if (text) {
+        liveOutputRef.current = {
+          ...liveOutputRef.current,
+          [key]: [...(liveOutputRef.current[key] || []), text],
+        };
+        setLiveOutput({ ...liveOutputRef.current });
+      }
+    }).then((fn) => { unlisten = fn; });
+
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -1797,6 +1860,20 @@ export function PipesSection() {
                                   {exec.error_message}
                                 </p>
                               )}
+                              {exec.status === "running" && (() => {
+                                const key = `${exec.pipe_name}:${exec.id}`;
+                                const lines = liveOutput[key];
+                                if (!lines || lines.length === 0) return null;
+                                return (
+                                  <pre
+                                    ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}
+                                    className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-48 overflow-y-auto bg-muted/50 rounded p-2 font-mono"
+                                  >
+                                    {lines.slice(-200).join("")}
+                                    <span className="animate-pulse">▊</span>
+                                  </pre>
+                                );
+                              })()}
                               {exec.status === "completed" && exec.stdout && cleanPipeStdout(exec.stdout) && (
                                 <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
                                   {cleanPipeStdout(exec.stdout)}
