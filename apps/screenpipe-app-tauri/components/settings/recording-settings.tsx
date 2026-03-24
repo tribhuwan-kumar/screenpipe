@@ -1451,8 +1451,8 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">custom headers (JSON)</label>
                   <Input
-                    value={settings.openaiCompatibleHeaders ? JSON.stringify(settings.openaiCompatibleHeaders) : ""}
-                    onChange={(e) => {
+                    defaultValue={settings.openaiCompatibleHeaders ? JSON.stringify(settings.openaiCompatibleHeaders) : ""}
+                    onBlur={(e) => {
                       const val = e.target.value.trim();
                       if (!val) {
                         handleSettingsChange({ openaiCompatibleHeaders: undefined }, true);
@@ -1464,7 +1464,7 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
                           handleSettingsChange({ openaiCompatibleHeaders: parsed }, true);
                         }
                       } catch {
-                        // Don't update until valid JSON
+                        // Invalid JSON — don't save
                       }
                     }}
                     placeholder='{"X-Custom-Header": "value"}'
