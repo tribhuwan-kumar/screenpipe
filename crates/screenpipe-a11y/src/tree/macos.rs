@@ -260,9 +260,21 @@ impl MacosTreeWalker {
 
         let window_name = get_string_attr(window, ax::attr::title()).unwrap_or_default();
 
+        // Fast path: Arc (and potentially other browsers) tag incognito windows
+        // with "Incognito" in AXIdentifier (e.g. "bigIncognitoBrowserWindow-...").
+        // This is more reliable than AppleScript which Arc 1.138+ broke entirely.
+        if self.config.ignore_incognito_windows {
+            if let Some(ax_id) = get_string_attr(window, ax::attr::id()) {
+                let ax_id_lower = ax_id.to_lowercase();
+                if ax_id_lower.contains("incognito") || ax_id_lower.contains("private") {
+                    return Ok(TreeWalkResult::Skipped(SkipReason::Incognito));
+                }
+            }
+        }
+
         // Skip incognito / private browsing windows.  Uses the full detector
         // which checks AppleScript window properties for Chromium browsers
-        // (Arc, Chrome, Edge, etc.) and falls back to localized title matching.
+        // (Chrome, Edge, etc.) and falls back to localized title matching.
         if self.config.ignore_incognito_windows
             && self
                 .incognito_detector
