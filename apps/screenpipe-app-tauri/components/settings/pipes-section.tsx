@@ -1613,7 +1613,11 @@ export function PipesSection() {
                           pendingConfigSaves.current[pipeName] = savePromise;
                         }}
                       >
-                        <SelectTrigger className="mt-1 h-8 text-xs">
+                        <SelectTrigger
+                          className="mt-1 h-8 text-xs"
+                          disabled={((pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)) > 0}
+                          title={((pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)) > 0 ? "schedule is overridden by triggers" : undefined}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1652,7 +1656,7 @@ export function PipesSection() {
 
                         {/* Connections */}
                         <div>
-                          <Label className="text-xs mb-2 block">connections</Label>
+                          <Label className="text-xs mb-2 block cursor-help" title="give the agent access to your apps (Slack, Obsidian, CRM, etc.) — credentials are fetched at runtime">connections</Label>
                           <div className="flex flex-wrap items-center gap-2">
                             {(pipe.config.connections || []).map((connId) => {
                               const conn = availableConnections.find((c) => c.id === connId);
@@ -1721,13 +1725,11 @@ export function PipesSection() {
                           </div>
                         </div>
 
-                        {/* Triggers — show existing events + custom triggers + input */}
-                        <div>
-                          <Label className="text-xs flex items-center gap-1.5 mb-2">
+                        {/* Triggers — only when workflow events enabled */}
+                        {settings.enableWorkflowEvents && <div>
+                          <Label className="text-xs flex items-center gap-1.5 mb-2 cursor-help" title="AI detects your workflow patterns and runs this pipe automatically">
                             triggers
-                            {settings.enableWorkflowEvents && (
-                              <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
-                            )}
+                            <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
                           </Label>
                           <div className="space-y-1.5">
                             {/* Show built-in event triggers (from pipe.md frontmatter) */}
@@ -1769,7 +1771,7 @@ export function PipesSection() {
                                 <Button type="submit" variant="outline" size="sm" className="h-7 text-xs px-2 uppercase tracking-wider">+</Button>
                               </form>
                             </div>
-                          </div>
+                          </div>}
 
                       </TabsContent>
 
@@ -1836,11 +1838,8 @@ export function PipesSection() {
 
                       {/* ═══ ADVANCED TAB ═══ */}
                       <TabsContent value="advanced" className="mt-3 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5">
-                          <Label className="text-xs">history</Label>
-                          <HelpTooltip text="remembers previous conversations across runs" />
-                        </div>
+                      <div className="flex items-center justify-between border px-3 py-2.5">
+                        <span className="text-xs font-medium cursor-help" title="when enabled, the pipe remembers context from previous runs">history</span>
                         <Switch
                         checked={!!pipe.config.history}
                         onCheckedChange={(checked) => {
