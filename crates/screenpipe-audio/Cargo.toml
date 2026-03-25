@@ -83,7 +83,7 @@ ort = { version = "=2.0.0-rc.12", default-features = false, features = ["ndarray
 ort-sys = { version = "=2.0.0-rc.12", default-features = false }
 knf-rs = "0.3.2"
 futures = "0.3.31"
-audiopipe = { git = "https://github.com/screenpipe/audiopipe.git", rev = "c88ee22", default-features = false, features = ["qwen3-asr-antirez-blas", "parakeet"], optional = true }
+audiopipe = { git = "https://github.com/screenpipe/audiopipe.git", rev = "976e1d2", default-features = false, features = ["qwen3-asr-antirez-blas", "parakeet"], optional = true }
 bytes = { version = "1.9.0", features = ["serde"] }
 rand = "0.9.0"
 
