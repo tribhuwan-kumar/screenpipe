@@ -5,6 +5,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { PipeMonitorView } from "@/components/pipe-monitor";
 import { apiCache } from "@/lib/cache";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -225,16 +226,20 @@ function normalizePipe(raw: any): any {
 // --- Main Unified Component ---
 
 export function PipeStoreView() {
-  const [activeTab, setActiveTab] = useState<"discover" | "my-pipes">("my-pipes");
+  const [activeTab, setActiveTab] = useState<"discover" | "my-pipes" | "fleet">("my-pipes");
+  const showFleet = posthog.isFeatureEnabled?.("pipe-monitor");
+
+  const tabs = [
+    { key: "my-pipes" as const, label: "My Pipes" },
+    { key: "discover" as const, label: "Discover" },
+    ...(showFleet ? [{ key: "fleet" as const, label: "Fleet" }] : []),
+  ];
 
   return (
     <div className="space-y-0">
       {/* Tab bar */}
       <div className="flex items-center gap-6 border-b border-border pb-0 mb-6">
-        {([
-          { key: "my-pipes" as const, label: "My Pipes" },
-          { key: "discover" as const, label: "Discover" },
-        ]).map(({ key, label }) => (
+        {tabs.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
@@ -253,6 +258,8 @@ export function PipeStoreView() {
       {/* Tab content */}
       {activeTab === "discover" ? (
         <DiscoverView />
+      ) : activeTab === "fleet" ? (
+        <PipeMonitorView />
       ) : (
         <PipesSection />
       )}
