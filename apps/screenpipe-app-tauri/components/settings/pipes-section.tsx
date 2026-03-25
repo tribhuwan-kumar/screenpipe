@@ -1234,7 +1234,7 @@ export function PipesSection() {
             ]);
             setRefreshing(false);
           }}>
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {refreshing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
           <Button variant="outline" size="sm" onClick={() => {
             const url = new URL(window.location.href);
