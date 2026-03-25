@@ -1700,7 +1700,7 @@ export function PipesSection() {
                                   <Plus className="h-3 w-3" /> add
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start">
+                              <DropdownMenuContent align="start" className="max-h-48 overflow-y-auto">
                                 {availableConnections
                                   .filter((c) => !(pipe.config.connections || []).includes(c.id))
                                   .map((conn) => (
