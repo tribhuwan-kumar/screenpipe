@@ -43,7 +43,10 @@
   <a href="https://www.youtube.com/@screen_pipe">
     <img src="https://img.shields.io/youtube/channel/subscribers/UCwjkpAsb70_mENKvy7hT5bw?style=for-the-badge&logo=youtube&logoColor=white&label=subscribers" alt="youtube">
   </a>
-</p>
+</p
+
+
+<img width="1312" height="962" alt="Screenshot 2026-03-24 at 6 40 09 PM" src="https://github.com/user-attachments/assets/ccec4098-3d83-475b-963b-3832d1bdcd38" />
 
 ![image](https://github.com/user-attachments/assets/dec2e07c-b3d5-46dd-9f36-c0c26a82c9fb)
 
