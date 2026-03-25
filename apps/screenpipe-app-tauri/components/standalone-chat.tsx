@@ -2095,15 +2095,17 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         }
         console.log("[Pi] Process terminated, pid:", terminatedPid);
 
-        // If a message was in flight, mark it as errored so the UI doesn't stay stuck
+        // If a message was in flight, append error to the message so the user
+        // knows the agent stopped unexpectedly (not just "completed").
         if (piMessageIdRef.current) {
           const msgId = piMessageIdRef.current;
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === msgId && (m.content === "Processing..." || !m.content)
-                ? { ...m, content: "AI agent crashed — restarting automatically..." }
-                : m
-            )
+            prev.map((m) => {
+              if (m.id !== msgId) return m;
+              const existing = m.content && m.content !== "Processing..." ? m.content : "";
+              const errorSuffix = "\n\n---\n\n⚠️ agent stopped unexpectedly — restarting automatically...";
+              return { ...m, content: existing + errorSuffix };
+            })
           );
           piStreamingTextRef.current = "";
           piMessageIdRef.current = null;
