@@ -1643,6 +1643,8 @@ const providerImageSrc: Record<string, string> = {
   "native-ollama": "/images/ollama.png",
   custom: "/images/custom.png",
   pi: "/images/screenpipe.png",
+  screenpipe: "/images/screenpipe.png",
+  "screenpipe-cloud": "/images/screenpipe.png",
 };
 
 // Sortable preset card for drag-and-drop reordering
