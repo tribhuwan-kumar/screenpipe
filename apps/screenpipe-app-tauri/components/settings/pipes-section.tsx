@@ -675,6 +675,7 @@ export function PipesSection() {
     return "all";
   });
   const [searchQuery, setSearchQuery] = useState("");
+  const [pipeTypeFilter, setPipeTypeFilter] = useState<"scheduled" | "manual">("scheduled");
   const [availableConnections, setAvailableConnections] = useState<AvailableConnection[]>([]);
   const [availableUpdates, setAvailableUpdates] = useState<Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }>>({});
   const [updatingPipe, setUpdatingPipe] = useState<string | null>(null);
@@ -706,8 +707,9 @@ export function PipesSection() {
         if (!p.config.name.toLowerCase().includes(q)) return false;
       }
 
-      // Only show scheduled pipes
-      if (!isScheduledPipe(p)) return false;
+      // Filter by pipe type (scheduled vs manual)
+      if (pipeTypeFilter === "scheduled" && !isScheduledPipe(p)) return false;
+      if (pipeTypeFilter === "manual" && !isManualPipe(p)) return false;
 
       return true;
     })
@@ -1235,7 +1237,9 @@ export function PipesSection() {
         <div>
           <h3 className="text-lg font-medium">My Pipes</h3>
           <p className="text-sm text-muted-foreground">
-            scheduled agents that run on your screen data
+            {pipeTypeFilter === "scheduled"
+              ? "scheduled agents that run on your screen data"
+              : "pipes you trigger manually"}
             {" · "}
             <a
               href="https://docs.screenpi.pe/pipes"
@@ -1269,6 +1273,31 @@ export function PipesSection() {
             connections
           </Button>
         </div>
+      </div>
+
+      {/* Scheduled / Manual sub-tabs */}
+      <div className="flex items-center gap-4 border-b border-border">
+        {(["scheduled", "manual"] as const).map((tab) => {
+          const count = pipes.filter((p) => {
+            if (pipeFilter === "team" && !sharedPipeNames.has(p.config.name)) return false;
+            if (pipeFilter === "personal" && sharedPipeNames.has(p.config.name)) return false;
+            return tab === "scheduled" ? isScheduledPipe(p) : isManualPipe(p);
+          }).length;
+          return (
+            <button
+              key={tab}
+              onClick={() => setPipeTypeFilter(tab)}
+              className={cn(
+                "pb-2 text-sm transition-colors duration-150 border-b-2 -mb-px capitalize",
+                pipeTypeFilter === tab
+                  ? "border-foreground text-foreground font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab} ({count})
+            </button>
+          );
+        })}
       </div>
 
       {/* Search + filter chips */}
@@ -1317,6 +1346,17 @@ export function PipesSection() {
           <CardContent className="py-8 text-center text-muted-foreground">
             {searchQuery ? (
               <p>no pipes match your search</p>
+            ) : pipeTypeFilter === "manual" ? (
+              <>
+                <p>no manual pipes installed</p>
+                <p className="text-sm mt-2">
+                  manual pipes use{" "}
+                  <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                    schedule: manual
+                  </code>
+                  {" "}in their frontmatter
+                </p>
+              </>
             ) : pipeFilter === "all" ? (
               <>
                 <p>no pipes installed</p>
