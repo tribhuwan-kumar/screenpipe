@@ -46,8 +46,7 @@
 </p
 
 
-<img width="1312" height="962" alt="Screenshot 2026-03-24 at 6 40 09 PM" src="https://github.com/user-attachments/assets/ccec4098-3d83-475b-963b-3832d1bdcd38" />
-
+![image](https://github.com/user-attachments/assets/ccec4098-3d83-475b-963b-3832d1bdcd38)
 ![image](https://github.com/user-attachments/assets/dec2e07c-b3d5-46dd-9f36-c0c26a82c9fb)
 
 
@@ -64,6 +63,7 @@ screenpipe turns your computer into a personal AI that knows everything you've d
 ```
 
 - **remember everything** - never forget what you saw, heard, or did
+- **run agents that work based on what you do** - pipes are agents triggered by your work activity
 - **search with ai** - find anything using natural language
 - **100% local** - your data never leaves your machine
 - **open source** - inspect, modify, own
