@@ -276,6 +276,10 @@ interface PipeConfig {
   preset?: string | string[];
   history?: boolean;
   connections?: string[];
+  trigger?: {
+    events?: string[];
+    custom?: string[];
+  };
   // serde(flatten) merges extra YAML fields into this level at runtime
   [key: string]: unknown;
 }

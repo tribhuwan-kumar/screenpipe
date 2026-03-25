@@ -275,12 +275,17 @@ function PipeRow({
           </span>
         )}
 
-        {/* Schedule */}
+        {/* Schedule + event triggers */}
         <span
-          className="text-xs text-muted-foreground shrink-0 text-right font-mono truncate max-w-[100px]"
+          className="text-xs text-muted-foreground shrink-0 text-right font-mono truncate max-w-[140px]"
           title={pipe.config.schedule || "manual"}
         >
           {humanizeSchedule(pipe.config.schedule)}
+          {pipe.config.trigger?.events?.length ? (
+            <span className="ml-1 text-[10px] text-primary/70" title={`events: ${pipe.config.trigger.events.join(", ")}`}>
+              ⚡{pipe.config.trigger.events.length}
+            </span>
+          ) : null}
         </span>
 
         {/* Last run */}
