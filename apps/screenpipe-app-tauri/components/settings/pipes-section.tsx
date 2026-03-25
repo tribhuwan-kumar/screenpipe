@@ -1406,10 +1406,14 @@ export function PipesSection() {
 
                 {/* Schedule */}
                 <span
-                  className="text-xs text-muted-foreground shrink-0 text-right font-mono truncate max-w-[120px]"
-                  title={pipe.config.schedule || "manual"}
+                  className="text-xs text-muted-foreground shrink-0 text-right font-mono truncate max-w-[140px]"
+                  title={pipe.config.trigger?.events?.length || pipe.config.trigger?.custom?.length
+                    ? `triggers: ${[...(pipe.config.trigger?.events || []), ...(pipe.config.trigger?.custom || [])].join(", ")}`
+                    : pipe.config.schedule || "manual"}
                 >
-                  {humanizeSchedule(pipe.config.schedule)}
+                  {(pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0) > 0
+                    ? `⚡ ${(pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)} trigger${((pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)) > 1 ? "s" : ""}`
+                    : humanizeSchedule(pipe.config.schedule)}
                 </span>
 
                 {/* Last run time */}
@@ -1717,15 +1721,29 @@ export function PipesSection() {
                           </div>
                         </div>
 
-                        {/* Triggers */}
-                        {settings.enableWorkflowEvents && (
-                          <div>
-                            <Label className="text-xs flex items-center gap-1.5 mb-1.5">
-                              triggers
+                        {/* Triggers — show existing events + custom triggers + input */}
+                        <div>
+                          <Label className="text-xs flex items-center gap-1.5 mb-2">
+                            triggers
+                            {settings.enableWorkflowEvents && (
                               <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
-                            </Label>
-                            <div className="space-y-1.5">
-                              {(pipe.config.trigger?.custom || []).map((trigger: string, i: number) => (
+                            )}
+                          </Label>
+                          <div className="space-y-1.5">
+                            {/* Show built-in event triggers (from pipe.md frontmatter) */}
+                            {(pipe.config.trigger?.events || []).map((event: string, i: number) => (
+                              <div key={`ev-${i}`} className="flex items-center gap-1.5 group/item">
+                                <span className="text-xs bg-muted/50 border px-3 py-1.5 flex-1 font-mono">⚡ {event.replace(/_/g, " ")}</span>
+                                <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-all duration-150" onClick={() => {
+                                  const updated = (pipe.config.trigger?.events || []).filter((_: string, j: number) => j !== i);
+                                  const newTrigger = { ...pipe.config.trigger, events: updated };
+                                  setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
+                                  fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                }}>×</button>
+                              </div>
+                            ))}
+                            {/* Show custom plain-language triggers */}
+                            {(pipe.config.trigger?.custom || []).map((trigger: string, i: number) => (
                                 <div key={i} className="flex items-center gap-1.5 group/item">
                                   <span className="text-xs bg-muted/50 px-2 py-1 rounded flex-1 font-mono">⚡ {trigger}</span>
                                   <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-all duration-150" onClick={() => {
@@ -1752,7 +1770,6 @@ export function PipesSection() {
                               </form>
                             </div>
                           </div>
-                        )}
 
                       </TabsContent>
 
