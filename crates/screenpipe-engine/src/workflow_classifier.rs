@@ -26,9 +26,13 @@ const DEDUP_COOLDOWN: Duration = Duration::from_secs(300);
 /// System prompt for the cloud classifier.
 const CLASSIFIER_SYSTEM_PROMPT: &str = r#"You are a desktop activity classifier for screenpipe. Given a sequence of app activities (timestamps, app names, window titles), identify the high-level workflow event happening. Respond with a JSON object: {"event": "event_name", "confidence": 0.0-1.0, "description": "brief explanation"}. If no specific workflow is detected, respond with {"event": "no_event", "confidence": 1.0, "description": "normal activity"}."#;
 
+/// Default vLLM endpoint for the event classifier.
+/// Direct to the self-hosted A100 — no Cloudflare Worker overhead.
+pub const DEFAULT_CLASSIFIER_URL: &str = "http://34.122.128.37:8080";
+
 /// Start the workflow classifier polling loop.
 pub async fn start_workflow_classifier(
-    api_url: String,
+    classifier_url: String,
     user_token: String,
     local_port: u16,
     poll_interval: Duration,
@@ -42,9 +46,9 @@ pub async fn start_workflow_classifier(
     let mut last_activity_hash: u64 = 0;
 
     info!(
-        "workflow classifier started (poll: {}s, cloud: {})",
+        "workflow classifier started (poll: {}s, endpoint: {})",
         poll_interval.as_secs(),
-        api_url
+        classifier_url
     );
 
     loop {
@@ -78,7 +82,7 @@ pub async fn start_workflow_classifier(
             .join("\n");
 
         // 4. Call cloud classifier
-        let result = match classify(&client, &api_url, &user_token, &activity_text).await {
+        let result = match classify(&client, &classifier_url, &user_token, &activity_text).await {
             Ok(r) => r,
             Err(e) => {
                 warn!("workflow classifier: {}", e);
@@ -207,15 +211,15 @@ async fn get_recent_activities(client: &Client, port: u16) -> Option<Vec<Activit
     }
 }
 
-/// Call the cloud classifier via the screenpipe API gateway.
+/// Call the vLLM classifier directly (self-hosted, no auth needed).
 async fn classify(
     client: &Client,
-    api_url: &str,
-    token: &str,
+    classifier_url: &str,
+    _token: &str,
     activity_text: &str,
 ) -> Result<ClassifierResult, String> {
     let body = json!({
-        "model": "screenpipe-event-classifier",
+        "model": "/home/louisbeaumont/model/event-classifier-merged",
         "messages": [
             {"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT},
             {"role": "user", "content": format!("What workflow event is happening?\n\n{}", activity_text)}
@@ -226,8 +230,7 @@ async fn classify(
     });
 
     let response = client
-        .post(format!("{}/v1/chat/completions", api_url))
-        .bearer_auth(token)
+        .post(format!("{}/v1/chat/completions", classifier_url))
         .json(&body)
         .send()
         .await
