@@ -1768,8 +1768,8 @@ export function PipesSection() {
                       </div>
                     </div>
 
-                    {/* Event triggers */}
-                    <div>
+                    {/* Event triggers — only show if workflow events enabled */}
+                    {settings.enableWorkflowEvents && <div>
                       <Label className="text-xs flex items-center gap-1.5">
                         triggers
                         <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
@@ -1837,7 +1837,7 @@ export function PipesSection() {
                           </Button>
                         </form>
                       </div>
-                    </div>
+                    </div>}
 
                     <div>
                       <div className="flex items-center gap-2">
