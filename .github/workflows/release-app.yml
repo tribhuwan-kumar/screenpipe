@@ -180,9 +180,9 @@ jobs:
           # Self-hosted macOS 26 runner (MacBook Pro) for Apple Silicon + Apple Intelligence
           # Falls back to macos-latest (GH-hosted) if runner is offline
           - platform: ${{ needs.check_commit.outputs.macos_arm_runner || 'macos-latest' }}
-            args: "--target aarch64-apple-darwin --features metal,parakeet-mlx"
+            args: "--target aarch64-apple-darwin --features metal"
             target: aarch64-apple-darwin
-            tauri-args: "--target aarch64-apple-darwin --features metal,parakeet-mlx,official-build"
+            tauri-args: "--target aarch64-apple-darwin --features metal,official-build"
             os_type: "macos"
           - platform: "macos-latest"
             args: "--target x86_64-apple-darwin --features metal"
