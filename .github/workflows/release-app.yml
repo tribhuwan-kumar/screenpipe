@@ -865,6 +865,11 @@ jobs:
           echo "Cleaning stale bundle artifacts..."
           rm -rf "${BUNDLE_DIR}" 2>/dev/null || true
 
+          # Clean cached mlx-sys build — deployment target is baked into CMake cache
+          # and won't update if only the env var changes
+          echo "Cleaning mlx-sys build cache..."
+          find "apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/build" -maxdepth 1 -name "mlx-sys-*" -exec rm -rf {} + 2>/dev/null || true
+
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "=== Build attempt $attempt/$MAX_ATTEMPTS ==="
 
