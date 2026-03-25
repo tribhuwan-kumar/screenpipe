@@ -275,6 +275,13 @@ export default function NotificationPanelPage() {
     let elapsedBeforePause = 0;
     let resumedAt = Date.now();
     let wasHovered = false;
+    let dismissed = false;
+
+    const doHide = () => {
+      if (dismissed) return;
+      dismissed = true;
+      hide(true);
+    };
 
     intervalRef.current = setInterval(() => {
       if (hoveredRef.current) {
@@ -295,15 +302,25 @@ export default function NotificationPanelPage() {
       setProgress(remaining);
 
       if (remaining <= 0) {
-        hide(true);
+        doHide();
       }
     }, 50);
+
+    // Safety fallback: setTimeout is more reliable than setInterval on
+    // Windows where unfocused webview timers can be throttled to ~1s.
+    // This ensures the notification always dismisses even if setInterval stalls.
+    const safetyTimeout = setTimeout(() => {
+      if (!hoveredRef.current) {
+        doHide();
+      }
+    }, totalMs + 2000);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      clearTimeout(safetyTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, hide, notificationEpoch]);

@@ -1294,6 +1294,12 @@ pub async fn show_notification_panel(
         }
     };
 
+    // Parse autoDismissMs from payload for the server-side safety timeout
+    let auto_dismiss_ms: u64 = serde_json::from_str::<serde_json::Value>(&payload)
+        .ok()
+        .and_then(|v| v.get("autoDismissMs")?.as_u64())
+        .unwrap_or(20000);
+
     // If window exists, reposition to current screen and show
     if let Some(window) = app_handle.get_webview_window(label) {
         info!("notification-panel window exists, repositioning and showing");
@@ -1331,6 +1337,21 @@ pub async fn show_notification_panel(
                 }
             });
         }
+
+        // Server-side safety timeout: force-hide the notification if the JS
+        // auto-dismiss timer fails (e.g. webview timer throttled on Windows).
+        // Adds 5s buffer so JS normally handles it first.
+        let app_safety = app_handle.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(auto_dismiss_ms + 5000)).await;
+            if let Some(w) = app_safety.get_webview_window("notification-panel") {
+                if w.is_visible().unwrap_or(false) {
+                    info!("Safety timeout: force-hiding notification panel");
+                    let _ = w.hide();
+                }
+            }
+        });
+
         return Ok(());
     }
 
@@ -1425,6 +1446,19 @@ pub async fn show_notification_panel(
             "notification-panel-update",
             &payload_clone,
         );
+    });
+
+    // Server-side safety timeout for newly created windows too
+    let app_safety = app_handle.clone();
+    tokio::spawn(async move {
+        // 2s wait for mount + autoDismissMs + 5s buffer
+        tokio::time::sleep(std::time::Duration::from_millis(auto_dismiss_ms + 7000)).await;
+        if let Some(w) = app_safety.get_webview_window("notification-panel") {
+            if w.is_visible().unwrap_or(false) {
+                info!("Safety timeout: force-hiding notification panel (new window)");
+                let _ = w.hide();
+            }
+        }
     });
 
     Ok(())
