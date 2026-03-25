@@ -19,14 +19,48 @@ use std::sync::Arc;
 use std::time::Instant;
 
 fn get_rss_mb() -> f64 {
-    std::process::Command::new("ps")
-        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.trim().parse::<f64>().ok())
-        .map(|kb| kb / 1024.0)
-        .unwrap_or(0.0)
+    #[cfg(target_os = "windows")]
+    {
+        use std::mem::MaybeUninit;
+        #[repr(C)]
+        #[allow(non_snake_case)]
+        struct PROCESS_MEMORY_COUNTERS {
+            cb: u32,
+            PageFaultCount: u32,
+            PeakWorkingSetSize: usize,
+            WorkingSetSize: usize,
+            QuotaPeakPagedPoolUsage: usize,
+            QuotaPagedPoolUsage: usize,
+            QuotaPeakNonPagedPoolUsage: usize,
+            QuotaNonPagedPoolUsage: usize,
+            PagefileUsage: usize,
+            PeakPagefileUsage: usize,
+        }
+        extern "system" {
+            fn GetCurrentProcess() -> isize;
+            fn K32GetProcessMemoryInfo(h: isize, pmc: *mut PROCESS_MEMORY_COUNTERS, cb: u32) -> i32;
+        }
+        unsafe {
+            let mut pmc = MaybeUninit::<PROCESS_MEMORY_COUNTERS>::zeroed().assume_init();
+            pmc.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+            if K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) != 0 {
+                pmc.WorkingSetSize as f64 / (1024.0 * 1024.0)
+            } else {
+                0.0
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("ps")
+            .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .map(|kb| kb / 1024.0)
+            .unwrap_or(0.0)
+    }
 }
 
 /// Sample CPU% during a closure, returns (result, peak_cpu%)
@@ -42,18 +76,58 @@ where
 
     // Spawn CPU sampler thread
     let sampler = std::thread::spawn(move || {
-        while !done_clone.load(std::sync::atomic::Ordering::Relaxed) {
-            if let Some(cpu) = std::process::Command::new("ps")
-                .args(["-o", "%cpu=", "-p", &pid.to_string()])
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .and_then(|s| s.trim().parse::<f64>().ok())
-            {
-                let cpu_bits = (cpu * 10.0) as u64;
-                peak_cpu_clone.fetch_max(cpu_bits, std::sync::atomic::Ordering::Relaxed);
+        #[cfg(target_os = "windows")]
+        {
+            extern "system" {
+                fn GetCurrentProcess() -> isize;
+                fn GetProcessTimes(h: isize, c: *mut u64, e: *mut u64, k: *mut u64, u: *mut u64) -> i32;
             }
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            let _ = pid;
+            let mut prev_kernel: u64 = 0;
+            let mut prev_user: u64 = 0;
+            let mut prev_wall = std::time::Instant::now();
+            // seed initial values
+            unsafe {
+                let h = GetCurrentProcess();
+                let (mut c, mut e) = (0u64, 0u64);
+                GetProcessTimes(h, &mut c, &mut e, &mut prev_kernel, &mut prev_user);
+            }
+            let num_cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
+            while !done_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                unsafe {
+                    let h = GetCurrentProcess();
+                    let (mut c, mut e, mut k, mut u) = (0u64, 0u64, 0u64, 0u64);
+                    if GetProcessTimes(h, &mut c, &mut e, &mut k, &mut u) != 0 {
+                        let wall_elapsed = prev_wall.elapsed().as_secs_f64();
+                        if wall_elapsed > 0.0 {
+                            let cpu_delta = ((k - prev_kernel) + (u - prev_user)) as f64 / 10_000_000.0;
+                            let cpu_pct = (cpu_delta / wall_elapsed) * 100.0 / num_cpus;
+                            let cpu_bits = (cpu_pct * 10.0) as u64;
+                            peak_cpu_clone.fetch_max(cpu_bits, std::sync::atomic::Ordering::Relaxed);
+                        }
+                        prev_kernel = k;
+                        prev_user = u;
+                        prev_wall = std::time::Instant::now();
+                    }
+                }
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            while !done_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                if let Some(cpu) = std::process::Command::new("ps")
+                    .args(["-o", "%cpu=", "-p", &pid.to_string()])
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .and_then(|s| s.trim().parse::<f64>().ok())
+                {
+                    let cpu_bits = (cpu * 10.0) as u64;
+                    peak_cpu_clone.fetch_max(cpu_bits, std::sync::atomic::Ordering::Relaxed);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
         }
     });
 
