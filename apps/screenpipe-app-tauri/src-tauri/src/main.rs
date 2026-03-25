@@ -556,6 +556,7 @@ async fn main() {
                 // Commands from commands.rs
                 commands::is_enterprise_build_cmd,
                 commands::get_enterprise_license_key,
+                commands::save_enterprise_license_key,
                 commands::get_disk_usage,
                 commands::open_pipe_window,
                 commands::update_show_screenpipe_shortcut,
