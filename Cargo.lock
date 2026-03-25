@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "antirez-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=976e1d2#976e1d26bec2a3bd0613bbadb6e0f013e122114a"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=1f76ba0#1f76ba0ce178a3696e07fa84a037c4a9d3f8d399"
 dependencies = [
  "cc",
 ]
@@ -540,7 +540,7 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=976e1d2#976e1d26bec2a3bd0613bbadb6e0f013e122114a"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=1f76ba0#1f76ba0ce178a3696e07fa84a037c4a9d3f8d399"
 dependencies = [
  "antirez-asr-sys",
  "half",
@@ -3185,7 +3185,7 @@ dependencies = [
  "hyper",
  "libc",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -5718,7 +5718,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.37",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5755,7 +5755,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -5778,7 +5778,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=976e1d2#976e1d26bec2a3bd0613bbadb6e0f013e122114a"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=1f76ba0#1f76ba0ce178a3696e07fa84a037c4a9d3f8d399"
 dependencies = [
  "cc",
  "cmake",
