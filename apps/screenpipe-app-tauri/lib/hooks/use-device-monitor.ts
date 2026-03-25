@@ -198,14 +198,42 @@ export function useDeviceMonitor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceKey, pollDevice]);
 
-  // Clean up any localhost entries from persisted settings
+  // Clean up localhost entries and deduplicate devices by health fingerprint
   useEffect(() => {
     const raw = settings.monitorDevices || [];
     const localHosts = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
-    const cleaned = raw.filter((d) => !localHosts.has(d.address.split(":")[0]));
-    if (cleaned.length < raw.length) {
-      updateSettings({ monitorDevices: cleaned });
-    }
+    const withoutLocal = raw.filter((d) => !localHosts.has(d.address.split(":")[0]));
+
+    // Async dedup by health fingerprint
+    (async () => {
+      const fp = (h: HealthResponse) => {
+        const monitors = (h.monitors || []).sort().join("|");
+        const audio = (h.audio_pipeline?.audio_devices || []).sort().join("|");
+        return `${monitors}::${audio}`;
+      };
+
+      const seenFp = new Set<string>();
+      const deduped: typeof withoutLocal = [];
+
+      for (const d of withoutLocal) {
+        try {
+          const res = await fetchWithTimeout(`http://${d.address}/health`, 3_000);
+          if (res.ok) {
+            const health: HealthResponse = await res.json();
+            const key = fp(health);
+            if (seenFp.has(key)) continue; // duplicate machine
+            seenFp.add(key);
+          }
+        } catch {
+          // unreachable — keep it, user may want to retry later
+        }
+        deduped.push(d);
+      }
+
+      if (deduped.length < raw.length) {
+        updateSettings({ monitorDevices: deduped });
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -319,12 +347,10 @@ export function useDeviceMonitor() {
             if (!res.ok) continue;
             const health: HealthResponse = await res.json();
             if (health.status) {
-              const hostname = health.hostname || h.alias || h.host;
-              if (seenHostnames.has(hostname)) return null;
-              seenHostnames.add(hostname);
               return {
                 address: addr,
                 label: health.hostname || h.alias || h.host,
+                health,
               };
             }
           } catch {
@@ -335,9 +361,61 @@ export function useDeviceMonitor() {
       });
 
       const results = await Promise.all(probes);
-      const found = results.filter(
-        (r): r is { address: string; label: string } => r !== null
+      const responding = results.filter(
+        (r): r is { address: string; label: string; health: HealthResponse } =>
+          r !== null
       );
+
+      // Dedup by machine fingerprint: monitors + audio devices identify a unique machine
+      const fingerprint = (h: HealthResponse) => {
+        const monitors = (h.monitors || []).sort().join("|");
+        const audio = (h.audio_pipeline?.audio_devices || []).sort().join("|");
+        return `${monitors}::${audio}`;
+      };
+
+      // Also fingerprint local machine to filter self
+      let localFingerprint: string | null = null;
+      try {
+        const localRes = await fetchWithTimeout("http://localhost:3333/health", 2_000);
+        if (localRes.ok) {
+          const lh: HealthResponse = await localRes.json();
+          localFingerprint = fingerprint(lh);
+        }
+      } catch { /* try other port */ }
+      if (!localFingerprint) {
+        try {
+          const localRes = await fetchWithTimeout("http://localhost:3030/health", 2_000);
+          if (localRes.ok) {
+            const lh: HealthResponse = await localRes.json();
+            localFingerprint = fingerprint(lh);
+          }
+        } catch { /* no local instance */ }
+      }
+
+      const seenFingerprints = new Set<string>();
+      if (localFingerprint) seenFingerprints.add(localFingerprint);
+      if (localHostname) seenHostnames.add(localHostname);
+
+      // Also add fingerprints of already-registered devices
+      for (const d of current) {
+        try {
+          const res = await fetchWithTimeout(`http://${d.address}/health`, 2_000);
+          if (res.ok) {
+            const h: HealthResponse = await res.json();
+            seenFingerprints.add(fingerprint(h));
+          }
+        } catch { /* skip */ }
+      }
+
+      const found: Array<{ address: string; label: string }> = [];
+      for (const r of responding) {
+        const fp = fingerprint(r.health);
+        const hn = r.health.hostname || r.label;
+        if (seenFingerprints.has(fp) || seenHostnames.has(hn)) continue;
+        seenFingerprints.add(fp);
+        seenHostnames.add(hn);
+        found.push({ address: r.address, label: r.label });
+      }
 
       if (found.length > 0) {
         updateSettings({
