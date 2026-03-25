@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -1557,87 +1558,33 @@ export function PipesSection() {
 
               {/* Expanded detail */}
               {expanded === pipe.config.name && (
-                  <div className="mt-4 space-y-1 border-t pt-4 px-4">
+                  <div className="border-t px-4 pt-3">
+                    <Tabs defaultValue="config" className="w-full">
+                      <TabsList className="w-full justify-start h-8 bg-transparent border-b rounded-none p-0 gap-0">
+                        <TabsTrigger value="config" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs uppercase tracking-wider px-3 h-8">
+                          config
+                        </TabsTrigger>
+                        <TabsTrigger value="runs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs uppercase tracking-wider px-3 h-8">
+                          runs{executions.length > 0 ? ` (${executions.length})` : ""}
+                        </TabsTrigger>
+                        <TabsTrigger value="advanced" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs uppercase tracking-wider px-3 h-8">
+                          advanced
+                        </TabsTrigger>
+                      </TabsList>
 
-                    {/* ▼ Trigger — collapsible */}
-                    {settings.enableWorkflowEvents && (() => {
-                      const triggerCount = (pipe.config.trigger?.custom?.length || 0) + (pipe.config.trigger?.events?.length || 0);
-                      return (
-                        <details className="group" open={triggerCount > 0}>
-                          <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
-                            <span className="text-xs font-medium flex items-center gap-1.5">
-                              <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                              Triggers
-                              <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {triggerCount > 0 ? `⚡ ${triggerCount} condition${triggerCount > 1 ? "s" : ""}` : "none"}
-                            </span>
-                          </summary>
-                          <div className="pl-5 pb-3 space-y-1.5">
-                            {(pipe.config.trigger?.custom || []).map((trigger: string, i: number) => (
-                              <div key={i} className="flex items-center gap-1.5 group/item">
-                                <span className="text-xs bg-muted/50 px-2 py-1 rounded flex-1">⚡ {trigger}</span>
-                                <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-colors" onClick={() => {
-                                  const updated = (pipe.config.trigger?.custom || []).filter((_: string, j: number) => j !== i);
-                                  const newTrigger = { ...pipe.config.trigger, custom: updated };
-                                  setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
-                                  fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
-                                }}>×</button>
-                              </div>
-                            ))}
-                            <form className="flex gap-1.5" onSubmit={(e) => {
-                              e.preventDefault();
-                              const input = e.currentTarget.querySelector("input") as HTMLInputElement;
-                              const value = input?.value?.trim();
-                              if (!value) return;
-                              const existing = pipe.config.trigger?.custom || [];
-                              const newTrigger = { ...pipe.config.trigger, custom: [...existing, value] };
-                              setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
-                              fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
-                              input.value = "";
-                            }}>
-                              <Input placeholder="when should this pipe run?" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" />
-                              <Button type="submit" variant="outline" size="sm" className="h-7 text-xs px-2">+</Button>
-                            </form>
-                          </div>
-                        </details>
-                      );
-                    })()}
+                      {/* ═══ CONFIG TAB ═══ */}
+                      <TabsContent value="config" className="mt-3 space-y-4">
 
-                    {/* ▼ Model — collapsible */}
-                    <details className="group" open>
-                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
-                        <span className="text-xs font-medium flex items-center gap-1.5">
-                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                          Model
-                        </span>
-                        <span className="text-[11px] text-muted-foreground font-mono">
-                          {pipe.config.model || "default"} · {pipe.config.provider || "cloud"}
-                        </span>
-                      </summary>
-                      <div className="pl-5 pb-3">
+                        {/* Model */}
                         <PipePresetSelector
                           pipe={pipe}
                           setPipes={setPipes}
                           fetchPipes={fetchPipes}
                           pendingConfigSaves={pendingConfigSaves}
                         />
-                      </div>
-                    </details>
 
-                    {/* ▼ Schedule — collapsible */}
-                    <details className="group">
-                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
-                        <span className="text-xs font-medium flex items-center gap-1.5">
-                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                          Schedule
-                        </span>
-                        <span className="text-[11px] text-muted-foreground font-mono">
-                          {humanizeSchedule(pipe.config.schedule)}
-                        </span>
-                      </summary>
-                      <div className="pl-5 pb-3">
+                        {/* Schedule */}
+                        <div>
                       <Select
                         value={pipe.config.schedule || "manual"}
                         onValueChange={(value) => {
@@ -1697,12 +1644,11 @@ export function PipesSection() {
                           })()}
                         </SelectContent>
                       </Select>
-                      </div>
-                    </details>
+                        </div>
 
-                    {/* Connections — inline row, no collapsible needed */}
-                    <div className="flex items-center justify-between py-2 px-2 -mx-2">
-                      <span className="text-xs font-medium">Connections</span>
+                        {/* Connections */}
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">connections</Label>
                       <div className="flex items-center gap-1.5">
                         {(pipe.config.connections || []).map((connId) => {
                           const conn = availableConnections.find((c) => c.id === connId);
@@ -1740,19 +1686,111 @@ export function PipesSection() {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
-                    </div>
+                          </div>
+                        </div>
 
-                    {/* ▼ Advanced — collapsible, closed by default */}
-                    <details className="group">
-                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
-                        <span className="text-xs font-medium flex items-center gap-1.5">
-                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                          Advanced
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">pipe.md · history</span>
-                      </summary>
-                      <div className="pl-5 pb-3 space-y-3">
+                        {/* Triggers */}
+                        {settings.enableWorkflowEvents && (
+                          <div>
+                            <Label className="text-xs flex items-center gap-1.5 mb-1.5">
+                              triggers
+                              <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
+                            </Label>
+                            <div className="space-y-1.5">
+                              {(pipe.config.trigger?.custom || []).map((trigger: string, i: number) => (
+                                <div key={i} className="flex items-center gap-1.5 group/item">
+                                  <span className="text-xs bg-muted/50 px-2 py-1 rounded flex-1 font-mono">⚡ {trigger}</span>
+                                  <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-all duration-150" onClick={() => {
+                                    const updated = (pipe.config.trigger?.custom || []).filter((_: string, j: number) => j !== i);
+                                    const newTrigger = { ...pipe.config.trigger, custom: updated };
+                                    setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
+                                    fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                  }}>×</button>
+                                </div>
+                              ))}
+                              <form className="flex gap-1.5" onSubmit={(e) => {
+                                e.preventDefault();
+                                const input = e.currentTarget.querySelector("input") as HTMLInputElement;
+                                const value = input?.value?.trim();
+                                if (!value) return;
+                                const existing = pipe.config.trigger?.custom || [];
+                                const newTrigger = { ...pipe.config.trigger, custom: [...existing, value] };
+                                setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
+                                fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                input.value = "";
+                              }}>
+                                <Input placeholder="when should this pipe run?" className="h-7 text-xs flex-1 font-mono" spellCheck={false} autoCorrect="off" />
+                                <Button type="submit" variant="outline" size="sm" className="h-7 text-xs px-2 uppercase tracking-wider">+</Button>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+
+                      </TabsContent>
+
+                      {/* ═══ RUNS TAB ═══ */}
+                      <TabsContent value="runs" className="mt-3">
+                        <div className="space-y-2 max-h-80 overflow-y-auto">
+                          {executions.length === 0 && logs.length === 0 ? (
+                            <p className="text-xs text-muted-foreground py-4 text-center">
+                              no runs yet — click ▶ to run manually
+                            </p>
+                          ) : executions.length > 0 ? (
+                            executions.map((exec) => (
+                              <div key={exec.id} className="border p-2 space-y-1">
+                                <div className="flex items-center gap-2 text-xs font-mono flex-wrap">
+                                  <span className="text-muted-foreground">
+                                    {exec.started_at ? new Date(exec.started_at).toLocaleString() : "queued"}
+                                  </span>
+                                  <Badge variant={statusBadgeVariant(exec.status)} className="text-[10px] h-5">{exec.status}</Badge>
+                                  {errorTypeBadge(exec.error_type)}
+                                  {exec.duration_ms != null && <span className="text-muted-foreground">{(exec.duration_ms / 1000).toFixed(1)}s</span>}
+                                  <span className="text-muted-foreground/60">{exec.trigger_type}</span>
+                                  {exec.model && <span className="text-muted-foreground/60 truncate max-w-[100px]">{exec.model}</span>}
+                                  {exec.status === "completed" && exec.stdout && cleanPipeStdout(exec.stdout) && (
+                                    <button className="ml-auto text-muted-foreground hover:text-foreground" title="open in chat" onClick={async () => {
+                                      const conv = pipeExecutionToConversation(exec.pipe_name, exec.id, exec.stdout, exec.started_at);
+                                      await saveConversationFile(conv);
+                                      localStorage.setItem("pending-chat-conversation", conv.id);
+                                      const url = new URL(window.location.href);
+                                      url.searchParams.set("section", "home");
+                                      window.location.href = url.toString();
+                                    }}>
+                                      <MessageSquare className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                                {exec.error_message && <p className="text-xs text-muted-foreground">{exec.error_message}</p>}
+                                {exec.status === "completed" && exec.stdout && cleanPipeStdout(exec.stdout) && (
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{cleanPipeStdout(exec.stdout)}</pre>
+                                )}
+                                {exec.status === "failed" && exec.stderr && !exec.error_message && (
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{exec.stderr}</pre>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            logs.slice().reverse().map((log, i) => (
+                              <div key={i} className="border p-2 space-y-1">
+                                <div className="flex items-center gap-2 text-xs font-mono">
+                                  <span className="text-muted-foreground">{new Date(log.started_at).toLocaleString()}</span>
+                                  <span>{log.success ? "✓" : "✗"}</span>
+                                  <span className="text-muted-foreground">{Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)}s</span>
+                                </div>
+                                {log.success && log.stdout && cleanPipeStdout(log.stdout) && (
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{cleanPipeStdout(log.stdout)}</pre>
+                                )}
+                                {!log.success && log.stderr && (
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{log.stderr}</pre>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </TabsContent>
+
+                      {/* ═══ ADVANCED TAB ═══ */}
+                      <TabsContent value="advanced" className="mt-3 space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1.5">
                           <Label className="text-xs">history</Label>
@@ -1813,26 +1851,16 @@ export function PipesSection() {
                         autoCapitalize="off"
                         spellCheck={false}
                       />
-                      </div>
-                    </details>
+                      </TabsContent>
 
-                    {/* ▼ Runs — collapsible */}
-                    <details className="group" open>
-                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
-                        <span className="text-xs font-medium flex items-center gap-1.5">
-                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                          Runs
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {executions.length > 0 ? `${executions.length} runs` : logs.length > 0 ? `${logs.length} runs` : "none"}
-                        </span>
-                      </summary>
-                      <div className="pl-5 pb-3">
-                      <Label className="text-xs sr-only">execution history</Label>
+                    </Tabs>
+
+                    {/* old runs kept for backward compat — hidden, data already in Runs tab */}
+                    <div className="hidden">
                       <div className="mt-1 space-y-2 max-h-64 overflow-y-auto">
                         {executions.length === 0 && logs.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
-                            no runs yet — click ▶ to run manually
+                            no runs yet
                           </p>
                         ) : executions.length > 0 ? (
                           executions.map((exec) => (
@@ -1961,8 +1989,7 @@ export function PipesSection() {
                             ))
                         )}
                       </div>
-                      </div>
-                    </details>
+                    </div>
 
                   </div>
                 )}
