@@ -122,7 +122,23 @@ impl TranscriptionEngine {
             }
 
             AudioTranscriptionEngine::Parakeet => {
-                #[cfg(feature = "parakeet")]
+                // Auto-upgrade to MLX (GPU) when the feature is compiled in
+                #[cfg(feature = "parakeet-mlx")]
+                {
+                    info!("parakeet selected — auto-upgrading to parakeet-mlx (Metal GPU)");
+                    let model = tokio::task::spawn_blocking(|| {
+                        audiopipe::Model::from_pretrained("parakeet-tdt-0.6b-v3-mlx")
+                    })
+                    .await
+                    .map_err(|e| anyhow!("parakeet-mlx model loading task panicked: {}", e))?
+                    .map_err(|e| anyhow!("failed to load parakeet-mlx model: {}", e))?;
+                    info!("parakeet-tdt-0.6b-v3-mlx (GPU) model loaded successfully");
+                    Ok(Self::ParakeetMlx {
+                        model: Arc::new(StdMutex::new(model)),
+                        vocabulary,
+                    })
+                }
+                #[cfg(all(feature = "parakeet", not(feature = "parakeet-mlx")))]
                 {
                     let model = tokio::task::spawn_blocking(|| {
                         audiopipe::Model::from_pretrained("parakeet-tdt-0.6b-v3")
@@ -136,10 +152,10 @@ impl TranscriptionEngine {
                         vocabulary,
                     })
                 }
-                #[cfg(not(feature = "parakeet"))]
+                #[cfg(not(any(feature = "parakeet", feature = "parakeet-mlx")))]
                 {
                     Err(anyhow!(
-                        "parakeet engine selected but the 'parakeet' feature is not enabled"
+                        "parakeet engine selected but neither 'parakeet' nor 'parakeet-mlx' feature is enabled"
                     ))
                 }
             }
