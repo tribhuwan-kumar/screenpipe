@@ -145,9 +145,8 @@ pub async fn reconcile_untranscribed(
     // User override only applies to OpenAI-compatible (unknown engine limits).
     // All other engines use hardcoded optimal defaults.
     let max_duration = match *audio_engine {
-        AudioTranscriptionEngine::OpenAICompatible => {
-            batch_max_duration_secs.unwrap_or_else(|| default_max_batch_duration_secs(&audio_engine))
-        }
+        AudioTranscriptionEngine::OpenAICompatible => batch_max_duration_secs
+            .unwrap_or_else(|| default_max_batch_duration_secs(&audio_engine)),
         _ => default_max_batch_duration_secs(&audio_engine),
     };
     let batches = group_chunks_by_device(&chunks, max_duration);

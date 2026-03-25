@@ -199,11 +199,7 @@ impl TranscriptionEngine {
 
                 info!("loading whisper model with GPU acceleration...");
                 let context = tokio::task::spawn_blocking(move || {
-                    WhisperContext::new_with_params(
-                        &quantized_path,
-                        context_param,
-                    )
-                    .map(Arc::new)
+                    WhisperContext::new_with_params(&quantized_path, context_param).map(Arc::new)
                 })
                 .await
                 .map_err(|e| anyhow!("whisper model loading task panicked: {}", e))?

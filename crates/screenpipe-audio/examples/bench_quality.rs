@@ -28,17 +28,29 @@ fn word_error_rate(reference: &str, hypothesis: &str) -> (f64, usize, usize) {
 
     // DP matrix
     let mut d = vec![vec![0usize; h + 1]; r + 1];
-    for i in 0..=r { d[i][0] = i; }
-    for j in 0..=h { d[0][j] = j; }
+    for i in 0..=r {
+        d[i][0] = i;
+    }
+    for j in 0..=h {
+        d[0][j] = j;
+    }
     for i in 1..=r {
         for j in 1..=h {
-            let cost = if ref_words[i-1].to_lowercase() == hyp_words[j-1].to_lowercase() { 0 } else { 1 };
-            d[i][j] = (d[i-1][j] + 1)       // deletion
-                .min(d[i][j-1] + 1)           // insertion
-                .min(d[i-1][j-1] + cost);     // substitution
+            let cost = if ref_words[i - 1].to_lowercase() == hyp_words[j - 1].to_lowercase() {
+                0
+            } else {
+                1
+            };
+            d[i][j] = (d[i - 1][j] + 1) // deletion
+                .min(d[i][j - 1] + 1) // insertion
+                .min(d[i - 1][j - 1] + cost); // substitution
         }
     }
-    let wer = if r > 0 { d[r][h] as f64 / r as f64 } else { 0.0 };
+    let wer = if r > 0 {
+        d[r][h] as f64 / r as f64
+    } else {
+        0.0
+    };
     (wer, d[r][h], r)
 }
 
@@ -47,7 +59,11 @@ fn char_accuracy(reference: &str, hypothesis: &str) -> f64 {
     let r = reference.to_lowercase();
     let h = hypothesis.to_lowercase();
     let dist = strsim_levenshtein(&r, &h);
-    if r.len() > 0 { 1.0 - (dist as f64 / r.len() as f64) } else { 1.0 }
+    if r.len() > 0 {
+        1.0 - (dist as f64 / r.len() as f64)
+    } else {
+        1.0
+    }
 }
 
 fn strsim_levenshtein(a: &str, b: &str) -> usize {
@@ -55,12 +71,18 @@ fn strsim_levenshtein(a: &str, b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
     let (m, n) = (a.len(), b.len());
     let mut dp = vec![vec![0usize; n + 1]; m + 1];
-    for i in 0..=m { dp[i][0] = i; }
-    for j in 0..=n { dp[0][j] = j; }
+    for i in 0..=m {
+        dp[i][0] = i;
+    }
+    for j in 0..=n {
+        dp[0][j] = j;
+    }
     for i in 1..=m {
         for j in 1..=n {
-            let cost = if a[i-1] == b[j-1] { 0 } else { 1 };
-            dp[i][j] = (dp[i-1][j] + 1).min(dp[i][j-1] + 1).min(dp[i-1][j-1] + cost);
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1)
+                .min(dp[i][j - 1] + 1)
+                .min(dp[i - 1][j - 1] + cost);
         }
     }
     dp[m][n]
@@ -71,33 +93,39 @@ fn read_wav(path: &std::path::Path) -> anyhow::Result<(Vec<f32>, u32)> {
     let mut reader = hound::WavReader::open(path)?;
     let spec = reader.spec();
     let samples: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
-        (hound::SampleFormat::Float, _) => {
-            reader.samples::<f32>().filter_map(|s| s.ok()).collect()
-        }
-        (hound::SampleFormat::Int, 16) => {
-            reader.samples::<i16>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 32768.0).collect()
-        }
-        (hound::SampleFormat::Int, 24) => {
-            reader.samples::<i32>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 8388608.0).collect()
-        }
-        (hound::SampleFormat::Int, 32) => {
-            reader.samples::<i32>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 2147483648.0).collect()
-        }
-        _ => {
-            reader.samples::<i16>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 32768.0).collect()
-        }
+        (hound::SampleFormat::Float, _) => reader.samples::<f32>().filter_map(|s| s.ok()).collect(),
+        (hound::SampleFormat::Int, 16) => reader
+            .samples::<i16>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 32768.0)
+            .collect(),
+        (hound::SampleFormat::Int, 24) => reader
+            .samples::<i32>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 8388608.0)
+            .collect(),
+        (hound::SampleFormat::Int, 32) => reader
+            .samples::<i32>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 2147483648.0)
+            .collect(),
+        _ => reader
+            .samples::<i16>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 32768.0)
+            .collect(),
     };
     Ok((samples, spec.sample_rate))
 }
 
 /// LCS dedup for overlap merging (same as in engine.rs)
 fn longest_common_word_substring(s1: &str, s2: &str) -> Option<(usize, usize, usize)> {
-    let s1 = s1.to_lowercase().replace(|c: char| c.is_ascii_punctuation(), "");
-    let s2 = s2.to_lowercase().replace(|c: char| c.is_ascii_punctuation(), "");
+    let s1 = s1
+        .to_lowercase()
+        .replace(|c: char| c.is_ascii_punctuation(), "");
+    let s2 = s2
+        .to_lowercase()
+        .replace(|c: char| c.is_ascii_punctuation(), "");
     let s1_words: Vec<&str> = s1.split_whitespace().collect();
     let s2_words: Vec<&str> = s2.split_whitespace().collect();
     let (s1_len, s2_len) = (s1_words.len(), s2_words.len());
@@ -107,8 +135,8 @@ fn longest_common_word_substring(s1: &str, s2: &str) -> Option<(usize, usize, us
     let mut max_j = None;
     for i in 1..=s1_len {
         for j in 1..=s2_len {
-            if s1_words[i-1] == s2_words[j-1] {
-                dp[i][j] = dp[i-1][j-1] + 1;
+            if s1_words[i - 1] == s2_words[j - 1] {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
                 if dp[i][j] > max_len {
                     max_len = dp[i][j];
                     max_i = Some(i - max_len);
@@ -134,7 +162,11 @@ fn transcribe_chunked(
 ) -> String {
     let chunk_samples = sample_rate as usize * chunk_secs;
     let overlap_samples = sample_rate as usize * overlap_secs;
-    let step = if overlap_samples < chunk_samples { chunk_samples - overlap_samples } else { chunk_samples };
+    let step = if overlap_samples < chunk_samples {
+        chunk_samples - overlap_samples
+    } else {
+        chunk_samples
+    };
 
     let opts = audiopipe::TranscribeOptions {
         language: lang.map(|s| s.to_string()),
@@ -142,7 +174,8 @@ fn transcribe_chunked(
     };
 
     if audio.len() <= chunk_samples {
-        return engine.transcribe_with_sample_rate(audio, sample_rate, opts)
+        return engine
+            .transcribe_with_sample_rate(audio, sample_rate, opts)
             .map(|r| r.text)
             .unwrap_or_default();
     }
@@ -157,7 +190,9 @@ fn transcribe_chunked(
             word_timestamps: false,
         };
         let result = engine.transcribe_with_sample_rate(chunk, sample_rate, opts);
-        let text = result.map(|r| r.text.trim().to_string()).unwrap_or_default();
+        let text = result
+            .map(|r| r.text.trim().to_string())
+            .unwrap_or_default();
 
         if !text.is_empty() {
             if overlap_secs > 0 {
@@ -182,7 +217,9 @@ fn transcribe_chunked(
                 texts.push(text);
             }
         }
-        if end >= audio.len() { break; }
+        if end >= audio.len() {
+            break;
+        }
         offset += step;
     }
     texts.join(" ")
@@ -240,10 +277,12 @@ async fn main() -> anyhow::Result<()> {
     let t0 = Instant::now();
     let te = TranscriptionEngine::new(
         Arc::new(AudioTranscriptionEngine::Parakeet),
-        None, None,
+        None,
+        None,
         vec![Language::English],
         vec![],
-    ).await?;
+    )
+    .await?;
     println!("Model loaded in {:.1}s\n", t0.elapsed().as_secs_f64());
 
     // Use audiopipe directly for fine-grained control over transcription options
@@ -258,19 +297,67 @@ async fn main() -> anyhow::Result<()> {
         lang: Option<&'static str>,
     }
     let configs = vec![
-        Config { label: "full-audio (no chunk)", chunk_secs: 9999, overlap_secs: 0, lang: None },
-        Config { label: "30s/0s overlap, auto-lang", chunk_secs: 30, overlap_secs: 0, lang: None },
-        Config { label: "30s/1s overlap, auto-lang", chunk_secs: 30, overlap_secs: 1, lang: None },
-        Config { label: "30s/2s overlap, auto-lang", chunk_secs: 30, overlap_secs: 2, lang: None },
-        Config { label: "30s/1s overlap, lang=en", chunk_secs: 30, overlap_secs: 1, lang: Some("en") },
-        Config { label: "25s/1s overlap, auto-lang", chunk_secs: 25, overlap_secs: 1, lang: None },
-        Config { label: "40s/1s overlap, auto-lang", chunk_secs: 40, overlap_secs: 1, lang: None },
-        Config { label: "30s/3s overlap, auto-lang", chunk_secs: 30, overlap_secs: 3, lang: None },
-        Config { label: "20s/1s overlap, auto-lang", chunk_secs: 20, overlap_secs: 1, lang: None },
+        Config {
+            label: "full-audio (no chunk)",
+            chunk_secs: 9999,
+            overlap_secs: 0,
+            lang: None,
+        },
+        Config {
+            label: "30s/0s overlap, auto-lang",
+            chunk_secs: 30,
+            overlap_secs: 0,
+            lang: None,
+        },
+        Config {
+            label: "30s/1s overlap, auto-lang",
+            chunk_secs: 30,
+            overlap_secs: 1,
+            lang: None,
+        },
+        Config {
+            label: "30s/2s overlap, auto-lang",
+            chunk_secs: 30,
+            overlap_secs: 2,
+            lang: None,
+        },
+        Config {
+            label: "30s/1s overlap, lang=en",
+            chunk_secs: 30,
+            overlap_secs: 1,
+            lang: Some("en"),
+        },
+        Config {
+            label: "25s/1s overlap, auto-lang",
+            chunk_secs: 25,
+            overlap_secs: 1,
+            lang: None,
+        },
+        Config {
+            label: "40s/1s overlap, auto-lang",
+            chunk_secs: 40,
+            overlap_secs: 1,
+            lang: None,
+        },
+        Config {
+            label: "30s/3s overlap, auto-lang",
+            chunk_secs: 30,
+            overlap_secs: 3,
+            lang: None,
+        },
+        Config {
+            label: "20s/1s overlap, auto-lang",
+            chunk_secs: 20,
+            overlap_secs: 1,
+            lang: None,
+        },
     ];
 
     // Results table
-    println!("{:<35} {:>6} {:>6} {:>7} {:>7}", "Config", "WER%", "ChrAc%", "Time", "Notes");
+    println!(
+        "{:<35} {:>6} {:>6} {:>7} {:>7}",
+        "Config", "WER%", "ChrAc%", "Time", "Notes"
+    );
     println!("{}", "-".repeat(70));
 
     for config in &configs {
@@ -293,8 +380,12 @@ async fn main() -> anyhow::Result<()> {
 
             let t = Instant::now();
             let transcript = transcribe_chunked(
-                &mut model, &samples, sr,
-                config.chunk_secs, config.overlap_secs, config.lang,
+                &mut model,
+                &samples,
+                sr,
+                config.chunk_secs,
+                config.overlap_secs,
+                config.lang,
             );
             total_time += t.elapsed().as_secs_f64();
 
@@ -310,7 +401,10 @@ async fn main() -> anyhow::Result<()> {
         let avg_ca = total_char_acc / n * 100.0;
         let note = format!("{}short/{}chunked", n_short, n_chunked);
 
-        println!("{:<35} {:>5.1}% {:>5.1}% {:>6.1}s  {}", config.label, avg_wer, avg_ca, total_time, note);
+        println!(
+            "{:<35} {:>5.1}% {:>5.1}% {:>6.1}s  {}",
+            config.label, avg_wer, avg_ca, total_time, note
+        );
     }
 
     // Detailed per-file results for the current production config (30s/1s)
@@ -321,15 +415,18 @@ async fn main() -> anyhow::Result<()> {
         let (samples, sr) = read_wav(&audio_path)?;
         let dur = samples.len() as f64 / sr as f64;
 
-        let transcript = transcribe_chunked(
-            &mut model, &samples, sr, 30, 1, None,
-        );
+        let transcript = transcribe_chunked(&mut model, &samples, sr, 30, 1, None);
 
         let (wer, edits, ref_len) = word_error_rate(tc.reference, &transcript);
         let ca = char_accuracy(tc.reference, &transcript);
 
         println!("--- {} ({:.1}s) ---", tc.name, dur);
-        println!("  WER: {:.1}% ({} edits / {} ref words)", wer * 100.0, edits, ref_len);
+        println!(
+            "  WER: {:.1}% ({} edits / {} ref words)",
+            wer * 100.0,
+            edits,
+            ref_len
+        );
         println!("  ChrAcc: {:.1}%", ca * 100.0);
         println!("  Ref:  {}...", &tc.reference[..80.min(tc.reference.len())]);
         println!("  Got:  {}...", &transcript[..80.min(transcript.len())]);

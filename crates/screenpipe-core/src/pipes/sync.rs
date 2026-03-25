@@ -15,7 +15,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use tracing::{info, warn};
 
-use super::{load_local_overrides, parse_frontmatter, read_tombstones, save_local_overrides, serialize_pipe};
+use super::{
+    load_local_overrides, parse_frontmatter, read_tombstones, save_local_overrides, serialize_pipe,
+};
 
 /// Current schema version for the sync manifest.
 pub const PIPE_SYNC_SCHEMA: u32 = 1;

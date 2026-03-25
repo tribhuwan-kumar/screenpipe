@@ -27,21 +27,22 @@ fn read_wav(path: &Path) -> anyhow::Result<(Vec<f32>, u32)> {
     let mut reader = hound::WavReader::open(path)?;
     let spec = reader.spec();
     let samples: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
-        (hound::SampleFormat::Float, _) => {
-            reader.samples::<f32>().filter_map(|s| s.ok()).collect()
-        }
-        (hound::SampleFormat::Int, 32) => {
-            reader.samples::<i32>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 2147483648.0).collect()
-        }
-        (hound::SampleFormat::Int, 24) => {
-            reader.samples::<i32>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 8388608.0).collect()
-        }
-        _ => {
-            reader.samples::<i16>().filter_map(|s| s.ok())
-                .map(|s| s as f32 / 32768.0).collect()
-        }
+        (hound::SampleFormat::Float, _) => reader.samples::<f32>().filter_map(|s| s.ok()).collect(),
+        (hound::SampleFormat::Int, 32) => reader
+            .samples::<i32>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 2147483648.0)
+            .collect(),
+        (hound::SampleFormat::Int, 24) => reader
+            .samples::<i32>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 8388608.0)
+            .collect(),
+        _ => reader
+            .samples::<i16>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / 32768.0)
+            .collect(),
     };
     Ok((samples, spec.sample_rate))
 }
@@ -49,20 +50,40 @@ fn read_wav(path: &Path) -> anyhow::Result<(Vec<f32>, u32)> {
 // ─── Metrics ────────────────────────────────────────────────────────────────
 
 fn word_error_rate(reference: &str, hypothesis: &str) -> (f64, usize, usize) {
-    let ref_words: Vec<String> = reference.split_whitespace().map(|w| w.to_lowercase()).collect();
-    let hyp_words: Vec<String> = hypothesis.split_whitespace().map(|w| w.to_lowercase()).collect();
+    let ref_words: Vec<String> = reference
+        .split_whitespace()
+        .map(|w| w.to_lowercase())
+        .collect();
+    let hyp_words: Vec<String> = hypothesis
+        .split_whitespace()
+        .map(|w| w.to_lowercase())
+        .collect();
     let r = ref_words.len();
     let h = hyp_words.len();
     let mut d = vec![vec![0usize; h + 1]; r + 1];
-    for i in 0..=r { d[i][0] = i; }
-    for j in 0..=h { d[0][j] = j; }
+    for i in 0..=r {
+        d[i][0] = i;
+    }
+    for j in 0..=h {
+        d[0][j] = j;
+    }
     for i in 1..=r {
         for j in 1..=h {
-            let cost = if ref_words[i-1] == hyp_words[j-1] { 0 } else { 1 };
-            d[i][j] = (d[i-1][j] + 1).min(d[i][j-1] + 1).min(d[i-1][j-1] + cost);
+            let cost = if ref_words[i - 1] == hyp_words[j - 1] {
+                0
+            } else {
+                1
+            };
+            d[i][j] = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
         }
     }
-    let wer = if r > 0 { d[r][h] as f64 / r as f64 } else { 0.0 };
+    let wer = if r > 0 {
+        d[r][h] as f64 / r as f64
+    } else {
+        0.0
+    };
     (wer, d[r][h], r)
 }
 
@@ -71,31 +92,45 @@ fn char_accuracy(reference: &str, hypothesis: &str) -> f64 {
     let h: Vec<char> = hypothesis.to_lowercase().chars().collect();
     let (m, n) = (r.len(), h.len());
     let mut dp = vec![vec![0usize; n + 1]; m + 1];
-    for i in 0..=m { dp[i][0] = i; }
-    for j in 0..=n { dp[0][j] = j; }
+    for i in 0..=m {
+        dp[i][0] = i;
+    }
+    for j in 0..=n {
+        dp[0][j] = j;
+    }
     for i in 1..=m {
         for j in 1..=n {
-            let cost = if r[i-1] == h[j-1] { 0 } else { 1 };
-            dp[i][j] = (dp[i-1][j] + 1).min(dp[i][j-1] + 1).min(dp[i-1][j-1] + cost);
+            let cost = if r[i - 1] == h[j - 1] { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1)
+                .min(dp[i][j - 1] + 1)
+                .min(dp[i - 1][j - 1] + cost);
         }
     }
-    if m > 0 { 1.0 - (dp[m][n] as f64 / m as f64) } else { 1.0 }
+    if m > 0 {
+        1.0 - (dp[m][n] as f64 / m as f64)
+    } else {
+        1.0
+    }
 }
 
 // ─── Resampling ─────────────────────────────────────────────────────────────
 
 fn resample_linear(audio: &[f32], from_sr: u32, to_sr: u32) -> Vec<f32> {
-    if from_sr == to_sr { return audio.to_vec(); }
+    if from_sr == to_sr {
+        return audio.to_vec();
+    }
     let ratio = from_sr as f64 / to_sr as f64;
     let out_len = (audio.len() as f64 / ratio) as usize;
-    (0..out_len).map(|i| {
-        let src_pos = i as f64 * ratio;
-        let idx = src_pos as usize;
-        let frac = (src_pos - idx as f64) as f32;
-        let a = audio[idx.min(audio.len() - 1)];
-        let b = audio[(idx + 1).min(audio.len() - 1)];
-        a + frac * (b - a)
-    }).collect()
+    (0..out_len)
+        .map(|i| {
+            let src_pos = i as f64 * ratio;
+            let idx = src_pos as usize;
+            let frac = (src_pos - idx as f64) as f32;
+            let a = audio[idx.min(audio.len() - 1)];
+            let b = audio[(idx + 1).min(audio.len() - 1)];
+            a + frac * (b - a)
+        })
+        .collect()
 }
 
 // ─── Peak normalize ─────────────────────────────────────────────────────────
@@ -113,8 +148,12 @@ fn peak_normalize(audio: &[f32]) -> Vec<f32> {
 // ─── LCS dedup ──────────────────────────────────────────────────────────────
 
 fn lcs_dedup(s1: &str, s2: &str) -> Option<(usize, usize, usize)> {
-    let s1 = s1.to_lowercase().replace(|c: char| c.is_ascii_punctuation(), "");
-    let s2 = s2.to_lowercase().replace(|c: char| c.is_ascii_punctuation(), "");
+    let s1 = s1
+        .to_lowercase()
+        .replace(|c: char| c.is_ascii_punctuation(), "");
+    let s2 = s2
+        .to_lowercase()
+        .replace(|c: char| c.is_ascii_punctuation(), "");
     let w1: Vec<&str> = s1.split_whitespace().collect();
     let w2: Vec<&str> = s2.split_whitespace().collect();
     let (n1, n2) = (w1.len(), w2.len());
@@ -122,13 +161,21 @@ fn lcs_dedup(s1: &str, s2: &str) -> Option<(usize, usize, usize)> {
     let (mut ml, mut mi, mut mj) = (0, 0, 0);
     for i in 1..=n1 {
         for j in 1..=n2 {
-            if w1[i-1] == w2[j-1] {
-                dp[i][j] = dp[i-1][j-1] + 1;
-                if dp[i][j] > ml { ml = dp[i][j]; mi = i - ml; mj = j - ml; }
+            if w1[i - 1] == w2[j - 1] {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+                if dp[i][j] > ml {
+                    ml = dp[i][j];
+                    mi = i - ml;
+                    mj = j - ml;
+                }
             }
         }
     }
-    if ml > 0 { Some((mi, mj, ml)) } else { None }
+    if ml > 0 {
+        Some((mi, mj, ml))
+    } else {
+        None
+    }
 }
 
 // ─── VAD segmentation ───────────────────────────────────────────────────────
@@ -143,7 +190,9 @@ async fn vad_segment(audio: &[f32], sr: u32) -> Vec<(usize, usize)> {
     let mut speech_start = 0;
 
     for (i, chunk) in audio.chunks(chunk_size).enumerate() {
-        if chunk.len() < chunk_size { break; }
+        if chunk.len() < chunk_size {
+            break;
+        }
         let is_speech = vad.is_voice_segment(chunk).unwrap_or(false);
         if is_speech && !in_speech {
             speech_start = i * chunk_size;
@@ -171,7 +220,9 @@ fn merge_and_cut_segments(
     max_chunk_samples: usize,
     sr: u32,
 ) -> Vec<(usize, usize)> {
-    if segments.is_empty() { return vec![]; }
+    if segments.is_empty() {
+        return vec![];
+    }
 
     // Phase 1: Merge short adjacent segments
     let mut merged: Vec<(usize, usize)> = Vec::new();
@@ -226,8 +277,12 @@ fn merge_and_cut_segments(
 // ─── Transcription strategies ───────────────────────────────────────────────
 
 fn transcribe_full(model: &mut audiopipe::Model, audio: &[f32], sr: u32) -> String {
-    let opts = audiopipe::TranscribeOptions { language: None, word_timestamps: false };
-    model.transcribe_with_sample_rate(audio, sr, opts)
+    let opts = audiopipe::TranscribeOptions {
+        language: None,
+        word_timestamps: false,
+    };
+    model
+        .transcribe_with_sample_rate(audio, sr, opts)
         .map(|r| r.text.trim().to_string())
         .unwrap_or_default()
 }
@@ -252,8 +307,12 @@ fn transcribe_fixed_chunks(
     while offset < audio.len() {
         let end = (offset + chunk_samples).min(audio.len());
         let chunk = &audio[offset..end];
-        let opts = audiopipe::TranscribeOptions { language: None, word_timestamps: false };
-        let text = model.transcribe_with_sample_rate(chunk, sr, opts)
+        let opts = audiopipe::TranscribeOptions {
+            language: None,
+            word_timestamps: false,
+        };
+        let text = model
+            .transcribe_with_sample_rate(chunk, sr, opts)
             .map(|r| r.text.trim().to_string())
             .unwrap_or_default();
 
@@ -278,7 +337,9 @@ fn transcribe_fixed_chunks(
                 texts.push(text);
             }
         }
-        if end >= audio.len() { break; }
+        if end >= audio.len() {
+            break;
+        }
         offset += step;
     }
     texts.join(" ")
@@ -294,9 +355,15 @@ fn transcribe_vad_segments(
     let mut texts: Vec<String> = Vec::new();
     for &(s, e) in segments {
         let chunk = &audio[s..e];
-        if chunk.len() < sr as usize / 5 { continue; } // skip < 200ms
-        let opts = audiopipe::TranscribeOptions { language: None, word_timestamps: false };
-        let text = model.transcribe_with_sample_rate(chunk, sr, opts)
+        if chunk.len() < sr as usize / 5 {
+            continue;
+        } // skip < 200ms
+        let opts = audiopipe::TranscribeOptions {
+            language: None,
+            word_timestamps: false,
+        };
+        let text = model
+            .transcribe_with_sample_rate(chunk, sr, opts)
             .map(|r| r.text.trim().to_string())
             .unwrap_or_default();
         if !text.is_empty() {
@@ -316,10 +383,16 @@ fn get_rss_mb() -> f64 {
     #[repr(C)]
     #[allow(non_snake_case)]
     struct PMC {
-        cb: u32, PageFaultCount: u32, PeakWorkingSetSize: usize, WorkingSetSize: usize,
-        QuotaPeakPagedPoolUsage: usize, QuotaPagedPoolUsage: usize,
-        QuotaPeakNonPagedPoolUsage: usize, QuotaNonPagedPoolUsage: usize,
-        PagefileUsage: usize, PeakPagefileUsage: usize,
+        cb: u32,
+        PageFaultCount: u32,
+        PeakWorkingSetSize: usize,
+        WorkingSetSize: usize,
+        QuotaPeakPagedPoolUsage: usize,
+        QuotaPagedPoolUsage: usize,
+        QuotaPeakNonPagedPoolUsage: usize,
+        QuotaNonPagedPoolUsage: usize,
+        PagefileUsage: usize,
+        PeakPagefileUsage: usize,
     }
     extern "system" {
         fn GetCurrentProcess() -> isize;
@@ -330,7 +403,9 @@ fn get_rss_mb() -> f64 {
         pmc.cb = std::mem::size_of::<PMC>() as u32;
         if K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) != 0 {
             pmc.WorkingSetSize as f64 / (1024.0 * 1024.0)
-        } else { 0.0 }
+        } else {
+            0.0
+        }
     }
 }
 
@@ -395,18 +470,27 @@ async fn main() -> anyhow::Result<()> {
         let chunk = &poetic_16k[..n];
         let mem_before = get_rss_mb();
         let t = Instant::now();
-        let opts = audiopipe::TranscribeOptions { language: None, word_timestamps: false };
+        let opts = audiopipe::TranscribeOptions {
+            language: None,
+            word_timestamps: false,
+        };
         match model.transcribe(chunk, opts) {
             Ok(r) => {
                 let elapsed = t.elapsed().as_secs_f64();
                 let mem_delta = get_rss_mb() - mem_before;
                 let words = r.text.split_whitespace().count();
-                println!("  {}s: OK  {:.2}s  {}w  mem_delta={:.0}MB", secs, elapsed, words, mem_delta);
+                println!(
+                    "  {}s: OK  {:.2}s  {}w  mem_delta={:.0}MB",
+                    secs, elapsed, words, mem_delta
+                );
             }
             Err(e) => {
                 let elapsed = t.elapsed().as_secs_f64();
                 let mem_delta = get_rss_mb() - mem_before;
-                println!("  {}s: ERR {:.2}s  mem_delta={:.0}MB  {}", secs, elapsed, mem_delta, e);
+                println!(
+                    "  {}s: ERR {:.2}s  mem_delta={:.0}MB  {}",
+                    secs, elapsed, mem_delta, e
+                );
             }
         }
     }
@@ -422,21 +506,59 @@ async fn main() -> anyhow::Result<()> {
     }
     enum StrategyKind {
         Full,
-        Fixed { chunk_secs: usize, overlap_secs: usize },
-        Vad { max_chunk_secs: usize },
-        FixedNormalized { chunk_secs: usize, overlap_secs: usize },
+        Fixed {
+            chunk_secs: usize,
+            overlap_secs: usize,
+        },
+        Vad {
+            max_chunk_secs: usize,
+        },
+        FixedNormalized {
+            chunk_secs: usize,
+            overlap_secs: usize,
+        },
     }
 
     let strategies = vec![
-        Strategy { name: "A: full audio (baseline)", kind: StrategyKind::Full },
-        Strategy { name: "B: 30s fixed, 0s overlap", kind: StrategyKind::Fixed { chunk_secs: 30, overlap_secs: 0 } },
-        Strategy { name: "C: 30s fixed, 1s overlap+LCS", kind: StrategyKind::Fixed { chunk_secs: 30, overlap_secs: 1 } },
-        Strategy { name: "D: VAD split, max 30s", kind: StrategyKind::Vad { max_chunk_secs: 30 } },
-        Strategy { name: "E: 30s fixed, 0s, normalized", kind: StrategyKind::FixedNormalized { chunk_secs: 30, overlap_secs: 0 } },
-        Strategy { name: "F: VAD split, max 45s", kind: StrategyKind::Vad { max_chunk_secs: 45 } },
+        Strategy {
+            name: "A: full audio (baseline)",
+            kind: StrategyKind::Full,
+        },
+        Strategy {
+            name: "B: 30s fixed, 0s overlap",
+            kind: StrategyKind::Fixed {
+                chunk_secs: 30,
+                overlap_secs: 0,
+            },
+        },
+        Strategy {
+            name: "C: 30s fixed, 1s overlap+LCS",
+            kind: StrategyKind::Fixed {
+                chunk_secs: 30,
+                overlap_secs: 1,
+            },
+        },
+        Strategy {
+            name: "D: VAD split, max 30s",
+            kind: StrategyKind::Vad { max_chunk_secs: 30 },
+        },
+        Strategy {
+            name: "E: 30s fixed, 0s, normalized",
+            kind: StrategyKind::FixedNormalized {
+                chunk_secs: 30,
+                overlap_secs: 0,
+            },
+        },
+        Strategy {
+            name: "F: VAD split, max 45s",
+            kind: StrategyKind::Vad { max_chunk_secs: 45 },
+        },
     ];
 
-    println!("{:<35} {:>6} {:>7} {:>6}", "Strategy", "WER%", "ChrAcc%", "Time");
+    println!(
+        "{:<35} {:>6} {:>7} {:>6}",
+        "Strategy", "WER%", "ChrAcc%", "Time"
+    );
     println!("{}", "-".repeat(60));
 
     for strat in &strategies {
@@ -452,16 +574,20 @@ async fn main() -> anyhow::Result<()> {
             let t = Instant::now();
             let transcript = match &strat.kind {
                 StrategyKind::Full => transcribe_full(&mut model, &raw, sr),
-                StrategyKind::Fixed { chunk_secs, overlap_secs } => {
-                    transcribe_fixed_chunks(&mut model, &raw, sr, *chunk_secs, *overlap_secs)
-                }
+                StrategyKind::Fixed {
+                    chunk_secs,
+                    overlap_secs,
+                } => transcribe_fixed_chunks(&mut model, &raw, sr, *chunk_secs, *overlap_secs),
                 StrategyKind::Vad { max_chunk_secs } => {
                     let segments = vad_segment(&audio_16k, 16000).await;
                     let max_samples = 16000 * max_chunk_secs;
                     let merged = merge_and_cut_segments(&audio_16k, &segments, max_samples, 16000);
                     transcribe_vad_segments(&mut model, &audio_16k, 16000, &merged)
                 }
-                StrategyKind::FixedNormalized { chunk_secs, overlap_secs } => {
+                StrategyKind::FixedNormalized {
+                    chunk_secs,
+                    overlap_secs,
+                } => {
                     let norm = peak_normalize(&raw);
                     transcribe_fixed_chunks(&mut model, &norm, sr, *chunk_secs, *overlap_secs)
                 }
@@ -474,8 +600,13 @@ async fn main() -> anyhow::Result<()> {
             total_ca += ca;
         }
 
-        println!("{:<35} {:>5.1}% {:>6.1}% {:>5.1}s",
-            strat.name, total_wer/n*100.0, total_ca/n*100.0, total_time);
+        println!(
+            "{:<35} {:>5.1}% {:>6.1}% {:>5.1}s",
+            strat.name,
+            total_wer / n * 100.0,
+            total_ca / n * 100.0,
+            total_time
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -517,7 +648,10 @@ async fn main() -> anyhow::Result<()> {
 
         // Show transcript diffs for the worst case
         if vad_wer < full_wer {
-            println!("  ** VAD beats full by {:.1}pp **", (full_wer - vad_wer) * 100.0);
+            println!(
+                "  ** VAD beats full by {:.1}pp **",
+                (full_wer - vad_wer) * 100.0
+            );
         }
         println!("  Full: {}...", &full[..80.min(full.len())]);
         println!("  VAD:  {}...", &vad[..80.min(vad.len())]);
@@ -537,15 +671,19 @@ async fn main() -> anyhow::Result<()> {
             if path.extension().map(|e| e == "wav").unwrap_or(false) {
                 let (raw, sr) = read_wav(&path)?;
                 let dur = raw.len() as f64 / sr as f64;
-                if dur < 1.0 { continue; }
+                if dur < 1.0 {
+                    continue;
+                }
 
-                let audio_16k = if sr != 16000 { resample_linear(&raw, sr, 16000) } else { raw.clone() };
+                let audio_16k = if sr != 16000 {
+                    resample_linear(&raw, sr, 16000)
+                } else {
+                    raw.clone()
+                };
 
                 // VAD to see how much speech
                 let segments = vad_segment(&audio_16k, 16000).await;
-                let speech_secs: f64 = segments.iter()
-                    .map(|(s, e)| (e - s) as f64 / 16000.0)
-                    .sum();
+                let speech_secs: f64 = segments.iter().map(|(s, e)| (e - s) as f64 / 16000.0).sum();
 
                 let merged = merge_and_cut_segments(&audio_16k, &segments, 16000 * 30, 16000);
 
@@ -555,7 +693,13 @@ async fn main() -> anyhow::Result<()> {
 
                 let words = transcript.split_whitespace().count();
                 let fname = path.file_name().unwrap().to_string_lossy();
-                println!("--- {} ({:.1}s, speech: {:.1}s, {} segments) ---", fname, dur, speech_secs, merged.len());
+                println!(
+                    "--- {} ({:.1}s, speech: {:.1}s, {} segments) ---",
+                    fname,
+                    dur,
+                    speech_secs,
+                    merged.len()
+                );
                 println!("  Time: {:.2}s  Words: {}", elapsed, words);
                 if words > 0 {
                     let preview = &transcript[..200.min(transcript.len())];

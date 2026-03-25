@@ -416,7 +416,10 @@ pub fn load_local_overrides(pipes_dir: &Path) -> HashMap<String, bool> {
 }
 
 /// Write local enabled overrides atomically (write to temp, then rename).
-pub(crate) fn save_local_overrides(pipes_dir: &Path, overrides: &HashMap<String, bool>) -> Result<()> {
+pub(crate) fn save_local_overrides(
+    pipes_dir: &Path,
+    overrides: &HashMap<String, bool>,
+) -> Result<()> {
     let path = pipes_dir.join(LOCAL_OVERRIDES_FILE);
     let tmp_path = pipes_dir.join(".local-overrides.json.tmp");
     let json = serde_json::to_string_pretty(overrides)?;
@@ -2246,7 +2249,10 @@ impl PipeManager {
                         // Persist enabled state to local overrides so it
                         // survives cross-device sync (never synced).
                         if let Err(e) = set_local_override(&self.pipes_dir, name, b) {
-                            warn!("failed to save local enabled override for '{}': {}", name, e);
+                            warn!(
+                                "failed to save local enabled override for '{}': {}",
+                                name, e
+                            );
                         }
                     }
                 }
@@ -2648,9 +2654,7 @@ impl PipeManager {
                     std::collections::HashSet::new();
                 {
                     use futures::FutureExt;
-                    while let Some(event) =
-                        workflow_rx.next().now_or_never().flatten()
-                    {
+                    while let Some(event) = workflow_rx.next().now_or_never().flatten() {
                         let event_type = &event.data.event_type;
                         for (name, config, _body) in &pipe_snapshot {
                             if !config.enabled {
@@ -2817,15 +2821,14 @@ impl PipeManager {
 
                     tokio::spawn(async move {
                         // Create DB execution row
-                        let trigger = if is_event_triggered { "event" } else { "scheduled" };
+                        let trigger = if is_event_triggered {
+                            "event"
+                        } else {
+                            "scheduled"
+                        };
                         let exec_id = if let Some(ref store) = store_ref {
                             match store
-                                .create_execution(
-                                    &pipe_name,
-                                    trigger,
-                                    &model,
-                                    provider.as_deref(),
-                                )
+                                .create_execution(&pipe_name, trigger, &model, provider.as_deref())
                                 .await
                             {
                                 Ok(id) => {

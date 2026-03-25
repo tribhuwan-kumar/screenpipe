@@ -228,10 +228,7 @@ impl ConnectionManager {
     /// Matches keys that are exactly `id` (the default instance) or start with
     /// `id:` (named instances).  Each entry is returned as
     /// `(instance_name_or_none, connection)`.
-    pub fn get_all_instances(
-        &self,
-        id: &str,
-    ) -> Result<Vec<(Option<String>, SavedConnection)>> {
+    pub fn get_all_instances(&self, id: &str) -> Result<Vec<(Option<String>, SavedConnection)>> {
         self.find(id)?;
         let store = load_store(&self.screenpipe_dir);
         let prefix = format!("{}:", id);

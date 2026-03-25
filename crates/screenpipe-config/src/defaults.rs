@@ -100,15 +100,15 @@ impl DbConfig {
         match tier {
             DeviceTier::High => Self::default(),
             DeviceTier::Mid => Self {
-                mmap_size: 128 * 1024 * 1024,       // 128 MB
-                cache_size_kb: 32_000,               // 32 MB
+                mmap_size: 128 * 1024 * 1024, // 128 MB
+                cache_size_kb: 32_000,        // 32 MB
                 read_pool_max: 12,
                 read_pool_min: 2,
                 write_pool_max: 3,
             },
             DeviceTier::Low => Self {
-                mmap_size: 32 * 1024 * 1024,        // 32 MB
-                cache_size_kb: 8_000,                // 8 MB
+                mmap_size: 32 * 1024 * 1024, // 32 MB
+                cache_size_kb: 8_000,        // 8 MB
                 read_pool_max: 5,
                 read_pool_min: 1,
                 write_pool_max: 2,
@@ -121,8 +121,8 @@ impl Default for DbConfig {
     /// High-tier defaults — identical to the previous hardcoded values.
     fn default() -> Self {
         Self {
-            mmap_size: 256 * 1024 * 1024,            // 256 MB
-            cache_size_kb: 64_000,                    // 64 MB
+            mmap_size: 256 * 1024 * 1024, // 256 MB
+            cache_size_kb: 64_000,        // 64 MB
             read_pool_max: 27,
             read_pool_min: 3,
             write_pool_max: 3,
@@ -254,7 +254,10 @@ mod tests {
     fn detect_tier_returns_valid_tier() {
         let tier = detect_tier();
         // Just verify it doesn't panic and returns a valid tier
-        assert!(matches!(tier, DeviceTier::High | DeviceTier::Mid | DeviceTier::Low));
+        assert!(matches!(
+            tier,
+            DeviceTier::High | DeviceTier::Mid | DeviceTier::Low
+        ));
     }
 
     // ── classify_tier boundary tests ──────────────────────────────────
@@ -315,7 +318,10 @@ mod tests {
 
     #[test]
     fn channel_config_default_matches_high() {
-        assert_eq!(ChannelConfig::default(), ChannelConfig::for_tier(DeviceTier::High));
+        assert_eq!(
+            ChannelConfig::default(),
+            ChannelConfig::for_tier(DeviceTier::High)
+        );
     }
 
     #[test]

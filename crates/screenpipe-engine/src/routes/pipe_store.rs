@@ -245,10 +245,9 @@ pub async fn pipe_store_install(
         .unwrap_or(1);
 
     // Extract connections from frontmatter before installing
-    let connections: Vec<String> =
-        screenpipe_core::pipes::parse_frontmatter(&source_md)
-            .map(|(cfg, _)| cfg.connections)
-            .unwrap_or_default();
+    let connections: Vec<String> = screenpipe_core::pipes::parse_frontmatter(&source_md)
+        .map(|(cfg, _)| cfg.connections)
+        .unwrap_or_default();
 
     // 2. Install locally with store tracking
     let mgr = pm.lock().await;
