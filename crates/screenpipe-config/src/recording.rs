@@ -196,6 +196,11 @@ pub struct RecordingSettings {
     /// Enable accessibility text capture (AX tree walker).
     #[serde(rename = "enableAccessibility", alias = "enableUiEvents")]
     pub enable_accessibility: bool,
+
+    /// Detected hardware tier ("high", "mid", "low").
+    /// Set once on first launch; `None` for existing installs (treated as High).
+    #[serde(rename = "deviceTier", default, skip_serializing_if = "Option::is_none")]
+    pub device_tier: Option<String>,
 }
 
 impl RecordingSettings {
@@ -260,6 +265,7 @@ impl Default for RecordingSettings {
             analytics_id: String::new(),
             enable_input_capture: true,
             enable_accessibility: true,
+            device_tier: None,
         }
     }
 }

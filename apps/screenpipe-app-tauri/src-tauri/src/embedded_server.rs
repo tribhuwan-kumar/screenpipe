@@ -149,7 +149,7 @@ pub async fn start_embedded_server(
     // Initialize database
     let db_path = format!("{}/db.sqlite", local_data_dir.to_string_lossy());
     let db = Arc::new(
-        DatabaseManager::new(&db_path)
+        DatabaseManager::new(&db_path, config.db_config.clone())
             .await
             .map_err(|e| format!("Failed to initialize database: {}", e))?,
     );

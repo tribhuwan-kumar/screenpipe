@@ -115,8 +115,11 @@ impl AudioManager {
             VadEngineEnum::WebRtc => Arc::new(Mutex::new(Box::new(WebRtcVad::new()))),
         };
 
-        let (recording_sender, recording_receiver) = crossbeam::channel::bounded(1000);
-        let (transcription_sender, transcription_receiver) = crossbeam::channel::bounded(1000);
+        let channel_config = &options.channel_config;
+        let (recording_sender, recording_receiver) =
+            crossbeam::channel::bounded(channel_config.recording_capacity);
+        let (transcription_sender, transcription_receiver) =
+            crossbeam::channel::bounded(channel_config.transcription_capacity);
 
         let recording_handles = DashMap::new();
 

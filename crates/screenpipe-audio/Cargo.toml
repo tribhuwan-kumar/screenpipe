@@ -64,6 +64,7 @@ reqwest = { workspace = true }
 
 screenpipe-core = { path = "../screenpipe-core" }
 screenpipe-events = { path = "../screenpipe-events" }
+screenpipe-config = { path = "../screenpipe-config" }
 screenpipe-db = { path = "../screenpipe-db" }
 
 # crossbeam

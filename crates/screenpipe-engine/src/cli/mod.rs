@@ -392,11 +392,42 @@ impl RecordArgs {
     }
 
     /// Convert RecordArgs into a unified RecordingConfig via RecordingSettings.
+    ///
+    /// If no `device_tier` is set in the config file, detects hardware and applies
+    /// tier-appropriate defaults (first-launch behavior for CLI users).
     pub fn into_recording_config(
         self,
         data_dir: PathBuf,
     ) -> crate::recording_config::RecordingConfig {
-        let settings = self.to_recording_settings();
+        let mut settings = self.to_recording_settings();
+
+        // First-launch tier detection for CLI users
+        if settings.device_tier.is_none() {
+            let config_path = data_dir.join("config.toml");
+            let existing = screenpipe_config::load_toml(&config_path).ok();
+            let has_tier = existing
+                .as_ref()
+                .map(|s| s.device_tier.is_some())
+                .unwrap_or(false);
+
+            if has_tier {
+                // Existing config with tier — just use it
+                if let Some(existing) = existing {
+                    settings.device_tier = existing.device_tier;
+                }
+            } else {
+                let tier = screenpipe_config::detect_tier();
+                eprintln!("detected hardware tier: {:?}", tier);
+                // Only apply capture defaults (video_quality, power_mode) for truly fresh installs.
+                // Existing config without tier = upgrade — just set the tier for DB/channel tuning.
+                let is_fresh = !config_path.exists();
+                if is_fresh {
+                    screenpipe_config::apply_tier_defaults(&mut settings, tier);
+                }
+                settings.device_tier = Some(tier.as_str().to_string());
+            }
+        }
+
         crate::recording_config::RecordingConfig::from_settings(&settings, data_dir, None)
     }
 }

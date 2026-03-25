@@ -405,7 +405,7 @@ dependencies = [
 [[package]]
 name = "antirez-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=a57ceda#a57ceda074f445506b03561bbaaa1f2b050d9831"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=9f48127#9f48127d54fc80721563bfe3012e99c1791c9ccb"
 dependencies = [
  "cc",
 ]
@@ -822,7 +822,7 @@ dependencies = [
 [[package]]
 name = "audiopipe"
 version = "0.2.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=a57ceda#a57ceda074f445506b03561bbaaa1f2b050d9831"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=9f48127#9f48127d54fc80721563bfe3012e99c1791c9ccb"
 dependencies = [
  "antirez-asr-sys",
  "half",
@@ -4454,6 +4454,7 @@ dependencies = [
  "indicatif",
  "libc",
  "log",
+ "native-tls",
  "num_cpus",
  "rand 0.9.2",
  "reqwest 0.12.12",
@@ -8266,7 +8267,7 @@ checksum = "640c9bd8497b02465aeef5375144c26062e0dcd5939dfcbb0f5db76cb8c17c73"
 [[package]]
 name = "qwen3-asr-sys"
 version = "0.1.0"
-source = "git+https://github.com/screenpipe/audiopipe.git?rev=a57ceda#a57ceda074f445506b03561bbaaa1f2b050d9831"
+source = "git+https://github.com/screenpipe/audiopipe.git?rev=9f48127#9f48127d54fc80721563bfe3012e99c1791c9ccb"
 dependencies = [
  "cc",
  "cmake",
@@ -9333,7 +9334,7 @@ dependencies = [
 
 [[package]]
 name = "screenpipe-app"
-version = "2.2.254"
+version = "2.2.255"
 dependencies = [
  "anyhow",
  "arboard",
@@ -9470,6 +9471,7 @@ dependencies = [
  "reqwest 0.12.12",
  "rubato",
  "samplerate",
+ "screenpipe-config",
  "screenpipe-core",
  "screenpipe-db",
  "screenpipe-events",
@@ -9494,6 +9496,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "sysinfo",
  "toml 0.8.2",
 ]
 
@@ -9579,6 +9582,7 @@ dependencies = [
  "once_cell",
  "rand 0.8.5",
  "regex",
+ "screenpipe-config",
  "serde",
  "serde_json",
  "sqlite-vec",

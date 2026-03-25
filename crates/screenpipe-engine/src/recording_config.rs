@@ -7,6 +7,7 @@ use screenpipe_audio::audio_manager::AudioManagerBuilder;
 use screenpipe_audio::core::engine::AudioTranscriptionEngine;
 use screenpipe_audio::transcription::VocabularyEntry;
 use screenpipe_audio::vad::VadEngineEnum;
+use screenpipe_config::{ChannelConfig, DbConfig};
 use screenpipe_core::Language;
 use screenpipe_screen::PipelineMetrics;
 use std::path::PathBuf;
@@ -90,6 +91,12 @@ pub struct RecordingConfig {
     /// Persisted power mode preference ("auto", "performance", "battery_saver").
     /// Restored from settings on startup so the user's choice survives app restarts.
     pub power_mode: Option<String>,
+
+    /// Database configuration (pool sizes, mmap, cache) derived from device tier.
+    pub db_config: DbConfig,
+
+    /// Audio channel capacities derived from device tier.
+    pub channel_config: ChannelConfig,
 }
 
 impl RecordingConfig {
@@ -162,6 +169,18 @@ impl RecordingConfig {
                 .collect(),
             batch_max_duration_secs: settings.batch_max_duration_secs.filter(|&v| v > 0),
             power_mode: settings.power_mode.clone(),
+            db_config: settings
+                .device_tier
+                .as_deref()
+                .and_then(screenpipe_config::DeviceTier::from_str_loose)
+                .map(DbConfig::for_tier)
+                .unwrap_or_default(),
+            channel_config: settings
+                .device_tier
+                .as_deref()
+                .and_then(screenpipe_config::DeviceTier::from_str_loose)
+                .map(ChannelConfig::for_tier)
+                .unwrap_or_default(),
         }
     }
 
@@ -200,6 +219,7 @@ impl RecordingConfig {
             .transcription_mode(self.transcription_mode.clone())
             .vocabulary(self.vocabulary.clone())
             .batch_max_duration_secs(self.batch_max_duration_secs)
+            .channel_config(self.channel_config.clone())
     }
 
     /// Build a `VisionManagerConfig` from this config.
