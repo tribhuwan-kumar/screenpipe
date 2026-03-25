@@ -1558,9 +1558,9 @@ export function PipesSection() {
 
               {/* Expanded detail */}
               {expanded === pipe.config.name && (
-                  <div className="border-t px-4 pt-3">
+                  <div className="border-t px-6 pt-4 pb-6">
                     <Tabs defaultValue="config" className="w-full">
-                      <TabsList className="w-full justify-start h-8 bg-transparent border-b rounded-none p-0 gap-0">
+                      <TabsList className="w-full justify-start h-9 bg-transparent border-b rounded-none p-0 gap-4 mb-2">
                         <TabsTrigger value="config" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs uppercase tracking-wider px-3 h-8">
                           config
                         </TabsTrigger>
@@ -1573,7 +1573,7 @@ export function PipesSection() {
                       </TabsList>
 
                       {/* ═══ CONFIG TAB ═══ */}
-                      <TabsContent value="config" className="mt-3 space-y-4">
+                      <TabsContent value="config" className="mt-4 space-y-6">
 
                         {/* Model */}
                         <PipePresetSelector
@@ -1647,45 +1647,73 @@ export function PipesSection() {
                         </div>
 
                         {/* Connections */}
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs">connections</Label>
-                      <div className="flex items-center gap-1.5">
-                        {(pipe.config.connections || []).map((connId) => {
-                          const conn = availableConnections.find((c) => c.id === connId);
-                          const isConnected = conn?.connected ?? false;
-                          return (
-                            <span key={connId} className={cn("text-[11px] px-1.5 py-0.5 rounded flex items-center gap-1", isConnected ? "bg-muted text-foreground" : "bg-destructive/10 text-destructive")}>
-                              {conn?.name || connId}
-                              <button className="hover:text-destructive" onClick={() => {
-                                const updated = (pipe.config.connections || []).filter((c) => c !== connId);
-                                setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
-                                fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
-                              }}>×</button>
-                            </span>
-                          );
-                        })}
-                        <DropdownMenu modal={false}>
-                          <DropdownMenuTrigger asChild>
-                            <button className="text-[11px] text-muted-foreground hover:text-foreground">+ add</button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {availableConnections
-                              .filter((c) => !(pipe.config.connections || []).includes(c.id))
-                              .map((conn) => (
-                                <DropdownMenuItem key={conn.id} onClick={() => {
-                                  const updated = [...(pipe.config.connections || []), conn.id];
-                                  setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
-                                  fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
-                                }}>
-                                  <span className="text-xs">{conn.name}</span>
-                                  {conn.connected ? <span className="ml-auto text-[10px] text-green-500">●</span> : <span className="ml-auto text-[10px] text-muted-foreground">○</span>}
-                                </DropdownMenuItem>
-                              ))}
-                            {availableConnections.filter((c) => !(pipe.config.connections || []).includes(c.id)).length === 0 && (
-                              <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">all added</span></DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div>
+                          <Label className="text-xs mb-2 block">connections</Label>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {(pipe.config.connections || []).map((connId) => {
+                              const conn = availableConnections.find((c) => c.id === connId);
+                              const isConnected = conn?.connected ?? false;
+                              return (
+                                <div
+                                  key={connId}
+                                  className={cn(
+                                    "flex items-center gap-2 border px-3 py-1.5 text-xs font-mono transition-colors duration-150",
+                                    isConnected ? "border-foreground/20" : "border-destructive/50"
+                                  )}
+                                >
+                                  <span className={cn("w-1.5 h-1.5", isConnected ? "bg-foreground" : "bg-destructive")} />
+                                  {!isConnected ? (
+                                    <button
+                                      className="text-destructive hover:underline"
+                                      onClick={() => {
+                                        sessionStorage.setItem("openConnection", connId);
+                                        const url = new URL(window.location.href);
+                                        url.searchParams.set("section", "connections");
+                                        window.location.href = url.toString();
+                                      }}
+                                    >
+                                      {conn?.name || connId} — setup
+                                    </button>
+                                  ) : (
+                                    <span>{conn?.name || connId}</span>
+                                  )}
+                                  <button
+                                    className="text-muted-foreground hover:text-foreground transition-colors duration-150"
+                                    onClick={() => {
+                                      const updated = (pipe.config.connections || []).filter((c) => c !== connId);
+                                      setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
+                                      fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            <DropdownMenu modal={false}>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 text-xs font-mono uppercase tracking-wider px-3 gap-1.5">
+                                  <Plus className="h-3 w-3" /> add
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                {availableConnections
+                                  .filter((c) => !(pipe.config.connections || []).includes(c.id))
+                                  .map((conn) => (
+                                    <DropdownMenuItem key={conn.id} onClick={() => {
+                                      const updated = [...(pipe.config.connections || []), conn.id];
+                                      setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
+                                      fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
+                                    }}>
+                                      <span className="text-xs font-mono">{conn.name}</span>
+                                      <span className={cn("ml-auto w-1.5 h-1.5", conn.connected ? "bg-foreground" : "bg-muted-foreground/30")} />
+                                    </DropdownMenuItem>
+                                  ))}
+                                {availableConnections.filter((c) => !(pipe.config.connections || []).includes(c.id)).length === 0 && (
+                                  <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">all connections added</span></DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
 
