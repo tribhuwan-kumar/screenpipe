@@ -2915,6 +2915,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         <Button
           variant={showHistory ? "secondary" : "ghost"}
           size="sm"
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={async (e) => {
             e.stopPropagation();
             if (!showHistory) {
@@ -2923,7 +2924,7 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
             }
             setShowHistory(!showHistory);
           }}
-          className="h-7 px-2 gap-1 text-xs"
+          className="relative z-10 h-7 px-2 gap-1 text-xs"
           title="Chat history"
         >
           <History size={14} />
@@ -2932,13 +2933,14 @@ export function StandaloneChat({ className }: { className?: string } = {}) {
         <Button
           variant="default"
           size="sm"
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={async (e) => {
             e.stopPropagation();
             piStoppedIntentionallyRef.current = true;
             await startNewConversation();
             // Pi will auto-restart on the next message via the sendPiMessage flow
           }}
-          className="h-7 px-3 gap-1.5 text-xs bg-foreground text-background hover:bg-background hover:text-foreground transition-colors duration-150"
+          className="relative z-10 h-7 px-3 gap-1.5 text-xs bg-foreground text-background hover:bg-background hover:text-foreground transition-colors duration-150"
           title="New chat"
         >
           <Plus size={14} />
