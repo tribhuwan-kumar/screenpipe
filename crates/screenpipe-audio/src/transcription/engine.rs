@@ -427,11 +427,55 @@ impl TranscriptionSession {
             #[cfg(feature = "parakeet")]
             Self::Parakeet { model, .. } => {
                 let mut engine = model.lock().map_err(|e| anyhow!("stt model lock: {}", e))?;
-                let opts = audiopipe::TranscribeOptions::default();
-                let result = engine
-                    .transcribe_with_sample_rate(audio, sample_rate, opts)
-                    .map_err(|e| anyhow!("{}", e))?;
-                Ok(result.text)
+                // parakeet's ONNX encoder has fixed-size relative position encoding
+                // (~5000 mel frames ≈ 50s). chunk audio at 30s with 1s overlap,
+                // matching NVIDIA's recommended approach (arxiv 2509.14128).
+                // overlap regions are deduplicated via longest common word substring.
+                let chunk_samples = (sample_rate as usize) * 30;
+                if audio.len() <= chunk_samples {
+                    let opts = audiopipe::TranscribeOptions::default();
+                    let result = engine
+                        .transcribe_with_sample_rate(audio, sample_rate, opts)
+                        .map_err(|e| anyhow!("{}", e))?;
+                    Ok(result.text)
+                } else {
+                    let overlap_samples = sample_rate as usize; // 1s overlap
+                    let step = chunk_samples - overlap_samples;
+                    let mut texts: Vec<String> = Vec::new();
+                    let mut offset = 0;
+                    while offset < audio.len() {
+                        let end = (offset + chunk_samples).min(audio.len());
+                        let chunk = &audio[offset..end];
+                        let opts = audiopipe::TranscribeOptions::default();
+                        let result = engine
+                            .transcribe_with_sample_rate(chunk, sample_rate, opts)
+                            .map_err(|e| anyhow!("{}", e))?;
+                        let text = result.text.trim().to_string();
+                        if !text.is_empty() {
+                            if let Some(prev) = texts.last_mut() {
+                                // deduplicate overlap via LCS on words
+                                if let Some((prev_idx, _cur_idx, match_len)) =
+                                    super::text_utils::longest_common_word_substring(prev, &text)
+                                {
+                                    let prev_words: Vec<&str> = prev.split_whitespace().collect();
+                                    *prev = prev_words[..prev_idx].join(" ");
+                                    let cur_words: Vec<&str> = text.split_whitespace().collect();
+                                    let skip = _cur_idx + match_len;
+                                    if skip < cur_words.len() {
+                                        texts.push(cur_words[skip..].join(" "));
+                                    }
+                                } else {
+                                    texts.push(text);
+                                }
+                            } else {
+                                texts.push(text);
+                            }
+                        }
+                        if end >= audio.len() { break; }
+                        offset += step;
+                    }
+                    Ok(texts.join(" "))
+                }
             }
 
             #[cfg(feature = "parakeet-mlx")]

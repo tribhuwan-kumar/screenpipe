@@ -51,14 +51,17 @@ struct PendingTranscription {
 ///
 /// - Deepgram via Cloudflare: 100 MB upload limit ÷ 64 kbps ≈ 3.5 h → cap at 5000 s (~83 min)
 /// - OpenAI-compatible: user-configurable (unknown engine limits), default 3000 s (~50 min)
-/// - Parakeet: no sliding window, handles long-form well → cap at 3600 s (60 min)
+/// - Parakeet: ONNX encoder has fixed-size relative position encoding (~5000 mel frames ≈ 50s).
+///   Longer audio causes ORT BroadcastIterator errors and ~10GB memory spikes.
+///   Cap at 45s — the engine layer chunks at 30s with 1s overlap + LCS dedup
+///   (matching NVIDIA's approach), so batches up to 45s are handled safely.
 /// - Local Whisper: processes in 30s windows with context carryover → cap at 600 s (10 min)
 /// - Qwen3-ASR: similar to Whisper architecture → cap at 600 s (10 min)
 pub fn default_max_batch_duration_secs(engine: &AudioTranscriptionEngine) -> u64 {
     match engine {
         AudioTranscriptionEngine::Deepgram => 5000,
         AudioTranscriptionEngine::OpenAICompatible => 3000,
-        AudioTranscriptionEngine::Parakeet => 3600,
+        AudioTranscriptionEngine::Parakeet => 45,
         _ => 600,
     }
 }
