@@ -70,6 +70,9 @@ export function DeeplinkHandler() {
         const success = parsedUrl.searchParams.get("success") === "true";
         const error = parsedUrl.searchParams.get("error");
         await emit("google-calendar-auth-result", { success, error });
+        // Bring the settings window to the front so the user lands back
+        // where they started (instead of staring at the timeline).
+        await openSettingsWindow();
         toast({
           title: success
             ? "google calendar connected!"
