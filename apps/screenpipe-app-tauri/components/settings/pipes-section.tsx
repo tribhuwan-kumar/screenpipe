@@ -1557,16 +1557,87 @@ export function PipesSection() {
 
               {/* Expanded detail */}
               {expanded === pipe.config.name && (
-                  <div className="mt-4 space-y-4 border-t pt-4 px-4">
-                    <PipePresetSelector
-                      pipe={pipe}
-                      setPipes={setPipes}
-                      fetchPipes={fetchPipes}
-                      pendingConfigSaves={pendingConfigSaves}
-                    />
+                  <div className="mt-4 space-y-1 border-t pt-4 px-4">
 
-                    <div>
-                      <Label className="text-xs">schedule</Label>
+                    {/* ▼ Trigger — collapsible */}
+                    {settings.enableWorkflowEvents && (() => {
+                      const triggerCount = (pipe.config.trigger?.custom?.length || 0) + (pipe.config.trigger?.events?.length || 0);
+                      return (
+                        <details className="group" open={triggerCount > 0}>
+                          <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
+                            <span className="text-xs font-medium flex items-center gap-1.5">
+                              <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                              Triggers
+                              <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {triggerCount > 0 ? `⚡ ${triggerCount} condition${triggerCount > 1 ? "s" : ""}` : "none"}
+                            </span>
+                          </summary>
+                          <div className="pl-5 pb-3 space-y-1.5">
+                            {(pipe.config.trigger?.custom || []).map((trigger: string, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5 group/item">
+                                <span className="text-xs bg-muted/50 px-2 py-1 rounded flex-1">⚡ {trigger}</span>
+                                <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-colors" onClick={() => {
+                                  const updated = (pipe.config.trigger?.custom || []).filter((_: string, j: number) => j !== i);
+                                  const newTrigger = { ...pipe.config.trigger, custom: updated };
+                                  setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
+                                  fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                }}>×</button>
+                              </div>
+                            ))}
+                            <form className="flex gap-1.5" onSubmit={(e) => {
+                              e.preventDefault();
+                              const input = e.currentTarget.querySelector("input") as HTMLInputElement;
+                              const value = input?.value?.trim();
+                              if (!value) return;
+                              const existing = pipe.config.trigger?.custom || [];
+                              const newTrigger = { ...pipe.config.trigger, custom: [...existing, value] };
+                              setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
+                              fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                              input.value = "";
+                            }}>
+                              <Input placeholder="when should this pipe run?" className="h-7 text-xs flex-1" spellCheck={false} autoCorrect="off" />
+                              <Button type="submit" variant="outline" size="sm" className="h-7 text-xs px-2">+</Button>
+                            </form>
+                          </div>
+                        </details>
+                      );
+                    })()}
+
+                    {/* ▼ Model — collapsible */}
+                    <details className="group" open>
+                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
+                        <span className="text-xs font-medium flex items-center gap-1.5">
+                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                          Model
+                        </span>
+                        <span className="text-[11px] text-muted-foreground font-mono">
+                          {pipe.config.model || "default"} · {pipe.config.provider || "cloud"}
+                        </span>
+                      </summary>
+                      <div className="pl-5 pb-3">
+                        <PipePresetSelector
+                          pipe={pipe}
+                          setPipes={setPipes}
+                          fetchPipes={fetchPipes}
+                          pendingConfigSaves={pendingConfigSaves}
+                        />
+                      </div>
+                    </details>
+
+                    {/* ▼ Schedule — collapsible */}
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
+                        <span className="text-xs font-medium flex items-center gap-1.5">
+                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                          Schedule
+                        </span>
+                        <span className="text-[11px] text-muted-foreground font-mono">
+                          {humanizeSchedule(pipe.config.schedule)}
+                        </span>
+                      </summary>
+                      <div className="pl-5 pb-3">
                       <Select
                         value={pipe.config.schedule || "manual"}
                         onValueChange={(value) => {
@@ -1626,17 +1697,27 @@ export function PipesSection() {
                           })()}
                         </SelectContent>
                       </Select>
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        how often this pipe runs automatically
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <Label className="text-xs">history</Label>
-                        <HelpTooltip text="when enabled, the pipe remembers previous conversations across runs. useful for pipes that need context from past executions." />
                       </div>
-                      <Switch
+                    </details>
+
+                    {/* ▼ Connections — collapsible */}
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
+                        <span className="text-xs font-medium flex items-center gap-1.5">
+                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                          Connections
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {(pipe.config.connections || []).length > 0 ? `🔗 ${(pipe.config.connections || []).length} connected` : "none"}
+                        </span>
+                      </summary>
+                      <div className="pl-5 pb-3">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label className="text-xs">history</Label>
+                          <HelpTooltip text="remembers previous conversations across runs" />
+                        </div>
+                        <Switch
                         checked={!!pipe.config.history}
                         onCheckedChange={(checked) => {
                           const pipeName = pipe.config.name;
@@ -1768,78 +1849,19 @@ export function PipesSection() {
                       </div>
                     </div>
 
-                    {/* Event triggers — only show if workflow events enabled */}
-                    {settings.enableWorkflowEvents && <div>
-                      <Label className="text-xs flex items-center gap-1.5">
-                        triggers
-                        <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
-                      </Label>
-                      <p className="text-[11px] text-muted-foreground mb-1.5">run this pipe when AI detects a workflow pattern</p>
-                      <div className="space-y-1.5">
-                        {(pipe.config.trigger?.custom || []).map((trigger, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <span className="text-xs font-mono bg-muted px-2 py-1 rounded flex-1">{trigger}</span>
-                            <button
-                              className="text-xs text-muted-foreground hover:text-destructive"
-                              onClick={() => {
-                                const updated = (pipe.config.trigger?.custom || []).filter((_, j) => j !== i);
-                                const newTrigger = { ...pipe.config.trigger, custom: updated };
-                                setPipes((prev) =>
-                                  prev.map((p) =>
-                                    p.config.name === pipe.config.name
-                                      ? { ...p, config: { ...p.config, trigger: newTrigger } }
-                                      : p
-                                  )
-                                );
-                                fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ trigger: newTrigger }),
-                                }).then(() => fetchPipes());
-                              }}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                        <form
-                          className="flex gap-1.5"
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            const input = e.currentTarget.querySelector("input") as HTMLInputElement;
-                            const value = input?.value?.trim();
-                            if (!value) return;
-                            const existing = pipe.config.trigger?.custom || [];
-                            const newTrigger = { ...pipe.config.trigger, custom: [...existing, value] };
-                            setPipes((prev) =>
-                              prev.map((p) =>
-                                p.config.name === pipe.config.name
-                                  ? { ...p, config: { ...p.config, trigger: newTrigger } }
-                                  : p
-                              )
-                            );
-                            fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ trigger: newTrigger }),
-                            }).then(() => fetchPipes());
-                            input.value = "";
-                          }}
-                        >
-                          <Input
-                            placeholder="e.g. when I switch from LinkedIn to a CRM"
-                            className="h-7 text-xs flex-1"
-                            spellCheck={false}
-                            autoCorrect="off"
-                          />
-                          <Button type="submit" variant="outline" size="sm" className="h-7 text-xs px-2">
-                            + add
-                          </Button>
-                        </form>
                       </div>
-                    </div>}
+                    </details>
 
-                    <div>
+                    {/* ▼ Advanced (pipe.md) — collapsible, closed by default */}
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
+                        <span className="text-xs font-medium flex items-center gap-1.5">
+                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                          Advanced
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">pipe.md</span>
+                      </summary>
+                      <div className="pl-5 pb-3">
                       <div className="flex items-center gap-2">
                         <Label className="text-xs">pipe.md</Label>
                         {saveStatus[pipe.config.name] === "saving" && (
@@ -1869,11 +1891,22 @@ export function PipesSection() {
                         autoCapitalize="off"
                         spellCheck={false}
                       />
-                    </div>
+                      </div>
+                    </details>
 
-                    {/* Full Execution History (DB-backed) */}
-                    <div>
-                      <Label className="text-xs">full execution history</Label>
+                    {/* ▼ Runs — collapsible */}
+                    <details className="group" open>
+                      <summary className="flex items-center justify-between cursor-pointer py-2 hover:bg-accent/30 rounded px-2 -mx-2">
+                        <span className="text-xs font-medium flex items-center gap-1.5">
+                          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                          Runs
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {executions.length > 0 ? `${executions.length} runs` : logs.length > 0 ? `${logs.length} runs` : "none"}
+                        </span>
+                      </summary>
+                      <div className="pl-5 pb-3">
+                      <Label className="text-xs sr-only">execution history</Label>
                       <div className="mt-1 space-y-2 max-h-64 overflow-y-auto">
                         {executions.length === 0 && logs.length === 0 ? (
                           <p className="text-xs text-muted-foreground">
@@ -2006,7 +2039,8 @@ export function PipesSection() {
                             ))
                         )}
                       </div>
-                    </div>
+                      </div>
+                    </details>
 
                   </div>
                 )}
