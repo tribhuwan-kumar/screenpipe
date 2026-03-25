@@ -278,13 +278,19 @@ function PipeRow({
         {/* Schedule + event triggers */}
         <span
           className="text-xs text-muted-foreground shrink-0 text-right font-mono truncate max-w-[140px]"
-          title={pipe.config.schedule || "manual"}
+          title={pipe.config.trigger?.events?.length
+            ? `events: ${pipe.config.trigger.events.join(", ")}`
+            : pipe.config.schedule || "manual"}
         >
-          {humanizeSchedule(pipe.config.schedule)}
           {pipe.config.trigger?.events?.length ? (
-            <span className="ml-1 text-[10px] text-primary/70" title={`events: ${pipe.config.trigger.events.join(", ")}`}>
-              ⚡{pipe.config.trigger.events.length}
+            <span className="text-primary/70">
+              ⚡{pipe.config.trigger.events.length} event{pipe.config.trigger.events.length > 1 ? "s" : ""}
             </span>
+          ) : (
+            humanizeSchedule(pipe.config.schedule)
+          )}
+          {pipe.config.trigger?.events?.length && pipe.config.schedule && pipe.config.schedule !== "manual" ? (
+            <span className="ml-1 text-muted-foreground/50">+ {humanizeSchedule(pipe.config.schedule)}</span>
           ) : null}
         </span>
 
@@ -398,7 +404,9 @@ function DeviceCard({
   const audioDeviceCount =
     device.health?.audio_pipeline?.audio_devices?.length || 0;
   const allPipes = (device.pipes || []).filter(
-    (p) => p.config.schedule && p.config.schedule !== "manual"
+    (p) =>
+      (p.config.schedule && p.config.schedule !== "manual") ||
+      (p.config.trigger?.events && p.config.trigger.events.length > 0)
   );
   const isOnline = device.status === "online";
 
