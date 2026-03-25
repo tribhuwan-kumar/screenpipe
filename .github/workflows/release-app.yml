@@ -870,16 +870,22 @@ jobs:
           echo "Cleaning mlx-sys build cache..."
           find "apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/build" -maxdepth 1 -name "mlx-sys-*" -exec rm -rf {} + 2>/dev/null || true
 
-          # Force macOS 14.0 for MLX Metal kernels.
-          # The cc crate injects -mmacosx-version-min=10.13 which breaks MSL 3.0+ features.
-          # Wrapper intercepts `xcrun metal` calls and replaces the version-min flag.
+          # Force macOS 14.0 for MLX Metal kernels and C++ compilation.
+          # The cc crate injects --target=arm64-apple-macosx -mmacosx-version-min=10.13
+          # into CMAKE_C_FLAGS. CMake then derives CMAKE_OSX_DEPLOYMENT_TARGET=10.13,
+          # appending its own -mmacosx-version-min=10.13 AFTER our 14.0, and passing
+          # 10.13 to the Metal compiler. This breaks both MSL 3.0+ and std::filesystem.
+          # Fix: wrap cc/c++/xcrun to replace all -mmacosx-version-min flags with 14.0.
           if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
-            WRAPPER_DIR="$(pwd)/.xcrun-wrapper"
+            WRAPPER_DIR="$(pwd)/.compiler-wrapper"
             mkdir -p "$WRAPPER_DIR"
-            printf '#!/bin/bash\nfor a in "$@"; do [[ "$a" == "metal" ]] && { new=(); for x in "$@"; do [[ "$x" == -mmacosx-version-min=* ]] && x="-mmacosx-version-min=14.0"; new+=("$x"); done; exec /usr/bin/xcrun "${new[@]}"; }; done; exec /usr/bin/xcrun "$@"\n' > "$WRAPPER_DIR/xcrun"
-            chmod +x "$WRAPPER_DIR/xcrun"
+            for tool in cc c++ xcrun; do
+              REAL_PATH=$(which $tool)
+              printf '#!/bin/bash\nnew=(); for x in "$@"; do [[ "$x" == -mmacosx-version-min=* ]] && x="-mmacosx-version-min=14.0"; new+=("$x"); done; exec '"$REAL_PATH"' "${new[@]}"\n' > "$WRAPPER_DIR/$tool"
+              chmod +x "$WRAPPER_DIR/$tool"
+            done
             export PATH="$WRAPPER_DIR:$PATH"
-            echo "xcrun wrapper: $(which xcrun)"
+            echo "Compiler wrappers installed: cc=$(which cc) c++=$(which c++) xcrun=$(which xcrun)"
           fi
 
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
