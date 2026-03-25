@@ -12,21 +12,6 @@
 <p align="center">run agents that work for you in the background based on what you do</p>
 
 
-
-<p align="center">
-   <a href ="https://screenpi.pe">
-      <img src="https://github.com/user-attachments/assets/c88d218e-40a7-405d-b419-eec1553ea287">
-   </a>
-</p>
-
-
-<p align="center">
-   <a href ="https://screenpi.pe">
-      <img src="https://github.com/user-attachments/assets/b482f71d-cccc-4b42-a9b9-bf06a67d401b" alt="logo" width="800">
-   </a>
-</p>
-
-
 <p align="center">
   <a href="https://screenpi.pe/onboarding" target="_blank">
     <img src="https://img.shields.io/badge/download-desktop%20app-black?style=for-the-badge" alt="download">
