@@ -225,8 +225,7 @@ struct NotificationContentView: View {
             MarkdownText(payload.body)
                 .padding(.horizontal, 14)
                 .padding(.top, 4)
-
-            Spacer(minLength: 6)
+                .padding(.bottom, 8)
 
             // Action buttons
             if !payload.actions.isEmpty {
@@ -554,12 +553,12 @@ class NotificationPanelController: NSObject {
     /// Incremented per notification so rapid-fire notifications each restart the timer
     private var epoch: Int = 0
 
-    // Panel dimensions — content width is panelWidth minus shadow padding on each side
+    // Panel dimensions
     private static let panelWidth: CGFloat = 360
-    private static let panelHeight: CGFloat = 300
     private static let shadowPadding: CGFloat = 20
     private static let contentWidth: CGFloat = panelWidth - shadowPadding * 2
-    private static let contentHeight: CGFloat = panelHeight - shadowPadding * 2
+    private static let minContentHeight: CGFloat = 120
+    private static let maxContentHeight: CGFloat = 400
 
     func show(payload: NotificationPayload) {
         DispatchQueue.main.async { [self] in
@@ -618,8 +617,10 @@ class NotificationPanelController: NSObject {
     }
 
     private func createPanel() {
+        // Start with a reasonable default; updateContent will resize to fit
+        let initialHeight = Self.minContentHeight + Self.shadowPadding * 2
         let p = ClickablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: Self.panelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: initialHeight),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -640,7 +641,7 @@ class NotificationPanelController: NSObject {
         p.sharingType = .readOnly
 
         // Use a custom tracking view as the content view
-        let tracking = HoverTrackingView(frame: NSRect(x: 0, y: 0, width: Self.panelWidth, height: Self.panelHeight))
+        let tracking = HoverTrackingView(frame: NSRect(x: 0, y: 0, width: Self.panelWidth, height: initialHeight))
         tracking.controller = self
         tracking.autoresizingMask = [.width, .height]
         p.contentView = tracking
@@ -655,8 +656,9 @@ class NotificationPanelController: NSObject {
         for screen in NSScreen.screens {
             if NSMouseInRect(mouseLocation, screen.frame, false) {
                 let visible = screen.visibleFrame
+                let panelHeight = panel.frame.height
                 let x = visible.origin.x + visible.size.width - Self.panelWidth
-                let y = visible.origin.y + visible.size.height - Self.panelHeight
+                let y = visible.origin.y + visible.size.height - panelHeight
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 break
             }
@@ -684,9 +686,10 @@ class NotificationPanelController: NSObject {
                 }
             }
         )
-        // Wrap in padding so shadow has room to render within the oversized panel
+        // Fixed width, height determined by content
         let view = innerView
-            .frame(width: Self.contentWidth, height: Self.contentHeight)
+            .frame(width: Self.contentWidth)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(Self.shadowPadding)
 
         let contentView = panel.contentView!
@@ -698,6 +701,19 @@ class NotificationPanelController: NSObject {
             hosting.autoresizingMask = [.width, .height]
             contentView.addSubview(hosting)
             self.hostingView = hosting
+        }
+
+        // Measure intrinsic content size and resize panel to fit
+        if let hosting = hostingView {
+            let fittingSize = hosting.fittingSize
+            let newHeight = min(max(fittingSize.height, Self.minContentHeight + Self.shadowPadding * 2), Self.maxContentHeight + Self.shadowPadding * 2)
+            let currentFrame = panel.frame
+            if abs(currentFrame.height - newHeight) > 1 {
+                // Anchor top-right: grow downward from top
+                let newY = currentFrame.origin.y + currentFrame.height - newHeight
+                let newFrame = NSRect(x: currentFrame.origin.x, y: newY, width: Self.panelWidth, height: newHeight)
+                panel.setFrame(newFrame, display: true, animate: false)
+            }
         }
     }
 
