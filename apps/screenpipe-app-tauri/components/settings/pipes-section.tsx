@@ -685,7 +685,8 @@ export function PipesSection() {
   const isManualPipe = (p: PipeStatus) =>
     !p.config.schedule || p.config.schedule === "manual";
   const isScheduledPipe = (p: PipeStatus) =>
-    !!p.config.schedule && p.config.schedule !== "manual";
+    (!!p.config.schedule && p.config.schedule !== "manual") ||
+    (!!p.config.trigger?.events?.length);
 
   const filteredPipes = pipes
     .filter((p) => {
@@ -1257,6 +1258,8 @@ export function PipesSection() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-8 h-8 text-sm"
+            spellCheck={false}
+            autoCorrect="off"
           />
         </div>
       </div>
