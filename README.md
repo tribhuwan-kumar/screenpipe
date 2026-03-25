@@ -9,7 +9,7 @@
 
 
 <p align="center">AI memory for your screen</p>
-<p align="center">AI finally knows what you're doing</p>
+<p align="center">run agents that work for you based on what you do</p>
 
 
 
