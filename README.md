@@ -9,7 +9,7 @@
 
 
 <p align="center">AI memory for your screen</p>
-<p align="center">run agents that work for you based on what you do</p>
+<p align="center">run agents that work for you in the background based on what you do</p>
 
 
 
