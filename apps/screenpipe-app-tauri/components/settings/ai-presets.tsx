@@ -487,7 +487,7 @@ const AISection = ({
         break;
       case "screenpipe-cloud":
         newUrl = ""; // Pi uses RPC mode, not HTTP
-        newModel = "claude-haiku-4-5";
+        newModel = "auto";
         break;
     }
 
