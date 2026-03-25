@@ -201,6 +201,8 @@ apple-intelligence = ["screenpipe-engine/apple-intelligence"]
 
 qwen3-asr = ["screenpipe-engine/qwen3-asr"]
 parakeet = ["screenpipe-engine/parakeet"]
+# macOS only — requires Apple MLX (Metal)
+parakeet-mlx = ["screenpipe-engine/parakeet-mlx"]
 jemalloc = ["tikv-jemallocator"]
 
 
