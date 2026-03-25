@@ -499,13 +499,13 @@ pub async fn start_embedded_server(
     if config.enable_workflow_events {
         if let Some(ref token) = config.user_id {
             if !token.is_empty() {
-                let db_for_classifier = db.clone();
                 let token_for_classifier = token.clone();
+                let local_port = config.port;
                 tokio::spawn(async move {
                     screenpipe_engine::workflow_classifier::start_workflow_classifier(
-                        db_for_classifier,
                         "https://api.screenpi.pe".to_string(),
                         token_for_classifier,
+                        local_port,
                         std::time::Duration::from_secs(30),
                     )
                     .await;

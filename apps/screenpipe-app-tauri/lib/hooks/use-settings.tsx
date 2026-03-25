@@ -108,6 +108,8 @@ export type Settings = SettingsStore & {
 	useSystemDefaultAudio?: boolean;
 	enableInputCapture?: boolean;
 	enableAccessibility?: boolean;
+	/** Enable AI workflow event detection (cloud, triggers event-based pipes) */
+	enableWorkflowEvents?: boolean;
 	/** Audio transcription scheduling: "realtime" (default) or "batch" (longer chunks for quality) */
 	transcriptionMode?: "realtime" | "smart" | "batch";
 	/** User's name for speaker identification — input device audio will be labeled with this name */
@@ -166,6 +168,11 @@ export type Settings = SettingsStore & {
 		pipeNotifications: boolean;
 		mutedPipes: string[];
 	};
+	/** Remote devices to monitor pipes on (LAN addresses) */
+	monitorDevices?: Array<{
+		address: string;
+		label?: string;
+	}>;
 }
 
 export function getEffectiveFilters(settings: Settings) {
