@@ -311,7 +311,8 @@ export async function trackUsage(
         dailyCount = weight;
       } else {
         // Check limit BEFORE incrementing — don't inflate counter on rejected requests
-        if (existing.daily_count >= limits.dailyQueries) {
+        // Skip limit check for free models (weight=0) — they never count toward quota
+        if (weight > 0 && existing.daily_count >= limits.dailyQueries) {
           // Daily free quota exhausted — try credit fallback
           if (userId) {
             const credit = await tryDeductCredit(env, userId, 'ai_query');
