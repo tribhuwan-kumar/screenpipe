@@ -52,6 +52,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/lib/hooks/use-settings";
@@ -258,7 +261,7 @@ function parsePipeError(stderr: string): {
       if (parsed.error === "credits_exhausted") {
         return {
           type: "credits_exhausted",
-          message: parsed.message || "no credits remaining — buy more at screenpi.pe",
+          message: parsed.message || "daily ai limit reached — upgrade or wait until tomorrow",
           credits_remaining: parsed.credits_remaining ?? 0,
         };
       }
@@ -290,6 +293,7 @@ interface AvailableConnection {
   name: string;
   icon: string;
   connected: boolean;
+  instances?: { instanceKey: string; instanceLabel: string }[];
 }
 
 interface PipeStatus {
@@ -622,7 +626,7 @@ function PipePresetSelector({
             }
           />
           <p className="text-[10px] text-muted-foreground mt-1">
-            used when primary hits rate limit or credits run out
+            used when primary hits rate limit
           </p>
         </div>
       ) : (
@@ -814,9 +818,25 @@ export function PipesSection() {
       const res = await fetch("http://localhost:3030/connections");
       const data = await res.json();
       if (data.data) {
-        setAvailableConnections(
-          data.data.map((c: any) => ({ id: c.id, name: c.name, icon: c.icon, connected: c.connected }))
-        );
+        const conns: AvailableConnection[] = data.data.map((c: any) => ({
+          id: c.id, name: c.name, icon: c.icon, connected: c.connected,
+        }));
+        // fetch instances for connected integrations to support multi-instance selection
+        await Promise.all(conns.filter(c => c.connected).map(async (c) => {
+          try {
+            const instRes = await fetch(`http://localhost:3030/connections/${c.id}/instances`);
+            if (!instRes.ok) return;
+            const instData = await instRes.json();
+            const list = instData.data || instData.instances || instData || [];
+            if (Array.isArray(list) && list.length > 1) {
+              c.instances = list.map((inst: any) => ({
+                instanceKey: inst.instance ? `${c.id}:${inst.instance}` : c.id,
+                instanceLabel: inst.instance ? `${c.name} (${inst.instance})` : c.name,
+              }));
+            }
+          } catch { /* ignore */ }
+        }));
+        setAvailableConnections(conns);
       }
     } catch { /* server may not be running */ }
   }, []);
@@ -1659,8 +1679,11 @@ export function PipesSection() {
                           <Label className="text-xs mb-2 block cursor-help" title="give the agent access to your apps (Slack, Obsidian, CRM, etc.) — credentials are fetched at runtime">connections</Label>
                           <div className="flex flex-wrap items-center gap-2">
                             {(pipe.config.connections || []).map((connId) => {
-                              const conn = availableConnections.find((c) => c.id === connId);
+                              const baseId = connId.includes(":") ? connId.split(":")[0] : connId;
+                              const instanceName = connId.includes(":") ? connId.split(":").slice(1).join(":") : null;
+                              const conn = availableConnections.find((c) => c.id === baseId);
                               const isConnected = conn?.connected ?? false;
+                              const label = instanceName ? `${conn?.name || baseId} (${instanceName})` : (conn?.name || connId);
                               return (
                                 <div
                                   key={connId}
@@ -1674,16 +1697,16 @@ export function PipesSection() {
                                     <button
                                       className="text-destructive hover:underline"
                                       onClick={() => {
-                                        sessionStorage.setItem("openConnection", connId);
+                                        sessionStorage.setItem("openConnection", baseId);
                                         const url = new URL(window.location.href);
                                         url.searchParams.set("section", "connections");
                                         window.location.href = url.toString();
                                       }}
                                     >
-                                      {conn?.name || connId} — setup
+                                      {label} — setup
                                     </button>
                                   ) : (
-                                    <span>{conn?.name || connId}</span>
+                                    <span>{label}</span>
                                   )}
                                   <button
                                     className="text-muted-foreground hover:text-foreground transition-colors duration-150"
@@ -1705,21 +1728,53 @@ export function PipesSection() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="start" className="max-h-48 overflow-y-auto">
-                                {availableConnections
-                                  .filter((c) => !(pipe.config.connections || []).includes(c.id))
-                                  .map((conn) => (
-                                    <DropdownMenuItem key={conn.id} onClick={() => {
-                                      const updated = [...(pipe.config.connections || []), conn.id];
-                                      setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
-                                      fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
-                                    }}>
-                                      <span className="text-xs font-mono">{conn.name}</span>
-                                      <span className={cn("ml-auto w-1.5 h-1.5", conn.connected ? "bg-foreground" : "bg-muted-foreground/30")} />
-                                    </DropdownMenuItem>
-                                  ))}
-                                {availableConnections.filter((c) => !(pipe.config.connections || []).includes(c.id)).length === 0 && (
-                                  <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">all connections added</span></DropdownMenuItem>
-                                )}
+                                {(() => {
+                                  const existing = pipe.config.connections || [];
+                                  const addConn = (key: string) => {
+                                    const updated = [...existing, key];
+                                    setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
+                                    fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
+                                  };
+                                  // filter to connections not yet fully added
+                                  const available = availableConnections.filter((c) => {
+                                    if (c.instances && c.instances.length > 1) {
+                                      return c.instances.some((inst) => !existing.includes(inst.instanceKey));
+                                    }
+                                    return !existing.includes(c.id);
+                                  });
+                                  if (available.length === 0) {
+                                    return <DropdownMenuItem disabled><span className="text-xs text-muted-foreground">all connections added</span></DropdownMenuItem>;
+                                  }
+                                  return available.map((conn) => {
+                                    // multi-instance: show sub-menu to pick instance
+                                    if (conn.instances && conn.instances.length > 1) {
+                                      const remainingInstances = conn.instances.filter((inst) => !existing.includes(inst.instanceKey));
+                                      if (remainingInstances.length === 0) return null;
+                                      return (
+                                        <DropdownMenuSub key={conn.id}>
+                                          <DropdownMenuSubTrigger className="text-xs font-mono">
+                                            {conn.name}
+                                            <span className={cn("ml-auto w-1.5 h-1.5", conn.connected ? "bg-foreground" : "bg-muted-foreground/30")} />
+                                          </DropdownMenuSubTrigger>
+                                          <DropdownMenuSubContent>
+                                            {remainingInstances.map((inst) => (
+                                              <DropdownMenuItem key={inst.instanceKey} onClick={() => addConn(inst.instanceKey)}>
+                                                <span className="text-xs font-mono">{inst.instanceLabel}</span>
+                                              </DropdownMenuItem>
+                                            ))}
+                                          </DropdownMenuSubContent>
+                                        </DropdownMenuSub>
+                                      );
+                                    }
+                                    // single instance: direct click
+                                    return (
+                                      <DropdownMenuItem key={conn.id} onClick={() => addConn(conn.id)}>
+                                        <span className="text-xs font-mono">{conn.name}</span>
+                                        <span className={cn("ml-auto w-1.5 h-1.5", conn.connected ? "bg-foreground" : "bg-muted-foreground/30")} />
+                                      </DropdownMenuItem>
+                                    );
+                                  });
+                                })()}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
