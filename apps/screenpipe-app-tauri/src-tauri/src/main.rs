@@ -1066,6 +1066,7 @@ async fn main() {
             // Install Pi coding agent in background (fire-and-forget, never crashes)
             crate::pi::ensure_pi_installed_background();
 
+            info!("App version: {}", env!("CARGO_PKG_VERSION"));
             info!("Local data directory: {}", base_dir.display());
 
             // PostHog analytics setup
