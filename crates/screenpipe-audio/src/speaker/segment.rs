@@ -121,7 +121,7 @@ fn handle_new_segment(
 pub struct SegmentIterator {
     samples: Vec<f32>,
     sample_rate: u32,
-    session: ort::Session,
+    session: ort::session::Session,
     embedding_extractor: Arc<Mutex<EmbeddingExtractor>>,
     embedding_manager: Arc<Mutex<EmbeddingManager>>,
     current_position: usize,
@@ -176,7 +176,7 @@ impl SegmentIterator {
             .insert_axis(Axis(1))
             .to_owned();
 
-        let inputs = ort::inputs![array].context("Failed to prepare inputs")?;
+        let inputs = ort::inputs![ort::value::Tensor::from_array(array)?];
         let ort_outs = self
             .session
             .run(inputs)
@@ -184,7 +184,7 @@ impl SegmentIterator {
         let ort_out = ort_outs.get("output").context("Output tensor not found")?;
 
         let ort_out = ort_out
-            .try_extract_tensor::<f32>()
+            .try_extract_array::<f32>()
             .context("Failed to extract tensor")?;
 
         let mut result = None;
