@@ -282,14 +282,14 @@ function PipeRow({
             ? `events: ${pipe.config.trigger.events.join(", ")}`
             : pipe.config.schedule || "manual"}
         >
-          {pipe.config.trigger?.events?.length ? (
+          {(pipe.config.trigger?.events?.length || pipe.config.trigger?.custom?.length) ? (
             <span className="text-primary/70">
-              ⚡{pipe.config.trigger.events.length} event{pipe.config.trigger.events.length > 1 ? "s" : ""}
+              ⚡{(pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)} trigger{((pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)) > 1 ? "s" : ""}
             </span>
           ) : (
             humanizeSchedule(pipe.config.schedule)
           )}
-          {pipe.config.trigger?.events?.length && pipe.config.schedule && pipe.config.schedule !== "manual" ? (
+          {(pipe.config.trigger?.events?.length || pipe.config.trigger?.custom?.length) && pipe.config.schedule && pipe.config.schedule !== "manual" ? (
             <span className="ml-1 text-muted-foreground/50">+ {humanizeSchedule(pipe.config.schedule)}</span>
           ) : null}
         </span>
@@ -406,7 +406,8 @@ function DeviceCard({
   const allPipes = (device.pipes || []).filter(
     (p) =>
       (p.config.schedule && p.config.schedule !== "manual") ||
-      (p.config.trigger?.events && p.config.trigger.events.length > 0)
+      (p.config.trigger?.events && p.config.trigger.events.length > 0) ||
+      (p.config.trigger?.custom && p.config.trigger.custom.length > 0)
   );
   const isOnline = device.status === "online";
 

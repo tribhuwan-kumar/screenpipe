@@ -686,7 +686,8 @@ export function PipesSection() {
     !p.config.schedule || p.config.schedule === "manual";
   const isScheduledPipe = (p: PipeStatus) =>
     (!!p.config.schedule && p.config.schedule !== "manual") ||
-    (!!p.config.trigger?.events?.length);
+    (!!p.config.trigger?.events?.length) ||
+    (!!p.config.trigger?.custom?.length);
 
   const filteredPipes = pipes
     .filter((p) => {
@@ -1764,6 +1765,77 @@ export function PipesSection() {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
+                      </div>
+                    </div>
+
+                    {/* Event triggers */}
+                    <div>
+                      <Label className="text-xs flex items-center gap-1.5">
+                        triggers
+                        <span className="text-[10px] font-normal text-muted-foreground bg-muted px-1.5 py-0.5 rounded">cloud</span>
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground mb-1.5">run this pipe when AI detects a workflow pattern</p>
+                      <div className="space-y-1.5">
+                        {(pipe.config.trigger?.custom || []).map((trigger, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono bg-muted px-2 py-1 rounded flex-1">{trigger}</span>
+                            <button
+                              className="text-xs text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                const updated = (pipe.config.trigger?.custom || []).filter((_, j) => j !== i);
+                                const newTrigger = { ...pipe.config.trigger, custom: updated };
+                                setPipes((prev) =>
+                                  prev.map((p) =>
+                                    p.config.name === pipe.config.name
+                                      ? { ...p, config: { ...p.config, trigger: newTrigger } }
+                                      : p
+                                  )
+                                );
+                                fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ trigger: newTrigger }),
+                                }).then(() => fetchPipes());
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <form
+                          className="flex gap-1.5"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const input = e.currentTarget.querySelector("input") as HTMLInputElement;
+                            const value = input?.value?.trim();
+                            if (!value) return;
+                            const existing = pipe.config.trigger?.custom || [];
+                            const newTrigger = { ...pipe.config.trigger, custom: [...existing, value] };
+                            setPipes((prev) =>
+                              prev.map((p) =>
+                                p.config.name === pipe.config.name
+                                  ? { ...p, config: { ...p.config, trigger: newTrigger } }
+                                  : p
+                              )
+                            );
+                            fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ trigger: newTrigger }),
+                            }).then(() => fetchPipes());
+                            input.value = "";
+                          }}
+                        >
+                          <Input
+                            placeholder="e.g. when I switch from LinkedIn to a CRM"
+                            className="h-7 text-xs flex-1"
+                            spellCheck={false}
+                            autoCorrect="off"
+                          />
+                          <Button type="submit" variant="outline" size="sm" className="h-7 text-xs px-2">
+                            + add
+                          </Button>
+                        </form>
                       </div>
                     </div>
 
