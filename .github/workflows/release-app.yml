@@ -870,43 +870,16 @@ jobs:
           echo "Cleaning mlx-sys build cache..."
           find "apps/screenpipe-app-tauri/src-tauri/target/${TARGET}/release/build" -maxdepth 1 -name "mlx-sys-*" -exec rm -rf {} + 2>/dev/null || true
 
-          # Force CMake to use macOS 14.0 deployment target for MLX Metal kernels.
-          # The cmake/cc crates inject --target=arm64-apple-macosx -mmacosx-version-min=10.13
-          # into CMAKE_C_FLAGS, and CMake derives CMAKE_OSX_DEPLOYMENT_TARGET=10.13 from that.
-          # This breaks MLX Metal kernels which need MSL 3.0+ (macOS 14+).
-          # Workaround: wrap xcrun to replace the version-min flag for metal compiler calls.
+          # Force macOS 14.0 for MLX Metal kernels.
+          # The cc crate injects -mmacosx-version-min=10.13 which breaks MSL 3.0+ features.
+          # Wrapper intercepts `xcrun metal` calls and replaces the version-min flag.
           if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
-            WRAPPER_DIR="$(pwd)/.metal-wrapper"
+            WRAPPER_DIR="$(pwd)/.xcrun-wrapper"
             mkdir -p "$WRAPPER_DIR"
-            cat > "$WRAPPER_DIR/xcrun" << 'WRAPPER'
-          #!/bin/bash
-          args=("$@")
-          # Check if this is a metal compiler invocation
-          is_metal=false
-          for arg in "${args[@]}"; do
-            if [[ "$arg" == "metal" ]]; then
-              is_metal=true
-              break
-            fi
-          done
-          if $is_metal; then
-            # Replace old deployment target with 14.0 for Metal compiler
-            new_args=()
-            for arg in "${args[@]}"; do
-              if [[ "$arg" == -mmacosx-version-min=* ]]; then
-                new_args+=("-mmacosx-version-min=14.0")
-              else
-                new_args+=("$arg")
-              fi
-            done
-            exec /usr/bin/xcrun "${new_args[@]}"
-          else
-            exec /usr/bin/xcrun "${args[@]}"
-          fi
-          WRAPPER
+            printf '#!/bin/bash\nfor a in "$@"; do [[ "$a" == "metal" ]] && { new=(); for x in "$@"; do [[ "$x" == -mmacosx-version-min=* ]] && x="-mmacosx-version-min=14.0"; new+=("$x"); done; exec /usr/bin/xcrun "${new[@]}"; }; done; exec /usr/bin/xcrun "$@"\n' > "$WRAPPER_DIR/xcrun"
             chmod +x "$WRAPPER_DIR/xcrun"
             export PATH="$WRAPPER_DIR:$PATH"
-            echo "Installed xcrun wrapper to force -mmacosx-version-min=14.0 for Metal"
+            echo "xcrun wrapper: $(which xcrun)"
           fi
 
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
