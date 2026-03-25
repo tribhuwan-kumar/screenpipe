@@ -197,6 +197,11 @@ pub struct RecordingSettings {
     #[serde(rename = "enableAccessibility", alias = "enableUiEvents")]
     pub enable_accessibility: bool,
 
+    /// Enable AI workflow event detection (cloud feature, requires subscription).
+    /// When enabled, classifies desktop activity and triggers event-based pipes.
+    #[serde(rename = "enableWorkflowEvents", default)]
+    pub enable_workflow_events: bool,
+
     /// Detected hardware tier ("high", "mid", "low").
     /// Set once on first launch; `None` for existing installs (treated as High).
     #[serde(rename = "deviceTier", default, skip_serializing_if = "Option::is_none")]
@@ -265,6 +270,7 @@ impl Default for RecordingSettings {
             analytics_id: String::new(),
             enable_input_capture: true,
             enable_accessibility: true,
+            enable_workflow_events: false,
             device_tier: None,
         }
     }

@@ -65,6 +65,10 @@ pub struct RecordingConfig {
     pub openai_compatible_headers: Option<std::collections::HashMap<String, String>>,
     pub openai_compatible_raw_audio: bool,
 
+    // Workflow events
+    /// Enable AI workflow event detection (cloud, requires subscription).
+    pub enable_workflow_events: bool,
+
     // Speaker identification
     /// User's display name for calendar-assisted speaker ID.
     /// Fallback chain: settings userName → cloud auth name → cloud auth email.
@@ -125,6 +129,7 @@ impl RecordingConfig {
             filter_music: settings.filter_music,
             enable_input_capture: settings.enable_input_capture,
             enable_accessibility: settings.enable_accessibility,
+            enable_workflow_events: settings.enable_workflow_events,
             audio_transcription_engine: engine_str
                 .parse()
                 .unwrap_or(AudioTranscriptionEngine::WhisperLargeV3Turbo),
