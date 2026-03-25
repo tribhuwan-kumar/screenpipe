@@ -41,10 +41,14 @@ impl DeviceTier {
 }
 
 /// Classify tier from RAM (GB) and core count. Pure logic, no I/O.
+///
+/// 8 GB machines are classified as Low because GPU-accelerated models
+/// (parakeet-mlx) consume too much of the unified memory and cause
+/// silent crashes on macOS.
 pub fn classify_tier(ram_gb: u64, cores: u64) -> DeviceTier {
     if ram_gb >= 16 && cores >= 8 {
         DeviceTier::High
-    } else if ram_gb >= 12 || (ram_gb >= 8 && cores >= 6) {
+    } else if ram_gb >= 12 || (ram_gb > 8 && cores >= 6) {
         DeviceTier::Mid
     } else {
         DeviceTier::Low
@@ -218,7 +222,7 @@ pub fn apply_tier_defaults(settings: &mut RecordingSettings, tier: DeviceTier) {
         DeviceTier::Low => {
             settings.video_quality = "low".to_string();
             settings.power_mode = Some("battery_saver".to_string());
-            settings.audio_transcription_engine = "parakeet".to_string();
+            settings.audio_transcription_engine = "whisper-tiny".to_string();
         }
     }
 }
@@ -278,9 +282,11 @@ mod tests {
         assert_eq!(classify_tier(16, 4), DeviceTier::Mid);
         // 12 GB, 2 cores → ≥12 GB alone qualifies for Mid
         assert_eq!(classify_tier(12, 2), DeviceTier::Mid);
-        // 8 GB, 6 cores → (≥8 GB and ≥6 cores) → Mid
-        assert_eq!(classify_tier(8, 6), DeviceTier::Mid);
-        // 10 GB, 8 cores → ≥8 GB and ≥6 cores → Mid
+        // 8 GB, 6 cores → Low (8 GB machines use whisper-tiny to avoid MLX OOM)
+        assert_eq!(classify_tier(8, 6), DeviceTier::Low);
+        // 9 GB, 6 cores → (>8 GB and ≥6 cores) → Mid
+        assert_eq!(classify_tier(9, 6), DeviceTier::Mid);
+        // 10 GB, 8 cores → >8 GB and ≥6 cores → Mid
         assert_eq!(classify_tier(10, 8), DeviceTier::Mid);
     }
 

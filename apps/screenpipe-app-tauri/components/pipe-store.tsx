@@ -45,6 +45,7 @@ import {
   Database,
   Image,
   Plug,
+  Accessibility,
   Clock,
   BadgeCheck,
   Upload,
@@ -142,6 +143,7 @@ const PERMISSION_LABELS: { key: string; label: string; icon: React.ReactNode }[]
   { key: "raw_sql", label: "Raw SQL", icon: <Database className="h-3.5 w-3.5" /> },
   { key: "frames", label: "Screenshots", icon: <Image className="h-3.5 w-3.5" /> },
   { key: "connections", label: "Connections", icon: <Plug className="h-3.5 w-3.5" /> },
+  { key: "accessibility", label: "Accessibility", icon: <Accessibility className="h-3.5 w-3.5" /> },
 ];
 
 function getPermissionStatus(perms: PipePermissions | undefined, key: string): "allowed" | "denied" | "unset" {
