@@ -594,6 +594,7 @@ fn resolve_preset(pipes_dir: &Path, preset_id: &str) -> Option<ResolvedPreset> {
             "native-ollama" => Some("ollama"),
             "openai" => Some("openai"),
             "openai-chatgpt" => Some("openai-chatgpt"),
+            "anthropic" => Some("anthropic"),
             "custom" => Some("custom"), // custom uses openai-compatible API at a user-specified URL
             _ => None,
         })
