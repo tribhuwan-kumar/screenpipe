@@ -3465,8 +3465,15 @@ fn filter_ndjson_stdout(s: &str) -> String {
         }
         // Only filter JSON lines that are complete objects
         if trimmed.starts_with('{') && trimmed.ends_with('}') {
-            // Fast substring check before paying for a full JSON parse
-            if trimmed.contains("\"toolcall_delta\"") || trimmed.contains("\"thinking_delta\"") {
+            // Fast substring check before paying for a full JSON parse.
+            // text_delta events are also filtered — they dominate output and
+            // push message_end/agent_end (which contain the full assembled text)
+            // past the 50KB truncation limit, causing 80%+ of the response to
+            // be lost in execution history.
+            if trimmed.contains("\"toolcall_delta\"")
+                || trimmed.contains("\"thinking_delta\"")
+                || trimmed.contains("\"text_delta\"")
+            {
                 continue;
             }
         }
