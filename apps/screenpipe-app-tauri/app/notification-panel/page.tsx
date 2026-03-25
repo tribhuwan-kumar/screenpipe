@@ -361,6 +361,19 @@ export default function NotificationPanelPage() {
             padding-left: 16px;
           }
           .notif-md li { margin: 1px 0; }
+          .notif-body::-webkit-scrollbar {
+            width: 4px;
+          }
+          .notif-body::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .notif-body::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 2px;
+          }
+          .notif-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.3);
+          }
         `}</style>
 
         {/* Header */}
@@ -412,7 +425,7 @@ export default function NotificationPanelPage() {
         </div>
 
         {/* Body */}
-        <div style={{ padding: "8px 14px", flex: 1, overflow: "auto" }}>
+        <div className="notif-body" style={{ padding: "8px 14px", flex: 1, overflow: "auto", minHeight: 0 }}>
           <div
             style={{
               fontSize: "12px",

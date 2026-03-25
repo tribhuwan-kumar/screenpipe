@@ -1249,8 +1249,8 @@ pub async fn show_notification_panel(
         }
     }
 
-    let window_width = 320.0;
-    let window_height = 180.0;
+    let window_width = 340.0;
+    let window_height = 380.0;
 
     // Position at top-right of the screen where the cursor is
     let (x, y) = {
