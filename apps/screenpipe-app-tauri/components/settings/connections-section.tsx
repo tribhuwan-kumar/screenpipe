@@ -232,6 +232,7 @@ function IntegrationIcon({ icon }: { icon: string }) {
     jira: <img src="/images/jira.png" alt="Jira" className="w-5 h-5 rounded" />,
     hubspot: <img src="/images/hubspot.png" alt="HubSpot" className="w-5 h-5 rounded" />,
     airtable: <img src="/images/airtable.png" alt="Airtable" className="w-5 h-5 rounded" />,
+    limitless: <img src="/images/limitless.svg" alt="Limitless" className="w-5 h-5" />,
     logseq: <img src="/images/logseq.png" alt="Logseq" className="w-5 h-5 rounded" />,
     pushover: <img src="/images/pushover.png" alt="Pushover" className="w-5 h-5 rounded" />,
     ntfy: <img src="/images/ntfy.png" alt="ntfy" className="w-5 h-5 rounded" />,

@@ -170,7 +170,7 @@ export default function EngineStartup({
       await updateSettings({
         aiPresets: [
           {
-            id: "pi-agent",
+            id: "screenpipe-cloud",
             provider: "screenpipe-cloud" as const,
             url: "",
             model: "claude-haiku-4-5",

@@ -1267,7 +1267,7 @@ export const AIPresetsSelector = ({
 
   const handleRemovePreset = (preset: AIPreset) => {
     if (!settings?.aiPresets) return;
-    // Prevent deletion of pi-agent preset for Pro subscribers (pi = screenpipe cloud)
+    // Prevent deletion of screenpipe-cloud preset for Pro subscribers
     if (preset.provider === "screenpipe-cloud" && settings.user?.cloud_subscribed) {
       toast.error("Cannot delete cloud preset", {
         description: "This preset is included with your Pro subscription",

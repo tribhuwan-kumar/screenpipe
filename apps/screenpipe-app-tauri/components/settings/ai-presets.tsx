@@ -1823,7 +1823,7 @@ export const AIPresets = () => {
   const removePreset = async (id: string) => {
     setIsLoading(true);
     try {
-      // Prevent deletion of pi-agent preset for Pro subscribers (pi = screenpipe cloud)
+      // Prevent deletion of screenpipe-cloud preset for Pro subscribers
       const presetToRemove = settings.aiPresets.find((preset) => preset.id === id);
       if (presetToRemove?.provider === "screenpipe-cloud" && settings.user?.cloud_subscribed) {
         toast({

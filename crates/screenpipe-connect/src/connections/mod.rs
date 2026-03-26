@@ -13,6 +13,7 @@ pub mod email;
 pub mod github_issues;
 pub mod hubspot;
 pub mod jira;
+pub mod limitless;
 pub mod linear;
 pub mod logseq;
 pub mod make;
@@ -102,6 +103,7 @@ pub fn all_integrations() -> Vec<Box<dyn Integration>> {
         Box::new(github_issues::GithubIssues),
         Box::new(jira::Jira),
         Box::new(hubspot::HubSpot),
+        Box::new(limitless::Limitless),
         Box::new(airtable::Airtable),
         Box::new(logseq::Logseq),
         Box::new(pushover::Pushover),

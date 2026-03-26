@@ -194,13 +194,16 @@ async isEnterpriseBuildCmd() : Promise<boolean> {
 },
 /**
  * Read the enterprise license key from `enterprise.json`.
- * Checks next to executable (MDM) then ~/.screenpipe/enterprise.json (manual).
+ * Checks in order:
+ * 1. Next to executable (pushed via Intune/MDM to Program Files / .app bundle)
+ * 2. `~/.screenpipe/enterprise.json` (entered manually by employee via in-app prompt)
+ * Returns None if no file is found or is invalid.
  */
 async getEnterpriseLicenseKey() : Promise<string | null> {
     return await TAURI_INVOKE("get_enterprise_license_key");
 },
 /**
- * Save the enterprise license key to ~/.screenpipe/enterprise.json.
+ * Save the enterprise license key to `~/.screenpipe/enterprise.json`.
  * Used by the in-app prompt when enterprise.json is not deployed via MDM.
  */
 async saveEnterpriseLicenseKey(licenseKey: string) : Promise<Result<null, string>> {
