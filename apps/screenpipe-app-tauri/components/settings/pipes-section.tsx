@@ -69,6 +69,8 @@ import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { PublishDialog } from "@/components/pipe-store";
 import posthog from "posthog-js";
 import { MemoizedReactMarkdown } from "@/components/markdown";
+import { useDeviceMonitor } from "@/lib/hooks/use-device-monitor";
+import { Monitor, Wifi, WifiOff, ScanSearch } from "lucide-react";
 
 const PIPE_CREATION_PROMPT = `create a screenpipe pipe that does the following.
 
@@ -546,11 +548,13 @@ function PipePresetSelector({
   setPipes,
   fetchPipes,
   pendingConfigSaves,
+  apiBase,
 }: {
   pipe: { config: PipeConfig };
   setPipes: React.Dispatch<React.SetStateAction<any[]>>;
   fetchPipes: () => void;
   pendingConfigSaves: React.MutableRefObject<Record<string, Promise<void>>>;
+  apiBase: string;
 }) {
   const presetList: string[] = Array.isArray(pipe.config.preset)
     ? pipe.config.preset
@@ -576,7 +580,7 @@ function PipePresetSelector({
       )
     );
 
-    const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+    const savePromise = fetch(`${apiBase}/pipes/${pipeName}/config`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ preset: presetValue }),
@@ -644,6 +648,10 @@ function PipePresetSelector({
 }
 
 export function PipesSection() {
+  // Device selector: null = local machine, string = remote address
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const { devices, discoverDevices, discovering } = useDeviceMonitor();
+
   const [pipes, setPipes] = useState<PipeStatus[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const expandedRef = useRef<string | null>(null);
@@ -775,9 +783,12 @@ export function PipesSection() {
     }
   };
 
+  const apiBase = selectedDevice ? `http://${selectedDevice}` : "http://localhost:3030";
+  const isRemote = !!selectedDevice;
+
   const fetchPipes = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:3030/pipes?include_executions=true");
+      const res = await fetch(`${apiBase}/pipes?include_executions=true`);
       const data = await res.json();
       const rawItems: Array<PipeStatus & { recent_executions?: PipeExecution[] }> = data.data || [];
       const fetched: PipeStatus[] = [];
@@ -819,11 +830,11 @@ export function PipesSection() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiBase]);
 
   const fetchConnections = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:3030/connections");
+      const res = await fetch(`${apiBase}/connections`);
       const data = await res.json();
       if (data.data) {
         const conns: AvailableConnection[] = data.data.map((c: any) => ({
@@ -832,7 +843,7 @@ export function PipesSection() {
         // fetch instances for connected integrations to support multi-instance selection
         await Promise.all(conns.filter(c => c.connected).map(async (c) => {
           try {
-            const instRes = await fetch(`http://localhost:3030/connections/${c.id}/instances`);
+            const instRes = await fetch(`${apiBase}/connections/${c.id}/instances`);
             if (!instRes.ok) return;
             const instData = await instRes.json();
             const list = instData.data || instData.instances || instData || [];
@@ -851,7 +862,7 @@ export function PipesSection() {
 
   const checkForUpdates = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:3030/pipes/store/check-updates");
+      const res = await fetch(`${apiBase}/pipes/store/check-updates`);
       if (!res.ok) return;
       const json = await res.json();
       const updates: Record<string, { latest_version: number; installed_version: number; locally_modified: boolean }> = {};
@@ -867,7 +878,7 @@ export function PipesSection() {
   const updatePipe = async (pipeName: string, slug: string) => {
     setUpdatingPipe(pipeName);
     try {
-      const res = await fetch("http://localhost:3030/pipes/store/update", {
+      const res = await fetch(`${apiBase}/pipes/store/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug }),
@@ -917,7 +928,7 @@ export function PipesSection() {
 
   const fetchAllExecutions = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:3030/pipes?include_executions=true");
+      const res = await fetch(`${apiBase}/pipes?include_executions=true`);
       const data = await res.json();
       const rawItems: Array<PipeStatus & { recent_executions?: PipeExecution[] }> = data.data || [];
       const fetched: PipeStatus[] = [];
@@ -946,7 +957,7 @@ export function PipesSection() {
       const exp = expandedRef.current;
       if (exp) {
         try {
-          const execRes = await fetch(`http://localhost:3030/pipes/${exp}/executions?limit=20`);
+          const execRes = await fetch(`${apiBase}/pipes/${exp}/executions?limit=20`);
           const execData = await execRes.json();
           setExecutions(execData.data || []);
           // Clean up live output for executions that are no longer running
@@ -985,7 +996,7 @@ export function PipesSection() {
 
   const fetchLogs = async (name: string) => {
     try {
-      const res = await fetch(`http://localhost:3030/pipes/${name}/logs`);
+      const res = await fetch(`${apiBase}/pipes/${name}/logs`);
       const data = await res.json();
       setLogs(data.data || []);
     } catch (e) {
@@ -995,7 +1006,7 @@ export function PipesSection() {
 
   const fetchExecutions = async (name: string) => {
     try {
-      const res = await fetch(`http://localhost:3030/pipes/${name}/executions?limit=20`);
+      const res = await fetch(`${apiBase}/pipes/${name}/executions?limit=20`);
       const data = await res.json();
       setExecutions(data.data || []);
     } catch (e) {
@@ -1015,7 +1026,7 @@ export function PipesSection() {
       )
     );
     try {
-      await fetch(`http://localhost:3030/pipes/${name}/enable`, {
+      await fetch(`${apiBase}/pipes/${name}/enable`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
@@ -1041,7 +1052,7 @@ export function PipesSection() {
         await pendingConfigSaves.current[name];
       }
       const minDelay = new Promise((r) => setTimeout(r, 2000));
-      await fetch(`http://localhost:3030/pipes/${name}/run`, {
+      await fetch(`${apiBase}/pipes/${name}/run`, {
         method: "POST",
       });
       if (expanded === name) {
@@ -1061,7 +1072,7 @@ export function PipesSection() {
     posthog.capture("pipe_stopped", { pipe: name });
     setStoppingPipe(name);
     try {
-      await fetch(`http://localhost:3030/pipes/${name}/stop`, {
+      await fetch(`${apiBase}/pipes/${name}/stop`, {
         method: "POST",
       });
       if (expanded === name) {
@@ -1077,7 +1088,7 @@ export function PipesSection() {
 
   const deletePipe = async (name: string) => {
     posthog.capture("pipe_deleted", { pipe: name });
-    await fetch(`http://localhost:3030/pipes/${name}`, { method: "DELETE" });
+    await fetch(`${apiBase}/pipes/${name}`, { method: "DELETE" });
     setExpanded(null);
     fetchPipes();
   };
@@ -1098,7 +1109,7 @@ export function PipesSection() {
     setSaveStatus((prev) => ({ ...prev, [name]: "saving" }));
     setSaveErrors((prev) => { const next = { ...prev }; delete next[name]; return next; });
     try {
-      const res = await fetch(`http://localhost:3030/pipes/${name}/config`, {
+      const res = await fetch(`${apiBase}/pipes/${name}/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ raw_content: content }),
@@ -1240,23 +1251,69 @@ export function PipesSection() {
   return (
     <div className="space-y-4" data-testid="section-pipes">
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium">My Pipes</h3>
-          <p className="text-sm text-muted-foreground">
-            {pipeTypeFilter === "scheduled"
-              ? "scheduled agents that run on your screen data"
-              : "pipes you trigger manually"}
-            {" · "}
-            <a
-              href="https://docs.screenpi.pe/pipes"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
-            >
-              docs
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="text-lg font-medium">My Pipes</h3>
+            <p className="text-sm text-muted-foreground">
+              {pipeTypeFilter === "scheduled"
+                ? "scheduled agents that run on your screen data"
+                : "pipes you trigger manually"}
+              {" · "}
+              <a
+                href="https://docs.screenpi.pe/pipes"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
+              >
+                docs
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </p>
+          </div>
+          {/* Device selector dropdown */}
+          {devices.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs">
+                  <Monitor className="h-3 w-3" />
+                  {selectedDevice
+                    ? devices.find((d) => d.address === selectedDevice)?.label || selectedDevice
+                    : "This Mac"}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => { setSelectedDevice(null); setLoading(true); }}
+                  className={cn(!selectedDevice && "font-medium")}
+                >
+                  <Monitor className="h-3.5 w-3.5 mr-2" />
+                  This Mac
+                  {!selectedDevice && <Check className="h-3.5 w-3.5 ml-auto" />}
+                </DropdownMenuItem>
+                {devices.map((d) => (
+                  <DropdownMenuItem
+                    key={d.address}
+                    onClick={() => { setSelectedDevice(d.address); setLoading(true); }}
+                    className={cn(selectedDevice === d.address && "font-medium")}
+                  >
+                    {d.status === "online" ? (
+                      <Wifi className="h-3.5 w-3.5 mr-2 text-green-500" />
+                    ) : (
+                      <WifiOff className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                    )}
+                    {d.label}
+                    {selectedDevice === d.address && <Check className="h-3.5 w-3.5 ml-auto" />}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => discoverDevices()} disabled={discovering}>
+                  <ScanSearch className="h-3.5 w-3.5 mr-2" />
+                  {discovering ? "Scanning..." : "Discover devices"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" className={`h-8 w-8 ${refreshing ? "pointer-events-none opacity-70" : ""}`} onClick={async () => {
@@ -1651,6 +1708,7 @@ export function PipesSection() {
                           setPipes={setPipes}
                           fetchPipes={fetchPipes}
                           pendingConfigSaves={pendingConfigSaves}
+                          apiBase={apiBase}
                         />
 
                         {/* Schedule */}
@@ -1666,7 +1724,7 @@ export function PipesSection() {
                                 : p
                             )
                           );
-                          const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                          const savePromise = fetch(`${apiBase}/pipes/${pipeName}/config`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ schedule: value }),
@@ -1759,7 +1817,7 @@ export function PipesSection() {
                                     onClick={() => {
                                       const updated = (pipe.config.connections || []).filter((c) => c !== connId);
                                       setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
-                                      fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
+                                      fetch(`${apiBase}/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
                                     }}
                                   >
                                     ×
@@ -1779,7 +1837,7 @@ export function PipesSection() {
                                   const addConn = (key: string) => {
                                     const updated = [...existing, key];
                                     setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, connections: updated } } : p));
-                                    fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
+                                    fetch(`${apiBase}/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ connections: updated }) }).then(() => fetchPipes());
                                   };
                                   // filter to connections not yet fully added
                                   const available = availableConnections.filter((c) => {
@@ -1841,7 +1899,7 @@ export function PipesSection() {
                                   const updated = (pipe.config.trigger?.events || []).filter((_: string, j: number) => j !== i);
                                   const newTrigger = { ...pipe.config.trigger, events: updated };
                                   setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
-                                  fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                  fetch(`${apiBase}/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
                                 }}>×</button>
                               </div>
                             ))}
@@ -1853,7 +1911,7 @@ export function PipesSection() {
                                     const updated = (pipe.config.trigger?.custom || []).filter((_: string, j: number) => j !== i);
                                     const newTrigger = { ...pipe.config.trigger, custom: updated };
                                     setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
-                                    fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                    fetch(`${apiBase}/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
                                   }}>×</button>
                                 </div>
                               ))}
@@ -1865,7 +1923,7 @@ export function PipesSection() {
                                 const existing = pipe.config.trigger?.custom || [];
                                 const newTrigger = { ...pipe.config.trigger, custom: [...existing, value] };
                                 setPipes((prev) => prev.map((p) => p.config.name === pipe.config.name ? { ...p, config: { ...p.config, trigger: newTrigger } } : p));
-                                fetch(`http://localhost:3030/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
+                                fetch(`${apiBase}/pipes/${pipe.config.name}/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger: newTrigger }) }).then(() => fetchPipes());
                                 input.value = "";
                               }}>
                                 <Input placeholder="when should this pipe run?" className="h-7 text-xs flex-1 font-mono" spellCheck={false} autoCorrect="off" />
@@ -1970,7 +2028,7 @@ export function PipesSection() {
                                 : p
                             )
                           );
-                          const savePromise = fetch(`http://localhost:3030/pipes/${pipeName}/config`, {
+                          const savePromise = fetch(`${apiBase}/pipes/${pipeName}/config`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ history: checked }),
