@@ -209,19 +209,37 @@ pub async fn get_pipe_session(
     let mgr = pm.lock().await;
     let execs = match mgr.get_executions(&id, 100).await {
         Ok(e) => e,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e.to_string() })),
+            )
+        }
     };
     let exec = match execs.iter().find(|e| e.id == exec_id) {
         Some(e) => e,
-        None => return (StatusCode::NOT_FOUND, Json(json!({ "error": "execution not found" }))),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "execution not found" })),
+            )
+        }
     };
     let session_path = match &exec.session_path {
         Some(p) => p.clone(),
-        None => return (StatusCode::NOT_FOUND, Json(json!({ "error": "no session file for this execution" }))),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "no session file for this execution" })),
+            )
+        }
     };
     match tokio::fs::read_to_string(&session_path).await {
         Ok(content) => (StatusCode::OK, Json(json!({ "data": content }))),
-        Err(e) => (StatusCode::NOT_FOUND, Json(json!({ "error": format!("failed to read session file: {}", e) }))),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("failed to read session file: {}", e) })),
+        ),
     }
 }
 
