@@ -294,10 +294,14 @@ impl PiExecutor {
         };
 
         if should_add_screenpipe {
-            // Use actual token value in apiKey (not env var name) — Pi v0.51.1+ may not
-            // resolve env var names reliably, causing tier=anonymous on the gateway.
-            // Falls back to env var name for backwards compatibility when token is absent.
-            let api_key_value = user_token.unwrap_or("SCREENPIPE_API_KEY");
+            // Use actual token value in apiKey — Pi doesn't resolve env var names,
+            // so writing the literal string "SCREENPIPE_API_KEY" causes tier=anonymous.
+            // Resolve from: argument > env var > literal fallback (last resort).
+            let api_key_value = user_token
+                .map(|t| t.to_string())
+                .or_else(|| std::env::var("SCREENPIPE_API_KEY").ok())
+                .unwrap_or_else(|| "SCREENPIPE_API_KEY".to_string());
+            let api_key_value = api_key_value.as_str();
             let screenpipe_provider = json!({
                 "baseUrl": api_url,
                 "api": "openai-completions",
