@@ -505,6 +505,7 @@ pub struct PipeExecution {
     pub error_type: Option<String>,
     pub error_message: Option<String>,
     pub duration_ms: Option<i64>,
+    pub session_path: Option<String>,
 }
 
 /// Persisted scheduler state for a single pipe.
@@ -544,6 +545,7 @@ pub trait PipeStore: Send + Sync {
         exit_code: Option<i32>,
         error_type: Option<&str>,
         error_message: Option<&str>,
+        session_path: Option<&str>,
     ) -> Result<()>;
 
     /// Get recent executions for a pipe (newest first).
@@ -1584,16 +1586,19 @@ impl PipeManager {
                     } else {
                         "failed"
                     };
+                    let session_path = find_latest_pi_session(&pipe_dir)
+                        .map(|p| p.to_string_lossy().to_string());
                     if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {
                         let _ = store
                             .finish_execution(
                                 id,
                                 status,
-                                &truncate_string(&filtered_stdout, 50_000),
-                                &truncate_string(&output.stderr, 10_000),
+                                &filtered_stdout,
+                                &output.stderr,
                                 None,
                                 error_type.as_deref(),
                                 error_message.as_deref(),
+                                session_path.as_deref(),
                             )
                             .await;
                     }
@@ -1613,8 +1618,8 @@ impl PipeManager {
                             started_at,
                             finished_at,
                             success: output.success,
-                            stdout: truncate_string(&filtered_stdout, 10_000),
-                            stderr: truncate_string(&output.stderr, 5_000),
+                            stdout: filtered_stdout.clone(),
+                            stderr: output.stderr.clone(),
                         },
                         et,
                     )
@@ -1630,6 +1635,7 @@ impl PipeManager {
                                 None,
                                 Some("crash"),
                                 Some(&e.to_string()),
+                                None,
                             )
                             .await;
                     }
@@ -1666,6 +1672,7 @@ impl PipeManager {
                                 None,
                                 Some("timeout"),
                                 Some(&format!("execution timed out after {}s", pipe_timeout)),
+                                None,
                             )
                             .await;
                     }
@@ -2017,16 +2024,19 @@ impl PipeManager {
                     } else {
                         "failed"
                     };
+                    let session_path = find_latest_pi_session(&pipe_dir)
+                        .map(|p| p.to_string_lossy().to_string());
                     if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
                         let _ = store
                             .finish_execution(
                                 id,
                                 status,
-                                &truncate_string(&filtered_stdout, 50_000),
-                                &truncate_string(&output.stderr, 10_000),
+                                &filtered_stdout,
+                                &output.stderr,
                                 None,
                                 error_type.as_deref(),
                                 error_message.as_deref(),
+                                session_path.as_deref(),
                             )
                             .await;
                     }
@@ -2054,8 +2064,8 @@ impl PipeManager {
                         started_at,
                         finished_at,
                         success: output.success,
-                        stdout: truncate_string(&filtered_stdout, 10_000),
-                        stderr: truncate_string(&output.stderr, 5_000),
+                        stdout: filtered_stdout.clone(),
+                        stderr: output.stderr.clone(),
                     }
                 }
                 Ok(Err(e)) => {
@@ -2070,6 +2080,7 @@ impl PipeManager {
                                 None,
                                 Some("crash"),
                                 Some(&e.to_string()),
+                                None,
                             )
                             .await;
                     }
@@ -2110,6 +2121,7 @@ impl PipeManager {
                                 None,
                                 Some("timeout"),
                                 Some(&format!("execution timed out after {}s", pipe_timeout)),
+                                None,
                             )
                             .await;
                     }
@@ -2554,7 +2566,7 @@ impl PipeManager {
             // Update DB row
             if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
                 let _ = store
-                    .finish_execution(id, "cancelled", "", "", None, Some("cancelled"), None)
+                    .finish_execution(id, "cancelled", "", "", None, Some("cancelled"), None, None)
                     .await;
             }
 
@@ -2937,16 +2949,19 @@ impl PipeManager {
                                 } else {
                                     "failed"
                                 };
+                                let session_path = find_latest_pi_session(&pipe_dir)
+                                    .map(|p| p.to_string_lossy().to_string());
                                 if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {
                                     let _ = store
                                         .finish_execution(
                                             id,
                                             status,
-                                            &truncate_string(&filtered_stdout, 50_000),
-                                            &truncate_string(&output.stderr, 10_000),
+                                            &filtered_stdout,
+                                            &output.stderr,
                                             None,
                                             error_type.as_deref(),
                                             error_message.as_deref(),
+                                            session_path.as_deref(),
                                         )
                                         .await;
                                 }
@@ -2972,8 +2987,8 @@ impl PipeManager {
                                         started_at,
                                         finished_at,
                                         success: output.success,
-                                        stdout: truncate_string(&filtered_stdout, 10_000),
-                                        stderr: truncate_string(&output.stderr, 5_000),
+                                        stdout: filtered_stdout.clone(),
+                                        stderr: output.stderr.clone(),
                                     },
                                     et,
                                 )
@@ -2990,6 +3005,7 @@ impl PipeManager {
                                             None,
                                             Some("crash"),
                                             Some(&e.to_string()),
+                                            None,
                                         )
                                         .await;
                                 }
@@ -3028,6 +3044,7 @@ impl PipeManager {
                                                 "execution timed out after {}s",
                                                 pipe_timeout
                                             )),
+                                            None,
                                         )
                                         .await;
                                 }
@@ -3613,6 +3630,25 @@ fn encode_pi_session_dir(working_dir: &Path) -> Option<PathBuf> {
     let stripped = cwd_str.trim_matches(|c| c == '/' || c == '\\');
     let encoded = format!("--{}--", stripped.replace(['/', '\\'], "-"));
     Some(sessions_base.join(encoded))
+}
+
+/// Find the most recently modified Pi session file for a pipe's working directory.
+pub fn find_latest_pi_session(pipe_dir: &Path) -> Option<PathBuf> {
+    let session_dir = encode_pi_session_dir(pipe_dir)?;
+    if !session_dir.exists() {
+        return None;
+    }
+    std::fs::read_dir(&session_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "jsonl")
+                .unwrap_or(false)
+        })
+        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
+        .map(|e| e.path())
 }
 
 /// Delete all Pi session files for a pipe's working directory.

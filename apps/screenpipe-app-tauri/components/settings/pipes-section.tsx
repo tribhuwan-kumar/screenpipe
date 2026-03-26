@@ -29,6 +29,7 @@ import {
   Upload,
   ArrowUpCircle,
   MessageSquare,
+  Copy,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -67,6 +68,7 @@ import { saveConversationFile } from "@/lib/chat-storage";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { PublishDialog } from "@/components/pipe-store";
 import posthog from "posthog-js";
+import { MemoizedReactMarkdown } from "@/components/markdown";
 
 const PIPE_CREATION_PROMPT = `create a screenpipe pipe that does the following.
 
@@ -476,7 +478,7 @@ export function cleanPipeStdout(raw: string): string {
     parts.push(trimmed);
   }
 
-  const text = parts.join("").trim();
+  const text = parts.join("\n\n").trim();
   if (!text && errorMessage) {
     return `error: ${errorMessage}`;
   }
@@ -714,13 +716,17 @@ export function PipesSection() {
       return true;
     })
     .sort((a, b) => {
-      // Running first, then enabled, then rest
+      // Running first
       if (a.is_running !== b.is_running) return a.is_running ? -1 : 1;
+      // Then by most recent execution from DB (matches the "Xm ago" display)
+      const aExecs = pipeExecutions[a.config.name] || [];
+      const bExecs = pipeExecutions[b.config.name] || [];
+      const aTime = aExecs[0]?.started_at ? new Date(aExecs[0].started_at).getTime() : 0;
+      const bTime = bExecs[0]?.started_at ? new Date(bExecs[0].started_at).getTime() : 0;
+      if (aTime !== bTime) return bTime - aTime;
+      // Then enabled before disabled
       if (a.config.enabled !== b.config.enabled) return a.config.enabled ? -1 : 1;
-      // Then by last run time (most recent first)
-      const aTime = a.last_run ? new Date(a.last_run).getTime() : 0;
-      const bTime = b.last_run ? new Date(b.last_run).getTime() : 0;
-      return bTime - aTime;
+      return 0;
     });
 
   // Counts for filter chips
@@ -1904,10 +1910,19 @@ export function PipesSection() {
                                 </div>
                                 {exec.error_message && <p className="text-xs text-muted-foreground">{exec.error_message}</p>}
                                 {exec.status === "completed" && exec.stdout && cleanPipeStdout(exec.stdout) && (
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{cleanPipeStdout(exec.stdout)}</pre>
+                                  <div className="relative group">
+                                    <button
+                                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                                      onClick={() => navigator.clipboard.writeText(cleanPipeStdout(exec.stdout))}
+                                      title="copy"
+                                    >
+                                      <Copy className="h-3 w-3 text-muted-foreground" />
+                                    </button>
+                                    <div className="text-xs text-muted-foreground max-h-96 overflow-y-auto scrollbar-hide"><MemoizedReactMarkdown className="prose prose-xs dark:prose-invert max-w-none break-words text-xs [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs [&_code]:text-[10px]">{cleanPipeStdout(exec.stdout)}</MemoizedReactMarkdown></div>
+                                  </div>
                                 )}
                                 {exec.status === "failed" && exec.stderr && !exec.error_message && (
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{exec.stderr}</pre>
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto scrollbar-hide">{exec.stderr}</pre>
                                 )}
                               </div>
                             ))
@@ -1920,10 +1935,19 @@ export function PipesSection() {
                                   <span className="text-muted-foreground">{Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000)}s</span>
                                 </div>
                                 {log.success && log.stdout && cleanPipeStdout(log.stdout) && (
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{cleanPipeStdout(log.stdout)}</pre>
+                                  <div className="relative group">
+                                    <button
+                                      className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                                      onClick={() => navigator.clipboard.writeText(cleanPipeStdout(log.stdout))}
+                                      title="copy"
+                                    >
+                                      <Copy className="h-3 w-3 text-muted-foreground" />
+                                    </button>
+                                    <div className="text-xs text-muted-foreground max-h-96 overflow-y-auto scrollbar-hide"><MemoizedReactMarkdown className="prose prose-xs dark:prose-invert max-w-none break-words text-xs [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_p]:text-xs [&_li]:text-xs [&_code]:text-[10px]">{cleanPipeStdout(log.stdout)}</MemoizedReactMarkdown></div>
+                                  </div>
                                 )}
                                 {!log.success && log.stderr && (
-                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{log.stderr}</pre>
+                                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-96 overflow-y-auto scrollbar-hide">{log.stderr}</pre>
                                 )}
                               </div>
                             ))
