@@ -622,7 +622,14 @@ fn resolve_preset(pipes_dir: &Path, preset_id: &str) -> Option<ResolvedPreset> {
     let store: serde_json::Value = serde_json::from_str(&content).ok()?;
     let presets = store.get("settings")?.get("aiPresets")?.as_array()?;
 
-    let preset = if preset_id == "default" {
+    // Normalize legacy preset IDs to current names
+    let normalized_id = match preset_id {
+        "pi-agent" => "screenpipe-cloud",
+        "auto" => "default",
+        other => other,
+    };
+
+    let preset = if normalized_id == "default" {
         // find the one with defaultPreset: true
         presets.iter().find(|p| {
             p.get("defaultPreset")
@@ -632,7 +639,13 @@ fn resolve_preset(pipes_dir: &Path, preset_id: &str) -> Option<ResolvedPreset> {
     } else {
         presets
             .iter()
-            .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(preset_id))
+            .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(normalized_id))
+            // Also try original ID in case user hasn't run migration yet
+            .or_else(|| {
+                presets
+                    .iter()
+                    .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(preset_id))
+            })
     }?;
 
     let model = preset.get("model")?.as_str()?.to_string();
@@ -3576,6 +3589,7 @@ fn filter_ndjson_stdout(s: &str) -> String {
     out
 }
 
+#[cfg(test)]
 fn truncate_string(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
