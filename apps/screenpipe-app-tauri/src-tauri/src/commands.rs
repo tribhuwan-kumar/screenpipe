@@ -487,6 +487,7 @@ pub async fn open_pipe_window(
     .focused(true)
     .fullscreen(false)
     .build()
+    .map(crate::window::finalize_webview_window)
     {
         Ok(window) => window,
         Err(e) => {
@@ -619,6 +620,7 @@ pub async fn open_login_window(app_handle: tauri::AppHandle) -> Result<(), Strin
             }
         })
         .build()
+        .map(crate::window::finalize_webview_window)
         .map_err(|e| e.to_string())?;
 
         Ok(())
@@ -669,6 +671,7 @@ pub async fn open_google_calendar_auth_window(
         }
     })
     .build()
+    .map(crate::window::finalize_webview_window)
     .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -1131,6 +1134,7 @@ pub async fn show_shortcut_reminder(
 
     let window = builder
         .build()
+        .map(crate::window::finalize_webview_window)
         .map_err(|e| format!("Failed to create shortcut reminder window: {}", e))?;
 
     info!("shortcut-reminder window created");
@@ -1412,6 +1416,7 @@ pub async fn show_notification_panel(
 
     let window = builder
         .build()
+        .map(crate::window::finalize_webview_window)
         .map_err(|e| format!("Failed to create notification panel window: {}", e))?;
 
     info!("notification-panel window created");
