@@ -1472,7 +1472,7 @@ export function PipesSection() {
                     : pipe.config.schedule || "manual"}
                 >
                   {(pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0) > 0
-                    ? `⚡ ${(pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)} trigger${((pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)) > 1 ? "s" : ""}`
+                    ? `› ${(pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)} trigger${((pipe.config.trigger?.events?.length || 0) + (pipe.config.trigger?.custom?.length || 0)) > 1 ? "s" : ""}`
                     : humanizeSchedule(pipe.config.schedule)}
                 </span>
 
@@ -1830,7 +1830,7 @@ export function PipesSection() {
                             {/* Show built-in event triggers (from pipe.md frontmatter) */}
                             {(pipe.config.trigger?.events || []).map((event: string, i: number) => (
                               <div key={`ev-${i}`} className="flex items-center gap-1.5 group/item">
-                                <span className="text-xs bg-muted/50 border px-3 py-1.5 flex-1 font-mono">⚡ {event.replace(/_/g, " ")}</span>
+                                <span className="text-xs bg-muted/50 border px-3 py-1.5 flex-1 font-mono">› {event.replace(/_/g, " ")}</span>
                                 <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-all duration-150" onClick={() => {
                                   const updated = (pipe.config.trigger?.events || []).filter((_: string, j: number) => j !== i);
                                   const newTrigger = { ...pipe.config.trigger, events: updated };
@@ -1842,7 +1842,7 @@ export function PipesSection() {
                             {/* Show custom plain-language triggers */}
                             {(pipe.config.trigger?.custom || []).map((trigger: string, i: number) => (
                                 <div key={i} className="flex items-center gap-1.5 group/item">
-                                  <span className="text-xs bg-muted/50 px-2 py-1 rounded flex-1 font-mono">⚡ {trigger}</span>
+                                  <span className="text-xs bg-muted/50 px-2 py-1 rounded flex-1 font-mono">› {trigger}</span>
                                   <button className="text-xs text-muted-foreground/0 group-hover/item:text-muted-foreground hover:!text-destructive transition-all duration-150" onClick={() => {
                                     const updated = (pipe.config.trigger?.custom || []).filter((_: string, j: number) => j !== i);
                                     const newTrigger = { ...pipe.config.trigger, custom: updated };

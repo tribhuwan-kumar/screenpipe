@@ -896,7 +896,7 @@ const AISection = ({
         }
 
         case "anthropic": {
-          // Hardcoded model list — Claude Pro/Max subscription models
+          // Hardcoded model list — Anthropic API models
           setModels([
             { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
             { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.5", provider: "anthropic" },
@@ -1083,7 +1083,7 @@ const AISection = ({
           <AIProviderCard
             type="anthropic"
             title="Claude.ai"
-            description="Use your Claude Pro/Max subscription or Anthropic API key"
+            description="Use your Anthropic API key"
             imageSrc="/images/claude-ai.svg"
             selected={(settingsPreset?.provider as string) === "anthropic"}
             onClick={() => {
