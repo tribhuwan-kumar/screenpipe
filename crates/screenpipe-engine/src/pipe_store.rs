@@ -476,7 +476,9 @@ mod tests {
             .unwrap();
         store.set_execution_running(id, Some(100)).await.unwrap();
         store
-            .finish_execution(id, "completed", "hello stdout", "", Some(0), None, None, None)
+            .finish_execution(
+                id, "completed", "hello stdout", "", Some(0), None, None, None,
+            )
             .await
             .unwrap();
 
@@ -607,7 +609,9 @@ mod tests {
             .unwrap();
         store.set_execution_running(id3, Some(200)).await.unwrap();
         store
-            .finish_execution(id3, "completed", "done", "", Some(0), None, None, None)
+            .finish_execution(
+                id3, "completed", "done", "", Some(0), None, None, None,
+            )
             .await
             .unwrap();
 
@@ -769,7 +773,16 @@ mod tests {
 
         // 3. Complete
         store
-            .finish_execution(id, "completed", "result output", "", Some(0), None, None, None)
+            .finish_execution(
+                id,
+                "completed",
+                "result output",
+                "",
+                Some(0),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
 
