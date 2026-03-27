@@ -169,7 +169,7 @@ function CursorLogo({ className }: { className?: string }) {
 }
 
 
-function IntegrationIcon({ icon }: { icon: string }) {
+export function IntegrationIcon({ icon }: { icon: string }) {
   const icons: Record<string, React.ReactNode> = {
     claude: <ClaudeLogo />,
     cursor: <CursorLogo className="w-5 h-5 rounded" />,

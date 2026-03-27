@@ -955,6 +955,11 @@ impl PipeManager {
         }
     }
 
+    /// Returns the pipes directory (e.g. `~/.screenpipe/pipes/`).
+    pub fn pipes_dir(&self) -> &Path {
+        &self.pipes_dir
+    }
+
     /// Set extra context that gets appended to every pipe prompt.
     /// Used by the server to inject connected integrations info.
     pub fn set_extra_context(&mut self, ctx: String) {
