@@ -1,0 +1,19 @@
+{
+  "name": "@screenpipe/local-test",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Local macOS VM testing via Tart — smoke-test screenpipe CLI and app in an isolated environment",
+  "scripts": {
+    "setup": "bun run src/cli.ts setup",
+    "test": "bun run src/cli.ts test",
+    "test:cli": "bun run src/cli.ts test --target cli",
+    "test:e2e": "bun run src/cli.ts test --target e2e",
+    "test:app": "bun run src/cli.ts test --target app",
+    "ssh": "bun run src/cli.ts ssh",
+    "teardown": "bun run src/cli.ts teardown",
+    "status": "bun run src/cli.ts status"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
