@@ -392,6 +392,17 @@ fn main() {
         }
     }
 
+    // Ensure mlx.metallib exists so Tauri doesn't fail on the resource declaration.
+    // On non-aarch64-macOS builds, create an empty placeholder (it won't be used).
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+    {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let metallib = std::path::Path::new(&manifest_dir).join("mlx.metallib");
+        if !metallib.exists() {
+            let _ = std::fs::write(&metallib, b"");
+        }
+    }
+
     tauri_build::build()
 }
 
