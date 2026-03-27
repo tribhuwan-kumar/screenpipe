@@ -668,29 +668,18 @@ fn default_max_tokens() -> i32 {
     4096
 }
 
-/// Merge providers into pi's existing config (preserves other providers/auth).
-/// Now supports any OpenAI-compatible provider (OpenAI, Ollama, custom, screenpipe-cloud).
-fn ensure_pi_config(
+/// Build the models.json content for pi-coding-agent.
+///
+/// Pure function (no I/O) — builds a clean JSON value from scratch with only the
+/// providers we manage. This prevents stale/schema-invalid providers left over from
+/// older versions from poisoning pi-coding-agent's Ajv validation.
+fn build_models_json(
     user_token: Option<&str>,
     provider_config: Option<&PiProviderConfig>,
-) -> Result<(), String> {
-    let config_dir = get_pi_config_dir()?;
-    std::fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create pi config dir: {}", e))?;
-
-    // -- models.json: merge providers into existing config --
-    let models_path = config_dir.join("models.json");
-    let mut models_config: serde_json::Value = if models_path.exists() {
-        let content = std::fs::read_to_string(&models_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_else(|_| json!({"providers": {}}))
-    } else {
-        json!({"providers": {}})
-    };
+) -> serde_json::Value {
+    let mut providers_map = serde_json::Map::new();
 
     // Always add screenpipe cloud provider
-    // Use actual token value in apiKey (not env var name) — Pi v0.51.1+ may not
-    // resolve env var names reliably, causing tier=anonymous on the gateway.
-    // Falls back to env var name for backwards compatibility when token is absent.
     let api_key_value = user_token.unwrap_or("SCREENPIPE_API_KEY");
     let screenpipe_provider = json!({
         "baseUrl": SCREENPIPE_API_URL,
@@ -699,15 +688,7 @@ fn ensure_pi_config(
         "authHeader": true,
         "models": screenpipe_cloud_models()
     });
-
-    if let Some(providers) = models_config
-        .get_mut("providers")
-        .and_then(|p| p.as_object_mut())
-    {
-        providers.insert("screenpipe".to_string(), screenpipe_provider);
-    } else {
-        models_config = json!({"providers": {"screenpipe": screenpipe_provider}});
-    }
+    providers_map.insert("screenpipe".to_string(), screenpipe_provider);
 
     // Add the user's selected provider (if not screenpipe-cloud)
     if let Some(config) = provider_config {
@@ -733,23 +714,18 @@ fn ensure_pi_config(
                 config.url.clone()
             };
 
-            // Pi's models.json schema requires baseUrl to have minLength: 1.
-            // Writing an empty baseUrl poisons the entire file and breaks ALL
-            // providers (including screenpipe cloud). Skip the entry instead.
             if base_url.is_empty() {
                 warn!(
                     "skipping pi provider '{}': no baseUrl configured (would invalidate models.json)",
                     provider_name
                 );
             } else {
-                // Pi resolves apiKey values as env var names, so reference the env var
-                // we'll set when spawning the process
                 let api_key = match config.provider.as_str() {
-                    "native-ollama" => "ollama".to_string(), // Ollama ignores API key but Pi requires one
-                    "openai" => "OPENAI_API_KEY".to_string(), // Pi will read from env
-                    "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(), // OAuth token from env
-                    "anthropic" => "ANTHROPIC_API_KEY".to_string(), // Pi will read from env
-                    "custom" => "CUSTOM_API_KEY".to_string(), // Pi will read from env
+                    "native-ollama" => "ollama".to_string(),
+                    "openai" => "OPENAI_API_KEY".to_string(),
+                    "openai-chatgpt" => "OPENAI_CHATGPT_TOKEN".to_string(),
+                    "anthropic" => "ANTHROPIC_API_KEY".to_string(),
+                    "custom" => "CUSTOM_API_KEY".to_string(),
                     _ => "".to_string(),
                 };
 
@@ -776,16 +752,26 @@ fn ensure_pi_config(
                     ]
                 });
 
-                if let Some(providers) = models_config
-                    .get_mut("providers")
-                    .and_then(|p| p.as_object_mut())
-                {
-                    providers.insert(provider_name.to_string(), user_provider);
-                }
+                providers_map.insert(provider_name.to_string(), user_provider);
             }
         }
     }
 
+    json!({"providers": providers_map})
+}
+
+/// Write pi's provider config (models.json + auth.json).
+fn ensure_pi_config(
+    user_token: Option<&str>,
+    provider_config: Option<&PiProviderConfig>,
+) -> Result<(), String> {
+    let config_dir = get_pi_config_dir()?;
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create pi config dir: {}", e))?;
+
+    let models_config = build_models_json(user_token, provider_config);
+
+    let models_path = config_dir.join("models.json");
     let models_str = serde_json::to_string_pretty(&models_config)
         .map_err(|e| format!("Failed to serialize models config: {}", e))?;
     std::fs::write(&models_path, models_str)
@@ -2720,5 +2706,134 @@ mod tests {
         assert_eq!(v["type"], "still_ok");
 
         assert_eq!(super::read_lines_lossy(&mut reader), None);
+    }
+
+    // -- build_models_json tests --
+
+    use super::{build_models_json, PiProviderConfig};
+
+    fn make_provider_config(provider: &str, model: &str) -> PiProviderConfig {
+        PiProviderConfig {
+            provider: provider.to_string(),
+            url: String::new(),
+            model: model.to_string(),
+            api_key: None,
+            max_tokens: 4096,
+            system_prompt: None,
+        }
+    }
+
+    #[test]
+    fn test_build_models_json_default_has_screenpipe_provider() {
+        let config = build_models_json(None, None);
+        let providers = config["providers"].as_object().unwrap();
+        assert!(providers.contains_key("screenpipe"));
+        assert_eq!(providers.len(), 1);
+
+        let sp = &providers["screenpipe"];
+        assert_eq!(sp["baseUrl"], "https://api.screenpi.pe/v1");
+        assert_eq!(sp["api"], "openai-completions");
+        assert_eq!(sp["apiKey"], "SCREENPIPE_API_KEY");
+        assert_eq!(sp["authHeader"], true);
+        assert!(sp["models"].as_array().unwrap().len() > 0);
+    }
+
+    #[test]
+    fn test_build_models_json_with_user_token() {
+        let config = build_models_json(Some("tok_abc123"), None);
+        let sp = &config["providers"]["screenpipe"];
+        assert_eq!(sp["apiKey"], "tok_abc123");
+    }
+
+    #[test]
+    fn test_build_models_json_screenpipe_cloud_no_extra_provider() {
+        let pc = make_provider_config("screenpipe-cloud", "auto");
+        let config = build_models_json(None, Some(&pc));
+        let providers = config["providers"].as_object().unwrap();
+        // screenpipe-cloud maps to "" (empty), so only the screenpipe provider is added
+        assert_eq!(providers.len(), 1);
+        assert!(providers.contains_key("screenpipe"));
+    }
+
+    #[test]
+    fn test_build_models_json_openai_adds_second_provider() {
+        let pc = make_provider_config("openai", "gpt-4o");
+        let config = build_models_json(None, Some(&pc));
+        let providers = config["providers"].as_object().unwrap();
+        assert_eq!(providers.len(), 2);
+        assert!(providers.contains_key("screenpipe"));
+        assert!(providers.contains_key("openai-byok"));
+
+        let openai = &providers["openai-byok"];
+        assert_eq!(openai["baseUrl"], "https://api.openai.com/v1");
+        assert_eq!(openai["api"], "openai-completions");
+        assert_eq!(openai["apiKey"], "OPENAI_API_KEY");
+        let models = openai["models"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["id"], "gpt-4o");
+    }
+
+    #[test]
+    fn test_build_models_json_ollama_provider() {
+        let pc = make_provider_config("native-ollama", "llama3");
+        let config = build_models_json(None, Some(&pc));
+        let providers = config["providers"].as_object().unwrap();
+        assert!(providers.contains_key("ollama"));
+        assert_eq!(providers["ollama"]["baseUrl"], "http://localhost:11434/v1");
+    }
+
+    #[test]
+    fn test_build_models_json_anthropic_provider() {
+        let pc = make_provider_config("anthropic", "claude-sonnet-4-5");
+        let config = build_models_json(None, Some(&pc));
+        let providers = config["providers"].as_object().unwrap();
+        assert!(providers.contains_key("anthropic-byok"));
+        assert_eq!(
+            providers["anthropic-byok"]["baseUrl"],
+            "https://api.anthropic.com"
+        );
+        assert_eq!(providers["anthropic-byok"]["api"], "anthropic-messages");
+    }
+
+    #[test]
+    fn test_build_models_json_custom_with_empty_url_skipped() {
+        // custom provider with empty URL should be skipped (would invalidate schema)
+        let pc = make_provider_config("custom", "my-model");
+        let config = build_models_json(None, Some(&pc));
+        let providers = config["providers"].as_object().unwrap();
+        assert_eq!(providers.len(), 1); // only screenpipe
+        assert!(!providers.contains_key("custom"));
+    }
+
+    #[test]
+    fn test_build_models_json_custom_with_url() {
+        let mut pc = make_provider_config("custom", "my-model");
+        pc.url = "http://my-server:8080/v1".to_string();
+        let config = build_models_json(None, Some(&pc));
+        let providers = config["providers"].as_object().unwrap();
+        assert_eq!(providers.len(), 2);
+        assert!(providers.contains_key("custom"));
+        assert_eq!(providers["custom"]["baseUrl"], "http://my-server:8080/v1");
+    }
+
+    #[test]
+    fn test_build_models_json_no_stale_providers() {
+        // The key regression test: even if an old models.json had a corrupted
+        // provider, build_models_json always produces a clean config with only
+        // the providers we explicitly add. This is a pure function so there is
+        // no file to corrupt — the test verifies the output shape is always valid.
+        let config = build_models_json(Some("tok"), None);
+        let providers = config["providers"].as_object().unwrap();
+
+        // Only "screenpipe" — no leftover providers
+        assert_eq!(providers.len(), 1);
+
+        // Every model has required fields for pi-coding-agent schema
+        let models = providers["screenpipe"]["models"].as_array().unwrap();
+        for m in models {
+            assert!(m["id"].as_str().unwrap().len() > 0, "model missing id");
+            assert!(m["cost"]["input"].is_number(), "model missing cost.input");
+            assert!(m["cost"]["output"].is_number(), "model missing cost.output");
+        }
     }
 }

@@ -271,14 +271,12 @@ impl PiExecutor {
         let config_dir = get_pi_config_dir()?;
         std::fs::create_dir_all(&config_dir)?;
 
-        // -- models.json: merge screenpipe provider into existing providers --
+        // -- models.json: build clean config with only managed providers --
+        // Writing from scratch prevents stale/schema-invalid providers left over
+        // from older versions from poisoning pi-coding-agent's Ajv validation,
+        // which would reject the entire file and hide all custom providers.
         let models_path = config_dir.join("models.json");
-        let mut models_config: serde_json::Value = if models_path.exists() {
-            let content = std::fs::read_to_string(&models_path).unwrap_or_default();
-            serde_json::from_str(&content).unwrap_or_else(|_| json!({"providers": {}}))
-        } else {
-            json!({"providers": {}})
-        };
+        let mut models_config = json!({"providers": {}});
 
         // Only add screenpipe cloud provider if it's the intended provider
         // (or no provider specified). If the user explicitly chose ollama/openai/custom,
@@ -317,17 +315,6 @@ impl PiExecutor {
                 .and_then(|p| p.as_object_mut())
             {
                 providers.insert("screenpipe".to_string(), screenpipe_provider);
-            } else {
-                models_config = json!({"providers": {"screenpipe": screenpipe_provider}});
-            }
-        } else {
-            // Remove screenpipe provider if it exists from a previous config to avoid
-            // silent credit drain when user explicitly chose a different provider.
-            if let Some(providers) = models_config
-                .get_mut("providers")
-                .and_then(|p| p.as_object_mut())
-            {
-                providers.remove("screenpipe");
             }
         }
 
@@ -454,7 +441,7 @@ impl PiExecutor {
             }
         }
 
-        debug!("pi config merged at {:?}", models_path);
+        debug!("pi config written at {:?}", models_path);
         Ok(())
     }
 
