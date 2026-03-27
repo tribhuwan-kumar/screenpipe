@@ -1201,10 +1201,11 @@ export function PipesSection() {
     };
   }, []);
 
-  if (loading) {
+  // Full-page skeleton only on very first load (no pipes ever fetched yet)
+  // Device switches use the inline skeleton in the pipe list instead
+  if (loading && pipes.length === 0 && !selectedDevice && devices.length === 0) {
     return (
       <div className="space-y-4">
-        {/* Header skeleton */}
         <div className="flex items-center justify-between">
           <div>
             <Skeleton className="h-5 w-16" />
@@ -1215,9 +1216,7 @@ export function PipesSection() {
             <Skeleton className="h-8 w-28 rounded-md" />
           </div>
         </div>
-        {/* Input skeleton */}
         <Skeleton className="h-9 w-full rounded-md" />
-        {/* Pipe card skeletons */}
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
@@ -1229,16 +1228,6 @@ export function PipesSection() {
                   <Skeleton className="h-5 w-20 rounded-full" />
                   <Skeleton className="h-8 w-8 rounded-md" />
                   <Skeleton className="h-5 w-9 rounded-full" />
-                </div>
-                <div className="mt-3 space-y-1.5">
-                  {[1, 2, 3].map((j) => (
-                    <div key={j} className="flex items-center gap-3">
-                      <Skeleton className="h-3 w-32" />
-                      <Skeleton className="h-3 w-10" />
-                      <Skeleton className="h-3 w-8" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                  ))}
                 </div>
               </CardContent>
             </Card>
