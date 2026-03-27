@@ -1365,6 +1365,13 @@ fn build_async_command(path: &str) -> tokio::process::Command {
             }
         }
 
+        // Prevent console window flash on Windows
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
         cmd
     }
     #[cfg(not(windows))]
