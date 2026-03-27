@@ -3205,24 +3205,12 @@ impl PipeManager {
                 include_str!("../../assets/pipes/standup-update/pipe.md"),
             ),
             (
-                "top-of-mind",
-                include_str!("../../assets/pipes/top-of-mind/pipe.md"),
-            ),
-            (
                 "ai-habits",
                 include_str!("../../assets/pipes/ai-habits/pipe.md"),
             ),
             (
-                "morning-brief",
-                include_str!("../../assets/pipes/morning-brief/pipe.md"),
-            ),
-            (
                 "time-breakdown",
                 include_str!("../../assets/pipes/time-breakdown/pipe.md"),
-            ),
-            (
-                "collaboration-patterns",
-                include_str!("../../assets/pipes/collaboration-patterns/pipe.md"),
             ),
             (
                 "video-export",
