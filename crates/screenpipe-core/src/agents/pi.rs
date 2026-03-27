@@ -23,6 +23,8 @@ pub const SCREENPIPE_API_URL: &str = "https://api.screenpi.pe/v1";
 /// Must stay in sync with packages/ai-gateway/src/handlers/models.ts.
 pub fn screenpipe_cloud_models() -> serde_json::Value {
     json!([
+        // ── Auto — smart routing with fallback (gateway resolves to best free model) ──
+        {"id": "auto", "name": "Auto (recommended)", "reasoning": true, "input": ["text", "image"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 32000},
         // ── Free models (Vertex AI MaaS — GCP credits, free for users) ──
         {"id": "glm-4.7", "name": "GLM-4.7", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 200000, "maxTokens": 32000},
         {"id": "glm-5", "name": "GLM-5", "reasoning": true, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 32000},

@@ -706,18 +706,13 @@ pub fn init_store(app: &AppHandle) -> Result<SettingsStore, String> {
         .map(|obj| !obj.contains_key("restartNotificationsDefaultedOff"))
         .unwrap_or(false);
 
-    let needs_haiku_migration = raw_obj
-        .as_ref()
-        .map(|obj| !obj.contains_key("haikuToQwenFlashMigrated"))
-        .unwrap_or(false);
-
     let is_new_store;
     let (mut store, mut should_save) = match SettingsStore::get(app) {
         Ok(Some(store)) => {
             is_new_store = false;
             (
                 store,
-                should_persist_restart_notification_migration || needs_haiku_migration,
+                should_persist_restart_notification_migration,
             )
         }
         Ok(None) => {
@@ -771,24 +766,6 @@ pub fn init_store(app: &AppHandle) -> Result<SettingsStore, String> {
             store.recording.device_tier = Some(detected.as_str().to_string());
             should_save = true;
         }
-    }
-
-    // One-time migration: move default Haiku users to Qwen3.5 Flash
-    if needs_haiku_migration {
-        for preset in &mut store.ai_presets {
-            let is_screenpipe = matches!(
-                preset.provider,
-                AIProviderType::Pi | AIProviderType::ScreenpipeCloud
-            );
-            if is_screenpipe && preset.model == "claude-haiku-4-5" {
-                tracing::info!("migrating default Haiku preset to Qwen3.5 Flash");
-                preset.model = "qwen/qwen3.5-flash-02-23".to_string();
-            }
-        }
-        // Persist the flag so this runs only once
-        store
-            .extra
-            .insert("haikuToQwenFlashMigrated".to_string(), Value::Bool(true));
     }
 
     if should_save {

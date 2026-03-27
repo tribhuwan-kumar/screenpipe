@@ -545,7 +545,7 @@ export function AIProviderConfig({
                   ...formData,
                   provider: "screenpipe-cloud",
                   url: "", // Pi uses RPC mode
-                  model: "claude-haiku-4-5",
+                  model: "auto",
                 });
               }}
             >

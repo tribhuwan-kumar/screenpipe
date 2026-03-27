@@ -211,7 +211,7 @@ const OnboardingStatus: React.FC<OnboardingStatusProps> = ({
         id: "screenpipe-cloud",
         provider: "screenpipe-cloud" as const,
         url: "",
-        model: "claude-haiku-4-5",
+        model: "auto",
         maxContextChars: 200000,
         defaultPreset: true,
         prompt: "",
