@@ -381,8 +381,6 @@ pub async fn start_embedded_server(
                 None
             }
         }
-    } else {
-        None
     };
 
     // Shared manual meeting lock — used by both the HTTP API and the meeting persister
