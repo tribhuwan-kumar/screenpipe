@@ -363,45 +363,21 @@ fn main() {
     // parakeet-mlx crashes with "Failed to load the default metallib".
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        // Find mlx.metallib compiled by mlx-sys and copy it so Tauri can bundle it.
-        // Search the entire target directory tree since path varies by config.
-        let out_dir = std::env::var("OUT_DIR").unwrap_or_default();
-        println!("cargo:warning=mlx-metallib: OUT_DIR={}", out_dir);
-
-        // Find the target root (e.g. target/aarch64-apple-darwin/release/)
-        let out_path = std::path::Path::new(&out_dir);
+        // Verify mlx.metallib exists and is not a placeholder.
+        // The real metallib (~84MB) is committed via git LFS and bundled by Tauri
+        // into Contents/Resources/. At runtime, main.rs symlinks it to Contents/MacOS/
+        // where MLX's colocated library search finds it.
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-        let dest = std::path::Path::new(&manifest_dir).join("mlx.metallib");
-
-        // Search from the target root (go up past build/{crate}-{hash}/out)
-        let mut found = false;
-        if let Some(target_root) = out_path.ancestors().nth(4) {
-            println!("cargo:warning=mlx-metallib: searching from {}", target_root.display());
-            if let Ok(output) = std::process::Command::new("find")
-                .args([target_root.to_str().unwrap_or("."), "-path", "*/mlx-sys-*/mlx.metallib", "-print"])
-                .output()
-            {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let paths: Vec<&str> = stdout.trim().lines().collect();
-                println!("cargo:warning=mlx-metallib: find returned {} results", paths.len());
-                for p in &paths {
-                    println!("cargo:warning=mlx-metallib:   {}", p);
-                }
-                if let Some(path) = paths.first() {
-                    if !path.is_empty() {
-                        match std::fs::copy(path, &dest) {
-                            Ok(bytes) => {
-                                println!("cargo:warning=mlx-metallib: copied {} bytes to {}", bytes, dest.display());
-                                found = true;
-                            }
-                            Err(e) => println!("cargo:warning=mlx-metallib: copy failed: {}", e),
-                        }
-                    }
-                }
+        let metallib = std::path::Path::new(&manifest_dir).join("mlx.metallib");
+        if metallib.exists() {
+            let size = std::fs::metadata(&metallib).map(|m| m.len()).unwrap_or(0);
+            if size > 1_000_000 {
+                println!("cargo:warning=mlx-metallib: found ({} MB)", size / 1_000_000);
+            } else {
+                println!("cargo:warning=mlx-metallib: file too small ({} bytes) — may be placeholder, parakeet-mlx will fail at runtime", size);
             }
-        }
-        if !found {
-            println!("cargo:warning=mlx-metallib: not found (parakeet-mlx may not be enabled or metallib not compiled)");
+        } else {
+            println!("cargo:warning=mlx-metallib: file missing — parakeet-mlx will fail at runtime");
         }
     }
 
