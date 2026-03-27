@@ -202,6 +202,19 @@ jobs:
         run: |
           mkdir -p screenpipe-${{ env.VERSION }}-${{ matrix.target }}/bin
           cp target/${{ matrix.target }}/release/screenpipe screenpipe-${{ env.VERSION }}-${{ matrix.target }}/bin/
+
+          # Bundle mlx.metallib next to CLI binary (macOS aarch64 only)
+          # MLX searches for mlx.metallib next to the binary at runtime
+          if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
+            METALLIB=$(find "target/${{ matrix.target }}/release/build" -path "*/mlx-sys-*/mlx.metallib" -print -quit 2>/dev/null)
+            if [ -n "$METALLIB" ]; then
+              cp "$METALLIB" screenpipe-${{ env.VERSION }}-${{ matrix.target }}/bin/mlx.metallib
+              echo "✅ Bundled mlx.metallib for CLI"
+            else
+              echo "⚠️ mlx.metallib not found in build artifacts"
+            fi
+          fi
+
           tar -czf screenpipe-${{ env.VERSION }}-${{ matrix.target }}.tar.gz -C screenpipe-${{ env.VERSION }}-${{ matrix.target }} .
 
       - name: Calculate SHA256
