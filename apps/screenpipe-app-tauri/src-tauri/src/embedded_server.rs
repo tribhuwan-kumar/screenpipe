@@ -40,6 +40,7 @@ pub struct EmbeddedServerHandle {
 impl EmbeddedServerHandle {
     pub fn shutdown(&self) {
         info!("Shutting down embedded screenpipe server");
+        screenpipe_connect::mdns::shutdown();
         // Signal the UI recorder to stop its tree walker and event loops
         if let Some(ref ui_handle) = self.ui_recorder_handle {
             ui_handle.stop();
@@ -545,6 +546,11 @@ pub async fn start_embedded_server(
     });
 
     info!("Embedded screenpipe server started successfully");
+
+    // Advertise via mDNS so other devices can discover this instance
+    if let Err(e) = screenpipe_connect::mdns::advertise(config.port) {
+        warn!("mdns advertisement failed (non-fatal): {}", e);
+    }
 
     Ok(EmbeddedServerHandle {
         shutdown_tx,

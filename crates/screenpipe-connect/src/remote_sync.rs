@@ -621,6 +621,22 @@ pub async fn discover_ssh_hosts() -> Vec<DiscoveredHost> {
 
     hosts.extend(discover_tailscale().await);
 
+    // mDNS discovery — find screenpipe instances advertising on LAN
+    for (host, port) in crate::mdns::browse().await {
+        hosts.push(DiscoveredHost {
+            host: if port != 3030 {
+                format!("{}:{}", host, port)
+            } else {
+                host
+            },
+            port: port,
+            user: None,
+            key_path: None,
+            source: "mdns".into(),
+            alias: None,
+        });
+    }
+
     // Dedup + filter noise
     let mut seen = HashSet::new();
     hosts.retain(|h| seen.insert(h.host.clone()));
