@@ -395,12 +395,16 @@ function ClaudePanel({ onConnected }: { onConnected?: () => void }) {
           <p className="text-xs"><strong>connected!</strong> restart claude if it was running. try: &quot;what did I do in the last 5 minutes?&quot;</p>
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer hover:text-foreground">didn&apos;t work? troubleshooting steps</summary>
-            <ul className="mt-1.5 ml-4 list-disc space-y-1">
-              <li>drag and drop the .mcpb file into claude desktop&apos;s window</li>
+            <ol className="mt-1.5 ml-4 list-decimal space-y-1">
+              <li>
+                <button className="underline hover:text-foreground" onClick={() => mcpbPath && revealItemInDir(mcpbPath)}>
+                  show the .mcpb file
+                </button>
+                {" "}then drag and drop it into claude desktop&apos;s window
+              </li>
               <li>or in claude: developer → extensions → install extension → select the file</li>
-              {mcpbPath && <li>file location: <code className="bg-background px-1 rounded select-all">{mcpbPath}</code></li>}
               <li>if nothing works, reinstall claude desktop to fix file associations</li>
-            </ul>
+            </ol>
           </details>
         </div>
       )}
