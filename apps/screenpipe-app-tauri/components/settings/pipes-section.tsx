@@ -1280,6 +1280,7 @@ steps:
 3. install and start screenpipe: bunx --bun screenpipe@latest record
 4. set up screenpipe to start on boot (use systemd on Linux, launchd on macOS, or Task Scheduler on Windows)
 5. verify it's running by checking http://${d.address}/health
+6. if macOS permissions are needed (screen recording, microphone, accessibility), open Screen Sharing to the host so the user can click through the permission dialogs: open vnc://${host} (or use "open -a 'Screen Sharing' vnc://${host}")
 
 use the shell tool to do all of this.`,
                           autoSend: true,
