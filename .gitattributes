@@ -23,4 +23,3 @@ node_modules/* linguist-vendored
 *.safetensors filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
 *.tar.gz filter=lfs diff=lfs merge=lfs -text
-apps/screenpipe-app-tauri/src-tauri/mlx.metallib filter=lfs diff=lfs merge=lfs -text

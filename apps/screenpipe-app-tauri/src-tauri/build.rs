@@ -363,21 +363,32 @@ fn main() {
     // parakeet-mlx crashes with "Failed to load the default metallib".
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        // Verify mlx.metallib exists and is not a placeholder.
-        // The real metallib (~84MB) is committed via git LFS and bundled by Tauri
-        // into Contents/Resources/. At runtime, main.rs symlinks it to Contents/MacOS/
-        // where MLX's colocated library search finds it.
+        // Download mlx.metallib (pre-compiled MLX Metal shaders) for parakeet-mlx.
+        // MLX needs this file next to the binary at runtime. Tauri bundles it into
+        // Contents/Resources/ and main.rs symlinks it to Contents/MacOS/.
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let metallib = std::path::Path::new(&manifest_dir).join("mlx.metallib");
-        if metallib.exists() {
-            let size = std::fs::metadata(&metallib).map(|m| m.len()).unwrap_or(0);
-            if size > 1_000_000 {
-                println!("cargo:warning=mlx-metallib: found ({} MB)", size / 1_000_000);
-            } else {
-                println!("cargo:warning=mlx-metallib: file too small ({} bytes) — may be placeholder, parakeet-mlx will fail at runtime", size);
+        let min_size = 1_000_000; // real metallib is ~84MB
+
+        let needs_download = !metallib.exists()
+            || std::fs::metadata(&metallib).map(|m| m.len()).unwrap_or(0) < min_size;
+
+        if needs_download {
+            println!("cargo:warning=mlx-metallib: downloading from GitHub releases...");
+            let url = "https://github.com/screenpipe/screenpipe/releases/download/mlx-metallib-v0.2.0/mlx.metallib";
+            let status = std::process::Command::new("curl")
+                .args(["-L", "-f", "-o", metallib.to_str().unwrap(), url])
+                .status();
+            match status {
+                Ok(s) if s.success() => {
+                    let size = std::fs::metadata(&metallib).map(|m| m.len()).unwrap_or(0);
+                    println!("cargo:warning=mlx-metallib: downloaded ({} MB)", size / 1_000_000);
+                }
+                _ => println!("cargo:warning=mlx-metallib: download failed — parakeet-mlx will crash at runtime"),
             }
         } else {
-            println!("cargo:warning=mlx-metallib: file missing — parakeet-mlx will fail at runtime");
+            let size = std::fs::metadata(&metallib).map(|m| m.len()).unwrap_or(0);
+            println!("cargo:warning=mlx-metallib: already present ({} MB)", size / 1_000_000);
         }
     }
 
