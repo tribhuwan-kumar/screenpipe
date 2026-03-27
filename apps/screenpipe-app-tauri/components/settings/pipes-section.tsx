@@ -1267,11 +1267,35 @@ export function PipesSection() {
                 {devices.map((d) => (
                   <DropdownMenuItem
                     key={d.address}
-                    onClick={() => { setSelectedDevice(d.address); setPipes([]); setLoading(true); }}
+                    onClick={() => {
+                      if (d.status === "offline") {
+                        const host = d.address.split(":")[0];
+                        navigateHomeAndPrefill({
+                          context: "",
+                          prompt: `deploy screenpipe to ${d.label} (${host}) via SSH.
+
+steps:
+1. SSH into ${host}
+2. install bun if not already installed: curl -fsSL https://bun.sh/install | bash
+3. install and start screenpipe: bunx --bun screenpipe@latest record
+4. set up screenpipe to start on boot (use systemd on Linux, launchd on macOS, or Task Scheduler on Windows)
+5. verify it's running by checking http://${d.address}/health
+
+use the shell tool to do all of this.`,
+                          autoSend: true,
+                          source: "deploy-device",
+                        });
+                        return;
+                      }
+                      setSelectedDevice(d.address); setPipes([]); setLoading(true);
+                    }}
                     className={cn("gap-2", selectedDevice === d.address && "font-medium")}
                   >
                     <Monitor className="h-3.5 w-3.5" />
                     <span className="flex-1">{d.label}</span>
+                    {d.status === "offline" ? (
+                      <span className="text-[10px] text-muted-foreground">deploy</span>
+                    ) : null}
                     <span className={cn(
                       "h-2 w-2 rounded-full shrink-0",
                       d.status === "online" ? "bg-green-500" : d.status === "loading" ? "bg-yellow-500 animate-pulse" : "bg-muted-foreground/40"
