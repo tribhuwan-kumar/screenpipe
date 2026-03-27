@@ -303,15 +303,20 @@ export default function GeneralSettings() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {(
-        <>
-          <Separator />
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground font-mono">dev tools</p>
+      <Card className="border-border bg-card">
+        <CardContent className="px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <RefreshCw className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div>
+                <h3 className="text-sm font-medium text-foreground">Reset onboarding</h3>
+                <p className="text-xs text-muted-foreground">Run the setup wizard again</p>
+              </div>
+            </div>
             <Button
               variant="outline"
               size="sm"
-              className="text-xs"
+              className="ml-4 h-7 text-xs"
               onClick={async () => {
                 try {
                   await commands.resetOnboarding();
@@ -321,11 +326,11 @@ export default function GeneralSettings() {
                 }
               }}
             >
-              reset & open onboarding
+              reset
             </Button>
           </div>
-        </>
-      )}
+        </CardContent>
+      </Card>
 
     </div>
   );
