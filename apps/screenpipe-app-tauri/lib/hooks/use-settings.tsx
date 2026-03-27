@@ -251,7 +251,7 @@ let DEFAULT_SETTINGS: Settings = {
 			userId: "",
 			analyticsId: "",
 			devMode: false,
-			audioTranscriptionEngine: "parakeet",
+			audioTranscriptionEngine: "whisper-large-v3-turbo-quantized",
 			ocrEngine: "default",
 			monitorIds: ["default"],
 			audioDevices: ["default"],
@@ -484,19 +484,36 @@ function createSettingsStore() {
 		// Migration: Auto-detect hardware and adjust engine for weak machines (one-time only)
 		// Migration: Switch to Parakeet as default engine (one-time)
 		// - Paid cloud subscribers → screenpipe-cloud (better accuracy)
-		// - Everyone else → parakeet (lightweight, multilingual, works on all hardware)
+		// - macOS users → whisper-large-v3-turbo-quantized (parakeet/MLX is experimental on macOS)
+		// - Windows/Linux users → parakeet (stable on these platforms)
 		if (!(settings as any)._parakeetDefaultMigrationDone) {
 			const engine = settings.audioTranscriptionEngine;
 			const isWhisperVariant = engine?.includes("whisper");
-			if (isWhisperVariant || engine === "screenpipe-cloud") {
+			if (isWhisperVariant || engine === "screenpipe-cloud" || engine === "parakeet") {
 				if (settings.user?.cloud_subscribed) {
 					settings.audioTranscriptionEngine = "screenpipe-cloud";
 				} else {
-					settings.audioTranscriptionEngine = "parakeet";
+					const { platform: getPlatform } = await import("@tauri-apps/plugin-os");
+					const os = getPlatform();
+					settings.audioTranscriptionEngine = os === "macos"
+						? "whisper-large-v3-turbo-quantized"
+						: "parakeet";
 				}
 				needsUpdate = true;
 			}
 			(settings as any)._parakeetDefaultMigrationDone = true;
+			needsUpdate = true;
+		}
+
+		// Migration: Switch macOS users from parakeet back to whisper (parakeet/MLX experimental)
+		if (!(settings as any)._macosWhisperDefaultMigrationDone) {
+			const { platform: getPlatform } = await import("@tauri-apps/plugin-os");
+			const os = getPlatform();
+			if (os === "macos" && settings.audioTranscriptionEngine === "parakeet") {
+				settings.audioTranscriptionEngine = "whisper-large-v3-turbo-quantized";
+				needsUpdate = true;
+			}
+			(settings as any)._macosWhisperDefaultMigrationDone = true;
 			needsUpdate = true;
 		}
 

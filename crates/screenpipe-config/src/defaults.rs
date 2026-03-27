@@ -198,28 +198,28 @@ pub fn macos_major_version() -> Option<u32> {
 ///
 /// Decision matrix:
 ///
-/// | Tier | macOS ≥ 26  | macOS < 26 / other OS |
-/// |------|-------------|-----------------------|
-/// | High | parakeet    | whisper-large-v3-turbo-quantized |
-/// | Mid  | parakeet    | whisper-large-v3-turbo-quantized |
-/// | Low  | whisper-tiny| whisper-tiny           |
+/// | Tier | macOS              | Windows/Linux |
+/// |------|--------------------|---------------|
+/// | High | whisper-turbo-q    | parakeet      |
+/// | Mid  | whisper-turbo-q    | parakeet      |
+/// | Low  | whisper-tiny       | whisper-tiny  |
 ///
-/// Parakeet requires macOS 26+ for MLX Metal GPU support. On older macOS
-/// or non-Mac platforms, it crashes during model loading. Low-tier devices
-/// (≤8 GB) can't fit the 2.3 GB model regardless of OS version.
+/// Parakeet on macOS uses MLX which is currently experimental and has
+/// stability issues. On macOS we default to the proven Whisper engine.
+/// On Windows/Linux, parakeet is stable and remains the default.
 pub fn best_engine_for_platform(tier: DeviceTier) -> &'static str {
     if tier == DeviceTier::Low {
         return "whisper-tiny";
     }
 
-    let macos_ok = macos_major_version()
-        .map(|v| v >= PARAKEET_MIN_MACOS_MAJOR)
-        .unwrap_or(false);
-
-    if macos_ok {
-        "parakeet"
-    } else {
+    #[cfg(target_os = "macos")]
+    {
         "whisper-large-v3-turbo-quantized"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "parakeet"
     }
 }
 
