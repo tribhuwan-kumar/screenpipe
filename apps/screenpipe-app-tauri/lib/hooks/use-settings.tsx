@@ -505,18 +505,6 @@ function createSettingsStore() {
 			needsUpdate = true;
 		}
 
-		// Migration: Switch macOS users from parakeet back to whisper (parakeet/MLX experimental)
-		if (!(settings as any)._macosWhisperDefaultMigrationDone) {
-			const { platform: getPlatform } = await import("@tauri-apps/plugin-os");
-			const os = getPlatform();
-			if (os === "macos" && settings.audioTranscriptionEngine === "parakeet") {
-				settings.audioTranscriptionEngine = "whisper-large-v3-turbo-quantized";
-				needsUpdate = true;
-			}
-			(settings as any)._macosWhisperDefaultMigrationDone = true;
-			needsUpdate = true;
-		}
-
 		// Save migrations if needed
 		if (needsUpdate) {
 			await store.set("settings", settings);
