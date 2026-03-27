@@ -70,7 +70,7 @@ import { PublishDialog } from "@/components/pipe-store";
 import posthog from "posthog-js";
 import { MemoizedReactMarkdown } from "@/components/markdown";
 import { useDeviceMonitor } from "@/lib/hooks/use-device-monitor";
-import { Monitor, Wifi, WifiOff, ScanSearch } from "lucide-react";
+import { Monitor, ScanSearch } from "lucide-react";
 
 const PIPE_CREATION_PROMPT = `create a screenpipe pipe that does the following.
 
@@ -1250,92 +1250,89 @@ export function PipesSection() {
 
   return (
     <div className="space-y-4" data-testid="section-pipes">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div>
-            <h3 className="text-lg font-medium">My Pipes</h3>
-            <p className="text-sm text-muted-foreground">
-              {pipeTypeFilter === "scheduled"
-                ? "scheduled agents that run on your screen data"
-                : "pipes you trigger manually"}
-              {" · "}
-              <a
-                href="https://docs.screenpi.pe/pipes"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
-              >
-                docs
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </p>
-          </div>
-          {/* Device selector dropdown */}
-          {devices.length > 0 && (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-medium">My Pipes</h3>
+          <div className="flex items-center gap-2">
+            {/* Device selector dropdown — always visible */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs">
                   <Monitor className="h-3 w-3" />
                   {selectedDevice
                     ? devices.find((d) => d.address === selectedDevice)?.label || selectedDevice
-                    : "This Mac"}
+                    : "this device"}
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => { setSelectedDevice(null); setLoading(true); }}
-                  className={cn(!selectedDevice && "font-medium")}
+                  className={cn("gap-2", !selectedDevice && "font-medium")}
                 >
-                  <Monitor className="h-3.5 w-3.5 mr-2" />
-                  This Mac
-                  {!selectedDevice && <Check className="h-3.5 w-3.5 ml-auto" />}
+                  <Monitor className="h-3.5 w-3.5" />
+                  <span className="flex-1">this device</span>
+                  <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                  {!selectedDevice && <Check className="h-3.5 w-3.5 ml-1" />}
                 </DropdownMenuItem>
                 {devices.map((d) => (
                   <DropdownMenuItem
                     key={d.address}
                     onClick={() => { setSelectedDevice(d.address); setLoading(true); }}
-                    className={cn(selectedDevice === d.address && "font-medium")}
+                    className={cn("gap-2", selectedDevice === d.address && "font-medium")}
                   >
-                    {d.status === "online" ? (
-                      <Wifi className="h-3.5 w-3.5 mr-2 text-green-500" />
-                    ) : (
-                      <WifiOff className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
-                    )}
-                    {d.label}
-                    {selectedDevice === d.address && <Check className="h-3.5 w-3.5 ml-auto" />}
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span className="flex-1">{d.label}</span>
+                    <span className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      d.status === "online" ? "bg-green-500" : d.status === "loading" ? "bg-yellow-500 animate-pulse" : "bg-muted-foreground/40"
+                    )} />
+                    {selectedDevice === d.address && <Check className="h-3.5 w-3.5 ml-1" />}
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => discoverDevices()} disabled={discovering}>
                   <ScanSearch className="h-3.5 w-3.5 mr-2" />
-                  {discovering ? "Scanning..." : "Discover devices"}
+                  {discovering ? "scanning..." : "discover devices"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
+            <Button variant="outline" size="icon" className={`h-7 w-7 ${refreshing ? "pointer-events-none opacity-70" : ""}`} onClick={async () => {
+              if (refreshing) return;
+              setRefreshing(true);
+              await Promise.all([
+                fetchPipes(),
+                new Promise((r) => setTimeout(r, 2000)),
+              ]);
+              setRefreshing(false);
+            }}>
+              {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set("section", "connections");
+              window.location.href = url.toString();
+            }}>
+              <Link className="h-3.5 w-3.5 mr-1" />
+              connections
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className={`h-8 w-8 ${refreshing ? "pointer-events-none opacity-70" : ""}`} onClick={async () => {
-            if (refreshing) return;
-            setRefreshing(true);
-            await Promise.all([
-              fetchPipes(),
-              new Promise((r) => setTimeout(r, 2000)),
-            ]);
-            setRefreshing(false);
-          }}>
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <RefreshCw className="h-4 w-4" />}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => {
-            const url = new URL(window.location.href);
-            url.searchParams.set("section", "connections");
-            window.location.href = url.toString();
-          }}>
-            <Link className="h-4 w-4 mr-1" />
-            connections
-          </Button>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {pipeTypeFilter === "scheduled"
+            ? "scheduled agents that run on your screen data"
+            : "pipes you trigger manually"}
+          {" · "}
+          <a
+            href="https://docs.screenpi.pe/pipes"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            docs
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </p>
       </div>
 
       {/* Scheduled / Manual sub-tabs */}
