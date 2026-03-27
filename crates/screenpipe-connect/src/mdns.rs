@@ -61,13 +61,19 @@ pub fn advertise(port: u16) -> Result<(), String> {
 
     let hostname = get_hostname();
 
-    // Instance name must be unique on the network
-    let instance_name = format!("{}", hostname);
+    // Instance name must be unique on the network — append PID to avoid
+    // collisions when the same user runs screenpipe on multiple machines
+    // with the same hostname (e.g., two MacBooks). Without this, the
+    // mdns-sd daemon re-registers the hostname in Bonjour, causing macOS
+    // to show an annoying "hostname already in use" system dialog.
+    let instance_name = format!("{}-{}", hostname, std::process::id());
 
     let service = ServiceInfo::new(
         SERVICE_TYPE,
         &instance_name,
-        &format!("{}.local.", hostname),
+        // Use the instance name (unique) instead of raw hostname to avoid
+        // triggering macOS hostname conflict resolution.
+        &format!("{}-sp{}.local.", hostname, std::process::id()),
         "", // let mdns-sd resolve local IPs
         port,
         None, // no TXT properties needed
