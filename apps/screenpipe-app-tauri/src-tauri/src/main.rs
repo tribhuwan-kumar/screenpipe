@@ -1066,6 +1066,25 @@ async fn main() {
                 env::set_var("TESSDATA_PREFIX", tessdata_path);
             }
 
+            // Ensure mlx.metallib is discoverable by MLX (parakeet-mlx).
+            // Tauri bundles it in Contents/Resources/ but MLX looks next to the binary
+            // (Contents/MacOS/). Create a symlink so both paths work.
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(exe) = std::env::current_exe() {
+                    let macos_dir = exe.parent().unwrap_or(std::path::Path::new("."));
+                    let target = macos_dir.join("mlx.metallib");
+                    if !target.exists() {
+                        // Try Contents/Resources/mlx.metallib (Tauri resource)
+                        let resource = macos_dir.parent()
+                            .map(|contents| contents.join("Resources/mlx.metallib"));
+                        if let Some(src) = resource.filter(|p| p.exists()) {
+                            let _ = std::os::unix::fs::symlink(&src, &target);
+                        }
+                    }
+                }
+            }
+
             // Autostart setup
             let autostart_manager = app.autolaunch();
 

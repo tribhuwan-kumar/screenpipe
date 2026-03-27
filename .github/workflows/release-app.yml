@@ -909,25 +909,6 @@ jobs:
             if bunx tauri build -v $TAURI_ARGS 2>&1 | tee /tmp/tauri-build-$attempt.log; then
               echo "✅ Build succeeded on attempt $attempt"
               cd ../..
-
-              # Bundle mlx.metallib into the .app for parakeet-mlx (macOS aarch64 only)
-              # MLX searches for mlx.metallib next to the binary before falling back to
-              # the hardcoded build path (which doesn't exist on user machines).
-              if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
-                METALLIB=$(find "apps/screenpipe-app-tauri/src-tauri/target/${{ matrix.target }}/release/build" -path "*/mlx-sys-*/mlx.metallib" -print -quit 2>/dev/null)
-                if [ -n "$METALLIB" ]; then
-                  APP_DIR=$(find "apps/screenpipe-app-tauri/src-tauri/target/${{ matrix.target }}/release/bundle" -name "screenpipe.app" -type d -print -quit 2>/dev/null)
-                  if [ -n "$APP_DIR" ]; then
-                    cp "$METALLIB" "$APP_DIR/Contents/MacOS/mlx.metallib"
-                    echo "✅ Bundled mlx.metallib into $APP_DIR/Contents/MacOS/"
-                  else
-                    echo "⚠️ Could not find screenpipe.app bundle dir"
-                  fi
-                else
-                  echo "⚠️ mlx.metallib not found in build artifacts"
-                fi
-              fi
-
               break
             fi
             cd ../..
