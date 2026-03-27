@@ -366,12 +366,17 @@ fn main() {
         let out_dir = std::env::var("OUT_DIR").unwrap_or_default();
         // Navigate from OUT_DIR (target/{profile}/build/{crate}-{hash}/out/)
         // up to the build/ dir to find mlx-sys's metallib
-        if let Some(build_dir) = std::path::Path::new(&out_dir).ancestors().nth(3) {
+        // OUT_DIR is target/{target}/release/build/{crate}-{hash}/out/
+        // We need the build/ dir which is 2 levels up
+        if let Some(build_dir) = std::path::Path::new(&out_dir).ancestors().nth(2) {
             let mut found = false;
             if let Ok(entries) = std::fs::read_dir(build_dir) {
                 for entry in entries.flatten() {
                     if entry.file_name().to_string_lossy().starts_with("mlx-sys-") {
-                        let metallib = entry.path().join("out/build/_deps/mlx-build/mlx/backend/metal/kernels/mlx.metallib");
+                        // metallib can be at either path depending on cmake config
+                        let base = entry.path().join("out/build");
+                        let metallib = base.join("_deps/mlx-build/mlx/backend/metal/kernels/mlx.metallib");
+                        let metallib = if metallib.exists() { metallib } else { base.join("lib/mlx.metallib") };
                         if metallib.exists() {
                             let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
                             let dest = std::path::Path::new(&manifest_dir).join("mlx.metallib");
