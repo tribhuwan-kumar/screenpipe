@@ -464,14 +464,15 @@ async fn sync_to_remote_inner(config: &SyncConfig, data_dir: &Path) -> Result<Sy
     let db_path = data_dir.join("db.sqlite");
     if db_path.exists() {
         let mut wal_cmd = tokio::process::Command::new("sqlite3");
-        wal_cmd.arg(&db_path).arg("PRAGMA wal_checkpoint(TRUNCATE);");
+        wal_cmd
+            .arg(&db_path)
+            .arg("PRAGMA wal_checkpoint(TRUNCATE);");
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             wal_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
-        match wal_cmd.output().await
-        {
+        match wal_cmd.output().await {
             Ok(out) if out.status.success() => {
                 debug!("WAL checkpoint completed before sync");
             }
@@ -796,8 +797,7 @@ async fn discover_tailscale() -> Vec<DiscoveredHost> {
         use std::os::windows::process::CommandExt;
         ts_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    let out = match ts_cmd.output().await
-    {
+    let out = match ts_cmd.output().await {
         Ok(o) if o.status.success() => o,
         _ => return vec![],
     };

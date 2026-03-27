@@ -361,8 +361,7 @@ impl WhatsAppGateway {
                     use std::os::windows::process::CommandExt;
                     respawn_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
                 }
-                match respawn_cmd.spawn()
-                {
+                match respawn_cmd.spawn() {
                     Ok(mut new_child) => {
                         let stdin_handle = new_child.stdin.take().expect("stdin piped");
                         let stdout = new_child.stdout.take().expect("stdout piped");
@@ -507,15 +506,13 @@ fn which_executable(name: &str) -> Option<String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    cmd.output()
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                String::from_utf8(o.stdout)
-                    .ok()
-                    .map(|s| s.lines().next().unwrap_or("").trim().to_string())
-            } else {
-                None
-            }
-        })
+    cmd.output().ok().and_then(|o| {
+        if o.status.success() {
+            String::from_utf8(o.stdout)
+                .ok()
+                .map(|s| s.lines().next().unwrap_or("").trim().to_string())
+        } else {
+            None
+        }
+    })
 }

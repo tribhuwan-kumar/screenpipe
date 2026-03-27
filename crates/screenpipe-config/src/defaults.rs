@@ -340,7 +340,10 @@ mod tests {
         assert!(is_engine_unsafe("parakeet", DeviceTier::Low));
         assert!(is_engine_unsafe("parakeet-mlx", DeviceTier::Low));
         assert!(!is_engine_unsafe("whisper-tiny", DeviceTier::Low));
-        assert!(!is_engine_unsafe("whisper-large-v3-turbo-quantized", DeviceTier::High));
+        assert!(!is_engine_unsafe(
+            "whisper-large-v3-turbo-quantized",
+            DeviceTier::High
+        ));
     }
 
     #[test]

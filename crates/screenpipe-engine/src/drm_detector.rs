@@ -279,10 +279,7 @@ fn get_drm_url_from_window_title(app: &cidre::ax::UiElement) -> Option<String> {
 ///
 /// Does NOT clear the DRM pause — that is `poll_drm_clear()`'s job.
 #[cfg(target_os = "macos")]
-pub fn pre_capture_drm_check(
-    pause_on_drm_content: bool,
-    trigger_app_name: Option<&str>,
-) -> bool {
+pub fn pre_capture_drm_check(pause_on_drm_content: bool, trigger_app_name: Option<&str>) -> bool {
     if !pause_on_drm_content {
         return false;
     }
@@ -357,10 +354,7 @@ pub fn pre_capture_drm_check(
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn pre_capture_drm_check(
-    _pause_on_drm_content: bool,
-    _trigger_app_name: Option<&str>,
-) -> bool {
+pub fn pre_capture_drm_check(_pause_on_drm_content: bool, _trigger_app_name: Option<&str>) -> bool {
     false
 }
 
@@ -371,9 +365,8 @@ pub fn pre_capture_drm_check(
 /// Returns `true` if DRM is still active (stay paused).
 #[cfg(target_os = "macos")]
 pub fn poll_drm_clear() -> bool {
-    let result = std::panic::catch_unwind(|| -> Option<(String, Option<String>)> {
-        get_focused_app_info()
-    });
+    let result =
+        std::panic::catch_unwind(|| -> Option<(String, Option<String>)> { get_focused_app_info() });
 
     match result {
         Ok(Some((app_name, url))) => {
@@ -766,18 +759,12 @@ mod tests {
 
         // 5. Cleanup: close Comet
         let _ = Command::new("osascript")
-            .args([
-                "-e",
-                r#"tell application "Comet" to close front window"#,
-            ])
+            .args(["-e", r#"tell application "Comet" to close front window"#])
             .output();
         thread::sleep(Duration::from_secs(2));
 
         let _ = Command::new("osascript")
-            .args([
-                "-e",
-                r#"tell application "Finder" to activate"#,
-            ])
+            .args(["-e", r#"tell application "Finder" to activate"#])
             .output();
         thread::sleep(Duration::from_secs(1));
 

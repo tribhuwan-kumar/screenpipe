@@ -1604,8 +1604,8 @@ impl PipeManager {
                     } else {
                         "failed"
                     };
-                    let session_path = find_latest_pi_session(&pipe_dir)
-                        .map(|p| p.to_string_lossy().to_string());
+                    let session_path =
+                        find_latest_pi_session(&pipe_dir).map(|p| p.to_string_lossy().to_string());
                     if let (Some(ref store), Some(id)) = (&store_ref, exec_id) {
                         let _ = store
                             .finish_execution(
@@ -2042,8 +2042,8 @@ impl PipeManager {
                     } else {
                         "failed"
                     };
-                    let session_path = find_latest_pi_session(&pipe_dir)
-                        .map(|p| p.to_string_lossy().to_string());
+                    let session_path =
+                        find_latest_pi_session(&pipe_dir).map(|p| p.to_string_lossy().to_string());
                     if let (Some(ref store), Some(id)) = (&self.store, exec_id) {
                         let _ = store
                             .finish_execution(

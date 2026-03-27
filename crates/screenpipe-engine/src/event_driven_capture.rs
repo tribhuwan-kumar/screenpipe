@@ -441,10 +441,8 @@ pub async fn event_driven_capture_loop(
                         CaptureTrigger::AppSwitch { app_name } => Some(app_name.as_str()),
                         _ => None,
                     };
-                    if crate::drm_detector::pre_capture_drm_check(
-                        pause_on_drm_content,
-                        trigger_app,
-                    ) {
+                    if crate::drm_detector::pre_capture_drm_check(pause_on_drm_content, trigger_app)
+                    {
                         debug!(
                             "pre-capture DRM check blocked capture on monitor {}",
                             monitor_id
@@ -776,10 +774,8 @@ async fn do_capture(
         // Budget says skip — don't walk the tree but still proceed with screenshot/OCR
         TreeWalkResult::NotFound
     } else {
-        tokio::task::spawn_blocking(move || {
-            crate::paired_capture::walk_accessibility_tree(&config)
-        })
-        .await?
+        tokio::task::spawn_blocking(move || crate::paired_capture::walk_accessibility_tree(&config))
+            .await?
     };
 
     // If the window was skipped (incognito/private browsing or user filter),

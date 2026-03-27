@@ -158,7 +158,11 @@ pub async fn run_pipe_now(
     if let Some(pipe_status) = mgr.get_pipe(&id).await {
         let required = &pipe_status.config.connections;
         if !required.is_empty() {
-            let screenpipe_dir = mgr.pipes_dir().parent().unwrap_or(mgr.pipes_dir()).to_path_buf();
+            let screenpipe_dir = mgr
+                .pipes_dir()
+                .parent()
+                .unwrap_or(mgr.pipes_dir())
+                .to_path_buf();
             let store = screenpipe_connect::connections::load_store(&screenpipe_dir);
             let missing: Vec<&str> = required
                 .iter()

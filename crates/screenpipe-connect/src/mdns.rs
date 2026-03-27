@@ -16,7 +16,11 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 fn get_hostname() -> String {
-    let cmd = if cfg!(windows) { "hostname" } else { "hostname" };
+    let cmd = if cfg!(windows) {
+        "hostname"
+    } else {
+        "hostname"
+    };
     std::process::Command::new(cmd)
         .output()
         .ok()
@@ -64,7 +68,7 @@ pub fn advertise(port: u16) -> Result<(), String> {
         SERVICE_TYPE,
         &instance_name,
         &format!("{}.local.", hostname),
-        "",  // let mdns-sd resolve local IPs
+        "", // let mdns-sd resolve local IPs
         port,
         None, // no TXT properties needed
     )
