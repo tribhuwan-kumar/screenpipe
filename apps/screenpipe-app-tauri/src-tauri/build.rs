@@ -363,47 +363,45 @@ fn main() {
     // parakeet-mlx crashes with "Failed to load the default metallib".
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
+        // Find mlx.metallib compiled by mlx-sys and copy it so Tauri can bundle it.
+        // Search the entire target directory tree since path varies by config.
         let out_dir = std::env::var("OUT_DIR").unwrap_or_default();
         println!("cargo:warning=mlx-metallib: OUT_DIR={}", out_dir);
 
-        // Find mlx.metallib compiled by mlx-sys. Use `find` for robustness —
-        // the exact path varies by target triple, profile, and cmake version.
-        let mut found = false;
-        // Walk up to find the target dir (contains the "build" subdir with all crate builds)
-        let mut search_root = std::path::PathBuf::from(&out_dir);
-        // Go up until we find a directory that contains "build" as a direct child
-        for _ in 0..8 {
-            if search_root.join("build").is_dir() {
-                break;
-            }
-            if !search_root.pop() { break; }
-        }
-        let build_dir = search_root.join("build");
-        println!("cargo:warning=mlx-metallib: searching in {}", build_dir.display());
+        // Find the target root (e.g. target/aarch64-apple-darwin/release/)
+        let out_path = std::path::Path::new(&out_dir);
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let dest = std::path::Path::new(&manifest_dir).join("mlx.metallib");
 
-        if build_dir.is_dir() {
-            // Use std::process::Command to find the metallib — more reliable than manual traversal
+        // Search from the target root (go up past build/{crate}-{hash}/out)
+        let mut found = false;
+        if let Some(target_root) = out_path.ancestors().nth(4) {
+            println!("cargo:warning=mlx-metallib: searching from {}", target_root.display());
             if let Ok(output) = std::process::Command::new("find")
-                .args([build_dir.to_str().unwrap_or("."), "-name", "mlx.metallib", "-print", "-quit"])
+                .args([target_root.to_str().unwrap_or("."), "-path", "*/mlx-sys-*/mlx.metallib", "-print"])
                 .output()
             {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    let metallib = std::path::Path::new(&path);
-                    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-                    let dest = std::path::Path::new(&manifest_dir).join("mlx.metallib");
-                    match std::fs::copy(metallib, &dest) {
-                        Ok(bytes) => {
-                            println!("cargo:warning=mlx-metallib: copied {} bytes from {} to {}", bytes, path, dest.display());
-                            found = true;
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let paths: Vec<&str> = stdout.trim().lines().collect();
+                println!("cargo:warning=mlx-metallib: find returned {} results", paths.len());
+                for p in &paths {
+                    println!("cargo:warning=mlx-metallib:   {}", p);
+                }
+                if let Some(path) = paths.first() {
+                    if !path.is_empty() {
+                        match std::fs::copy(path, &dest) {
+                            Ok(bytes) => {
+                                println!("cargo:warning=mlx-metallib: copied {} bytes to {}", bytes, dest.display());
+                                found = true;
+                            }
+                            Err(e) => println!("cargo:warning=mlx-metallib: copy failed: {}", e),
                         }
-                        Err(e) => println!("cargo:warning=mlx-metallib: copy failed: {}", e),
                     }
                 }
             }
         }
         if !found {
-            println!("cargo:warning=mlx-metallib: not found (parakeet-mlx may not be enabled)");
+            println!("cargo:warning=mlx-metallib: not found (parakeet-mlx may not be enabled or metallib not compiled)");
         }
     }
 
