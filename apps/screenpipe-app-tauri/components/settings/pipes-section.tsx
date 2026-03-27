@@ -1267,7 +1267,7 @@ export function PipesSection() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  onClick={() => { setSelectedDevice(null); setLoading(true); }}
+                  onClick={() => { setSelectedDevice(null); setPipes([]); setLoading(true); }}
                   className={cn("gap-2", !selectedDevice && "font-medium")}
                 >
                   <Monitor className="h-3.5 w-3.5" />
@@ -1278,7 +1278,7 @@ export function PipesSection() {
                 {devices.map((d) => (
                   <DropdownMenuItem
                     key={d.address}
-                    onClick={() => { setSelectedDevice(d.address); setLoading(true); }}
+                    onClick={() => { setSelectedDevice(d.address); setPipes([]); setLoading(true); }}
                     className={cn("gap-2", selectedDevice === d.address && "font-medium")}
                   >
                     <Monitor className="h-3.5 w-3.5" />
@@ -1458,6 +1458,18 @@ export function PipesSection() {
               </div>
             );
           })()}
+          {loading && pipes.length === 0 && (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-3 border-b border-border">
+                <Skeleton className="h-3 w-3 rounded-sm shrink-0" />
+                <Skeleton className="h-4 w-40" />
+                <div className="ml-auto flex gap-4">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
+            ))
+          )}
           {filteredPipes.map((pipe) => {
             const recentExecs = pipeExecutions[pipe.config.name] || [];
             const isRunning = pipe.is_running || runningPipe === pipe.config.name;
