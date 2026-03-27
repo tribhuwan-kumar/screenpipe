@@ -48,6 +48,19 @@ pub enum CliAudioTranscriptionEngine {
     Disabled,
 }
 
+/// Default audio engine based on hardware tier.
+///
+/// - Low tier (≤8GB): WhisperTiny (parakeet-mlx would OOM)
+/// - Mid/High tier: Parakeet (auto-upgrades to MLX GPU when compiled in)
+fn default_audio_engine() -> CliAudioTranscriptionEngine {
+    let tier = screenpipe_config::detect_tier();
+    if matches!(tier, screenpipe_config::DeviceTier::Low) {
+        CliAudioTranscriptionEngine::WhisperTiny
+    } else {
+        CliAudioTranscriptionEngine::Parakeet
+    }
+}
+
 fn cli_engine_to_str(engine: &CliAudioTranscriptionEngine) -> &'static str {
     match engine {
         CliAudioTranscriptionEngine::Deepgram => "deepgram",
@@ -248,7 +261,7 @@ pub struct RecordArgs {
     pub debug: bool,
 
     /// Audio transcription engine to use
-    #[arg(short = 'a', long, value_enum, default_value_t = CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized)]
+    #[arg(short = 'a', long, value_enum, default_value_t = default_audio_engine())]
     pub audio_transcription_engine: CliAudioTranscriptionEngine,
 
     /// Monitor IDs to use
