@@ -262,7 +262,7 @@ pub enum AIProviderType {
     NativeOllama,
     #[serde(rename = "custom")]
     Custom,
-    #[serde(rename = "screenpipe-cloud")]
+    #[serde(rename = "screenpipe-cloud", alias = "claude-code")]
     ScreenpipeCloud,
     #[serde(rename = "pi", alias = "opencode")]
     Pi,
