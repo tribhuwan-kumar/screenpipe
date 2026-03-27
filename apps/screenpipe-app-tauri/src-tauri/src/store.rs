@@ -640,9 +640,12 @@ impl SettingsStore {
             .filter(|s| !s.trim().is_empty())
             .or_else(|| self.user.name.clone().filter(|s| !s.trim().is_empty()))
             .or_else(|| self.user.email.clone().filter(|s| !s.trim().is_empty()));
-        // Always force these on for the engine
-        settings.enable_input_capture = true;
-        settings.enable_accessibility = true;
+        // Legacy fields — always true, no-op but kept for serde compat
+        #[allow(deprecated)]
+        {
+            settings.enable_input_capture = true;
+            settings.enable_accessibility = true;
+        }
         settings
     }
 

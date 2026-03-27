@@ -31,8 +31,7 @@ pub struct RecordingConfig {
     pub use_pii_removal: bool,
     /// Filter music-dominant audio before transcription using spectral analysis
     pub filter_music: bool,
-    pub enable_input_capture: bool,
-    pub enable_accessibility: bool,
+    // enable_input_capture and enable_accessibility removed — always true
 
     // Engines (typed, not strings)
     pub audio_transcription_engine: AudioTranscriptionEngine,
@@ -127,8 +126,7 @@ impl RecordingConfig {
             disable_vision: settings.disable_vision,
             use_pii_removal: settings.use_pii_removal,
             filter_music: settings.filter_music,
-            enable_input_capture: settings.enable_input_capture,
-            enable_accessibility: settings.enable_accessibility,
+            // enable_input_capture / enable_accessibility removed — always true
             enable_workflow_events: settings.enable_workflow_events,
             audio_transcription_engine: engine_str
                 .parse()
@@ -192,9 +190,9 @@ impl RecordingConfig {
     /// Build a `UiRecorderConfig` from this recording config.
     pub fn to_ui_recorder_config(&self) -> crate::ui_recorder::UiRecorderConfig {
         crate::ui_recorder::UiRecorderConfig {
-            enabled: self.enable_input_capture || self.enable_accessibility,
-            enable_tree_walker: self.enable_accessibility,
-            record_input_events: self.enable_input_capture,
+            enabled: true,
+            enable_tree_walker: true,
+            record_input_events: true,
             excluded_windows: self.ignored_windows.clone(),
             ignored_windows: self.ignored_windows.clone(),
             included_windows: self.included_windows.clone(),

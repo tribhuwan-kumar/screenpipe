@@ -189,12 +189,20 @@ pub struct RecordingSettings {
     #[serde(rename = "analyticsId")]
     pub analytics_id: String,
 
-    /// Enable input event capture (keyboard, mouse, clipboard).
-    #[serde(rename = "enableInputCapture")]
+    /// Legacy: input capture is always enabled. Kept for serde compat with
+    /// existing store.bin files; deserialized but ignored.
+    #[serde(rename = "enableInputCapture", default = "default_true")]
+    #[deprecated(note = "input capture is always enabled; will be removed")]
     pub enable_input_capture: bool,
 
-    /// Enable accessibility text capture (AX tree walker).
-    #[serde(rename = "enableAccessibility", alias = "enableUiEvents")]
+    /// Legacy: accessibility capture is always enabled. Kept for serde compat
+    /// with existing store.bin files; deserialized but ignored.
+    #[serde(
+        rename = "enableAccessibility",
+        alias = "enableUiEvents",
+        default = "default_true"
+    )]
+    #[deprecated(note = "accessibility capture is always enabled; will be removed")]
     pub enable_accessibility: bool,
 
     /// Enable AI workflow event detection (cloud feature, requires subscription).
@@ -240,7 +248,7 @@ impl Default for RecordingSettings {
         Self {
             disable_audio: false,
             audio_transcription_engine: "parakeet".to_string(),
-            transcription_mode: "realtime".to_string(),
+            transcription_mode: "batch".to_string(),
             audio_devices: vec![],
             use_system_default_audio: true,
             audio_chunk_duration: 30,
@@ -398,7 +406,7 @@ mod tests {
         // This is critical for flatten compat — SettingsStore has aiPresets, shortcuts, etc.
 
         // Fields that were in extra HashMap now have defaults
-        assert_eq!(settings.transcription_mode, "realtime"); // default, wasn't in JSON
+        assert_eq!(settings.transcription_mode, "batch"); // default, wasn't in JSON
         assert_eq!(settings.power_mode, None); // default
         assert!(settings.vocabulary.is_empty()); // default
     }

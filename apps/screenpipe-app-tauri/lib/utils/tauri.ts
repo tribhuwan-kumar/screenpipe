@@ -1192,14 +1192,10 @@ analyticsEnabled: boolean;
  * Persistent analytics ID (UUID, stable across sessions).
  */
 analyticsId: string; 
-/**
- * Enable input event capture (keyboard, mouse, clipboard).
- */
-enableInputCapture: boolean; 
-/**
- * Enable accessibility text capture (AX tree walker).
- */
-enableAccessibility: boolean; 
+/** @deprecated Always true — kept for serde compat */
+enableInputCapture: boolean;
+/** @deprecated Always true — kept for serde compat */
+enableAccessibility: boolean;
 /**
  * Enable AI workflow event detection (cloud feature, requires subscription).
  * When enabled, classifies desktop activity and triggers event-based pipes.

@@ -364,12 +364,8 @@ pub async fn start_embedded_server(
     }
 
     // Start UI event recording (database recording of accessibility events)
-    let ui_enabled = config.enable_input_capture || config.enable_accessibility;
-    info!(
-        "UI events setting: enable_input_capture={}, enable_accessibility={}",
-        config.enable_input_capture, config.enable_accessibility
-    );
-    let ui_recorder_handle = if ui_enabled {
+    // Input capture and accessibility are always enabled.
+    let ui_recorder_handle = {
         let ui_config = config.to_ui_recorder_config();
         let db_clone = db.clone();
         match start_ui_recording(db_clone, ui_config, capture_trigger_tx).await {
@@ -393,7 +389,7 @@ pub async fn start_embedded_server(
     let manual_meeting = std::sync::Arc::new(tokio::sync::RwLock::new(None::<i64>));
 
     // Start v2 meeting detection (UI scanning for call controls)
-    // Independent of enable_input_capture/enable_accessibility toggles — only needs accessibility permission
+    // Independent of UI recorder — only needs accessibility permission
     {
         let v2_in_meeting = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let _meeting_watcher = start_meeting_watcher(
