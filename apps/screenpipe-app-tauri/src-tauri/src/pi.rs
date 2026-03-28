@@ -668,11 +668,11 @@ fn default_max_tokens() -> i32 {
     4096
 }
 
-/// Build the models.json content for pi-coding-agent.
+/// Build the providers to add/update in models.json for pi-coding-agent.
 ///
-/// Pure function (no I/O) — builds a clean JSON value from scratch with only the
-/// providers we manage. This prevents stale/schema-invalid providers left over from
-/// older versions from poisoning pi-coding-agent's Ajv validation.
+/// Returns a map of provider entries to merge into the existing models.json.
+/// We merge instead of rebuilding from scratch to avoid a race condition where
+/// concurrent pipes overwrite each other's providers.
 fn build_models_json(
     user_token: Option<&str>,
     provider_config: Option<&PiProviderConfig>,
@@ -769,9 +769,30 @@ fn ensure_pi_config(
     std::fs::create_dir_all(&config_dir)
         .map_err(|e| format!("Failed to create pi config dir: {}", e))?;
 
-    let models_config = build_models_json(user_token, provider_config);
+    let new_providers = build_models_json(user_token, provider_config);
 
+    // Merge into existing models.json to avoid race conditions with concurrent pipes
     let models_path = config_dir.join("models.json");
+    let mut models_config: serde_json::Value = if models_path.exists() {
+        let content = std::fs::read_to_string(&models_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_else(|_| json!({"providers": {}}))
+    } else {
+        json!({"providers": {}})
+    };
+    if !models_config.get("providers").and_then(|p| p.as_object()).is_some() {
+        models_config = json!({"providers": {}});
+    }
+
+    // Merge new providers into existing ones (add/update, don't remove others)
+    if let (Some(existing), Some(new)) = (
+        models_config.get_mut("providers").and_then(|p| p.as_object_mut()),
+        new_providers.get("providers").and_then(|p| p.as_object()),
+    ) {
+        for (k, v) in new {
+            existing.insert(k.clone(), v.clone());
+        }
+    }
+
     let models_str = serde_json::to_string_pretty(&models_config)
         .map_err(|e| format!("Failed to serialize models config: {}", e))?;
     std::fs::write(&models_path, models_str)

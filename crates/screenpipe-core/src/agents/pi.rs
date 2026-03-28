@@ -273,12 +273,27 @@ impl PiExecutor {
         let config_dir = get_pi_config_dir()?;
         std::fs::create_dir_all(&config_dir)?;
 
-        // -- models.json: build clean config with only managed providers --
-        // Writing from scratch prevents stale/schema-invalid providers left over
-        // from older versions from poisoning pi-coding-agent's Ajv validation,
-        // which would reject the entire file and hide all custom providers.
+        // -- models.json: merge our provider into existing config --
+        // We read the existing file and merge to avoid a race condition where
+        // concurrent pipes (scheduled at the same time) overwrite each other's
+        // providers. Each pipe adds/updates only its own provider entry.
         let models_path = config_dir.join("models.json");
-        let mut models_config = json!({"providers": {}});
+        let mut models_config: serde_json::Value = if models_path.exists() {
+            let content = std::fs::read_to_string(&models_path).unwrap_or_default();
+            match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(_) => {
+                    warn!("pi config: models.json is corrupt, rebuilding from scratch");
+                    json!({"providers": {}})
+                }
+            }
+        } else {
+            json!({"providers": {}})
+        };
+        // Ensure providers key exists and is an object
+        if !models_config.get("providers").and_then(|p| p.as_object()).is_some() {
+            models_config = json!({"providers": {}});
+        }
 
         // Only add screenpipe cloud provider if it's the intended provider
         // (or no provider specified). If the user explicitly chose ollama/openai/custom,
@@ -1791,12 +1806,7 @@ mod tests {
 
         let providers = config.get("providers").unwrap().as_object().unwrap();
 
-        // When a non-screenpipe provider is explicitly set, screenpipe provider
-        // is intentionally NOT added (to avoid silent credit drain via fallback).
-        assert!(
-            !providers.contains_key("screenpipe"),
-            "screenpipe provider should NOT be added when ollama is explicitly chosen"
-        );
+        // Ollama provider must be present
         assert!(providers.contains_key("ollama"), "missing ollama provider");
 
         let ollama = &providers["ollama"];
