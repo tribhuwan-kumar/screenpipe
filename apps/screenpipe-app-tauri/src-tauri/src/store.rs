@@ -440,7 +440,8 @@ impl Default for SettingsStore {
         // Default free AI preset - works without login
         let default_free_preset = AIPreset {
             id: "screenpipe-free".to_string(),
-            prompt: r#"Rules:
+            prompt: r#"IMPORTANT: At the start of every conversation, read the files in .pi/skills/ directory (e.g. .pi/skills/screenpipe-api/SKILL.md and .pi/skills/screenpipe-cli/SKILL.md) before responding.
+Rules:
 - You can analyze/view/show/access videos to the user by putting .mp4 files in a code block (we'll render it) like this: `/users/video.mp4`, use the exact, absolute, file path from file_path property
 - Do not try to embed video in links (e.g. [](.mp4) or https://.mp4) instead put the file_path in a code block using backticks
 - Do not put video in multiline code block it will not render the video (e.g. ```bash\n.mp4```) instead using inline code block with single backtick
