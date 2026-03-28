@@ -16,7 +16,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use tokio::io::AsyncReadExt;
-use tokio::process::Command;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 use uuid::Uuid;

@@ -207,7 +207,7 @@ fn is_browser(app_name: &str) -> bool {
 /// (e.g. "Netflix - Comet" → synthesizes "https://netflix.com").
 #[cfg(target_os = "macos")]
 fn get_focused_app_info() -> Option<(String, Option<String>)> {
-    use cidre::{ax, cf, ns};
+    use cidre::{ax, ns};
 
     let sys = ax::UiElement::sys_wide();
     let app = sys.focused_app().ok()?;

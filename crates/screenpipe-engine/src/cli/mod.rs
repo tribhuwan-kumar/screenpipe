@@ -380,8 +380,10 @@ impl RecordArgs {
             disable_vision: self.disable_vision,
             use_pii_removal: self.use_pii_removal,
             filter_music: self.filter_music,
-            enable_input_capture: true, // legacy field, always true
-            enable_accessibility: true, // legacy field, always true
+            #[allow(deprecated)]
+            enable_input_capture: true,
+            #[allow(deprecated)]
+            enable_accessibility: true,
             audio_transcription_engine: engine_str.to_string(),
             transcription_mode: mode_str.to_string(),
             audio_devices: self.audio_device.clone(),

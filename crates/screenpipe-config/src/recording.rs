@@ -307,7 +307,9 @@ impl Default for RecordingSettings {
             use_chinese_mirror: false,
             analytics_enabled: true,
             analytics_id: String::new(),
+            #[allow(deprecated)]
             enable_input_capture: true,
+            #[allow(deprecated)]
             enable_accessibility: true,
             enable_workflow_events: false,
             device_tier: None,

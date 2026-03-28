@@ -23,6 +23,7 @@ pub fn find_ffmpeg_path() -> Option<PathBuf> {
 
 /// Create a `std::process::Command` for ffmpeg with `CREATE_NO_WINDOW` on Windows.
 pub fn ffmpeg_cmd(path: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(path);
     #[cfg(windows)]
     {
@@ -34,6 +35,7 @@ pub fn ffmpeg_cmd(path: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
 
 /// Create a `tokio::process::Command` for ffmpeg with `CREATE_NO_WINDOW` on Windows.
 pub fn ffmpeg_cmd_async(path: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    #[allow(unused_mut)]
     let mut cmd = tokio::process::Command::new(path);
     #[cfg(windows)]
     {

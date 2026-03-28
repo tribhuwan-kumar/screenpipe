@@ -6,11 +6,9 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use screenpipe_core::find_ffmpeg_path;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
-use std::{
-    path::Path,
-    process::{Command, Stdio},
-};
+use std::process::Stdio;
 use tracing::debug;
 use tracing::error;
 
