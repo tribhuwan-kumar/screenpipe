@@ -605,7 +605,7 @@ fn resolve_preset(pipes_dir: &Path, preset_id: &str) -> Option<ResolvedPreset> {
             "settings": {
                 "aiPresets": [{
                     "id": "default",
-                    "model": "claude-haiku-4-5",
+                    "model": "auto",
                     "provider": "screenpipe-cloud",
                     "defaultPreset": true,
                     "maxContextChars": 200000
