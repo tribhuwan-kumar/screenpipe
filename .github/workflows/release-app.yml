@@ -209,6 +209,8 @@ jobs:
 
     runs-on: ${{ matrix.platform == 'macos-26' && fromJSON('["self-hosted", "macos-26"]') || matrix.platform == 'windows-desktop-test' && fromJSON('["self-hosted", "windows-desktop-test"]') || matrix.platform }}
     timeout-minutes: 120
+    env:
+      GIT_LFS_SKIP_SMUDGE: 1
     steps:
       - name: Detect Xcode version and set Apple Intelligence feature
         if: matrix.os_type == 'macos'
@@ -250,7 +252,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.commit_hash || github.ref }}
-          lfs: true
 
       - name: Shorten target dir to avoid MAX_PATH (Windows)
         if: matrix.os_type == 'windows'
