@@ -174,6 +174,10 @@ export function ChatMessage({ message, ...props }: ChatMessageProps) {
 						},
 						img({ src, alt, ...props }) {
 							if (!src) return null;
+							// ![](path.mp4) → render video player
+							if (src.toLowerCase().endsWith(".mp4")) {
+								return <VideoComponent filePath={extractMP4Path(src)} />;
+							}
 							// Convert local file paths to Tauri asset URLs
 							const imgSrc = src.startsWith("/")
 								? convertFileSrc(src)

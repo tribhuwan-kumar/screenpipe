@@ -198,7 +198,7 @@ export function getEffectiveFilters(settings: Settings) {
 }
 
 export const DEFAULT_PROMPT = `Rules:
-- Videos: use inline code \`/path/to/video.mp4\` (not links or multiline blocks)
+- Media: use standard markdown ![description](/path/to/file.mp4) for videos and ![description](/path/to/image.jpg) for images
 - Diagrams: use \`\`\`mermaid blocks for visual summaries (flowchart, gantt, mindmap, graph)
 - Activity summaries: gantt charts with apps/duration
 - Workflows: flowcharts showing steps taken
