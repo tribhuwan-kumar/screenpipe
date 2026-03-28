@@ -27,6 +27,9 @@ concurrency:
   group: release-app-${{ github.sha }}
   cancel-in-progress: true
 
+env:
+  GIT_LFS_SKIP_SMUDGE: 1
+
 jobs:
   check_commit:
     runs-on: ubuntu-latest
@@ -209,8 +212,6 @@ jobs:
 
     runs-on: ${{ matrix.platform == 'macos-26' && fromJSON('["self-hosted", "macos-26"]') || matrix.platform == 'windows-desktop-test' && fromJSON('["self-hosted", "windows-desktop-test"]') || matrix.platform }}
     timeout-minutes: 120
-    env:
-      GIT_LFS_SKIP_SMUDGE: 1
     steps:
       - name: Detect Xcode version and set Apple Intelligence feature
         if: matrix.os_type == 'macos'

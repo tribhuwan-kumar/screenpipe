@@ -16,6 +16,9 @@ on:
 permissions:
   contents: write
 
+env:
+  GIT_LFS_SKIP_SMUDGE: 1
+
 jobs:
   check_commit:
     runs-on: ubuntu-latest

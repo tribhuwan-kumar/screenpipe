@@ -10,6 +10,9 @@ concurrency:
   group: e2e-macos-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GIT_LFS_SKIP_SMUDGE: 1
+
 jobs:
   # ── Tier 1: GitHub hosted runner ──────────────────────────────────────────
   # Build CLI from source, start server, test API + health
