@@ -291,7 +291,11 @@ impl PiExecutor {
             json!({"providers": {}})
         };
         // Ensure providers key exists and is an object
-        if !models_config.get("providers").and_then(|p| p.as_object()).is_some() {
+        if !models_config
+            .get("providers")
+            .and_then(|p| p.as_object())
+            .is_some()
+        {
             models_config = json!({"providers": {}});
         }
 
@@ -1651,9 +1655,7 @@ fn download_portable_git() -> std::result::Result<String, String> {
     if !extracted_bash.exists() {
         let _ = std::fs::remove_dir_all(&extract_temp);
         let _ = std::fs::remove_file(&temp_file);
-        return Err(
-            "Extraction completed but bash.exe not found in expected location".to_string(),
-        );
+        return Err("Extraction completed but bash.exe not found in expected location".to_string());
     }
 
     // Run post-install.bat if present (required by PortableGit)
