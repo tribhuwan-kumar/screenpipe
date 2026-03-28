@@ -358,11 +358,89 @@ pub fn pre_capture_drm_check(_pause_on_drm_content: bool, _trigger_app_name: Opt
     false
 }
 
-/// Query the current foreground app and check if DRM is still active.
-/// Called from the Tauri health check to decide when to auto-restart recording.
+/// Check if any on-screen window belongs to a DRM app or has a DRM-related title.
 ///
-/// Uses only Accessibility APIs (not ScreenCaptureKit).
+/// Uses `CGWindowListCopyWindowInfo` (CoreGraphics) — does NOT touch ScreenCaptureKit.
+/// This catches DRM windows that are visible but not focused (multi-monitor case).
+#[cfg(target_os = "macos")]
+fn any_drm_window_on_screen() -> bool {
+    use cidre::cg;
+
+    let windows = match cg::WindowList::info(cg::WindowListOpt::ON_SCREEN_ONLY, cg::WINDOW_ID_NULL)
+    {
+        Some(w) => w,
+        None => {
+            debug!("CGWindowListCopyWindowInfo returned null");
+            return false;
+        }
+    };
+
+    let key_owner = cg::window_keys::owner_name();
+    let key_name = cg::window_keys::name();
+    let key_layer = cg::window_keys::layer();
+
+    for i in 0..windows.len() {
+        let dict = &windows[i];
+
+        // Skip windows not on layer 0 (menu bar items, overlays, etc.)
+        if let Some(layer_val) = dict.get(key_layer) {
+            if let Some(layer_num) = layer_val.try_as_number() {
+                if let Some(layer) = layer_num.to_i32() {
+                    if layer != 0 {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Check owner (app) name
+        if let Some(owner_val) = dict.get(key_owner) {
+            if let Some(owner_cf) = owner_val.try_as_string() {
+                let owner_str = owner_cf.to_string();
+
+                if is_drm_app(&owner_str) {
+                    debug!(
+                        "DRM window still on screen: app='{}' (native DRM app)",
+                        owner_str
+                    );
+                    return true;
+                }
+
+                // For browsers, check the window title for DRM domain names
+                if is_browser(&owner_str) {
+                    if let Some(name_val) = dict.get(key_name) {
+                        if let Some(name_cf) = name_val.try_as_string() {
+                            let title = name_cf.to_string().to_lowercase();
+
+                            for &domain in DRM_DOMAINS {
+                                let base = domain.split('.').next().unwrap_or(domain);
+                                if title.contains(base) {
+                                    debug!(
+                                        "DRM window still on screen: browser='{}', title contains '{}'",
+                                        owner_str, base
+                                    );
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Query the current foreground app and check if DRM is still active.
+/// Called from the monitor watcher to decide when to auto-restart recording.
+///
+/// Uses only Accessibility APIs and CGWindowList (not ScreenCaptureKit).
 /// Returns `true` if DRM is still active (stay paused).
+///
+/// Multi-monitor aware: even if the focused app is not DRM, checks whether
+/// any DRM window is still visible on any screen. macOS DRM blacks out
+/// protected content whenever ScreenCaptureKit is active on ANY display.
 #[cfg(target_os = "macos")]
 pub fn poll_drm_clear() -> bool {
     let result =
@@ -372,42 +450,37 @@ pub fn poll_drm_clear() -> bool {
         Ok(Some((app_name, url))) => {
             if is_drm_app(&app_name) {
                 debug!("DRM app still focused: {}", app_name);
-                true
-            } else if is_browser(&app_name) {
-                // Browser focused — check the URL to decide
-                match url {
-                    Some(ref u) if is_drm_url(u) => {
+                return true;
+            }
+            if is_browser(&app_name) {
+                if let Some(ref u) = url {
+                    if is_drm_url(u) {
                         debug!(
                             "browser '{}' still on DRM URL: {} — keeping pause",
                             app_name, u
                         );
-                        true
-                    }
-                    Some(ref u) => {
-                        info!(
-                            "browser '{}' on non-DRM URL: {} — clearing DRM pause",
-                            app_name, u
-                        );
-                        set_drm_paused(false);
-                        false
-                    }
-                    None => {
-                        // Can't determine URL — clear pause to avoid false positives.
-                        // If the tab is still DRM, check_and_update_drm_state will
-                        // re-trigger on the next capture cycle.
-                        info!(
-                            "browser '{}' focused but can't determine URL — clearing DRM pause",
-                            app_name
-                        );
-                        set_drm_paused(false);
-                        false
+                        return true;
                     }
                 }
-            } else {
-                info!("focused app is now '{}' — clearing DRM pause", app_name);
-                set_drm_paused(false);
-                false
             }
+
+            // Focused app is not DRM — but a DRM window may still be visible
+            // on another monitor. macOS DRM blacks out content when SCK is
+            // active on ANY display, so we must stay paused.
+            if any_drm_window_on_screen() {
+                debug!(
+                    "focused app '{}' is not DRM, but a DRM window is still visible — keeping pause",
+                    app_name
+                );
+                return true;
+            }
+
+            info!(
+                "focused app '{}' is not DRM and no DRM windows visible — clearing pause",
+                app_name
+            );
+            set_drm_paused(false);
+            false
         }
         Ok(None) => {
             debug!("could not determine focused app, keeping DRM pause");
