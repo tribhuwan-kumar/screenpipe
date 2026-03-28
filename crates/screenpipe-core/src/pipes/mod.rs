@@ -312,13 +312,13 @@ fn default_agent() -> String {
     "pi".into()
 }
 fn default_model() -> String {
-    "claude-haiku-4-5".into()
+    "auto".into()
 }
 fn is_default_agent(s: &String) -> bool {
     s == "pi"
 }
 fn is_default_model(s: &String) -> bool {
-    s == "claude-haiku-4-5" || s == "claude-haiku-4-5@20251001"
+    s == "auto" || s == "claude-haiku-4-5" || s == "claude-haiku-4-5@20251001"
 }
 /// Simple FNV-1a 64-bit hash, sufficient for change detection.
 fn simple_hash(content: &str) -> String {
