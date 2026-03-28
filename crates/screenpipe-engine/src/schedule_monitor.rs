@@ -36,7 +36,10 @@ fn is_within_schedule(rules: &[ScheduleRule], now: &chrono::DateTime<chrono::Loc
     };
     let current_time = now.format("%H:%M").to_string();
 
-    let day_rules: Vec<_> = rules.iter().filter(|r| r.day_of_week == day_of_week).collect();
+    let day_rules: Vec<_> = rules
+        .iter()
+        .filter(|r| r.day_of_week == day_of_week)
+        .collect();
     if day_rules.is_empty() {
         return false; // No rules for today = don't record
     }
@@ -75,10 +78,7 @@ pub fn current_record_mode(rules: &[ScheduleRule]) -> Option<String> {
 ///
 /// Checks every 30 seconds whether the current local time falls within the
 /// configured schedule rules. Updates `SCHEDULE_PAUSED` accordingly.
-pub fn start_schedule_monitor(
-    rules: Vec<ScheduleRule>,
-    mut shutdown: broadcast::Receiver<()>,
-) {
+pub fn start_schedule_monitor(rules: Vec<ScheduleRule>, mut shutdown: broadcast::Receiver<()>) {
     tokio::spawn(async move {
         info!("schedule monitor started with {} rules", rules.len());
 

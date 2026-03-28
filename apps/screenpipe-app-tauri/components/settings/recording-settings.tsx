@@ -1150,7 +1150,13 @@ Your screen is a pipe. Everything you see, hear, and type flows through it. Scre
       </Card>
 
       {/* Recording Schedule */}
-      <ScheduleSettings />
+      <ScheduleSettings
+        enabled={settings.scheduleEnabled ?? false}
+        rules={(settings.scheduleRules as any[]) ?? []}
+        onChange={(enabled, rules) => {
+          handleSettingsChange({ scheduleEnabled: enabled, scheduleRules: rules } as any);
+        }}
+      />
 
       {/* Data Directory */}
       <div className="space-y-2">
